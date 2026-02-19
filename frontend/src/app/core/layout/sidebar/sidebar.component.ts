@@ -18,20 +18,25 @@ interface NavItem {
   imports: [CommonModule, RouterLink, RouterLinkActive, MatTooltipModule, MatIconModule],
   template: `
     <aside class="sidebar" [class.collapsed]="collapsed">
-      <!-- Logo -->
       <div class="sidebar-logo">
-        <div class="logo-mark">
-          <span class="logo-icon">B</span>
-        </div>
-        <span class="logo-text" *ngIf="!collapsed">Brainsuite</span>
+        <img
+          *ngIf="!collapsed"
+          src="/assets/images/logo-orange-white.png"
+          alt="Brainsuite"
+          class="logo-full"
+        />
+        <img
+          *ngIf="collapsed"
+          src="/assets/images/signet-orange.png"
+          alt="Brainsuite"
+          class="logo-signet"
+        />
       </div>
 
-      <!-- Toggle -->
       <button class="collapse-btn" (click)="toggleCollapse.emit()" [matTooltip]="collapsed ? 'Expand' : 'Collapse'" matTooltipPosition="right">
         <mat-icon>{{ collapsed ? 'chevron_right' : 'chevron_left' }}</mat-icon>
       </button>
 
-      <!-- Nav -->
       <nav class="sidebar-nav">
         <ng-container *ngFor="let item of navItems">
           <div class="nav-separator" *ngIf="item.separator"></div>
@@ -63,7 +68,7 @@ interface NavItem {
       flex-direction: column;
       transition: width var(--transition);
       z-index: 100;
-      overflow: hidden;
+      overflow: visible;
     }
 
     .sidebar.collapsed {
@@ -73,34 +78,24 @@ interface NavItem {
     .sidebar-logo {
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: center;
       padding: 18px 16px;
       border-bottom: 1px solid var(--border);
       min-height: var(--header-height);
+      overflow: hidden;
     }
 
-    .logo-mark {
+    .logo-full {
+      height: 28px;
+      width: auto;
+      object-fit: contain;
+    }
+
+    .logo-signet {
       width: 32px;
       height: 32px;
-      background: var(--accent);
+      object-fit: contain;
       border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
-    .logo-icon {
-      color: white;
-      font-weight: 800;
-      font-size: 16px;
-    }
-
-    .logo-text {
-      font-weight: 700;
-      font-size: 16px;
-      color: var(--text-primary);
-      white-space: nowrap;
     }
 
     .collapse-btn {
@@ -121,7 +116,12 @@ interface NavItem {
       padding: 0;
       transition: all var(--transition);
 
-      mat-icon { font-size: 16px; width: 16px; height: 16px; }
+      mat-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        line-height: 14px;
+      }
 
       &:hover { background: var(--accent); border-color: var(--accent); color: white; }
     }
@@ -132,6 +132,8 @@ interface NavItem {
       display: flex;
       flex-direction: column;
       gap: 2px;
+      overflow-y: auto;
+      overflow-x: hidden;
     }
 
     .nav-separator {
@@ -159,7 +161,7 @@ interface NavItem {
       }
 
       &.active {
-        background: rgba(52, 152, 219, 0.15);
+        background: var(--accent-light);
         color: var(--accent);
       }
     }

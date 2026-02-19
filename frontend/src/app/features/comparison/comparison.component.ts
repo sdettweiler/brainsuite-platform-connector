@@ -363,7 +363,7 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
     .kpi-table-row {
       border-top: 1px solid var(--border);
       &:hover { background: var(--bg-secondary); }
-      &.highlighted { background: rgba(66,133,244,0.04); }
+      &.highlighted { background: var(--accent-light); }
       > div { padding: 10px 16px; font-size: 13px; }
     }
 

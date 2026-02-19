@@ -169,7 +169,7 @@ interface BrainsuiteApp {
     }
 
     .app-icon {
-      width: 40px; height: 40px; border-radius: 10px; background: rgba(66,133,244,0.1);
+      width: 40px; height: 40px; border-radius: 10px; background: var(--accent-light);
       display: flex; align-items: center; justify-content: center;
       mat-icon { color: var(--accent); }
     }

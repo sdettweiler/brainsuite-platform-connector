@@ -1,23 +1,16 @@
-// ─── Brainsuite Design System ─────────────────────────────────────────────
-
-// Angular Material theme
 @use '@angular/material' as mat;
 @include mat.core();
 
-// Font
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-// ─── Color Tokens ─────────────────────────────────────────────────────────
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,500&display=swap');
 
 :root {
-  // Brand accent
-  --accent:        #3498DB;
-  --accent-hover:  #2980B9;
+  --accent:        #FF7700;
+  --accent-hover:  #FF9333;
+  --accent-light:  rgba(255, 119, 0, 0.15);
   --success:       #2ECC71;
   --warning:       #F39C12;
   --error:         #E74C3C;
 
-  // Layout
   --sidebar-width:         220px;
   --sidebar-collapsed-width: 64px;
   --header-height:         60px;
@@ -25,41 +18,36 @@
   --border-radius-lg:      12px;
   --transition:            0.2s cubic-bezier(0.4, 0, 0.2, 1);
 
-  // Shadows
   --shadow-sm:  0 1px 3px rgba(0,0,0,0.3);
   --shadow-md:  0 4px 12px rgba(0,0,0,0.4);
   --shadow-lg:  0 8px 24px rgba(0,0,0,0.5);
-}
 
-// ─── Dark Theme (default) ─────────────────────────────────────────────────
+  --gradient-brand: linear-gradient(45deg, #DF4742 0%, #EC7235 50%, #F38A2E 100%);
+}
 
 .dark-theme {
-  --bg-primary:   #0F1623;
-  --bg-secondary: #1B2A47;
-  --bg-card:      #1E2D4A;
-  --bg-hover:     #243354;
-  --border:       #2D3E5C;
+  --bg-primary:   #04093A;
+  --bg-secondary: #060E48;
+  --bg-card:      #0B1455;
+  --bg-hover:     #101B64;
+  --border:       #1A2878;
   --text-primary:   #FFFFFF;
-  --text-secondary: #94A3B8;
-  --text-muted:     #64748B;
-  --input-bg:       #243354;
+  --text-secondary: #94A3C8;
+  --text-muted:     #6478A8;
+  --input-bg:       #0B1455;
 }
-
-// ─── Light Theme ──────────────────────────────────────────────────────────
 
 .light-theme {
-  --bg-primary:   #F0F4F8;
+  --bg-primary:   #F5F6FA;
   --bg-secondary: #FFFFFF;
   --bg-card:      #FFFFFF;
-  --bg-hover:     #F7F9FC;
-  --border:       #E2E8F0;
-  --text-primary:   #1A202C;
+  --bg-hover:     #EFF4FF;
+  --border:       #C2CDE2;
+  --text-primary:   #1B1B1B;
   --text-secondary: #4A5568;
   --text-muted:     #718096;
-  --input-bg:       #F7F9FC;
+  --input-bg:       #EFF4FF;
 }
-
-// ─── Global Reset & Base ─────────────────────────────────────────────────
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -67,15 +55,13 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Nunito Sans', 'Avenir Next', 'Avenir', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   background: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
 }
-
-// ─── Typography ───────────────────────────────────────────────────────────
 
 h1 { font-size: 24px; font-weight: 700; margin: 0; }
 h2 { font-size: 20px; font-weight: 600; margin: 0; }
@@ -86,8 +72,6 @@ p  { margin: 0; }
 .text-sm    { font-size: 12px; }
 .text-muted { color: var(--text-secondary); }
 
-// ─── Layout Utilities ─────────────────────────────────────────────────────
-
 .flex       { display: flex; }
 .flex-col   { flex-direction: column; }
 .items-center { align-items: center; }
@@ -96,8 +80,6 @@ p  { margin: 0; }
 .gap-3      { gap: 12px; }
 .gap-4      { gap: 16px; }
 .gap-6      { gap: 24px; }
-
-// ─── Cards ───────────────────────────────────────────────────────────────
 
 .card {
   background: var(--bg-card);
@@ -108,8 +90,6 @@ p  { margin: 0; }
 
 .card-sm { padding: 12px 16px; }
 
-// ─── Scrollbars ──────────────────────────────────────────────────────────
-
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
@@ -118,13 +98,9 @@ p  { margin: 0; }
   &:hover { background: var(--text-muted); }
 }
 
-// ─── Stat change indicators ───────────────────────────────────────────────
-
 .change-positive { color: var(--success); }
 .change-negative { color: var(--error); }
 .change-neutral  { color: var(--text-secondary); }
-
-// ─── Badges ─────────────────────────────────────────────────────────────
 
 .badge {
   display: inline-flex;
@@ -139,11 +115,9 @@ p  { margin: 0; }
   &.badge-success { background: rgba(46,204,113,0.15); color: var(--success); }
   &.badge-warning { background: rgba(243,156,18,0.15); color: var(--warning); }
   &.badge-error   { background: rgba(231,76,60,0.15);  color: var(--error);   }
-  &.badge-info    { background: rgba(52,152,219,0.15); color: var(--accent);  }
+  &.badge-info    { background: var(--accent-light); color: var(--accent);  }
   &.badge-neutral { background: var(--border); color: var(--text-secondary); }
 }
-
-// ─── ACE Score color grading ──────────────────────────────────────────────
 
 .ace-score {
   display: inline-flex;
@@ -160,37 +134,145 @@ p  { margin: 0; }
   &.ace-low     { background: rgba(231,76,60,0.2);   color: var(--error);   border: 2px solid var(--error);   }
 }
 
-// ─── Platform icon colors ─────────────────────────────────────────────────
-
 .platform-meta     { color: #1877F2; }
 .platform-tiktok   { color: #FF0050; }
 .platform-youtube  { color: #FF0000; }
-
-// ─── Material overrides ───────────────────────────────────────────────────
 
 .mat-mdc-form-field {
   .mat-mdc-text-field-wrapper {
     background: var(--input-bg) !important;
     border-radius: var(--border-radius) !important;
   }
+
+  .mdc-text-field--outlined .mdc-notched-outline__leading,
+  .mdc-text-field--outlined .mdc-notched-outline__notch,
+  .mdc-text-field--outlined .mdc-notched-outline__trailing {
+    border-color: var(--border) !important;
+  }
+
+  .mdc-text-field--outlined:not(.mdc-text-field--disabled):hover .mdc-notched-outline__leading,
+  .mdc-text-field--outlined:not(.mdc-text-field--disabled):hover .mdc-notched-outline__notch,
+  .mdc-text-field--outlined:not(.mdc-text-field--disabled):hover .mdc-notched-outline__trailing {
+    border-color: var(--accent) !important;
+  }
+
+  .mdc-text-field--outlined:not(.mdc-text-field--disabled).mdc-text-field--focused .mdc-notched-outline__leading,
+  .mdc-text-field--outlined:not(.mdc-text-field--disabled).mdc-text-field--focused .mdc-notched-outline__notch,
+  .mdc-text-field--outlined:not(.mdc-text-field--disabled).mdc-text-field--focused .mdc-notched-outline__trailing {
+    border-color: var(--accent) !important;
+  }
+
+  .mat-mdc-input-element,
+  input.mat-mdc-input-element {
+    color: var(--text-primary) !important;
+    caret-color: var(--accent) !important;
+  }
+
+  .mat-mdc-floating-label,
+  .mdc-floating-label {
+    color: var(--text-secondary) !important;
+  }
+
+  .mat-mdc-floating-label.mdc-floating-label--float-above,
+  .mdc-floating-label--float-above {
+    color: var(--accent) !important;
+  }
+
+  .mat-mdc-form-field-icon-prefix,
+  .mat-mdc-form-field-icon-suffix {
+    color: var(--text-muted) !important;
+  }
+}
+
+.mat-mdc-select {
+  color: var(--text-primary) !important;
+
+  .mat-mdc-select-arrow {
+    color: var(--text-muted) !important;
+  }
+}
+
+.mat-mdc-select-panel,
+.cdk-overlay-pane .mat-mdc-select-panel {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--border-radius) !important;
+}
+
+.mat-mdc-option {
+  color: var(--text-primary) !important;
+
+  &:hover:not(.mdc-list-item--disabled),
+  &:focus:not(.mdc-list-item--disabled),
+  &.mat-mdc-option-active {
+    background: var(--bg-hover) !important;
+  }
+
+  &.mdc-list-item--selected:not(.mdc-list-item--disabled) {
+    background: var(--accent-light) !important;
+    .mdc-list-item__primary-text {
+      color: var(--accent) !important;
+    }
+  }
 }
 
 .mat-mdc-dialog-container {
   --mdc-dialog-container-color: var(--bg-card);
   border-radius: var(--border-radius-lg) !important;
+
+  .mdc-dialog__title {
+    color: var(--text-primary) !important;
+  }
+
+  .mdc-dialog__content {
+    color: var(--text-primary) !important;
+  }
 }
 
 .mat-mdc-menu-panel {
   background: var(--bg-card) !important;
   border: 1px solid var(--border) !important;
   border-radius: var(--border-radius) !important;
+
+  .mat-mdc-menu-item {
+    color: var(--text-primary) !important;
+
+    .mat-icon {
+      color: var(--text-secondary) !important;
+    }
+
+    &:hover {
+      background: var(--bg-hover) !important;
+    }
+  }
 }
 
 .mat-mdc-tooltip {
   font-size: 12px !important;
 }
 
-// ─── Loading skeleton ─────────────────────────────────────────────────────
+.mat-mdc-button,
+.mat-mdc-outlined-button,
+.mat-mdc-unelevated-button {
+  font-family: 'Nunito Sans', 'Avenir Next', sans-serif !important;
+  letter-spacing: 0.3px !important;
+}
+
+.mat-mdc-unelevated-button.mat-primary {
+  --mdc-filled-button-container-color: var(--accent) !important;
+  --mdc-filled-button-label-text-color: #FFFFFF !important;
+}
+
+.mat-divider {
+  border-top-color: var(--border) !important;
+}
+
+.mat-mdc-checkbox {
+  .mdc-checkbox__native-control:enabled:checked ~ .mdc-checkbox__background {
+    background-color: var(--accent) !important;
+    border-color: var(--accent) !important;
+  }
+}
 
 .skeleton {
   background: linear-gradient(
@@ -208,8 +290,6 @@ p  { margin: 0; }
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
-
-// ─── Page transitions ─────────────────────────────────────────────────────
 
 .page-enter {
   animation: pageEnter 0.2s ease-out;

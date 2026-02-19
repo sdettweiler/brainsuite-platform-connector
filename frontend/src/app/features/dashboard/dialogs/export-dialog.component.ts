@@ -178,7 +178,7 @@ interface ExportDialogData {
       span { font-size: 13px; font-weight: 500; }
       .format-ext { font-size: 11px; color: var(--text-muted); }
       &:hover { border-color: var(--accent); }
-      &.active { border-color: var(--accent); background: rgba(66,133,244,0.08); mat-icon { color: var(--accent); } }
+      &.active { border-color: var(--accent); background: var(--accent-light); mat-icon { color: var(--accent); } }
     }
 
     .scope-info {

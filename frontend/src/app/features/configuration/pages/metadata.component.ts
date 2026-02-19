@@ -205,7 +205,7 @@ interface MetadataField {
 
     .field-type-badge {
       padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase;
-      &.type-select { background: rgba(66,133,244,0.15); color: var(--accent); }
+      &.type-select { background: var(--accent-light); color: var(--accent); }
       &.type-text { background: rgba(52,168,83,0.15); color: #34A853; }
       &.type-number { background: rgba(251,188,4,0.15); color: #F09300; }
     }

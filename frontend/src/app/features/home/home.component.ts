@@ -24,7 +24,7 @@ import { AuthService } from '../../core/services/auth.service';
       <!-- Overall Stats -->
       <div class="stats-grid" *ngIf="!loading">
         <div class="stat-card">
-          <div class="stat-icon" style="background: rgba(52,152,219,0.15);">
+          <div class="stat-icon" style="background: var(--accent-light);">
             <mat-icon style="color: var(--accent)">image</mat-icon>
           </div>
           <div>

@@ -244,7 +244,7 @@ import { format, subDays } from 'date-fns';
       cursor: pointer; transition: all var(--transition);
       mat-icon { font-size: 20px; }
       &:hover { background: var(--bg-hover); }
-      &.active { background: rgba(52,152,219,0.15); border-color: var(--accent); }
+      &.active { background: var(--accent-light); border-color: var(--accent); }
     }
 
     .sort-dir-btn { color: var(--text-secondary); }
@@ -297,7 +297,7 @@ import { format, subDays } from 'date-fns';
 
       &.selected {
         border-color: var(--accent);
-        box-shadow: 0 0 0 2px rgba(52,152,219,0.3);
+        box-shadow: 0 0 0 2px rgba(255,119,0,0.3);
       }
     }
 
@@ -361,7 +361,7 @@ import { format, subDays } from 'date-fns';
       border-radius: 12px;
       text-transform: uppercase;
       &.tag-top    { background: rgba(46,204,113,0.15); color: var(--success); }
-      &.tag-avg    { background: rgba(52,152,219,0.15); color: var(--accent); }
+      &.tag-avg    { background: var(--accent-light); color: var(--accent); }
       &.tag-below  { background: rgba(231,76,60,0.15);  color: var(--error); }
     }
 

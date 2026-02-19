@@ -54,7 +54,7 @@ interface ConfigNav {
       text-decoration: none; color: var(--text-secondary); font-size: 14px; transition: all 0.15s;
       mat-icon { font-size: 18px; }
       &:hover { background: var(--bg-secondary); color: var(--text-primary); }
-      &.active { background: rgba(66,133,244,0.1); color: var(--accent); font-weight: 500; }
+      &.active { background: var(--accent-light); color: var(--accent); font-weight: 500; }
     }
 
     .config-content { flex: 1; overflow-y: auto; }

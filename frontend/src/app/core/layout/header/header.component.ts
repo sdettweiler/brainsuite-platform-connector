@@ -19,19 +19,15 @@ import { ThemeService } from '../../services/theme.service';
   ],
   template: `
     <header class="header">
-      <!-- Left: breadcrumb / page title placeholder -->
       <div class="header-left">
         <span class="org-name">{{ orgName }}</span>
       </div>
 
-      <!-- Right: actions -->
       <div class="header-right">
-        <!-- Notifications (placeholder) -->
         <button mat-icon-button matTooltip="Notifications" class="icon-btn">
           <mat-icon>notifications_none</mat-icon>
         </button>
 
-        <!-- User avatar -->
         <button
           mat-button
           [matMenuTriggerFor]="userMenu"

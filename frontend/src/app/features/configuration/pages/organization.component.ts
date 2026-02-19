@@ -246,7 +246,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
 
     .role-badge {
       padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;
-      &.role-admin { background: rgba(66,133,244,0.15); color: var(--accent); }
+      &.role-admin { background: var(--accent-light); color: var(--accent); }
       &.role-standard { background: rgba(52,168,83,0.15); color: #34A853; }
       &.role-read_only { background: var(--bg-secondary); color: var(--text-secondary); }
     }
@@ -269,7 +269,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
 
     .invite-note {
       display: flex; align-items: flex-start; gap: 8px; padding: 12px;
-      background: rgba(66,133,244,0.05); border-radius: 6px; margin-bottom: 16px;
+      background: var(--accent-light); border-radius: 6px; margin-bottom: 16px;
       mat-icon { font-size: 16px; color: var(--accent); margin-top: 1px; }
       span { font-size: 13px; color: var(--text-secondary); }
     }

@@ -311,7 +311,7 @@ const PLATFORMS: PlatformDef[] = [
       cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.1s;
       &:last-child { border-bottom: none; }
       &:hover { background: var(--bg-secondary); }
-      &.selected { background: rgba(66,133,244,0.06); }
+      &.selected { background: var(--accent-light); }
     }
 
     .check-box { color: var(--accent); }

@@ -17,10 +17,8 @@ import { AuthService } from '../../../core/services/auth.service';
   template: `
     <div class="auth-page">
       <div class="auth-card">
-        <!-- Logo -->
         <div class="auth-logo">
-          <div class="logo-mark"><span>B</span></div>
-          <h1>Brainsuite</h1>
+          <img src="/assets/images/logo-orange.png" alt="Brainsuite" class="logo-img" />
         </div>
 
         <p class="auth-subtitle">Platform Connector</p>
@@ -71,7 +69,7 @@ import { AuthService } from '../../../core/services/auth.service';
 
     .auth-card {
       width: 100%;
-      max-width: 400px;
+      max-width: 420px;
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--border-radius-lg);
@@ -79,22 +77,12 @@ import { AuthService } from '../../../core/services/auth.service';
     }
 
     .auth-logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
       margin-bottom: 8px;
-      h1 { font-size: 22px; font-weight: 700; }
     }
 
-    .logo-mark {
-      width: 40px;
-      height: 40px;
-      background: var(--accent);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      span { color: white; font-weight: 800; font-size: 20px; }
+    .logo-img {
+      height: 36px;
+      width: auto;
     }
 
     .auth-subtitle {
@@ -121,6 +109,8 @@ import { AuthService } from '../../../core/services/auth.service';
       background: var(--accent) !important;
       color: white !important;
       font-weight: 600;
+      font-size: 15px;
+      border-radius: var(--border-radius) !important;
     }
 
     .auth-footer {
@@ -129,6 +119,7 @@ import { AuthService } from '../../../core/services/auth.service';
       font-size: 13px;
       color: var(--text-secondary);
       a { color: var(--accent); text-decoration: none; font-weight: 500; }
+      a:hover { text-decoration: underline; }
     }
   `],
 })

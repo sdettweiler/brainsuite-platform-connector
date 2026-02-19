@@ -154,13 +154,13 @@ interface AssignProjectDialogData {
       display: flex; align-items: center; gap: 12px; padding: 10px 12px;
       border: 1px solid transparent; border-radius: 6px; cursor: pointer; transition: all 0.1s;
       &:hover { background: var(--bg-secondary); }
-      &.selected { border-color: var(--accent); background: rgba(66,133,244,0.08); }
+      &.selected { border-color: var(--accent); background: var(--accent-light); }
     }
 
     .radio-dot {
       width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border);
       transition: all 0.15s; flex-shrink: 0;
-      &.active { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 3px rgba(66,133,244,0.2); }
+      &.active { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
     }
 
     .project-info { display: flex; flex-direction: column; gap: 2px; }

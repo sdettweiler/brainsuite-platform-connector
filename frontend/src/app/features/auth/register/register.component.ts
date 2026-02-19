@@ -18,8 +18,7 @@ import { AuthService } from '../../../core/services/auth.service';
     <div class="auth-page">
       <div class="auth-card">
         <div class="auth-logo">
-          <div class="logo-mark"><span>B</span></div>
-          <h1>Brainsuite</h1>
+          <img src="/assets/images/logo-orange.png" alt="Brainsuite" class="logo-img" />
         </div>
         <p class="auth-subtitle">Create your account</p>
 
@@ -61,15 +60,15 @@ import { AuthService } from '../../../core/services/auth.service';
   styles: [`
     .auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg-primary); padding: 24px; }
     .auth-card { width: 100%; max-width: 420px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--border-radius-lg); padding: 40px; }
-    .auth-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; h1 { font-size: 22px; font-weight: 700; } }
-    .logo-mark { width: 40px; height: 40px; background: var(--accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; span { color: white; font-weight: 800; font-size: 20px; } }
+    .auth-logo { margin-bottom: 8px; }
+    .logo-img { height: 36px; width: auto; }
     .auth-subtitle { color: var(--text-secondary); font-size: 13px; margin-bottom: 28px; }
     form { display: flex; flex-direction: column; gap: 12px; }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .w-full { width: 100%; }
     .error-msg { background: rgba(231,76,60,0.1); color: var(--error); padding: 10px 14px; border-radius: 6px; font-size: 13px; }
-    .submit-btn { width: 100%; height: 44px; background: var(--accent) !important; color: white !important; font-weight: 600; }
-    .auth-footer { text-align: center; margin-top: 20px; font-size: 13px; color: var(--text-secondary); a { color: var(--accent); text-decoration: none; font-weight: 500; } }
+    .submit-btn { width: 100%; height: 44px; background: var(--accent) !important; color: white !important; font-weight: 600; font-size: 15px; border-radius: var(--border-radius) !important; }
+    .auth-footer { text-align: center; margin-top: 20px; font-size: 13px; color: var(--text-secondary); a { color: var(--accent); text-decoration: none; font-weight: 500; } a:hover { text-decoration: underline; } }
   `],
 })
 export class RegisterComponent {
