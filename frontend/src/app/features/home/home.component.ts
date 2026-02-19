@@ -1,11 +1,13 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { Subscription } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { ThemeService } from '../../core/services/theme.service';
 
 @Component({
   standalone: true,
@@ -307,19 +309,26 @@ import { AuthService } from '../../core/services/auth.service';
     }
   `],
 })
-export class HomeComponent implements OnInit {
+export class HomeComponent implements OnInit, OnDestroy {
   data: any = null;
   loading = true;
   platforms = ['META', 'TIKTOK', 'YOUTUBE'];
   today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  isDark = true;
+  private themeSub!: Subscription;
 
   constructor(
     private api: ApiService,
     private auth: AuthService,
     private router: Router,
+    private themeService: ThemeService,
   ) {}
 
   ngOnInit(): void {
+    this.themeSub = this.themeService.currentTheme$.subscribe(theme => {
+      this.isDark = theme === 'dark-theme';
+    });
+
     this.api.get('/dashboard/homepage-widgets').subscribe({
       next: (d: any) => { this.data = d; this.loading = false; },
       error: () => { this.loading = false; },
@@ -334,13 +343,18 @@ export class HomeComponent implements OnInit {
     return this.data?.widgets?.[platform.toLowerCase()] || [];
   }
 
+  ngOnDestroy(): void {
+    this.themeSub?.unsubscribe();
+  }
+
   getPlatformLogo(platform: string): string {
+    const suffix = this.isDark ? 'dark' : 'light';
     const map: Record<string, string> = {
-      'META': '/assets/images/platform-meta-dark.png',
-      'TIKTOK': '/assets/images/platform-tiktok-dark.png',
-      'YOUTUBE': '/assets/images/platform-youtube-dark.png'
+      'META': `/assets/images/platform-meta-${suffix}.png`,
+      'TIKTOK': `/assets/images/platform-tiktok-${suffix}.png`,
+      'YOUTUBE': `/assets/images/platform-youtube-${suffix}.png`
     };
-    return map[platform] || '/assets/images/platform-meta-dark.png';
+    return map[platform] || `/assets/images/platform-meta-${suffix}.png`;
   }
 
   getAceClass(score: number | null): string {
