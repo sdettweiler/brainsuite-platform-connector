@@ -20,7 +20,7 @@ interface MetadataField {
   is_required: boolean;
   default_value?: string;
   sort_order: number;
-  field_values?: Array<{ id: string; value: string; label: string; sort_order: number }>;
+  allowed_values?: Array<{ id: string; value: string; label: string; sort_order: number }>;
 }
 
 @Component({
@@ -69,7 +69,7 @@ interface MetadataField {
                 <div class="field-flags">
                   <span class="required-flag" *ngIf="field.is_required">Required</span>
                   <span class="values-count" *ngIf="field.field_type === 'SELECT'">
-                    {{ field.field_values?.length || 0 }} options
+                    {{ field.allowed_values?.length || 0 }} options
                   </span>
                 </div>
                 <div class="field-actions">
@@ -93,11 +93,11 @@ interface MetadataField {
                 </div>
                 <div
                   cdkDropList
-                  [cdkDropListData]="field.field_values"
+                  [cdkDropListData]="field.allowed_values"
                   (cdkDropListDropped)="onOptionDrop($event, field)"
                   class="options-list"
                 >
-                  <div *ngFor="let opt of field.field_values; let j = index" cdkDrag class="option-row">
+                  <div *ngFor="let opt of field.allowed_values; let j = index" cdkDrag class="option-row">
                     <mat-icon cdkDragHandle class="drag-handle-sm">drag_indicator</mat-icon>
                     <input [(ngModel)]="opt.label" class="option-label-input" placeholder="Label" />
                     <input [(ngModel)]="opt.value" class="option-value-input" placeholder="Value (slug)" />
@@ -105,7 +105,7 @@ interface MetadataField {
                       <mat-icon>close</mat-icon>
                     </button>
                   </div>
-                  <div *ngIf="!field.field_values?.length" class="no-options">No options yet</div>
+                  <div *ngIf="!field.allowed_values?.length" class="no-options">No options yet</div>
                 </div>
                 <div class="options-footer">
                   <button mat-flat-button class="save-options-btn" (click)="saveFieldValues(field)">
@@ -366,16 +366,16 @@ export class MetadataComponent implements OnInit {
   }
 
   addOption(field: MetadataField): void {
-    if (!field.field_values) field.field_values = [];
-    field.field_values.push({ id: '', value: '', label: '', sort_order: field.field_values.length });
+    if (!field.allowed_values) field.allowed_values = [];
+    field.allowed_values.push({ id: '', value: '', label: '', sort_order: field.allowed_values.length });
   }
 
   removeOption(field: MetadataField, index: number): void {
-    field.field_values?.splice(index, 1);
+    field.allowed_values?.splice(index, 1);
   }
 
   saveFieldValues(field: MetadataField): void {
-    const values = (field.field_values || []).filter(v => v.label.trim() && v.value.trim());
+    const values = (field.allowed_values || []).filter(v => v.label.trim() && v.value.trim());
     this.api.put(`/assets/metadata/fields/${field.id}/values`, { values }).subscribe({
       next: () => { this.snackBar.open('Options saved', '', { duration: 2000 }); this.loadFields(); },
     });
@@ -389,8 +389,8 @@ export class MetadataComponent implements OnInit {
   }
 
   onOptionDrop(event: CdkDragDrop<any>, field: MetadataField): void {
-    if (field.field_values) {
-      moveItemInArray(field.field_values, event.previousIndex, event.currentIndex);
+    if (field.allowed_values) {
+      moveItemInArray(field.allowed_values, event.previousIndex, event.currentIndex);
     }
   }
 }
