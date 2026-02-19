@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,11 +7,91 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatDialogModule, MatDialog } from '@angular/material/dialog';
+import { MatDialogModule, MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatRadioModule } from '@angular/material/radio';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ApiService } from '../../../core/services/api.service';
 import { AuthService } from '../../../core/services/auth.service';
+
+@Component({
+  standalone: true,
+  imports: [CommonModule, FormsModule, MatButtonModule, MatRadioModule, MatDialogModule],
+  template: `
+    <div class="role-dialog">
+      <h3>Change Role</h3>
+      <p class="role-user">{{ data.email }}</p>
+      <mat-radio-group [(ngModel)]="selectedRole" class="role-options">
+        <mat-radio-button *ngFor="let r of data.roles" [value]="r" class="role-option">
+          {{ formatRole(r) }}
+        </mat-radio-button>
+      </mat-radio-group>
+      <div class="role-actions">
+        <button mat-button (click)="dialogRef.close()">Cancel</button>
+        <button mat-flat-button class="save-btn" [disabled]="selectedRole === data.currentRole" (click)="dialogRef.close(selectedRole)">Save</button>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .role-dialog {
+      padding: 8px 4px;
+      min-width: 260px;
+    }
+    h3 {
+      margin: 0 0 4px;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .role-user {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin: 0 0 16px;
+    }
+    .role-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .role-option {
+      font-size: 14px;
+    }
+    :host ::ng-deep .mat-mdc-radio-button .mdc-radio__outer-circle {
+      border-color: var(--text-muted) !important;
+    }
+    :host ::ng-deep .mat-mdc-radio-button.mat-mdc-radio-checked .mdc-radio__outer-circle {
+      border-color: var(--accent) !important;
+    }
+    :host ::ng-deep .mat-mdc-radio-button.mat-mdc-radio-checked .mdc-radio__inner-circle {
+      border-color: var(--accent) !important;
+    }
+    .role-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    .save-btn {
+      background: var(--accent) !important;
+      color: white !important;
+    }
+    .save-btn:disabled {
+      opacity: 0.4 !important;
+    }
+  `],
+})
+export class ChangeRoleDialogComponent {
+  selectedRole: string;
+  constructor(
+    public dialogRef: MatDialogRef<ChangeRoleDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: { email: string; currentRole: string; roles: string[] },
+  ) {
+    this.selectedRole = data.currentRole;
+  }
+  formatRole(r: string): string {
+    return r.charAt(0) + r.slice(1).toLowerCase().replace('_', ' ');
+  }
+}
 
 interface OrgUser {
   id: string;
@@ -419,6 +499,7 @@ export class OrganizationComponent implements OnInit {
     private auth: AuthService,
     private fb: FormBuilder,
     private snackBar: MatSnackBar,
+    private dialog: MatDialog,
   ) {}
 
   ngOnInit(): void {
@@ -510,16 +591,20 @@ export class OrganizationComponent implements OnInit {
   }
 
   changeRole(user: OrgUser): void {
-    const roles = ROLES.filter(r => r !== user.role);
-    const newRole = window.prompt(`Change role for ${user.email}.\nCurrent: ${user.role}\nOptions: ${roles.join(', ')}`, roles[0]);
-    if (newRole && ROLES.includes(newRole.toUpperCase())) {
-      this.api.patch(`/users/${user.id}/role`, { role: newRole.toUpperCase() }).subscribe({
-        next: () => {
-          user.role = newRole.toUpperCase();
-          this.snackBar.open('Role updated', '', { duration: 2000 });
-        },
-      });
-    }
+    const ref = this.dialog.open(ChangeRoleDialogComponent, {
+      data: { email: user.email, currentRole: user.role, roles: ROLES },
+      width: '320px',
+    });
+    ref.afterClosed().subscribe((newRole: string) => {
+      if (newRole && newRole !== user.role) {
+        this.api.patch(`/users/${user.id}/role`, { role: newRole }).subscribe({
+          next: () => {
+            user.role = newRole;
+            this.snackBar.open('Role updated', '', { duration: 2000 });
+          },
+        });
+      }
+    });
   }
 
   toggleActive(user: OrgUser): void {
