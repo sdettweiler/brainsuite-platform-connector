@@ -5,10 +5,6 @@ channel = "stable-25_05"
 packages = ["libxcrypt"]
 
 [[ports]]
-localPort = 80
-externalPort = 80
-
-[[ports]]
 localPort = 5000
 externalPort = 80
 
