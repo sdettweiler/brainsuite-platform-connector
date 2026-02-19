@@ -62,8 +62,7 @@ import { AuthService } from '../../core/services/auth.service';
               <!-- Widget header -->
               <div class="widget-header">
                 <div class="platform-label">
-                  <span class="platform-dot" [class]="'platform-' + platform.toLowerCase()"></span>
-                  {{ platform }}
+                  <img [src]="getPlatformLogo(platform)" [alt]="platform" class="platform-logo" />
                 </div>
                 <a class="see-all-link" (click)="navigateToDashboard(platform)">
                   See all {{ platform }} ads →
@@ -198,20 +197,12 @@ import { AuthService } from '../../core/services/auth.service';
     .platform-label {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-weight: 600;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
     }
 
-    .platform-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      &.platform-meta    { background: #1877F2; }
-      &.platform-tiktok  { background: #FF0050; }
-      &.platform-youtube { background: #FF0000; }
+    .platform-logo {
+      height: 20px;
+      width: auto;
+      object-fit: contain;
     }
 
     .see-all-link {
@@ -341,6 +332,15 @@ export class HomeComponent implements OnInit {
 
   getWidget(platform: string): any[] {
     return this.data?.widgets?.[platform.toLowerCase()] || [];
+  }
+
+  getPlatformLogo(platform: string): string {
+    const map: Record<string, string> = {
+      'META': '/assets/images/platform-meta.svg',
+      'TIKTOK': '/assets/images/platform-tiktok.svg',
+      'YOUTUBE': '/assets/images/platform-youtube.svg'
+    };
+    return map[platform] || '/assets/images/platform-meta.svg';
   }
 
   getAceClass(score: number | null): string {

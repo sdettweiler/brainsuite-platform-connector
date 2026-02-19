@@ -66,6 +66,12 @@ import { AuthService } from '../../../core/services/auth.service';
     form { display: flex; flex-direction: column; gap: 12px; }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .w-full { width: 100%; }
+    :host ::ng-deep .mat-mdc-text-field-wrapper { background: var(--input-bg) !important; }
+    :host ::ng-deep .mdc-text-field--outlined .mdc-text-field__input { background: transparent !important; color: var(--text-primary) !important; }
+    :host ::ng-deep .mat-mdc-form-field-infix { min-height: 48px !important; display: flex !important; align-items: center !important; padding-top: 12px !important; padding-bottom: 12px !important; }
+    :host ::ng-deep .mdc-text-field { background: transparent !important; }
+    :host ::ng-deep .mat-mdc-form-field-subscript-wrapper { display: none !important; }
+    :host ::ng-deep input:-webkit-autofill { -webkit-box-shadow: 0 0 0 30px var(--input-bg) inset !important; -webkit-text-fill-color: var(--text-primary) !important; }
     .error-msg { background: rgba(231,76,60,0.1); color: var(--error); padding: 10px 14px; border-radius: 6px; font-size: 13px; }
     .submit-btn { width: 100%; height: 44px; background: var(--accent) !important; color: white !important; font-weight: 600; font-size: 15px; border-radius: var(--border-radius) !important; }
     .auth-footer { text-align: center; margin-top: 20px; font-size: 13px; color: var(--text-secondary); a { color: var(--accent); text-decoration: none; font-weight: 500; } a:hover { text-decoration: underline; } }

@@ -95,6 +95,38 @@ import { AuthService } from '../../../core/services/auth.service';
 
     .w-full { width: 100%; }
 
+    :host ::ng-deep {
+      .mat-mdc-text-field-wrapper {
+        background: var(--input-bg) !important;
+      }
+
+      .mdc-text-field--outlined .mdc-text-field__input {
+        background: transparent !important;
+        color: var(--text-primary) !important;
+      }
+
+      .mat-mdc-form-field-infix {
+        min-height: 48px !important;
+        display: flex !important;
+        align-items: center !important;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+      }
+
+      .mdc-text-field {
+        background: transparent !important;
+      }
+
+      .mat-mdc-form-field-subscript-wrapper {
+        display: none !important;
+      }
+
+      input:-webkit-autofill {
+        -webkit-box-shadow: 0 0 0 30px var(--input-bg) inset !important;
+        -webkit-text-fill-color: var(--text-primary) !important;
+      }
+    }
+
     .error-msg {
       background: rgba(231,76,60,0.1);
       color: var(--error);

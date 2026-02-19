@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 24" fill="none">
+  <circle cx="12" cy="12" r="11" fill="#1877F2"/>
+  <path d="M16.5 12.07h-2.54v7.43h-3.07v-7.43H9v-2.6h1.89V7.64c0-1.57.75-4.03 4.03-4.03l2.96.01v2.53h-2.15c-.35 0-.85.18-.85.93v2.39h3.01l-.39 2.6z" fill="white"/>
+  <text x="28" y="17" font-family="Helvetica,Arial,sans-serif" font-weight="700" font-size="14" fill="#1877F2">Meta</text>
+</svg>
