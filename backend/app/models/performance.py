@@ -29,6 +29,7 @@ class MetaRawPerformance(Base):
     # Creative metadata
     creative_id: Mapped[str] = mapped_column(String(255), nullable=True)
     thumbnail_url: Mapped[str] = mapped_column(Text, nullable=True)
+    asset_url: Mapped[str] = mapped_column(Text, nullable=True)
     ad_format: Mapped[str] = mapped_column(String(100), nullable=True)  # IMAGE, VIDEO, CAROUSEL
     placement: Mapped[str] = mapped_column(String(255), nullable=True)
     targeting_details: Mapped[dict] = mapped_column(JSONB, nullable=True)

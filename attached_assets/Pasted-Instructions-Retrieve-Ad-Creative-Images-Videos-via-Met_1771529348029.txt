@@ -1,0 +1,104 @@
+Instructions: Retrieve Ad Creative Images & Videos via Meta API
+Goal
+Retrieve image and video creative assets from Meta's Marketing API so they can be downloaded and stored.
+
+1. Authentication Setup
+Use a User Access Token or System User Access Token with the following permissions:
+
+ads_read
+business_management
+
+pythonACCESS_TOKEN = "your_access_token"
+AD_ACCOUNT_ID = "act_XXXXXXXXX"
+API_VERSION = "v21.0"
+BASE_URL = f"https://graph.facebook.com/{API_VERSION}"
+
+2. Retrieve Ad Creatives
+First, get the list of creatives from an ad account:
+pythonimport requests
+
+def get_ad_creatives(ad_account_id, access_token):
+    url = f"{BASE_URL}/{ad_account_id}/adcreatives"
+    params = {
+        "fields": "id,name,object_story_spec,asset_feed_spec,thumbnail_url,image_url,video_id,image_hash",
+        "access_token": access_token,
+        "limit": 100
+    }
+    response = requests.get(url, params=params)
+    return response.json()
+
+3. Retrieve Image URLs
+Option A – via Image Hash:
+pythondef get_image_url_from_hash(image_hash, ad_account_id, access_token):
+    url = f"{BASE_URL}/{ad_account_id}/adimages"
+    params = {
+        "hashes": [image_hash],
+        "fields": "url,url_128,width,height,name",
+        "access_token": access_token
+    }
+    response = requests.get(url, params=params)
+    return response.json()
+Option B – via AdCreative thumbnail_url or image_url:
+These fields are returned directly from the creative endpoint above. Use them directly to download.
+Option C – via object_story_spec:
+Dig into object_story_spec.link_data.picture or object_story_spec.photo_data.url for the image URL.
+
+4. Retrieve Video Download URLs
+Meta does not return a direct download URL by default. You need to query the video object explicitly:
+pythondef get_video_download_url(video_id, access_token):
+    url = f"{BASE_URL}/{video_id}"
+    params = {
+        "fields": "id,title,description,thumbnails,source,embed_html,length,permalink_url",
+        "access_token": access_token
+    }
+    response = requests.get(url, params=params)
+    return response.json()
+
+Key field: source — this is the direct download URL for the video file (MP4). It is time-limited, so download immediately after retrieval.
+
+To get video IDs, pull them from the creative's video_id field or from object_story_spec.video_data.video_id.
+
+5. Download Assets to Disk
+pythonimport os
+
+def download_file(url, filename, folder="downloads"):
+    os.makedirs(folder, exist_ok=True)
+    response = requests.get(url, stream=True)
+    filepath = os.path.join(folder, filename)
+    with open(filepath, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    print(f"Saved: {filepath}")
+    return filepath
+Usage:
+python# Download image
+download_file(image_url, "creative_image.jpg")
+
+# Download video
+video_data = get_video_download_url(video_id, ACCESS_TOKEN)
+download_file(video_data["source"], f"video_{video_id}.mp4")
+
+6. Handle Pagination
+pythondef get_all_pages(initial_response):
+    data = initial_response.get("data", [])
+    paging = initial_response.get("paging", {})
+    
+    while "next" in paging.get("cursors", {}) or "next" in paging:
+        next_url = paging.get("next")
+        if not next_url:
+            break
+        response = requests.get(next_url).json()
+        data.extend(response.get("data", []))
+        paging = response.get("paging", {})
+    
+    return data
+
+Key Notes for Replit AI
+
+source on a video object is the download URL — it expires after a few hours, so download immediately
+Images accessed via url from /adimages are also time-limited
+Always request the image_hash and video_id from creatives — these are the stable identifiers
+For carousel ads, loop through object_story_spec.link_data.child_attachments[] — each child has its own image_hash or video_id
+For asset feed / dynamic creatives, use asset_feed_spec.images[].hash and asset_feed_spec.videos[].video_id
+Rate limits: use exponential backoff on 429 / error code 17 responses
+The thumbnail_url on a creative is always a static image — use source on the video object for the actual video file
