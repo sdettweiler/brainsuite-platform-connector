@@ -81,7 +81,7 @@ const PLATFORMS: PlatformDef[] = [
             >
               <mat-spinner *ngIf="connecting === p.key" diameter="14"></mat-spinner>
               <mat-icon *ngIf="connecting !== p.key">add</mat-icon>
-              {{ connecting === p.key ? 'Connecting...' : 'Connect' }}
+              {{ connecting === p.key ? 'Connecting...' : 'Connect New' }}
             </button>
           </div>
         </div>
