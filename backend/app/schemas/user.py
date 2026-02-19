@@ -70,7 +70,6 @@ class UserWithRole(UserResponse):
 
 
 class RoleAssignment(BaseModel):
-    user_id: uuid.UUID
     role: str  # ADMIN, STANDARD, READ_ONLY
 
 
