@@ -25,6 +25,18 @@ interface PlatformConnection {
   brainsuite_app_id?: string;
   brainsuite_app_id_image?: string;
   brainsuite_app_id_video?: string;
+  default_metadata_values?: Record<string, string>;
+}
+
+interface MetadataField {
+  id: string;
+  name: string;
+  label: string;
+  field_type: 'SELECT' | 'TEXT' | 'NUMBER';
+  is_required: boolean;
+  default_value?: string;
+  sort_order: number;
+  allowed_values?: Array<{ id: string; value: string; label: string; sort_order: number }>;
 }
 
 interface BrainsuiteApp {
@@ -166,7 +178,7 @@ const PLATFORMS: PlatformDef[] = [
           <button mat-menu-item (click)="resync(conn)">
             <mat-icon>sync</mat-icon> Force Resync
           </button>
-          <button mat-menu-item (click)="selectedConnection = conn">
+          <button mat-menu-item (click)="openMetadataPanel(conn)">
             <mat-icon>tune</mat-icon> Default Metadata
           </button>
           <button mat-menu-item class="delete-item" (click)="deleteConnection(conn)">
@@ -246,8 +258,67 @@ const PLATFORMS: PlatformDef[] = [
         <button mat-icon-button (click)="selectedConnection = null"><mat-icon>close</mat-icon></button>
       </div>
 
-      <div class="panel-body">
-        <p class="empty-meta">Configure metadata fields in the <strong>Metadata Fields</strong> section first.</p>
+      <div class="panel-body" *ngIf="selectedConnection">
+        <div *ngIf="loadingMetaFields" class="loading-row">
+          <mat-spinner diameter="24"></mat-spinner>
+        </div>
+
+        <div *ngIf="!loadingMetaFields && metadataFields.length === 0" class="empty-meta">
+          <mat-icon>info_outline</mat-icon>
+          <p>No metadata fields configured yet.</p>
+          <p>Go to the <strong>Metadata Fields</strong> section to create fields first.</p>
+        </div>
+
+        <div *ngIf="!loadingMetaFields && metadataFields.length > 0" class="meta-defaults-form">
+          <p class="meta-form-hint">Set default values that will be pre-filled when tagging new ads from this account.</p>
+
+          <div *ngFor="let field of metadataFields" class="meta-default-field">
+            <mat-form-field appearance="outline" class="full-width" *ngIf="field.field_type === 'SELECT'">
+              <mat-label>{{ field.label }}</mat-label>
+              <mat-select
+                [value]="metadataDefaults[field.name] || ''"
+                (selectionChange)="setMetadataDefault(field.name, $event.value)"
+              >
+                <mat-option value="">— No default —</mat-option>
+                <mat-option *ngFor="let opt of field.allowed_values" [value]="opt.value">
+                  {{ opt.label }}
+                </mat-option>
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width" *ngIf="field.field_type === 'TEXT'">
+              <mat-label>{{ field.label }}</mat-label>
+              <input
+                matInput
+                [value]="metadataDefaults[field.name] || ''"
+                (blur)="setMetadataDefault(field.name, $any($event.target).value)"
+              />
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width" *ngIf="field.field_type === 'NUMBER'">
+              <mat-label>{{ field.label }}</mat-label>
+              <input
+                matInput
+                type="number"
+                [value]="metadataDefaults[field.name] || ''"
+                (blur)="setMetadataDefault(field.name, $any($event.target).value)"
+              />
+            </mat-form-field>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-footer" *ngIf="selectedConnection && metadataFields.length > 0">
+        <button mat-stroked-button (click)="selectedConnection = null">Cancel</button>
+        <button
+          mat-flat-button
+          class="connect-selected-btn"
+          [disabled]="savingDefaults"
+          (click)="saveMetadataDefaults()"
+        >
+          <mat-spinner *ngIf="savingDefaults" diameter="16"></mat-spinner>
+          {{ savingDefaults ? 'Saving...' : 'Save Defaults' }}
+        </button>
       </div>
     </div>
   `,
@@ -439,7 +510,17 @@ const PLATFORMS: PlatformDef[] = [
       font-size: 12px; color: var(--text-secondary);
     }
 
-    .empty-meta { font-size: 13px; color: var(--text-secondary); padding: 24px; }
+    .empty-meta {
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      padding: 48px 24px; text-align: center; color: var(--text-secondary);
+      mat-icon { font-size: 36px; opacity: 0.4; width: 36px; height: 36px; }
+      p { font-size: 13px; margin: 0; }
+    }
+
+    .meta-defaults-form { padding: 20px 24px; display: flex; flex-direction: column; gap: 4px; }
+    .meta-form-hint { font-size: 13px; color: var(--text-secondary); margin: 0 0 12px; }
+    .meta-default-field { }
+    .full-width { width: 100%; }
   `],
 })
 export class PlatformsComponent implements OnInit, OnDestroy {
@@ -455,6 +536,10 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   pendingAccounts: any[] = [];
   selectedAccounts: string[] = [];
   selectedConnection: PlatformConnection | null = null;
+  metadataFields: MetadataField[] = [];
+  metadataDefaults: Record<string, string> = {};
+  savingDefaults = false;
+  loadingMetaFields = false;
 
   private oauthWindow: Window | null = null;
   private oauthPollInterval: any;
@@ -481,7 +566,54 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     }
     if (this.selectedConnection) {
       this.selectedConnection = null;
+      this.metadataDefaults = {};
     }
+  }
+
+  openMetadataPanel(conn: PlatformConnection): void {
+    this.selectedConnection = conn;
+    this.metadataDefaults = { ...(conn.default_metadata_values || {}) };
+    this.loadMetadataFields();
+  }
+
+  private loadMetadataFields(): void {
+    this.loadingMetaFields = true;
+    this.api.get<MetadataField[]>('/assets/metadata/fields').subscribe({
+      next: (fields) => {
+        this.metadataFields = fields.sort((a, b) => a.sort_order - b.sort_order);
+        this.loadingMetaFields = false;
+      },
+      error: () => {
+        this.loadingMetaFields = false;
+        this.snackBar.open('Failed to load metadata fields', '', { duration: 3000 });
+      },
+    });
+  }
+
+  setMetadataDefault(fieldId: string, value: string): void {
+    if (value) {
+      this.metadataDefaults[fieldId] = value;
+    } else {
+      delete this.metadataDefaults[fieldId];
+    }
+  }
+
+  saveMetadataDefaults(): void {
+    if (!this.selectedConnection) return;
+    this.savingDefaults = true;
+    this.api.patch(`/platforms/connections/${this.selectedConnection.id}`, {
+      default_metadata_values: this.metadataDefaults,
+    }).subscribe({
+      next: () => {
+        this.savingDefaults = false;
+        if (this.selectedConnection) {
+          this.selectedConnection.default_metadata_values = { ...this.metadataDefaults };
+        }
+        this.snackBar.open('Default metadata saved', '', { duration: 3000 });
+        this.selectedConnection = null;
+      },
+      error: () => { this.savingDefaults = false; },
+    });
   }
 
   loadData(): void {
