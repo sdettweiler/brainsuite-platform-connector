@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -54,7 +54,6 @@ const PLATFORMS: PlatformDef[] = [
   ],
   template: `
     <div class="page-container">
-      <!-- Connected accounts -->
       <section class="config-section">
         <div class="section-header">
           <div>
@@ -63,7 +62,6 @@ const PLATFORMS: PlatformDef[] = [
           </div>
         </div>
 
-        <!-- Connect new platform buttons -->
         <div class="platform-connect-row">
           <div *ngFor="let p of platforms" class="platform-connect-card">
             <div class="platform-logo" [style.background]="p.color">{{ p.icon }}</div>
@@ -84,7 +82,6 @@ const PLATFORMS: PlatformDef[] = [
           </div>
         </div>
 
-        <!-- Account list -->
         <div *ngIf="!loading; else loadingTpl">
           <div *ngFor="let conn of connections" class="connection-row">
             <div class="conn-platform">
@@ -148,63 +145,6 @@ const PLATFORMS: PlatformDef[] = [
         </ng-template>
       </section>
 
-      <!-- Account selection overlay (shown after OAuth callback) -->
-      <section class="config-section" *ngIf="pendingAccounts.length > 0">
-        <div class="section-header">
-          <div>
-            <h2>Select Ad Accounts to Connect</h2>
-            <p>{{ pendingPlatform }} — {{ pendingAccounts.length }} account{{ pendingAccounts.length !== 1 ? 's' : '' }} available</p>
-          </div>
-        </div>
-        <div class="account-selection">
-          <div class="accounts-list">
-            <div
-              *ngFor="let acc of pendingAccounts"
-              class="account-item"
-              [class.selected]="selectedAccounts.includes(acc.id)"
-              (click)="toggleAccount(acc.id)"
-            >
-              <div class="check-box">
-                <mat-icon *ngIf="selectedAccounts.includes(acc.id)">check_box</mat-icon>
-                <mat-icon *ngIf="!selectedAccounts.includes(acc.id)">check_box_outline_blank</mat-icon>
-              </div>
-              <div class="acc-info">
-                <span class="acc-name">{{ acc.name }}</span>
-                <span class="acc-id">{{ acc.id }} &middot; {{ acc.currency }} &middot; {{ acc.timezone }}</span>
-              </div>
-              <span class="acc-status" *ngIf="acc.status">{{ acc.status }}</span>
-            </div>
-          </div>
-          <div class="selection-actions">
-            <button mat-stroked-button (click)="cancelPending()">Cancel</button>
-            <button
-              mat-flat-button
-              class="connect-selected-btn"
-              [disabled]="selectedAccounts.length === 0 || connectingAccounts"
-              (click)="connectSelectedAccounts()"
-            >
-              <mat-spinner *ngIf="connectingAccounts" diameter="16"></mat-spinner>
-              {{ connectingAccounts ? 'Connecting...' : 'Connect ' + selectedAccounts.length + ' Account(s)' }}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- Metadata defaults section -->
-      <section class="config-section" *ngIf="selectedConnection">
-        <div class="section-header">
-          <div>
-            <h2>Default Metadata — {{ selectedConnection.ad_account_name }}</h2>
-            <p>Pre-fill metadata fields for assets from this account</p>
-          </div>
-          <button mat-icon-button (click)="selectedConnection = null"><mat-icon>close</mat-icon></button>
-        </div>
-        <div class="section-body">
-          <p class="empty-meta">Configure metadata fields in the <strong>Metadata Fields</strong> section first.</p>
-        </div>
-      </section>
-
-      <!-- Connection context menu -->
       <mat-menu #connMenu="matMenu">
         <ng-template matMenuContent let-conn="conn">
           <button mat-menu-item (click)="resync(conn)">
@@ -218,6 +158,73 @@ const PLATFORMS: PlatformDef[] = [
           </button>
         </ng-template>
       </mat-menu>
+    </div>
+
+    <!-- Backdrop -->
+    <div
+      class="slide-backdrop"
+      [class.visible]="pendingAccounts.length > 0 || selectedConnection"
+      (click)="closePanel()"
+    ></div>
+
+    <!-- Ad Account Selection Slide Panel -->
+    <div class="slide-panel" [class.open]="pendingAccounts.length > 0">
+      <div class="panel-header">
+        <div>
+          <h2>Select Ad Accounts</h2>
+          <p>{{ pendingPlatform }} — {{ pendingAccounts.length }} account{{ pendingAccounts.length !== 1 ? 's' : '' }} available</p>
+        </div>
+        <button mat-icon-button (click)="cancelPending()"><mat-icon>close</mat-icon></button>
+      </div>
+
+      <div class="panel-body">
+        <div class="accounts-list">
+          <div
+            *ngFor="let acc of pendingAccounts"
+            class="account-item"
+            [class.selected]="selectedAccounts.includes(acc.id)"
+            (click)="toggleAccount(acc.id)"
+          >
+            <div class="check-box">
+              <mat-icon *ngIf="selectedAccounts.includes(acc.id)">check_box</mat-icon>
+              <mat-icon *ngIf="!selectedAccounts.includes(acc.id)">check_box_outline_blank</mat-icon>
+            </div>
+            <div class="acc-info">
+              <span class="acc-name">{{ acc.name }}</span>
+              <span class="acc-id">{{ acc.id }} &middot; {{ acc.currency }} &middot; {{ acc.timezone }}</span>
+            </div>
+            <span class="acc-status" *ngIf="acc.status">{{ acc.status }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-footer">
+        <button mat-stroked-button (click)="cancelPending()">Cancel</button>
+        <button
+          mat-flat-button
+          class="connect-selected-btn"
+          [disabled]="selectedAccounts.length === 0 || connectingAccounts"
+          (click)="connectSelectedAccounts()"
+        >
+          <mat-spinner *ngIf="connectingAccounts" diameter="16"></mat-spinner>
+          {{ connectingAccounts ? 'Connecting...' : 'Connect ' + selectedAccounts.length + ' Account(s)' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Metadata Defaults Slide Panel -->
+    <div class="slide-panel" [class.open]="selectedConnection">
+      <div class="panel-header">
+        <div>
+          <h2>Default Metadata</h2>
+          <p *ngIf="selectedConnection">{{ selectedConnection.ad_account_name }}</p>
+        </div>
+        <button mat-icon-button (click)="selectedConnection = null"><mat-icon>close</mat-icon></button>
+      </div>
+
+      <div class="panel-body">
+        <p class="empty-meta">Configure metadata fields in the <strong>Metadata Fields</strong> section first.</p>
+      </div>
     </div>
   `,
   styles: [`
@@ -301,41 +308,96 @@ const PLATFORMS: PlatformDef[] = [
     }
 
     .loading-row { display: flex; justify-content: center; padding: 32px; }
+    .delete-item { color: var(--error) !important; }
 
-    /* Account selection */
-    .account-selection { padding: 0; }
-    .accounts-list { max-height: 360px; overflow-y: auto; }
+    /* ── Slide-in Panel ────────────────────────────────────── */
+    .slide-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      &.visible {
+        opacity: 1;
+        pointer-events: all;
+      }
+    }
+
+    .slide-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 480px;
+      max-width: 90vw;
+      background: var(--bg-card);
+      border-left: 1px solid var(--border);
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+      &.open {
+        transform: translateX(0);
+      }
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 24px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      h2 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+      p { font-size: 13px; color: var(--text-secondary); margin: 0; }
+    }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+    }
+
+    .panel-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    /* Account selection inside panel */
+    .accounts-list { }
 
     .account-item {
-      display: flex; align-items: center; gap: 12px; padding: 12px 24px;
-      cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.1s;
+      display: flex; align-items: center; gap: 12px; padding: 14px 24px;
+      cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.15s;
       &:last-child { border-bottom: none; }
       &:hover { background: var(--bg-secondary); }
       &.selected { background: var(--accent-light); }
     }
 
-    .check-box { color: var(--accent); }
+    .check-box { color: var(--accent); flex-shrink: 0; }
 
-    .acc-name { font-size: 14px; font-weight: 500; display: block; }
-    .acc-id { font-size: 11px; color: var(--text-secondary); }
-    .acc-status { font-size: 11px; padding: 2px 6px; background: var(--bg-secondary); border-radius: 4px; }
-
-    .selection-actions {
-      display: flex; justify-content: flex-end; gap: 12px;
-      padding: 16px 24px; border-top: 1px solid var(--border);
-    }
+    .acc-info { flex: 1; min-width: 0; }
+    .acc-name { font-size: 14px; font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .acc-id { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+    .acc-status { font-size: 11px; padding: 2px 6px; background: var(--bg-secondary); border-radius: 4px; flex-shrink: 0; }
 
     .connect-selected-btn {
       background: var(--accent) !important; color: white !important;
       display: flex; align-items: center; gap: 8px;
     }
 
-    .section-body { padding: 24px; }
-    .empty-meta { font-size: 13px; color: var(--text-secondary); }
-    .delete-item { color: var(--error) !important; }
+    .empty-meta { font-size: 13px; color: var(--text-secondary); padding: 24px; }
   `],
 })
-export class PlatformsComponent implements OnInit {
+export class PlatformsComponent implements OnInit, OnDestroy {
   platforms = PLATFORMS;
   connections: PlatformConnection[] = [];
   brainsuiteApps: BrainsuiteApp[] = [];
@@ -343,7 +405,6 @@ export class PlatformsComponent implements OnInit {
   connecting: string | null = null;
   connectingAccounts = false;
 
-  // OAuth session state
   pendingSessionId: string | null = null;
   pendingPlatform: string | null = null;
   pendingAccounts: any[] = [];
@@ -352,6 +413,7 @@ export class PlatformsComponent implements OnInit {
 
   private oauthWindow: Window | null = null;
   private oauthPollInterval: any;
+  private boundOAuthMessage = this.onOAuthMessage.bind(this);
 
   constructor(
     private api: ApiService,
@@ -360,14 +422,21 @@ export class PlatformsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadData();
-
-    // Listen for OAuth callback messages from popup
-    window.addEventListener('message', this.onOAuthMessage.bind(this));
+    window.addEventListener('message', this.boundOAuthMessage);
   }
 
   ngOnDestroy(): void {
-    window.removeEventListener('message', this.onOAuthMessage.bind(this));
+    window.removeEventListener('message', this.boundOAuthMessage);
     if (this.oauthPollInterval) clearInterval(this.oauthPollInterval);
+  }
+
+  closePanel(): void {
+    if (this.pendingAccounts.length > 0) {
+      this.cancelPending();
+    }
+    if (this.selectedConnection) {
+      this.selectedConnection = null;
+    }
   }
 
   loadData(): void {
@@ -388,18 +457,15 @@ export class PlatformsComponent implements OnInit {
         this.pendingSessionId = session_id;
         this.pendingPlatform = platform;
 
-        // Open OAuth popup
         const w = 600, h = 700;
         const left = window.screenX + (window.outerWidth - w) / 2;
         const top = window.screenY + (window.outerHeight - h) / 2;
         this.oauthWindow = window.open(auth_url, 'oauth_popup', `width=${w},height=${h},left=${left},top=${top}`);
 
-        // Poll for popup close
         this.oauthPollInterval = setInterval(() => {
           if (this.oauthWindow?.closed) {
             clearInterval(this.oauthPollInterval);
             this.connecting = null;
-            // Check session for available accounts
             this.checkOAuthSession();
           }
         }, 500);
@@ -422,7 +488,7 @@ export class PlatformsComponent implements OnInit {
     this.api.get<any>(`/platforms/oauth/session/${this.pendingSessionId}`).subscribe({
       next: (session) => {
         this.pendingAccounts = session.accounts || [];
-        this.selectedAccounts = this.pendingAccounts.map((a: any) => a.id); // pre-select all
+        this.selectedAccounts = this.pendingAccounts.map((a: any) => a.id);
       },
       error: () => {
         this.snackBar.open('OAuth failed. Please try again.', '', { duration: 4000 });
