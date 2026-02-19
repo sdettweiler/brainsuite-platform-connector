@@ -98,13 +98,25 @@ import { ThemeService } from '../../services/theme.service';
     }
 
     .avatar-btn {
-      display: flex !important;
-      align-items: center;
+      display: inline-flex !important;
+      align-items: center !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
       gap: 8px;
       padding: 4px 8px !important;
       border-radius: var(--border-radius) !important;
-      white-space: nowrap;
-      flex-shrink: 0;
+      white-space: nowrap !important;
+      max-width: none !important;
+      min-width: auto !important;
+      width: auto !important;
+    }
+
+    :host ::ng-deep .avatar-btn .mdc-button__label {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 8px;
+      white-space: nowrap !important;
+      overflow: visible !important;
     }
 
     .avatar {
