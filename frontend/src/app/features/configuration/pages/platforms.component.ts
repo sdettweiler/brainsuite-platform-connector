@@ -177,6 +177,14 @@ const PLATFORMS: PlatformDef[] = [
         <button mat-icon-button (click)="cancelPending()"><mat-icon>close</mat-icon></button>
       </div>
 
+      <div class="panel-toolbar">
+        <button mat-button class="select-toggle" (click)="toggleSelectAll()">
+          <mat-icon>{{ selectedAccounts.length === pendingAccounts.length ? 'deselect' : 'select_all' }}</mat-icon>
+          {{ selectedAccounts.length === pendingAccounts.length ? 'Select None' : 'Select All' }}
+        </button>
+        <span class="select-count">{{ selectedAccounts.length }} of {{ pendingAccounts.length }} selected</span>
+      </div>
+
       <div class="panel-body">
         <div class="accounts-list">
           <div
@@ -396,6 +404,24 @@ const PLATFORMS: PlatformDef[] = [
       display: flex; align-items: center; gap: 8px;
     }
 
+    .panel-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px 8px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .select-toggle {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 13px; color: var(--accent);
+    }
+
+    .select-count {
+      font-size: 12px; color: var(--text-secondary);
+    }
+
     .empty-meta { font-size: 13px; color: var(--text-secondary); padding: 24px; }
   `],
 })
@@ -496,6 +522,14 @@ export class PlatformsComponent implements OnInit, OnDestroy {
         this.snackBar.open('OAuth failed. Please try again.', '', { duration: 4000 });
       },
     });
+  }
+
+  toggleSelectAll(): void {
+    if (this.selectedAccounts.length === this.pendingAccounts.length) {
+      this.selectedAccounts = [];
+    } else {
+      this.selectedAccounts = this.pendingAccounts.map((a: any) => a.id);
+    }
   }
 
   toggleAccount(id: string): void {
