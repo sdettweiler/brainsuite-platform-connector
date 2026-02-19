@@ -16,8 +16,16 @@ deploymentTarget = "autoscale"
 runButton = "Project"
 
 [[workflows.workflow]]
-name = "Start App"
+name = "Project"
 mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start App"
+
+[[workflows.workflow]]
+name = "Start App"
 author = "agent"
 
 [[workflows.workflow.tasks]]
