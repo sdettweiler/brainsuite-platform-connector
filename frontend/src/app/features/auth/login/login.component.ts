@@ -2,18 +2,11 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { AuthService } from '../../../core/services/auth.service';
 
 @Component({
   standalone: true,
-  imports: [
-    CommonModule, ReactiveFormsModule, RouterLink,
-    MatFormFieldModule, MatInputModule, MatButtonModule, MatIconModule,
-  ],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink],
   template: `
     <div class="auth-page">
       <div class="auth-card">
@@ -24,25 +17,46 @@ import { AuthService } from '../../../core/services/auth.service';
         <p class="auth-subtitle">Platform Connector</p>
 
         <form [formGroup]="form" (ngSubmit)="submit()">
-          <mat-form-field appearance="outline" class="w-full" floatLabel="auto">
-            <mat-label>Email</mat-label>
-            <input matInput type="email" formControlName="email" autocomplete="off" placeholder=" " />
-            <mat-icon matPrefix>mail_outline</mat-icon>
-          </mat-form-field>
+          <div class="input-group">
+            <span class="input-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+              </svg>
+            </span>
+            <input
+              type="email"
+              formControlName="email"
+              placeholder="Email"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
 
-          <mat-form-field appearance="outline" class="w-full" floatLabel="auto">
-            <mat-label>Password</mat-label>
-            <input matInput [type]="showPassword ? 'text' : 'password'" formControlName="password" autocomplete="off" placeholder=" " />
-            <mat-icon matPrefix>lock_outline</mat-icon>
-            <button type="button" mat-icon-button matSuffix (click)="showPassword = !showPassword">
-              <mat-icon>{{ showPassword ? 'visibility_off' : 'visibility' }}</mat-icon>
+          <div class="input-group">
+            <span class="input-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </span>
+            <input
+              [type]="showPassword ? 'text' : 'password'"
+              formControlName="password"
+              placeholder="Password"
+              autocomplete="off"
+            />
+            <button type="button" class="toggle-pw" (click)="showPassword = !showPassword">
+              <svg *ngIf="!showPassword" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg *ngIf="showPassword" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
             </button>
-          </mat-form-field>
+          </div>
 
           <div class="error-msg" *ngIf="errorMsg">{{ errorMsg }}</div>
 
           <button
-            mat-flat-button
             type="submit"
             class="submit-btn"
             [disabled]="form.invalid || loading"
@@ -76,14 +90,9 @@ import { AuthService } from '../../../core/services/auth.service';
       padding: 40px;
     }
 
-    .auth-logo {
-      margin-bottom: 8px;
-    }
+    .auth-logo { margin-bottom: 8px; }
 
-    .logo-img {
-      height: 36px;
-      width: auto;
-    }
+    .logo-img { height: 36px; width: auto; }
 
     .auth-subtitle {
       color: var(--text-secondary);
@@ -93,47 +102,69 @@ import { AuthService } from '../../../core/services/auth.service';
 
     form { display: flex; flex-direction: column; gap: 16px; }
 
-    .w-full { width: 100%; }
-
-    :host ::ng-deep {
-      .mat-mdc-text-field-wrapper {
-        background: var(--input-bg) !important;
-      }
-
-      .mdc-text-field--outlined .mdc-text-field__input {
-        background: transparent !important;
-        color: var(--text-primary) !important;
-      }
-
-      .mat-mdc-form-field-infix {
-        min-height: 48px !important;
-        padding-top: 20px !important;
-        padding-bottom: 4px !important;
-      }
-
-      .mdc-text-field {
-        background: transparent !important;
-      }
-
-      .mat-mdc-form-field-subscript-wrapper {
-        display: none !important;
-      }
-
-      .mdc-floating-label,
-      .mat-mdc-floating-label {
-        color: var(--text-secondary) !important;
-      }
-
-      .mdc-floating-label--float-above,
-      .mat-mdc-floating-label.mdc-floating-label--float-above {
-        color: var(--accent) !important;
-      }
-
-      input:-webkit-autofill {
-        -webkit-box-shadow: 0 0 0 30px var(--input-bg) inset !important;
-        -webkit-text-fill-color: var(--text-primary) !important;
-      }
+    .input-group {
+      display: flex;
+      align-items: center;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--border-radius);
+      padding: 0 14px;
+      height: 48px;
+      transition: border-color 0.2s;
     }
+
+    .input-group:focus-within {
+      border-color: var(--accent);
+    }
+
+    .input-icon {
+      display: flex;
+      align-items: center;
+      color: var(--text-muted);
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+
+    .input-group input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 14px;
+      height: 100%;
+      padding: 0;
+    }
+
+    .input-group input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .input-group input:-webkit-autofill,
+    .input-group input:-webkit-autofill:hover,
+    .input-group input:-webkit-autofill:focus {
+      -webkit-box-shadow: 0 0 0 30px var(--input-bg) inset !important;
+      -webkit-text-fill-color: var(--text-primary) !important;
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    .toggle-pw {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      margin-left: 8px;
+      flex-shrink: 0;
+      transition: color 0.2s;
+    }
+
+    .toggle-pw:hover { color: var(--text-secondary); }
 
     .error-msg {
       background: rgba(231,76,60,0.1);
@@ -146,21 +177,34 @@ import { AuthService } from '../../../core/services/auth.service';
     .submit-btn {
       width: 100%;
       height: 44px;
-      background: var(--accent) !important;
-      color: white !important;
+      background: var(--accent);
+      color: white;
       font-weight: 600;
       font-size: 15px;
-      border-radius: var(--border-radius) !important;
+      font-family: inherit;
+      border: none;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      transition: background 0.2s;
     }
+
+    .submit-btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .auth-footer {
       text-align: center;
       margin-top: 20px;
       font-size: 13px;
       color: var(--text-secondary);
-      a { color: var(--accent); text-decoration: none; font-weight: 500; }
-      a:hover { text-decoration: underline; }
     }
+
+    .auth-footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .auth-footer a:hover { text-decoration: underline; }
   `],
 })
 export class LoginComponent {
