@@ -1,7 +1,7 @@
-modules = ["python-3.11", "nodejs-20"]
+modules = ["python-3.12", "nodejs-20", "bash", "web"]
 
 [nix]
-channel = "stable-24_05"
+channel = "stable-25_05"
 
 [[ports]]
 localPort = 8000
@@ -26,3 +26,6 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash replit_start.sh"
+
+[agent]
+expertMode = true

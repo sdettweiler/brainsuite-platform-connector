@@ -8,7 +8,7 @@ set -e
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$REPO_ROOT/backend"
 FRONTEND_DIR="$REPO_ROOT/frontend"
-FRONTEND_DIST="$FRONTEND_DIR/dist/brainsuite-platform-connector/browser"
+FRONTEND_DIST="$FRONTEND_DIR/dist/brainsuite"
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
@@ -88,7 +88,7 @@ else
 fi
 
 # ── 7. Launch ─────────────────────────────────────────────────────────────────
-BACKEND_PORT="${PORT:-8000}"
+BACKEND_PORT="${PORT:-5000}"
 REPL_URL="${REPLIT_DEV_DOMAIN:-localhost:$BACKEND_PORT}"
 
 echo ""

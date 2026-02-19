@@ -11,7 +11,7 @@ from app.api.v1 import api_router
 
 # Path to the Angular production build (works in both Docker and Replit)
 _FRONTEND_DIST = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist", "brainsuite-platform-connector", "browser")
+    os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist", "brainsuite")
 )
 
 
