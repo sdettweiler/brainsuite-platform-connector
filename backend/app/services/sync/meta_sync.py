@@ -294,7 +294,7 @@ class MetaSyncService:
         account_id: str,
         ad_ids: List[str],
     ) -> None:
-        """Batch-fetch creative details for ads, download assets, update DB records."""
+        """Batch-fetch creative details for ads, download full-res assets, update DB records."""
         org_dir = os.path.join(CREATIVES_DIR, str(connection.organization_id))
         os.makedirs(org_dir, exist_ok=True)
 
@@ -312,6 +312,7 @@ class MetaSyncService:
                 creative_id = creative_data.get("id")
                 object_type = creative_data.get("object_type", "").upper()
                 image_url = creative_data.get("image_url")
+                image_hash = creative_data.get("image_hash")
                 thumbnail_url = creative_data.get("thumbnail_url")
                 video_id = creative_data.get("video_id")
                 story_spec = creative_data.get("object_story_spec", {})
@@ -327,31 +328,77 @@ class MetaSyncService:
 
                 logger.info(f"  Ad {ad_id}: object_type={object_type}, creative_id={creative_id}, "
                             f"image_url={'yes' if image_url else 'no'}, "
+                            f"image_hash={image_hash or 'none'}, "
                             f"thumbnail_url={'yes' if thumbnail_url else 'no'}, "
                             f"video_id={video_id or 'none'}, format={ad_format}")
 
-                served_url = None
-                local_path = None
+                asset_served_url = None
+                thumb_served_url = None
 
                 if is_video and video_id:
-                    video_source = await self._get_video_source(access_token, video_id)
+                    video_info = await self._get_video_info(access_token, video_id)
+                    video_source = video_info.get("source") if video_info else None
                     if video_source:
-                        local_path, served_url = await self._download_asset(
+                        _, asset_served_url = await self._download_asset(
                             video_source, org_dir, connection.organization_id, ad_id, "vid"
                         )
+                    video_thumbs = video_info.get("thumbnails", {}).get("data", []) if video_info else []
+                    if video_thumbs and not thumbnail_url:
+                        thumbnail_url = video_thumbs[0].get("uri")
 
-                if not served_url and thumbnail_url:
-                    local_path, served_url = await self._download_asset(
+                if not is_video:
+                    full_image_url = None
+                    resolved_hash = image_hash
+                    if not resolved_hash:
+                        feed_spec = creative_data.get("asset_feed_spec", {})
+                        feed_images = feed_spec.get("images", [])
+                        if feed_images:
+                            resolved_hash = feed_images[0].get("hash")
+                            logger.info(f"  Ad {ad_id}: resolved image_hash from asset_feed_spec: {resolved_hash}")
+                        feed_videos = feed_spec.get("videos", [])
+                        if feed_videos and not resolved_hash:
+                            feed_vid_id = feed_videos[0].get("video_id")
+                            if feed_vid_id:
+                                is_video = True
+                                video_id = feed_vid_id
+                                ad_format = "VIDEO"
+                                logger.info(f"  Ad {ad_id}: resolved as VIDEO from asset_feed_spec video_id={feed_vid_id}")
+
+                    if not is_video:
+                        if resolved_hash:
+                            full_image_url = await self._get_full_image_url(access_token, account_id, resolved_hash)
+                        if not full_image_url:
+                            full_image_url = self._extract_image_url_from_story_spec(story_spec)
+                        if not full_image_url:
+                            full_image_url = image_url
+
+                        if full_image_url:
+                            _, asset_served_url = await self._download_asset(
+                                full_image_url, org_dir, connection.organization_id, ad_id, "img"
+                            )
+
+                if is_video and video_id and not asset_served_url:
+                    video_info = await self._get_video_info(access_token, video_id)
+                    video_source = video_info.get("source") if video_info else None
+                    if video_source:
+                        _, asset_served_url = await self._download_asset(
+                            video_source, org_dir, connection.organization_id, ad_id, "vid"
+                        )
+                    video_thumbs = video_info.get("thumbnails", {}).get("data", []) if video_info else []
+                    if video_thumbs and not thumbnail_url:
+                        thumbnail_url = video_thumbs[0].get("uri")
+
+                if thumbnail_url:
+                    _, thumb_served_url = await self._download_asset(
                         thumbnail_url, org_dir, connection.organization_id, ad_id, "thumb"
                     )
 
-                if not served_url and image_url:
-                    local_path, served_url = await self._download_asset(
-                        image_url, org_dir, connection.organization_id, ad_id, "img"
-                    )
+                final_thumb = thumb_served_url or thumbnail_url
+                final_asset = asset_served_url
 
-                final_thumb = served_url or thumbnail_url or image_url
-                logger.info(f"  Ad {ad_id}: format={ad_format}, downloaded={'yes' if served_url else 'no'}, thumb={final_thumb}")
+                logger.info(f"  Ad {ad_id}: format={ad_format}, "
+                            f"asset={'yes' if final_asset else 'no'}, "
+                            f"thumb={'yes' if final_thumb else 'no'}")
 
                 await db.execute(
                     update(MetaRawPerformance)
@@ -363,6 +410,7 @@ class MetaSyncService:
                         creative_id=creative_id,
                         ad_format=ad_format,
                         thumbnail_url=final_thumb,
+                        asset_url=final_asset,
                     )
                 )
 
@@ -383,7 +431,7 @@ class MetaSyncService:
         url = f"{META_GRAPH_URL}/{account_id}/ads"
         params = {
             "access_token": access_token,
-            "fields": "id,creative{id,thumbnail_url,image_url,video_id,object_type,object_story_spec}",
+            "fields": "id,creative{id,thumbnail_url,image_url,image_hash,video_id,object_type,object_story_spec,asset_feed_spec}",
             "filtering": f'[{{"field":"id","operator":"IN","value":[{ids_str}]}}]',
             "limit": 100,
         }
@@ -415,18 +463,73 @@ class MetaSyncService:
 
         return result
 
-    async def _get_video_source(self, access_token: str, video_id: str) -> Optional[str]:
-        """Get the source URL for a video asset."""
+    async def _get_video_info(self, access_token: str, video_id: str) -> Optional[Dict[str, Any]]:
+        """Get video info including source download URL and thumbnails."""
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{META_GRAPH_URL}/{video_id}",
-                    params={"access_token": access_token, "fields": "source"},
+                    params={
+                        "access_token": access_token,
+                        "fields": "id,title,source,thumbnails,length",
+                    },
                 )
                 if resp.status_code == 200:
-                    return resp.json().get("source")
+                    data = resp.json()
+                    logger.info(f"  Video {video_id}: source={'yes' if data.get('source') else 'no'}, "
+                                f"length={data.get('length', 'unknown')}s")
+                    return data
         except Exception as e:
-            logger.warning(f"Failed to get video source for {video_id}: {e}")
+            logger.warning(f"Failed to get video info for {video_id}: {e}")
+        return None
+
+    async def _get_full_image_url(self, access_token: str, account_id: str, image_hash: str) -> Optional[str]:
+        """Get full-resolution image URL from an image hash via the /adimages endpoint."""
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{META_GRAPH_URL}/{account_id}/adimages",
+                    params={
+                        "access_token": access_token,
+                        "hashes": f'["{image_hash}"]',
+                        "fields": "url,url_128,width,height,name",
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json().get("data", {})
+                    if isinstance(data, dict) and image_hash in data:
+                        img_data = data[image_hash]
+                        full_url = img_data.get("url")
+                        if full_url:
+                            logger.info(f"  Image hash {image_hash}: {img_data.get('width')}x{img_data.get('height')}")
+                            return full_url
+                    elif isinstance(data, list):
+                        for img_data in data:
+                            full_url = img_data.get("url")
+                            if full_url:
+                                logger.info(f"  Image hash {image_hash}: {img_data.get('width')}x{img_data.get('height')}")
+                                return full_url
+        except Exception as e:
+            logger.warning(f"Failed to get image from hash {image_hash}: {e}")
+        return None
+
+    def _extract_image_url_from_story_spec(self, story_spec: Dict[str, Any]) -> Optional[str]:
+        """Extract image URL from object_story_spec (link_data.picture or photo_data.url)."""
+        link_data = story_spec.get("link_data", {})
+        if link_data:
+            picture = link_data.get("picture")
+            if picture:
+                return picture
+            image_hash = link_data.get("image_hash")
+            if image_hash:
+                return None
+
+        photo_data = story_spec.get("photo_data", {})
+        if photo_data:
+            url = photo_data.get("url")
+            if url:
+                return url
+
         return None
 
     async def _download_asset(

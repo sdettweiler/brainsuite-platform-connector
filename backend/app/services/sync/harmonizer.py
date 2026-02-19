@@ -98,6 +98,7 @@ class HarmonizationService:
                     ad_account_id=raw.ad_account_id,
                     asset_format=raw.ad_format,
                     thumbnail_url=raw.thumbnail_url,
+                    asset_url=raw.asset_url,
                     creative_id=raw.creative_id,
                     placement=raw.placement,
                     first_seen_at=raw.report_date,
@@ -412,9 +413,10 @@ class HarmonizationService:
             db.add(asset)
             await db.flush()
         else:
-            # Update mutable fields
             if kwargs.get("thumbnail_url") and not asset.thumbnail_url:
                 asset.thumbnail_url = kwargs.get("thumbnail_url")
+            if kwargs.get("asset_url"):
+                asset.asset_url = kwargs.get("asset_url")
             if kwargs.get("creative_id") and not asset.creative_id:
                 asset.creative_id = kwargs.get("creative_id")
             if kwargs.get("asset_format") and not asset.asset_format:
