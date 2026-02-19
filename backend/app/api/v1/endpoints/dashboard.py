@@ -237,6 +237,7 @@ async def get_dashboard_assets(
             "campaign_objective": asset.campaign_objective,
             "asset_format": asset.asset_format,
             "thumbnail_url": asset.thumbnail_url,
+            "asset_url": asset.asset_url,
             "ace_score": asset.ace_score,
             "ace_score_confidence": asset.ace_score_confidence,
             "is_active": asset.is_active,
@@ -432,6 +433,7 @@ async def get_homepage_widgets(
                 "id": str(row[0].id),
                 "ad_name": row[0].ad_name,
                 "thumbnail_url": row[0].thumbnail_url,
+                "asset_url": row[0].asset_url,
                 "ace_score": row[0].ace_score,
                 "spend_l7d": float(row.total_spend or 0),
                 "ctr": float(row.avg_ctr or 0),
@@ -518,6 +520,7 @@ async def compare_assets(
             "platform": asset.platform,
             "asset_format": asset.asset_format,
             "thumbnail_url": asset.thumbnail_url,
+            "asset_url": asset.asset_url,
             "ace_score": asset.ace_score,
             "performance": {
                 "spend": float(perf.spend or 0),

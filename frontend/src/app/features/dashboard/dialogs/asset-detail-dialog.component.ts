@@ -70,7 +70,7 @@ import { ApiService } from '../../../core/services/api.service';
                 ></video>
                 <img
                   *ngIf="asset.asset_format !== 'VIDEO' || !asset.asset_url"
-                  [src]="asset.thumbnail_url || '/assets/images/placeholder.svg'"
+                  [src]="asset.asset_url || asset.thumbnail_url || '/assets/images/placeholder.svg'"
                   class="asset-media"
                   alt="Creative"
                 />
@@ -150,7 +150,7 @@ import { ApiService } from '../../../core/services/api.service';
                   ></video>
                   <img
                     *ngIf="asset.asset_format !== 'VIDEO' || !asset.asset_url || activeOverlay !== 'none'"
-                    [src]="asset.thumbnail_url || '/assets/images/placeholder.svg'"
+                    [src]="asset.asset_url || asset.thumbnail_url || '/assets/images/placeholder.svg'"
                     class="asset-media"
                     alt="Creative"
                   />

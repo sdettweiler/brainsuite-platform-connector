@@ -155,7 +155,7 @@ import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
             <!-- Thumbnail -->
             <div class="tile-thumb">
               <img
-                [src]="asset.thumbnail_url || '/assets/images/placeholder.svg'"
+                [src]="asset.asset_url || asset.thumbnail_url || '/assets/images/placeholder.svg'"
                 [alt]="asset.ad_name"
                 (error)="onImgError($event)"
               />

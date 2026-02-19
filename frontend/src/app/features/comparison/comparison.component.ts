@@ -133,8 +133,8 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
             <div class="asset-color-bar" [style.background]="chartColors[i]"></div>
             <div class="asset-thumb-wrapper">
               <img
-                *ngIf="asset.thumbnail_url; else noThumb"
-                [src]="asset.thumbnail_url"
+                *ngIf="asset.asset_url || asset.thumbnail_url; else noThumb"
+                [src]="asset.asset_url || asset.thumbnail_url"
                 [alt]="asset.ad_name"
                 class="asset-thumb"
                 (error)="onThumbError($event)"

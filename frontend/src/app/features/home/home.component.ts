@@ -93,7 +93,7 @@ import { ThemeService } from '../../core/services/theme.service';
                   <div class="ad-thumb-container">
                     <img
                       class="ad-thumb"
-                      [src]="ad.thumbnail_url || '/assets/images/placeholder.svg'"
+                      [src]="ad.asset_url || ad.thumbnail_url || '/assets/images/placeholder.svg'"
                       [alt]="ad.ad_name"
                       (error)="onImgError($event)"
                     />
