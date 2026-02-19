@@ -55,6 +55,10 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+_CREATIVES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static", "creatives"))
+os.makedirs(_CREATIVES_DIR, exist_ok=True)
+app.mount("/static/creatives", StaticFiles(directory=_CREATIVES_DIR), name="creatives")
+
 
 @app.get("/health")
 async def health():
