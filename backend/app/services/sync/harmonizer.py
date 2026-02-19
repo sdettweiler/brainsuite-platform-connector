@@ -415,18 +415,30 @@ class HarmonizationService:
             # Update mutable fields
             if kwargs.get("thumbnail_url") and not asset.thumbnail_url:
                 asset.thumbnail_url = kwargs.get("thumbnail_url")
+            if kwargs.get("creative_id") and not asset.creative_id:
+                asset.creative_id = kwargs.get("creative_id")
+            if kwargs.get("asset_format") and not asset.asset_format:
+                asset.asset_format = kwargs.get("asset_format")
             if kwargs.get("first_seen_at"):
                 first_seen = kwargs.get("first_seen_at")
                 if isinstance(first_seen, str):
-                    from datetime import datetime
+                    from datetime import datetime as _dt
                     try:
-                        first_seen = datetime.strptime(first_seen, "%Y-%m-%d").date()
+                        first_seen = _dt.strptime(first_seen, "%Y-%m-%d").date()
                     except Exception:
                         first_seen = None
                 if first_seen:
-                    if not asset.first_seen_at or first_seen < asset.first_seen_at:
+                    existing_first = asset.first_seen_at
+                    if isinstance(existing_first, datetime):
+                        existing_first = existing_first.date()
+                    existing_last = asset.last_seen_at
+                    if isinstance(existing_last, datetime):
+                        existing_last = existing_last.date()
+                    if isinstance(first_seen, datetime):
+                        first_seen = first_seen.date()
+                    if not existing_first or first_seen < existing_first:
                         asset.first_seen_at = first_seen
-                    if not asset.last_seen_at or first_seen > asset.last_seen_at:
+                    if not existing_last or first_seen > existing_last:
                         asset.last_seen_at = first_seen
             db.add(asset)
             await db.flush()

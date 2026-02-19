@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 META_GRAPH_URL = "https://graph.facebook.com/v21.0"
 
 CREATIVES_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "static", "creatives")
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "static", "creatives")
 )
 
 INSIGHTS_FIELDS = [
@@ -111,6 +111,17 @@ class MetaSyncService:
 
         if api_errors and total_fetched == 0:
             raise MetaAPIError(f"All API requests failed: {api_errors[0]}")
+
+        if not all_ad_ids:
+            existing = await db.execute(
+                select(MetaRawPerformance.ad_id).where(
+                    MetaRawPerformance.platform_connection_id == connection.id,
+                ).distinct()
+            )
+            for row in existing:
+                all_ad_ids.add(row[0])
+            if all_ad_ids:
+                logger.info(f"  No new ads, but checking creatives for {len(all_ad_ids)} existing ads")
 
         if all_ad_ids:
             logger.info(f"  Fetching creatives for {len(all_ad_ids)} unique ads")
@@ -303,33 +314,44 @@ class MetaSyncService:
                 image_url = creative_data.get("image_url")
                 thumbnail_url = creative_data.get("thumbnail_url")
                 video_id = creative_data.get("video_id")
+                story_spec = creative_data.get("object_story_spec", {})
 
-                if object_type in ("VIDEO", "SHARE"):
-                    ad_format = "VIDEO"
-                elif object_type in ("PHOTO", "LINK"):
-                    ad_format = "IMAGE"
-                else:
-                    ad_format = "IMAGE" if image_url else "VIDEO" if video_id else "IMAGE"
+                has_video_data = "video_data" in story_spec
+                if not video_id and has_video_data:
+                    video_id = story_spec.get("video_data", {}).get("video_id")
 
-                source_url = image_url or thumbnail_url
-                local_path = None
+                is_video = object_type == "VIDEO" or bool(video_id) or has_video_data
+                if object_type == "SHARE" and not is_video:
+                    is_video = False
+                ad_format = "VIDEO" if is_video else "IMAGE"
+
+                logger.info(f"  Ad {ad_id}: object_type={object_type}, creative_id={creative_id}, "
+                            f"image_url={'yes' if image_url else 'no'}, "
+                            f"thumbnail_url={'yes' if thumbnail_url else 'no'}, "
+                            f"video_id={video_id or 'none'}, format={ad_format}")
+
                 served_url = None
+                local_path = None
 
-                if source_url:
-                    local_path, served_url = await self._download_asset(
-                        source_url, org_dir, connection.organization_id, ad_id, "img"
-                    )
-
-                if video_id and not local_path:
+                if is_video and video_id:
                     video_source = await self._get_video_source(access_token, video_id)
                     if video_source:
                         local_path, served_url = await self._download_asset(
                             video_source, org_dir, connection.organization_id, ad_id, "vid"
                         )
-                    if thumbnail_url and not served_url:
-                        local_path, served_url = await self._download_asset(
-                            thumbnail_url, org_dir, connection.organization_id, ad_id, "thumb"
-                        )
+
+                if not served_url and thumbnail_url:
+                    local_path, served_url = await self._download_asset(
+                        thumbnail_url, org_dir, connection.organization_id, ad_id, "thumb"
+                    )
+
+                if not served_url and image_url:
+                    local_path, served_url = await self._download_asset(
+                        image_url, org_dir, connection.organization_id, ad_id, "img"
+                    )
+
+                final_thumb = served_url or thumbnail_url or image_url
+                logger.info(f"  Ad {ad_id}: format={ad_format}, downloaded={'yes' if served_url else 'no'}, thumb={final_thumb}")
 
                 await db.execute(
                     update(MetaRawPerformance)
@@ -340,7 +362,7 @@ class MetaSyncService:
                     .values(
                         creative_id=creative_id,
                         ad_format=ad_format,
-                        thumbnail_url=served_url or thumbnail_url or image_url,
+                        thumbnail_url=final_thumb,
                     )
                 )
 
@@ -361,7 +383,7 @@ class MetaSyncService:
         url = f"{META_GRAPH_URL}/{account_id}/ads"
         params = {
             "access_token": access_token,
-            "fields": "id,creative{id,thumbnail_url,image_url,video_id,object_type}",
+            "fields": "id,creative{id,thumbnail_url,image_url,video_id,object_type,object_story_spec}",
             "filtering": f'[{{"field":"id","operator":"IN","value":[{ids_str}]}}]',
             "limit": 100,
         }
