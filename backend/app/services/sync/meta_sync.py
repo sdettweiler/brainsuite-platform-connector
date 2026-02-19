@@ -218,7 +218,7 @@ class MetaSyncService:
             rows.append({
                 "platform_connection_id": connection.id,
                 "sync_job_id": sync_job_id,
-                "report_date": r.get("date_start"),
+                "report_date": date.fromisoformat(r.get("date_start")),
                 "ad_account_id": connection.ad_account_id,
                 "campaign_id": r.get("campaign_id"),
                 "campaign_name": r.get("campaign_name"),
