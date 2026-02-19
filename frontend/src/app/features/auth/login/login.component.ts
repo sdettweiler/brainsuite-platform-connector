@@ -24,15 +24,15 @@ import { AuthService } from '../../../core/services/auth.service';
         <p class="auth-subtitle">Platform Connector</p>
 
         <form [formGroup]="form" (ngSubmit)="submit()">
-          <mat-form-field appearance="outline" class="w-full">
+          <mat-form-field appearance="outline" class="w-full" floatLabel="auto">
             <mat-label>Email</mat-label>
-            <input matInput type="email" formControlName="email" autocomplete="email" />
+            <input matInput type="email" formControlName="email" autocomplete="off" placeholder=" " />
             <mat-icon matPrefix>mail_outline</mat-icon>
           </mat-form-field>
 
-          <mat-form-field appearance="outline" class="w-full">
+          <mat-form-field appearance="outline" class="w-full" floatLabel="auto">
             <mat-label>Password</mat-label>
-            <input matInput [type]="showPassword ? 'text' : 'password'" formControlName="password" autocomplete="current-password" />
+            <input matInput [type]="showPassword ? 'text' : 'password'" formControlName="password" autocomplete="off" placeholder=" " />
             <mat-icon matPrefix>lock_outline</mat-icon>
             <button type="button" mat-icon-button matSuffix (click)="showPassword = !showPassword">
               <mat-icon>{{ showPassword ? 'visibility_off' : 'visibility' }}</mat-icon>
@@ -107,10 +107,8 @@ import { AuthService } from '../../../core/services/auth.service';
 
       .mat-mdc-form-field-infix {
         min-height: 48px !important;
-        display: flex !important;
-        align-items: center !important;
-        padding-top: 12px !important;
-        padding-bottom: 12px !important;
+        padding-top: 20px !important;
+        padding-bottom: 4px !important;
       }
 
       .mdc-text-field {
@@ -119,6 +117,16 @@ import { AuthService } from '../../../core/services/auth.service';
 
       .mat-mdc-form-field-subscript-wrapper {
         display: none !important;
+      }
+
+      .mdc-floating-label,
+      .mat-mdc-floating-label {
+        color: var(--text-secondary) !important;
+      }
+
+      .mdc-floating-label--float-above,
+      .mat-mdc-floating-label.mdc-floating-label--float-above {
+        color: var(--accent) !important;
       }
 
       input:-webkit-autofill {

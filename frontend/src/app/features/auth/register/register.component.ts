@@ -24,24 +24,24 @@ import { AuthService } from '../../../core/services/auth.service';
 
         <form [formGroup]="form" (ngSubmit)="submit()">
           <div class="form-row">
-            <mat-form-field appearance="outline">
+            <mat-form-field appearance="outline" floatLabel="auto">
               <mat-label>First Name</mat-label>
-              <input matInput formControlName="first_name" />
+              <input matInput formControlName="first_name" autocomplete="off" placeholder=" " />
             </mat-form-field>
-            <mat-form-field appearance="outline">
+            <mat-form-field appearance="outline" floatLabel="auto">
               <mat-label>Last Name</mat-label>
-              <input matInput formControlName="last_name" />
+              <input matInput formControlName="last_name" autocomplete="off" placeholder=" " />
             </mat-form-field>
           </div>
 
-          <mat-form-field appearance="outline" class="w-full">
+          <mat-form-field appearance="outline" class="w-full" floatLabel="auto">
             <mat-label>Email</mat-label>
-            <input matInput type="email" formControlName="email" />
+            <input matInput type="email" formControlName="email" autocomplete="off" placeholder=" " />
           </mat-form-field>
 
-          <mat-form-field appearance="outline" class="w-full">
+          <mat-form-field appearance="outline" class="w-full" floatLabel="auto">
             <mat-label>Password</mat-label>
-            <input matInput type="password" formControlName="password" />
+            <input matInput type="password" formControlName="password" autocomplete="off" placeholder=" " />
           </mat-form-field>
 
           <div class="error-msg" *ngIf="errorMsg">{{ errorMsg }}</div>
@@ -68,7 +68,7 @@ import { AuthService } from '../../../core/services/auth.service';
     .w-full { width: 100%; }
     :host ::ng-deep .mat-mdc-text-field-wrapper { background: var(--input-bg) !important; }
     :host ::ng-deep .mdc-text-field--outlined .mdc-text-field__input { background: transparent !important; color: var(--text-primary) !important; }
-    :host ::ng-deep .mat-mdc-form-field-infix { min-height: 48px !important; display: flex !important; align-items: center !important; padding-top: 12px !important; padding-bottom: 12px !important; }
+    :host ::ng-deep .mat-mdc-form-field-infix { min-height: 48px !important; padding-top: 20px !important; padding-bottom: 4px !important; }
     :host ::ng-deep .mdc-text-field { background: transparent !important; }
     :host ::ng-deep .mat-mdc-form-field-subscript-wrapper { display: none !important; }
     :host ::ng-deep input:-webkit-autofill { -webkit-box-shadow: 0 0 0 30px var(--input-bg) inset !important; -webkit-text-fill-color: var(--text-primary) !important; }
