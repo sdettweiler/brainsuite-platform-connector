@@ -67,9 +67,14 @@ if os.path.isdir(_FRONTEND_DIST):
     async def serve_spa(full_path: str):
         """Serve static files if they exist, otherwise serve index.html for SPA routing."""
         file_path = os.path.join(_FRONTEND_DIST, full_path)
+        no_cache_headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
         if full_path and os.path.isfile(file_path):
-            return FileResponse(file_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+            return FileResponse(file_path, headers=no_cache_headers)
         index = os.path.join(_FRONTEND_DIST, "index.html")
         if os.path.isfile(index):
-            return FileResponse(index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+            return FileResponse(index, headers=no_cache_headers)
         return {"error": "Frontend not built. Run: cd frontend && npm run build"}
