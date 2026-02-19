@@ -35,8 +35,7 @@ META_SCOPES = [
     "ads_read",
     "ads_management",
     "business_management",
-    "read_insights",
-    "pages_read_engagement",  # For creative thumbnails
+    "pages_read_engagement",
 ]
 
 
