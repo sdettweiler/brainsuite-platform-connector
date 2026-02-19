@@ -57,6 +57,7 @@ interface PlatformDef {
 
 const PLATFORMS: PlatformDef[] = [
   { key: 'META', label: 'Meta', color: '#1877F2', icon: 'assets/images/icon-meta.png', description: 'Facebook & Instagram Ads' },
+  { key: 'TIKTOK', label: 'TikTok', color: '#010101', icon: 'assets/images/icon-tiktok.png', description: 'TikTok Ads Manager' },
   { key: 'YOUTUBE', label: 'YouTube / Google', color: '#FF0000', icon: 'assets/images/icon-youtube.png', description: 'Google Ads (YouTube)' },
 ];
 
