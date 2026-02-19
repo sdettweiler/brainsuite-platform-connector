@@ -102,7 +102,7 @@ class TikTokSyncService:
                             "report_type": "BASIC",
                             "data_level": "AUCTION_AD",
                             "dimensions": '["ad_id","stat_time_day"]',
-                            "metrics": f'[{",".join(f\'"{m}"\' for m in AD_REPORT_METRICS)}]',
+                            "metrics": "[" + ",".join(f'"{m}"' for m in AD_REPORT_METRICS) + "]",
                             "start_date": date_from.strftime("%Y-%m-%d"),
                             "end_date": date_to.strftime("%Y-%m-%d"),
                             "page": page,

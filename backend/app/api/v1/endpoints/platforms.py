@@ -504,10 +504,14 @@ async def manual_resync(
     if not conn or conn.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    from app.services.sync.scheduler import run_daily_sync
-    background_tasks.add_task(run_daily_sync, str(connection_id))
-
-    return {"detail": "Manual re-fetch started"}
+    from app.services.sync.scheduler import run_initial_sync
+    if not conn.initial_sync_completed:
+        background_tasks.add_task(run_initial_sync, str(connection_id))
+        return {"detail": "Initial sync started (30-day fetch)"}
+    else:
+        from app.services.sync.scheduler import run_daily_sync
+        background_tasks.add_task(run_daily_sync, str(connection_id))
+        return {"detail": "Manual re-fetch started"}
 
 
 @router.get("/connections/{connection_id}/status")

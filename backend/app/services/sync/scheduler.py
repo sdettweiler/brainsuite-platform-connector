@@ -105,13 +105,18 @@ async def run_initial_sync(connection_id: str) -> None:
     from app.services.sync.harmonizer import harmonizer
     import uuid
 
+    logger.info(f"=== Starting initial sync for connection {connection_id} ===")
+
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id))
         )
         connection = result.scalar_one_or_none()
         if not connection:
+            logger.error(f"Connection {connection_id} not found")
             return
+
+        logger.info(f"Connection found: platform={connection.platform}, account={connection.ad_account_id}, name={connection.ad_account_name}")
 
         job = SyncJob(
             platform_connection_id=connection.id,
@@ -262,9 +267,12 @@ def remove_connection_schedule(connection_id: str) -> None:
 
 
 async def startup_scheduler(db_session=None) -> None:
-    """Load all active connections and schedule their daily syncs."""
+    """Load all active connections and schedule their daily syncs.
+    Also triggers initial sync for any connections that missed it."""
     from sqlalchemy import select
     from app.models.platform import PlatformConnection
+
+    pending_initial = []
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -275,6 +283,13 @@ async def startup_scheduler(db_session=None) -> None:
         for conn in connections:
             timezone = conn.timezone or "UTC"
             schedule_connection(str(conn.id), timezone)
+            if not conn.initial_sync_completed:
+                pending_initial.append(str(conn.id))
 
     scheduler.start()
     logger.info(f"Scheduler started with {len(connections)} active connections")
+
+    if pending_initial:
+        logger.info(f"Found {len(pending_initial)} connections needing initial sync, triggering now...")
+        for conn_id in pending_initial:
+            asyncio.create_task(run_initial_sync(conn_id))

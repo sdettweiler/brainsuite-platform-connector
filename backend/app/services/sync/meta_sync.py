@@ -18,7 +18,12 @@ from app.core.security import decrypt_token
 
 logger = logging.getLogger(__name__)
 
-META_GRAPH_URL = "https://graph.facebook.com/v19.0"
+META_GRAPH_URL = "https://graph.facebook.com/v21.0"
+
+
+class MetaAPIError(Exception):
+    """Raised when Meta API returns a non-recoverable error."""
+    pass
 
 # Fields we fetch from Insights API
 INSIGHTS_FIELDS = [
@@ -47,7 +52,6 @@ INSIGHTS_FIELDS = [
     "video_p75_watched_actions",
     "video_p100_watched_actions",
     "video_play_actions",
-    "estimated_ad_recall_lift",
 ]
 
 # Fields for creative metadata
@@ -73,14 +77,23 @@ class MetaSyncService:
 
         total_fetched = 0
         total_upserted = 0
+        api_errors = []
 
-        # Fetch in 30-day chunks to stay within API limits
+        logger.info(f"Meta sync: account={account_id}, range={date_from} to {date_to}")
+
         chunk_start = date_from
         while chunk_start <= date_to:
             chunk_end = min(chunk_start + timedelta(days=29), date_to)
-            records = await self._fetch_insights(
-                access_token, account_id, chunk_start, chunk_end
-            )
+            logger.info(f"  Fetching chunk {chunk_start} → {chunk_end}")
+            try:
+                records = await self._fetch_insights(
+                    access_token, account_id, chunk_start, chunk_end
+                )
+            except MetaAPIError as e:
+                api_errors.append(str(e))
+                chunk_start = chunk_end + timedelta(days=1)
+                continue
+            logger.info(f"  Got {len(records)} records from API")
             upserted = await self._upsert_records(
                 db, connection, records, sync_job_id
             )
@@ -88,6 +101,10 @@ class MetaSyncService:
             total_upserted += upserted
             chunk_start = chunk_end + timedelta(days=1)
 
+        if api_errors and total_fetched == 0:
+            raise MetaAPIError(f"All API requests failed: {api_errors[0]}")
+
+        logger.info(f"Meta sync complete: fetched={total_fetched}, upserted={total_upserted}")
         return {"fetched": total_fetched, "upserted": total_upserted}
 
     async def _fetch_insights(
@@ -145,8 +162,15 @@ class MetaSyncService:
                         import asyncio
                         await asyncio.sleep(60)
                     else:
-                        logger.error(f"Meta HTTP error: {e}")
-                        break
+                        error_msg = ""
+                        try:
+                            error_body = e.response.json()
+                            error_msg = str(error_body.get("error", {}).get("message", error_body))
+                            logger.error(f"Meta API error {e.response.status_code}: {error_body}")
+                        except Exception:
+                            error_msg = e.response.text[:500]
+                            logger.error(f"Meta HTTP error {e.response.status_code}: {error_msg}")
+                        raise MetaAPIError(f"HTTP {e.response.status_code}: {error_msg}")
 
         return records
 
