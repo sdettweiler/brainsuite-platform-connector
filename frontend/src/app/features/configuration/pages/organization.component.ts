@@ -29,6 +29,16 @@ interface OrgSettings {
   currency: string;
 }
 
+interface JoinRequest {
+  id: string;
+  user_id: string;
+  user_email: string;
+  user_first_name: string;
+  user_last_name: string;
+  status: string;
+  created_at: string;
+}
+
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'CHF', 'JPY', 'SEK', 'NOK', 'DKK'];
 const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
 
@@ -63,6 +73,13 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
                 </mat-select>
               </mat-form-field>
             </div>
+            <div class="slug-display" *ngIf="orgSlug">
+              <span class="slug-label">Organization Slug:</span>
+              <code class="slug-value">{{ orgSlug }}</code>
+              <button type="button" class="copy-btn" (click)="copySlug()" matTooltip="Copy slug">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
             <div class="form-actions">
               <button mat-flat-button type="submit" class="save-btn" [disabled]="orgForm.invalid || savingOrg">
                 <mat-spinner *ngIf="savingOrg" diameter="16"></mat-spinner>
@@ -70,6 +87,47 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
               </button>
             </div>
           </form>
+        </div>
+      </section>
+
+      <!-- Pending Join Requests -->
+      <section class="config-section" *ngIf="joinRequests.length > 0">
+        <div class="section-header pending-header">
+          <div>
+            <h2>
+              <mat-icon class="pending-icon">pending_actions</mat-icon>
+              Pending Join Requests
+            </h2>
+            <p>{{ joinRequests.length }} pending request{{ joinRequests.length !== 1 ? 's' : '' }}</p>
+          </div>
+        </div>
+        <div class="users-table">
+          <div class="table-header pending-table-header">
+            <div class="col-user">User</div>
+            <div class="col-date">Requested</div>
+            <div class="col-pending-actions">Actions</div>
+          </div>
+
+          <div *ngFor="let req of joinRequests" class="user-row">
+            <div class="col-user">
+              <div class="user-avatar pending-avatar">{{ getReqInitials(req) }}</div>
+              <div class="user-info">
+                <span class="user-name">{{ req.user_first_name }} {{ req.user_last_name }}</span>
+                <span class="user-email">{{ req.user_email }}</span>
+              </div>
+            </div>
+            <div class="col-date">
+              {{ req.created_at | date:'mediumDate' }}
+            </div>
+            <div class="col-pending-actions">
+              <button mat-flat-button class="approve-btn" (click)="handleJoinRequest(req, 'approve')" [disabled]="req.processing">
+                <mat-icon>check</mat-icon> Approve
+              </button>
+              <button mat-stroked-button class="reject-btn" (click)="handleJoinRequest(req, 'reject')" [disabled]="req.processing">
+                <mat-icon>close</mat-icon> Reject
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -202,13 +260,50 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
     .section-header {
       display: flex; align-items: flex-start; justify-content: space-between;
       padding: 20px 24px; border-bottom: 1px solid var(--border);
-      h2 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+      h2 { font-size: 16px; font-weight: 600; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
       p { font-size: 13px; color: var(--text-secondary); margin: 0; }
     }
+
+    .pending-header h2 { color: var(--accent); }
+    .pending-icon { font-size: 20px !important; width: 20px !important; height: 20px !important; color: var(--accent); }
 
     .section-body { padding: 24px; }
 
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+    .slug-display {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding: 10px 14px;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+    }
+
+    .slug-label { font-size: 13px; color: var(--text-secondary); }
+
+    .slug-value {
+      font-family: monospace;
+      font-size: 13px;
+      color: var(--accent);
+      background: rgba(255,119,0,0.1);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .copy-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+    }
+
+    .copy-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .copy-btn:hover { color: var(--accent); }
 
     .form-actions { display: flex; justify-content: flex-end; gap: 12px; }
 
@@ -219,6 +314,11 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
 
     .table-header, .user-row {
       display: grid; grid-template-columns: 1fr 120px 100px 140px 48px; align-items: center;
+    }
+
+    .pending-table-header, .pending-table-header + .user-row,
+    .config-section:has(.pending-header) .user-row {
+      grid-template-columns: 1fr 140px auto;
     }
 
     .table-header {
@@ -241,8 +341,32 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
       font-size: 13px; font-weight: 700; flex-shrink: 0;
     }
 
+    .pending-avatar { background: var(--text-muted); }
+
     .user-name { font-size: 14px; font-weight: 500; display: block; }
     .user-email { font-size: 12px; color: var(--text-secondary); }
+
+    .col-date { font-size: 13px; color: var(--text-secondary); }
+
+    .col-pending-actions {
+      display: flex; gap: 8px; justify-content: flex-end;
+    }
+
+    .approve-btn {
+      background: #34A853 !important; color: white !important;
+      font-size: 12px !important; height: 32px !important;
+      display: flex !important; align-items: center; gap: 4px;
+    }
+
+    .approve-btn mat-icon { font-size: 16px !important; width: 16px !important; height: 16px !important; }
+
+    .reject-btn {
+      color: var(--error) !important; border-color: var(--error) !important;
+      font-size: 12px !important; height: 32px !important;
+      display: flex !important; align-items: center; gap: 4px;
+    }
+
+    .reject-btn mat-icon { font-size: 16px !important; width: 16px !important; height: 16px !important; }
 
     .role-badge {
       padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;
@@ -277,10 +401,12 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
 })
 export class OrganizationComponent implements OnInit {
   users: OrgUser[] = [];
+  joinRequests: (JoinRequest & {processing?: boolean})[] = [];
   loadingUsers = true;
   savingOrg = false;
   inviting = false;
   showInvite = false;
+  orgSlug = '';
 
   currencies = CURRENCIES;
   roles = ROLES;
@@ -312,17 +438,21 @@ export class OrganizationComponent implements OnInit {
   }
 
   loadData(): void {
-    // Load org settings
     this.api.get<OrgSettings>('/users/organization').subscribe({
       next: (org) => {
         this.orgForm.patchValue({ name: org.name, currency: org.currency });
+        this.orgSlug = org.slug;
       },
     });
 
-    // Load users
     this.api.get<OrgUser[]>('/users').subscribe({
       next: (users) => { this.users = users; this.loadingUsers = false; },
       error: () => { this.loadingUsers = false; },
+    });
+
+    this.api.get<JoinRequest[]>('/users/join-requests').subscribe({
+      next: (requests) => { this.joinRequests = requests; },
+      error: () => {},
     });
   }
 
@@ -336,6 +466,11 @@ export class OrganizationComponent implements OnInit {
       },
       error: () => { this.savingOrg = false; },
     });
+  }
+
+  copySlug(): void {
+    navigator.clipboard.writeText(this.orgSlug);
+    this.snackBar.open('Slug copied to clipboard', '', { duration: 2000 });
   }
 
   openInvite(): void {
@@ -357,9 +492,25 @@ export class OrganizationComponent implements OnInit {
     });
   }
 
+  handleJoinRequest(req: JoinRequest & {processing?: boolean}, action: string): void {
+    req.processing = true;
+    this.api.post(`/users/join-requests/${req.id}`, { action }).subscribe({
+      next: () => {
+        this.snackBar.open(
+          action === 'approve' ? 'User approved and activated' : 'Request rejected',
+          '', { duration: 3000 }
+        );
+        this.joinRequests = this.joinRequests.filter(r => r.id !== req.id);
+        if (action === 'approve') {
+          this.loadData();
+        }
+      },
+      error: () => { req.processing = false; },
+    });
+  }
+
   changeRole(user: OrgUser): void {
     const roles = ROLES.filter(r => r !== user.role);
-    // Simple prompt-based role change for MVP
     const newRole = window.prompt(`Change role for ${user.email}.\nCurrent: ${user.role}\nOptions: ${roles.join(', ')}`, roles[0]);
     if (newRole && ROLES.includes(newRole.toUpperCase())) {
       this.api.patch(`/users/${user.id}/role`, { role: newRole.toUpperCase() }).subscribe({
@@ -382,5 +533,9 @@ export class OrganizationComponent implements OnInit {
 
   getUserInitials(user: OrgUser): string {
     return `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase();
+  }
+
+  getReqInitials(req: JoinRequest): string {
+    return `${req.user_first_name?.[0] || ''}${req.user_last_name?.[0] || ''}`.toUpperCase();
   }
 }

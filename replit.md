@@ -44,6 +44,7 @@ replit_start.sh      # Startup script (installs deps, runs migrations, starts se
 - **Logo Assets**: Located in `frontend/src/assets/images/` (orange, white, black, orange-white, signet variants)
 
 ## Recent Changes
+- 2026-02-19: Multi-step signup flow with Organization create/join, join request approval workflow, in-app notifications with badge, pending users section on org page
 - 2026-02-19: Complete UI rework — brand colors (Juicy Orange + Dusky Blue), Nunito Sans typography, actual brand logos, comprehensive Material Design overrides for inputs/dropdowns/dialogs
 - 2026-02-19: Imported project to Replit, fixed Angular build errors, configured for port 5000, fixed database connectivity
 

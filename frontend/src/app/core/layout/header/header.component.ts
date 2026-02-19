@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatMenuModule } from '@angular/material/menu';
@@ -7,8 +7,19 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatBadgeModule } from '@angular/material/badge';
 import { AuthService, CurrentUser } from '../../services/auth.service';
 import { ThemeService } from '../../services/theme.service';
+import { ApiService } from '../../services/api.service';
+
+interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+}
 
 @Component({
   selector: 'bs-header',
@@ -16,15 +27,53 @@ import { ThemeService } from '../../services/theme.service';
   imports: [
     CommonModule, RouterLink, MatMenuModule, MatIconModule,
     MatButtonModule, MatDialogModule, MatTooltipModule, MatDividerModule,
+    MatBadgeModule,
   ],
   template: `
     <header class="header">
       <div class="header-left"></div>
 
       <div class="header-right">
-        <button mat-icon-button matTooltip="Notifications" class="icon-btn">
-          <mat-icon>notifications_none</mat-icon>
+        <button
+          mat-icon-button
+          [matMenuTriggerFor]="notifMenu"
+          class="icon-btn notif-btn"
+          [matBadge]="unreadCount > 0 ? unreadCount : null"
+          matBadgeColor="warn"
+          matBadgeSize="small"
+          [matBadgeHidden]="unreadCount === 0"
+        >
+          <mat-icon>{{ unreadCount > 0 ? 'notifications' : 'notifications_none' }}</mat-icon>
         </button>
+
+        <mat-menu #notifMenu="matMenu" xPosition="before" class="notif-menu">
+          <div class="notif-header" (click)="$event.stopPropagation()">
+            <span>Notifications</span>
+            <button *ngIf="unreadCount > 0" mat-button class="mark-all-btn" (click)="markAllRead()">Mark all read</button>
+          </div>
+          <mat-divider />
+          <div *ngIf="notifications.length === 0" class="notif-empty" (click)="$event.stopPropagation()">
+            <mat-icon>notifications_none</mat-icon>
+            <span>No notifications</span>
+          </div>
+          <button
+            *ngFor="let n of notifications"
+            mat-menu-item
+            class="notif-item"
+            [class.unread]="!n.is_read"
+            (click)="markRead(n)"
+          >
+            <div class="notif-icon-wrap">
+              <mat-icon [class]="getNotifIconClass(n)">{{ getNotifIcon(n) }}</mat-icon>
+            </div>
+            <div class="notif-content">
+              <span class="notif-title">{{ n.title }}</span>
+              <span class="notif-msg">{{ n.message }}</span>
+              <span class="notif-time">{{ n.created_at | date:'short' }}</span>
+            </div>
+            <div class="notif-unread-dot" *ngIf="!n.is_read"></div>
+          </button>
+        </mat-menu>
 
         <button
           mat-button
@@ -89,6 +138,19 @@ import { ThemeService } from '../../services/theme.service';
     .icon-btn {
       color: var(--text-secondary) !important;
       &:hover { color: var(--text-primary) !important; }
+    }
+
+    .notif-btn {
+      position: relative;
+    }
+
+    :host ::ng-deep .notif-btn .mat-badge-content {
+      background: var(--accent) !important;
+      color: white !important;
+      font-size: 10px;
+      font-weight: 600;
+      right: 4px !important;
+      top: 4px !important;
     }
 
     .org-name {
@@ -172,21 +234,166 @@ import { ThemeService } from '../../services/theme.service';
     }
 
     .logout-item { color: var(--error) !important; }
+
+    .notif-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px 8px;
+      span { font-weight: 600; font-size: 14px; }
+    }
+
+    .mark-all-btn {
+      font-size: 12px !important;
+      color: var(--accent) !important;
+      min-width: auto !important;
+      padding: 0 8px !important;
+      height: 28px !important;
+      line-height: 28px !important;
+    }
+
+    .notif-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 24px 16px;
+      color: var(--text-muted);
+      mat-icon { font-size: 24px; opacity: 0.4; }
+      span { font-size: 13px; }
+    }
+
+    :host ::ng-deep .notif-item {
+      display: flex !important;
+      align-items: flex-start !important;
+      gap: 10px;
+      padding: 10px 16px !important;
+      height: auto !important;
+      min-height: 56px;
+      white-space: normal !important;
+    }
+
+    :host ::ng-deep .notif-item.unread {
+      background: rgba(255, 119, 0, 0.04);
+    }
+
+    .notif-icon-wrap {
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .notif-icon-wrap mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+
+    .notif-icon-wrap .icon-join { color: var(--accent); }
+    .notif-icon-wrap .icon-approved { color: #34A853; }
+    .notif-icon-wrap .icon-rejected { color: var(--error); }
+
+    .notif-content {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .notif-title { font-size: 13px; font-weight: 600; }
+    .notif-msg { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+    .notif-time { font-size: 11px; color: var(--text-muted); }
+
+    .notif-unread-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+      margin-top: 6px;
+    }
   `],
 })
-export class HeaderComponent implements OnInit {
+export class HeaderComponent implements OnInit, OnDestroy {
   user: CurrentUser | null = null;
   isDark = true;
+  notifications: NotificationItem[] = [];
+  unreadCount = 0;
+  private pollInterval: any;
 
   constructor(
     private auth: AuthService,
     private theme: ThemeService,
     private dialog: MatDialog,
+    private api: ApiService,
   ) {}
 
   ngOnInit(): void {
-    this.auth.currentUser$.subscribe(u => this.user = u);
+    this.auth.currentUser$.subscribe(u => {
+      this.user = u;
+      if (u) {
+        this.loadNotifications();
+        this.pollInterval = setInterval(() => this.loadUnreadCount(), 30000);
+      }
+    });
     this.theme.currentTheme$.subscribe(t => this.isDark = t === 'dark-theme');
+  }
+
+  ngOnDestroy(): void {
+    if (this.pollInterval) clearInterval(this.pollInterval);
+  }
+
+  loadNotifications(): void {
+    this.api.get<NotificationItem[]>('/users/notifications').subscribe({
+      next: (notifs) => {
+        this.notifications = notifs;
+        this.unreadCount = notifs.filter(n => !n.is_read).length;
+      },
+    });
+  }
+
+  loadUnreadCount(): void {
+    this.api.get<{count: number}>('/users/notifications/unread-count').subscribe({
+      next: (res) => { this.unreadCount = res.count; },
+    });
+  }
+
+  markRead(n: NotificationItem): void {
+    if (!n.is_read) {
+      this.api.post(`/users/notifications/${n.id}/read`, {}).subscribe({
+        next: () => {
+          n.is_read = true;
+          this.unreadCount = Math.max(0, this.unreadCount - 1);
+        },
+      });
+    }
+  }
+
+  markAllRead(): void {
+    this.api.post('/users/notifications/read-all', {}).subscribe({
+      next: () => {
+        this.notifications.forEach(n => n.is_read = true);
+        this.unreadCount = 0;
+      },
+    });
+  }
+
+  getNotifIcon(n: NotificationItem): string {
+    switch (n.type) {
+      case 'JOIN_REQUEST': return 'person_add';
+      case 'JOIN_APPROVED': return 'check_circle';
+      case 'JOIN_REJECTED': return 'cancel';
+      default: return 'notifications';
+    }
+  }
+
+  getNotifIconClass(n: NotificationItem): string {
+    switch (n.type) {
+      case 'JOIN_REQUEST': return 'icon-join';
+      case 'JOIN_APPROVED': return 'icon-approved';
+      case 'JOIN_REJECTED': return 'icon-rejected';
+      default: return '';
+    }
   }
 
   get initials(): string {

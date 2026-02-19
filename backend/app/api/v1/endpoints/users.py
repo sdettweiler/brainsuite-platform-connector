@@ -1,11 +1,16 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 import uuid
 
 from app.db.base import get_db
-from app.models.user import User, OrganizationRole, Organization
-from app.schemas.user import UserResponse, UserUpdate, UserWithRole, RoleAssignment, OrganizationResponse, OrganizationUpdate
+from app.models.user import User, OrganizationRole, Organization, OrganizationJoinRequest, Notification
+from app.schemas.user import (
+    UserResponse, UserUpdate, UserWithRole, RoleAssignment,
+    OrganizationResponse, OrganizationUpdate,
+    JoinRequestResponse, JoinRequestAction, NotificationResponse,
+)
 from app.api.v1.deps import get_current_user, get_current_admin
 from app.core.security import get_password_hash
 
@@ -194,3 +199,156 @@ async def remove_user(
 
     await db.commit()
     return {"detail": "User removed from organization"}
+
+
+@router.get("/join-requests", response_model=list[JoinRequestResponse])
+async def list_join_requests(
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(OrganizationJoinRequest).where(
+            OrganizationJoinRequest.organization_id == current_user.organization_id,
+            OrganizationJoinRequest.status == "PENDING",
+        )
+    )
+    requests = result.scalars().all()
+
+    responses = []
+    for req in requests:
+        user = await db.get(User, req.user_id)
+        responses.append(JoinRequestResponse(
+            id=req.id,
+            user_id=req.user_id,
+            organization_id=req.organization_id,
+            status=req.status,
+            created_at=req.created_at,
+            user_email=user.email if user else None,
+            user_first_name=user.first_name if user else None,
+            user_last_name=user.last_name if user else None,
+        ))
+    return responses
+
+
+@router.post("/join-requests/{request_id}")
+async def handle_join_request(
+    request_id: uuid.UUID,
+    payload: JoinRequestAction,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(OrganizationJoinRequest).where(
+            OrganizationJoinRequest.id == request_id,
+            OrganizationJoinRequest.organization_id == current_user.organization_id,
+        )
+    )
+    join_req = result.scalar_one_or_none()
+    if not join_req:
+        raise HTTPException(status_code=404, detail="Join request not found")
+
+    if join_req.status != "PENDING":
+        raise HTTPException(status_code=400, detail="Join request already processed")
+
+    action = payload.action.upper()
+    if action not in ("APPROVE", "REJECT"):
+        raise HTTPException(status_code=400, detail="Action must be APPROVE or REJECT")
+
+    join_req.status = "APPROVED" if action == "APPROVE" else "REJECTED"
+    join_req.reviewed_by = current_user.id
+    join_req.reviewed_at = datetime.utcnow()
+    db.add(join_req)
+
+    user = await db.get(User, join_req.user_id)
+    if action == "APPROVE" and user:
+        user.is_active = True
+        db.add(user)
+
+        notif = Notification(
+            user_id=user.id,
+            type="JOIN_APPROVED",
+            title="Join Request Approved",
+            message=f"Your request to join the organization has been approved.",
+            data={},
+        )
+        db.add(notif)
+    elif action == "REJECT" and user:
+        notif = Notification(
+            user_id=user.id,
+            type="JOIN_REJECTED",
+            title="Join Request Rejected",
+            message=f"Your request to join the organization has been rejected.",
+            data={},
+        )
+        db.add(notif)
+
+    await db.commit()
+    return {"detail": f"Join request {action.lower()}d"}
+
+
+@router.get("/notifications", response_model=list[NotificationResponse])
+async def list_notifications(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Notification)
+        .where(Notification.user_id == current_user.id)
+        .order_by(Notification.created_at.desc())
+        .limit(50)
+    )
+    return result.scalars().all()
+
+
+@router.get("/notifications/unread-count")
+async def unread_notification_count(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(func.count(Notification.id)).where(
+            Notification.user_id == current_user.id,
+            Notification.is_read == False,
+        )
+    )
+    count = result.scalar()
+    return {"count": count or 0}
+
+
+@router.post("/notifications/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == current_user.id,
+        )
+    )
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    notif.is_read = True
+    db.add(notif)
+    await db.commit()
+    return {"detail": "Marked as read"}
+
+
+@router.post("/notifications/read-all")
+async def mark_all_notifications_read(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Notification).where(
+            Notification.user_id == current_user.id,
+            Notification.is_read == False,
+        )
+    )
+    for notif in result.scalars().all():
+        notif.is_read = True
+        db.add(notif)
+    await db.commit()
+    return {"detail": "All notifications marked as read"}

@@ -38,6 +38,10 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     organization_id: Optional[uuid.UUID] = None
+    org_action: Optional[str] = None
+    org_name: Optional[str] = None
+    org_currency: Optional[str] = "USD"
+    org_slug: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
@@ -89,3 +93,39 @@ class RefreshRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+class SlugCheckResponse(BaseModel):
+    available: bool
+    slug: str
+
+
+class JoinRequestResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    organization_id: uuid.UUID
+    status: str
+    created_at: datetime
+    user_email: Optional[str] = None
+    user_first_name: Optional[str] = None
+    user_last_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class JoinRequestAction(BaseModel):
+    action: str
+
+
+class NotificationResponse(BaseModel):
+    id: uuid.UUID
+    type: str
+    title: str
+    message: str
+    data: dict = {}
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
