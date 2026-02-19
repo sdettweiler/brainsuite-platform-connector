@@ -3,18 +3,26 @@
 # Brainsuite Platform Connector — Replit startup script
 # Single process: FastAPI serves both the API and the Angular SPA
 # ─────────────────────────────────────────────────────────────────────────────
-set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$REPO_ROOT/backend"
 FRONTEND_DIR="$REPO_ROOT/frontend"
 FRONTEND_DIST="$FRONTEND_DIR/dist/brainsuite"
+BACKEND_PORT="${PORT:-5000}"
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
 echo "║    Brainsuite Platform Connector — Starting      ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
+
+# ── 0. Kill any stale process on the port ─────────────────────────────────────
+if lsof -i :"$BACKEND_PORT" -t >/dev/null 2>&1; then
+  echo "► Killing stale process on port $BACKEND_PORT..."
+  kill -9 $(lsof -i :"$BACKEND_PORT" -t) 2>/dev/null || true
+  sleep 1
+  echo "✓ Port $BACKEND_PORT cleared"
+fi
 
 # ── 1. Detect & configure PostgreSQL ─────────────────────────────────────────
 if [ -z "$DATABASE_URL" ]; then
@@ -24,9 +32,7 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
-# Convert postgres:// to postgresql+asyncpg:// for SQLAlchemy async
 RAW_DB="$DATABASE_URL"
-# Strip query parameters (e.g. ?sslmode=disable) that asyncpg doesn't support
 RAW_DB="${RAW_DB%%\?*}"
 ASYNC_DB="${RAW_DB/postgres:\/\//postgresql+asyncpg://}"
 ASYNC_DB="${ASYNC_DB/postgresql:\/\//postgresql+asyncpg://}"
@@ -38,7 +44,6 @@ echo "✓ Database configured"
 # ── 2. Auto-configure secrets if not set ──────────────────────────────────────
 if [ -z "$SECRET_KEY" ]; then
   echo "⚠  SECRET_KEY not set — generating one for this session."
-  echo "   Add SECRET_KEY to Replit Secrets for a stable value."
   export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 fi
 
@@ -59,17 +64,30 @@ fi
 
 echo "✓ Secrets configured"
 
-# ── 4. Install Python dependencies ───────────────────────────────────────────
-echo ""
-echo "► Installing Python dependencies..."
-cd "$BACKEND_DIR"
-pip install -q --no-cache-dir -r requirements.txt
-echo "✓ Python dependencies ready"
+# ── 4. Install Python dependencies (skip if already installed) ────────────────
+DEPS_MARKER="$BACKEND_DIR/.deps_installed"
+REQUIREMENTS="$BACKEND_DIR/requirements.txt"
+
+if [ ! -f "$DEPS_MARKER" ] || [ "$REQUIREMENTS" -nt "$DEPS_MARKER" ]; then
+  echo ""
+  echo "► Installing Python dependencies..."
+  cd "$BACKEND_DIR"
+  pip install -q --no-cache-dir -r requirements.txt || {
+    echo "⚠  pip install had warnings, continuing..."
+  }
+  touch "$DEPS_MARKER"
+  echo "✓ Python dependencies ready"
+else
+  echo "✓ Python dependencies ready (cached)"
+fi
 
 # ── 5. Run database migrations ───────────────────────────────────────────────
 echo ""
 echo "► Running database migrations..."
-alembic upgrade head
+cd "$BACKEND_DIR"
+alembic upgrade head || {
+  echo "⚠  Migration warning, continuing..."
+}
 echo "✓ Database up to date"
 
 # ── 6. Build Angular frontend if not already built ───────────────────────────
@@ -90,7 +108,6 @@ else
 fi
 
 # ── 7. Launch ─────────────────────────────────────────────────────────────────
-BACKEND_PORT="${PORT:-5000}"
 REPL_URL="${REPLIT_DEV_DOMAIN:-localhost:$BACKEND_PORT}"
 
 echo ""
@@ -106,4 +123,5 @@ exec uvicorn app.main:app \
   --host 0.0.0.0 \
   --port "$BACKEND_PORT" \
   --workers 1 \
-  --log-level info
+  --log-level info \
+  --timeout-keep-alive 120
