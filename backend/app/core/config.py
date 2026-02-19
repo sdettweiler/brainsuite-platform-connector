@@ -1,7 +1,15 @@
 from pydantic_settings import BaseSettings
 from pydantic import AnyHttpUrl, validator
 from typing import List, Optional
+import os
 import secrets
+
+
+def _get_base_url() -> str:
+    domain = os.environ.get("REPLIT_DEV_DOMAIN") or os.environ.get("REPLIT_DOMAINS", "").split(",")[0]
+    if domain:
+        return f"https://{domain}"
+    return "http://localhost:5000"
 
 
 class Settings(BaseSettings):
@@ -20,23 +28,23 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    FRONTEND_URL: str = "http://localhost:4200"
+    FRONTEND_URL: str = _get_base_url()
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:4200", "http://localhost:3000"]
 
     # Meta
     META_APP_ID: Optional[str] = None
     META_APP_SECRET: Optional[str] = None
-    META_REDIRECT_URI: str = "http://localhost:4200/auth/callback/meta"
+    META_REDIRECT_URI: str = f"{_get_base_url()}/api/v1/platforms/oauth/callback/meta"
 
     # TikTok
     TIKTOK_APP_ID: Optional[str] = None
     TIKTOK_APP_SECRET: Optional[str] = None
-    TIKTOK_REDIRECT_URI: str = "http://localhost:4200/auth/callback/tiktok"
+    TIKTOK_REDIRECT_URI: str = f"{_get_base_url()}/api/v1/platforms/oauth/callback/tiktok"
 
     # YouTube / Google
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_REDIRECT_URI: str = "http://localhost:4200/auth/callback/youtube"
+    GOOGLE_REDIRECT_URI: str = f"{_get_base_url()}/api/v1/platforms/oauth/callback/google"
     GOOGLE_DEVELOPER_TOKEN: Optional[str] = None
 
     # Currency

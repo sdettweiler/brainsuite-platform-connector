@@ -170,17 +170,7 @@ async def init_oauth(
     from app.services.platform.tiktok_oauth import tiktok_oauth
     from app.services.platform.youtube_oauth import youtube_oauth
 
-    state = secrets.token_urlsafe(32)
-    session_id = secrets.token_urlsafe(16)
-
-    # Store session
-    _oauth_sessions[session_id] = {
-        "state": state,
-        "platform": payload.platform,
-        "user_id": str(current_user.id),
-        "org_id": str(current_user.organization_id),
-        "created_at": datetime.utcnow().isoformat(),
-    }
+    session_id = secrets.token_urlsafe(32)
 
     if not settings.META_APP_ID and payload.platform == "META":
         raise HTTPException(status_code=503, detail="Meta app credentials not configured")
@@ -189,12 +179,19 @@ async def init_oauth(
     if not settings.GOOGLE_CLIENT_ID and payload.platform == "YOUTUBE":
         raise HTTPException(status_code=503, detail="Google app credentials not configured")
 
+    _oauth_sessions[session_id] = {
+        "platform": payload.platform,
+        "user_id": str(current_user.id),
+        "org_id": str(current_user.organization_id),
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
     if payload.platform == "META":
-        auth_url = meta_oauth.generate_auth_url(state)
+        auth_url = meta_oauth.generate_auth_url(session_id)
     elif payload.platform == "TIKTOK":
-        auth_url = tiktok_oauth.generate_auth_url(state)
+        auth_url = tiktok_oauth.generate_auth_url(session_id)
     elif payload.platform == "YOUTUBE":
-        auth_url = youtube_oauth.generate_auth_url(state)
+        auth_url = youtube_oauth.generate_auth_url(session_id)
     else:
         raise HTTPException(status_code=400, detail="Unknown platform")
 

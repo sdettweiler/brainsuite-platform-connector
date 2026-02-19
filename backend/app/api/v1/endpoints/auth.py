@@ -135,7 +135,12 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
         )
     )
     stored = result.scalar_one_or_none()
-    if not stored or stored.expires_at < datetime.utcnow():
+    if not stored:
+        raise HTTPException(status_code=401, detail="Refresh token expired or revoked")
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    expires_at = stored.expires_at if stored.expires_at.tzinfo else stored.expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now:
         raise HTTPException(status_code=401, detail="Refresh token expired or revoked")
 
     # Rotate tokens
