@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDividerModule } from '@angular/material/divider';
 import { AuthService, CurrentUser } from '../../services/auth.service';
 import { ThemeService } from '../../services/theme.service';
 
@@ -14,7 +15,7 @@ import { ThemeService } from '../../services/theme.service';
   standalone: true,
   imports: [
     CommonModule, RouterLink, MatMenuModule, MatIconModule,
-    MatButtonModule, MatDialogModule, MatTooltipModule,
+    MatButtonModule, MatDialogModule, MatTooltipModule, MatDividerModule,
   ],
   template: `
     <header class="header">

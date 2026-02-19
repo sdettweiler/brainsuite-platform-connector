@@ -52,17 +52,14 @@ async def health():
 
 
 # ── Serve Angular SPA (used in Replit / single-process deployments) ──────────
-# Mount static assets first so /assets/* is handled before the catch-all route.
-# If the dist folder doesn't exist (e.g. dev-only backend), silently skip.
 if os.path.isdir(_FRONTEND_DIST):
-    _assets_dir = os.path.join(_FRONTEND_DIST, "assets")
-    if os.path.isdir(_assets_dir):
-        app.mount("/assets", StaticFiles(directory=_assets_dir), name="static_assets")
-
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        """Catch-all route — serve Angular index.html for all non-API paths."""
+        """Serve static files if they exist, otherwise serve index.html for SPA routing."""
+        file_path = os.path.join(_FRONTEND_DIST, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
         index = os.path.join(_FRONTEND_DIST, "index.html")
         if os.path.isfile(index):
-            return FileResponse(index)
+            return FileResponse(index, headers={"Cache-Control": "no-cache"})
         return {"error": "Frontend not built. Run: cd frontend && npm run build"}

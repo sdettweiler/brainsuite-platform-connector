@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
@@ -18,7 +18,7 @@ import { format, subDays } from 'date-fns';
 @Component({
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule, MatButtonModule, MatIconModule,
+    CommonModule, ReactiveFormsModule, FormsModule, MatButtonModule, MatIconModule,
     MatSelectModule, MatFormFieldModule, MatInputModule, MatMenuModule,
     MatDialogModule, MatTooltipModule, MatCheckboxModule,
   ],

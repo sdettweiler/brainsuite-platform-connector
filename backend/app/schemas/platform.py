@@ -87,13 +87,6 @@ class OAuthAuthorizedAccount(BaseModel):
     status: Optional[str] = None
 
 
-class AdAccountSelectionRequest(BaseModel):
-    """User selects which ad accounts to connect after OAuth."""
-    platform: str
-    oauth_session_id: str
-    selected_accounts: List[AdAccountSetup]
-
-
 class AdAccountSetup(BaseModel):
     ad_account_id: str
     ad_account_name: str
@@ -101,5 +94,8 @@ class AdAccountSetup(BaseModel):
     default_metadata_values: Dict[str, Any] = {}
 
 
-# Fix forward reference
-AdAccountSelectionRequest.model_rebuild()
+class AdAccountSelectionRequest(BaseModel):
+    """User selects which ad accounts to connect after OAuth."""
+    platform: str
+    oauth_session_id: str
+    selected_accounts: List[AdAccountSetup]

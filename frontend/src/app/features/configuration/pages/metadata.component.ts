@@ -388,7 +388,7 @@ export class MetadataComponent implements OnInit {
     this.api.post('/assets/metadata/fields/reorder', { order }).subscribe();
   }
 
-  onOptionDrop(event: CdkDragDrop<any[]>, field: MetadataField): void {
+  onOptionDrop(event: CdkDragDrop<any>, field: MetadataField): void {
     if (field.field_values) {
       moveItemInArray(field.field_values, event.previousIndex, event.currentIndex);
     }

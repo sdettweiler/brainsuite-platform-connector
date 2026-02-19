@@ -26,6 +26,8 @@ fi
 
 # Convert postgres:// to postgresql+asyncpg:// for SQLAlchemy async
 RAW_DB="$DATABASE_URL"
+# Strip query parameters (e.g. ?sslmode=disable) that asyncpg doesn't support
+RAW_DB="${RAW_DB%%\?*}"
 ASYNC_DB="${RAW_DB/postgres:\/\//postgresql+asyncpg://}"
 ASYNC_DB="${ASYNC_DB/postgresql:\/\//postgresql+asyncpg://}"
 export DATABASE_URL="$ASYNC_DB"
