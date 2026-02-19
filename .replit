@@ -1,4 +1,4 @@
-modules = ["python-3.12", "nodejs-20", "bash", "web"]
+modules = ["python-3.12", "nodejs-20", "bash"]
 
 [nix]
 channel = "stable-25_05"
@@ -27,19 +27,10 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash replit_start.sh"
-
-[[workflows.workflow]]
-name = "Start App"
-mode = "parallel"
-author = "agent"
+waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash replit_start.sh"
-waitForPort = 5000
 
 [agent]
 expertMode = true

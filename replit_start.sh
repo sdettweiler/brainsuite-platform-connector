@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # ─────────────────────────────────────────────────────────────────────────────
 # Brainsuite Platform Connector — Replit startup script
 # ─────────────────────────────────────────────────────────────────────────────
@@ -7,18 +8,28 @@ REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$REPO_ROOT/backend"
 FRONTEND_DIR="$REPO_ROOT/frontend"
 FRONTEND_DIST="$FRONTEND_DIR/dist/brainsuite"
-BACKEND_PORT="${PORT:-5000}"
+BACKEND_PORT=5000
 
-# ── 0. Wait for old process to release the port ──────────────────────────────
-for i in 1 2 3 4 5 6 7 8 9 10; do
-  if ! lsof -i :"$BACKEND_PORT" -t >/dev/null 2>&1; then
-    break
+# ── 0. Ensure port 5000 is free ──────────────────────────────────────────────
+cleanup_port() {
+  local pids
+  pids=$(lsof -ti :"$BACKEND_PORT" 2>/dev/null || true)
+  if [ -n "$pids" ]; then
+    echo "► Cleaning up port $BACKEND_PORT..."
+    for pid in $pids; do
+      kill "$pid" 2>/dev/null || true
+    done
+    sleep 1
+    pids=$(lsof -ti :"$BACKEND_PORT" 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+      for pid in $pids; do
+        kill -9 "$pid" 2>/dev/null || true
+      done
+      sleep 0.5
+    fi
   fi
-  sleep 0.5
-done
-# Force kill if still occupied
-fuser -k "$BACKEND_PORT"/tcp 2>/dev/null || true
-sleep 0.3
+}
+cleanup_port
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
@@ -27,7 +38,7 @@ echo "╚═══════════════════════�
 echo ""
 
 # ── 1. Detect & configure PostgreSQL ─────────────────────────────────────────
-if [ -z "$DATABASE_URL" ]; then
+if [ -z "${DATABASE_URL:-}" ]; then
   echo "❌ DATABASE_URL is not set."
   exit 1
 fi
@@ -40,17 +51,17 @@ export DATABASE_URL="$ASYNC_DB"
 export SYNC_DATABASE_URL="${ASYNC_DB/+asyncpg/}"
 echo "✓ Database configured"
 
-# ── 2. Auto-configure secrets if not set ──────────────────────────────────────
-if [ -z "$SECRET_KEY" ]; then
+# ── 2. Auto-configure secrets if not set ─────────────────────────────────────
+if [ -z "${SECRET_KEY:-}" ]; then
   export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 fi
-if [ -z "$TOKEN_ENCRYPTION_KEY" ]; then
+if [ -z "${TOKEN_ENCRYPTION_KEY:-}" ]; then
   export TOKEN_ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 fi
 
-# ── 3. Auto-configure CORS ───────────────────────────────────────────────────
-if [ -z "$BACKEND_CORS_ORIGINS" ]; then
-  if [ -n "$REPLIT_DEV_DOMAIN" ]; then
+# ── 3. Auto-configure CORS ──────────────────────────────────────────────────
+if [ -z "${BACKEND_CORS_ORIGINS:-}" ]; then
+  if [ -n "${REPLIT_DEV_DOMAIN:-}" ]; then
     export BACKEND_CORS_ORIGINS='["https://'"$REPLIT_DEV_DOMAIN"'"]'
     echo "✓ CORS configured"
   else
@@ -59,7 +70,7 @@ if [ -z "$BACKEND_CORS_ORIGINS" ]; then
 fi
 echo "✓ Secrets configured"
 
-# ── 4. Install Python dependencies (skip if cached) ──────────────────────────
+# ── 4. Install Python dependencies (skip if cached) ─────────────────────────
 DEPS_MARKER="$BACKEND_DIR/.deps_installed"
 REQUIREMENTS="$BACKEND_DIR/requirements.txt"
 if [ ! -f "$DEPS_MARKER" ] || [ "$REQUIREMENTS" -nt "$DEPS_MARKER" ]; then
@@ -78,7 +89,7 @@ cd "$BACKEND_DIR"
 alembic upgrade head 2>&1 || true
 echo "✓ Database up to date"
 
-# ── 6. Check frontend build ──────────────────────────────────────────────────
+# ── 6. Check frontend build ─────────────────────────────────────────────────
 if [ ! -f "$FRONTEND_DIST/index.html" ]; then
   echo "► Building Angular frontend..."
   cd "$FRONTEND_DIR"
@@ -89,7 +100,7 @@ else
   echo "✓ Frontend ready"
 fi
 
-# ── 7. Launch server (exec replaces shell — keeps PID 1) ─────────────────────
+# ── 7. Launch server (exec replaces shell — clean signal handling) ───────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  App running on port $BACKEND_PORT"
