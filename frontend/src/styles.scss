@@ -1,0 +1,221 @@
+// ─── Brainsuite Design System ─────────────────────────────────────────────
+
+// Font
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+// Angular Material theme
+@use '@angular/material' as mat;
+@include mat.core();
+
+// ─── Color Tokens ─────────────────────────────────────────────────────────
+
+:root {
+  // Brand accent
+  --accent:        #3498DB;
+  --accent-hover:  #2980B9;
+  --success:       #2ECC71;
+  --warning:       #F39C12;
+  --error:         #E74C3C;
+
+  // Layout
+  --sidebar-width:         220px;
+  --sidebar-collapsed-width: 64px;
+  --header-height:         60px;
+  --border-radius:         8px;
+  --border-radius-lg:      12px;
+  --transition:            0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+  // Shadows
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg:  0 8px 24px rgba(0,0,0,0.5);
+}
+
+// ─── Dark Theme (default) ─────────────────────────────────────────────────
+
+.dark-theme {
+  --bg-primary:   #0F1623;
+  --bg-secondary: #1B2A47;
+  --bg-card:      #1E2D4A;
+  --bg-hover:     #243354;
+  --border:       #2D3E5C;
+  --text-primary:   #FFFFFF;
+  --text-secondary: #94A3B8;
+  --text-muted:     #64748B;
+  --input-bg:       #243354;
+}
+
+// ─── Light Theme ──────────────────────────────────────────────────────────
+
+.light-theme {
+  --bg-primary:   #F0F4F8;
+  --bg-secondary: #FFFFFF;
+  --bg-card:      #FFFFFF;
+  --bg-hover:     #F7F9FC;
+  --border:       #E2E8F0;
+  --text-primary:   #1A202C;
+  --text-secondary: #4A5568;
+  --text-muted:     #718096;
+  --input-bg:       #F7F9FC;
+}
+
+// ─── Global Reset & Base ─────────────────────────────────────────────────
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+// ─── Typography ───────────────────────────────────────────────────────────
+
+h1 { font-size: 24px; font-weight: 700; margin: 0; }
+h2 { font-size: 20px; font-weight: 600; margin: 0; }
+h3 { font-size: 18px; font-weight: 600; margin: 0; }
+h4 { font-size: 16px; font-weight: 500; margin: 0; }
+p  { margin: 0; }
+
+.text-sm    { font-size: 12px; }
+.text-muted { color: var(--text-secondary); }
+
+// ─── Layout Utilities ─────────────────────────────────────────────────────
+
+.flex       { display: flex; }
+.flex-col   { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-2      { gap: 8px; }
+.gap-3      { gap: 12px; }
+.gap-4      { gap: 16px; }
+.gap-6      { gap: 24px; }
+
+// ─── Cards ───────────────────────────────────────────────────────────────
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-lg);
+  padding: 20px;
+}
+
+.card-sm { padding: 12px 16px; }
+
+// ─── Scrollbars ──────────────────────────────────────────────────────────
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+  &:hover { background: var(--text-muted); }
+}
+
+// ─── Stat change indicators ───────────────────────────────────────────────
+
+.change-positive { color: var(--success); }
+.change-negative { color: var(--error); }
+.change-neutral  { color: var(--text-secondary); }
+
+// ─── Badges ─────────────────────────────────────────────────────────────
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+
+  &.badge-success { background: rgba(46,204,113,0.15); color: var(--success); }
+  &.badge-warning { background: rgba(243,156,18,0.15); color: var(--warning); }
+  &.badge-error   { background: rgba(231,76,60,0.15);  color: var(--error);   }
+  &.badge-info    { background: rgba(52,152,219,0.15); color: var(--accent);  }
+  &.badge-neutral { background: var(--border); color: var(--text-secondary); }
+}
+
+// ─── ACE Score color grading ──────────────────────────────────────────────
+
+.ace-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+
+  &.ace-high    { background: rgba(46,204,113,0.2);  color: var(--success); border: 2px solid var(--success); }
+  &.ace-medium  { background: rgba(243,156,18,0.2);  color: var(--warning); border: 2px solid var(--warning); }
+  &.ace-low     { background: rgba(231,76,60,0.2);   color: var(--error);   border: 2px solid var(--error);   }
+}
+
+// ─── Platform icon colors ─────────────────────────────────────────────────
+
+.platform-meta     { color: #1877F2; }
+.platform-tiktok   { color: #FF0050; }
+.platform-youtube  { color: #FF0000; }
+
+// ─── Material overrides ───────────────────────────────────────────────────
+
+.mat-mdc-form-field {
+  .mat-mdc-text-field-wrapper {
+    background: var(--input-bg) !important;
+    border-radius: var(--border-radius) !important;
+  }
+}
+
+.mat-mdc-dialog-container {
+  --mdc-dialog-container-color: var(--bg-card);
+  border-radius: var(--border-radius-lg) !important;
+}
+
+.mat-mdc-menu-panel {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--border-radius) !important;
+}
+
+.mat-mdc-tooltip {
+  font-size: 12px !important;
+}
+
+// ─── Loading skeleton ─────────────────────────────────────────────────────
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-hover) 25%,
+    var(--border) 50%,
+    var(--bg-hover) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+// ─── Page transitions ─────────────────────────────────────────────────────
+
+.page-enter {
+  animation: pageEnter 0.2s ease-out;
+}
+
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
