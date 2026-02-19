@@ -43,3 +43,9 @@ waitForPort = 5000
 
 [agent]
 expertMode = true
+
+[userenv]
+
+[userenv.shared]
+SECRET_KEY = "ddm4qxsP6ClC47UwLcTaPbdmQ5jVh4xUxpW-Hni-Ki0"
+TOKEN_ENCRYPTION_KEY = "1iBgO6YC_I7RC5swlEoWyZ96FnYtPlPpyxVXDMjfJOU="

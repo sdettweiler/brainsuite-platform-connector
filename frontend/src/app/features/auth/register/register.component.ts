@@ -18,7 +18,7 @@ import { AuthService } from '../../../core/services/auth.service';
     <div class="auth-page">
       <div class="auth-card">
         <div class="auth-logo">
-          <img src="/assets/images/logo-orange.png" alt="Brainsuite" class="logo-img" />
+          <img src="/assets/images/logo-orange-white.png" alt="Brainsuite" class="logo-img" />
         </div>
         <p class="auth-subtitle">Create your account</p>
 
