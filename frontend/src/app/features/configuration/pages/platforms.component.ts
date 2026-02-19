@@ -23,12 +23,16 @@ interface PlatformConnection {
   last_synced_at?: string;
   initial_sync_completed: boolean;
   brainsuite_app_id?: string;
+  brainsuite_app_id_image?: string;
+  brainsuite_app_id_video?: string;
 }
 
 interface BrainsuiteApp {
   id: string;
   name: string;
   app_type: string;
+  is_default_for_image: boolean;
+  is_default_for_video: boolean;
 }
 
 interface PlatformDef {
@@ -113,10 +117,22 @@ const PLATFORMS: PlatformDef[] = [
 
             <div class="conn-brainsuite">
               <mat-form-field appearance="outline" class="app-select">
-                <mat-label>Brainsuite App</mat-label>
+                <mat-label>Images App</mat-label>
                 <mat-select
-                  [ngModel]="conn.brainsuite_app_id"
-                  (ngModelChange)="assignApp(conn, $event)"
+                  [ngModel]="conn.brainsuite_app_id_image"
+                  (ngModelChange)="assignApp(conn, 'brainsuite_app_id_image', $event)"
+                >
+                  <mat-option value="">-- None --</mat-option>
+                  <mat-option *ngFor="let app of brainsuiteApps" [value]="app.id">
+                    {{ app.name }}
+                  </mat-option>
+                </mat-select>
+              </mat-form-field>
+              <mat-form-field appearance="outline" class="app-select">
+                <mat-label>Videos App</mat-label>
+                <mat-select
+                  [ngModel]="conn.brainsuite_app_id_video"
+                  (ngModelChange)="assignApp(conn, 'brainsuite_app_id_video', $event)"
                 >
                   <mat-option value="">-- None --</mat-option>
                   <mat-option *ngFor="let app of brainsuiteApps" [value]="app.id">
@@ -271,7 +287,7 @@ const PLATFORMS: PlatformDef[] = [
     }
 
     .connection-row {
-      display: grid; grid-template-columns: 1fr 200px 160px 180px 48px;
+      display: grid; grid-template-columns: 1fr 180px 140px 280px 48px;
       align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border);
       gap: 12px;
       &:last-child { border-bottom: none; }
@@ -307,6 +323,7 @@ const PLATFORMS: PlatformDef[] = [
       border-radius: 4px; color: var(--text-secondary);
     }
 
+    .conn-brainsuite { display: flex; gap: 6px; }
     .app-select { width: 100%; }
 
     .empty-connections {
@@ -468,13 +485,43 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   }
 
   loadData(): void {
+    this.api.get<BrainsuiteApp[]>('/platforms/brainsuite-apps').subscribe({
+      next: (apps) => {
+        this.brainsuiteApps = apps;
+        this.loadConnections();
+      },
+    });
+  }
+
+  private loadConnections(): void {
     this.api.get<PlatformConnection[]>('/platforms/connections').subscribe({
-      next: (conns) => { this.connections = conns; this.loading = false; },
+      next: (conns) => {
+        this.connections = conns;
+        this.loading = false;
+        this.applyDefaultApps();
+      },
       error: () => { this.loading = false; },
     });
-    this.api.get<BrainsuiteApp[]>('/platforms/brainsuite-apps').subscribe({
-      next: (apps) => { this.brainsuiteApps = apps; },
-    });
+  }
+
+  private applyDefaultApps(): void {
+    const defaultImage = this.brainsuiteApps.find(a => a.is_default_for_image);
+    const defaultVideo = this.brainsuiteApps.find(a => a.is_default_for_video);
+
+    for (const conn of this.connections) {
+      const patch: any = {};
+      if (!conn.brainsuite_app_id_image && defaultImage) {
+        conn.brainsuite_app_id_image = defaultImage.id;
+        patch.brainsuite_app_id_image = defaultImage.id;
+      }
+      if (!conn.brainsuite_app_id_video && defaultVideo) {
+        conn.brainsuite_app_id_video = defaultVideo.id;
+        patch.brainsuite_app_id_video = defaultVideo.id;
+      }
+      if (Object.keys(patch).length > 0) {
+        this.api.patch(`/platforms/connections/${conn.id}`, patch).subscribe();
+      }
+    }
   }
 
   startOAuth(platform: string): void {
@@ -566,11 +613,11 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     this.selectedAccounts = [];
   }
 
-  assignApp(conn: PlatformConnection, appId: string): void {
-    this.api.patch(`/platforms/connections/${conn.id}`, { brainsuite_app_id: appId || null }).subscribe({
+  assignApp(conn: PlatformConnection, field: 'brainsuite_app_id_image' | 'brainsuite_app_id_video', appId: string): void {
+    this.api.patch(`/platforms/connections/${conn.id}`, { [field]: appId || null }).subscribe({
       next: () => {
-        conn.brainsuite_app_id = appId || undefined;
-        this.snackBar.open('Brainsuite app assigned', '', { duration: 2000 });
+        (conn as any)[field] = appId || undefined;
+        this.snackBar.open('App mapping updated', '', { duration: 2000 });
       },
     });
   }

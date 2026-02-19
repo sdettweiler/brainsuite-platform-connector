@@ -22,7 +22,7 @@ class BrainsuiteApp(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
     organization: Mapped["Organization"] = relationship("Organization", back_populates="brainsuite_apps")
-    platform_connections: Mapped[list["PlatformConnection"]] = relationship("PlatformConnection", back_populates="brainsuite_app")
+    platform_connections: Mapped[list["PlatformConnection"]] = relationship("PlatformConnection", foreign_keys="[PlatformConnection.brainsuite_app_id]", back_populates="brainsuite_app")
 
 
 class PlatformConnection(Base):
@@ -32,6 +32,8 @@ class PlatformConnection(Base):
     organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     brainsuite_app_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("brainsuite_apps.id"), nullable=True)
+    brainsuite_app_id_image: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("brainsuite_apps.id"), nullable=True)
+    brainsuite_app_id_video: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("brainsuite_apps.id"), nullable=True)
 
     platform: Mapped[str] = mapped_column(String(50), nullable=False)  # META, TIKTOK, YOUTUBE
     ad_account_id: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -58,7 +60,9 @@ class PlatformConnection(Base):
 
     organization: Mapped["Organization"] = relationship("Organization", back_populates="platform_connections")
     created_by_user: Mapped["User"] = relationship("User", back_populates="platform_connections")
-    brainsuite_app: Mapped["BrainsuiteApp"] = relationship("BrainsuiteApp", back_populates="platform_connections")
+    brainsuite_app: Mapped["BrainsuiteApp"] = relationship("BrainsuiteApp", foreign_keys=[brainsuite_app_id], back_populates="platform_connections")
+    brainsuite_app_image: Mapped["BrainsuiteApp"] = relationship("BrainsuiteApp", foreign_keys=[brainsuite_app_id_image])
+    brainsuite_app_video: Mapped["BrainsuiteApp"] = relationship("BrainsuiteApp", foreign_keys=[brainsuite_app_id_video])
 
     __table_args__ = (
         # Allow multiple connections per platform if different ad accounts

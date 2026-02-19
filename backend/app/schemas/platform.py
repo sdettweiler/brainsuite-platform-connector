@@ -62,6 +62,8 @@ class PlatformConnectionResponse(BaseModel):
     created_at: datetime
     created_by_user_id: uuid.UUID
     brainsuite_app_id: Optional[uuid.UUID]
+    brainsuite_app_id_image: Optional[uuid.UUID] = None
+    brainsuite_app_id_video: Optional[uuid.UUID] = None
 
     class Config:
         from_attributes = True

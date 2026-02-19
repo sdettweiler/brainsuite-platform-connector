@@ -461,10 +461,10 @@ async def update_connection(
     if not conn or conn.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    allowed = {"brainsuite_app_id", "default_metadata_values"}
+    allowed = {"brainsuite_app_id", "brainsuite_app_id_image", "brainsuite_app_id_video", "default_metadata_values"}
     for field, value in payload.items():
         if field in allowed:
-            if field == "brainsuite_app_id":
+            if field in ("brainsuite_app_id", "brainsuite_app_id_image", "brainsuite_app_id_video"):
                 setattr(conn, field, uuid.UUID(value) if value else None)
             else:
                 setattr(conn, field, value)
