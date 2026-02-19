@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormBuilder, FormGroup, ReactiveFormsModule, FormsModule } from '@angular/forms';
@@ -13,7 +13,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
-import { format, subDays } from 'date-fns';
+import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 
 @Component({
   standalone: true,
@@ -26,16 +26,34 @@ import { format, subDays } from 'date-fns';
     <div class="page-enter dashboard-page">
       <!-- Toolbar -->
       <div class="toolbar card card-sm">
-        <!-- Date range -->
-        <div class="toolbar-group">
-          <mat-form-field appearance="outline" class="date-field">
-            <mat-label>From</mat-label>
-            <input matInput type="date" [(ngModel)]="dateFrom" (change)="onFilterChange()" />
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="date-field">
-            <mat-label>To</mat-label>
-            <input matInput type="date" [(ngModel)]="dateTo" (change)="onFilterChange()" />
-          </mat-form-field>
+        <!-- Date range picker -->
+        <div class="date-range-picker" #dateRangeRef>
+          <button class="date-range-btn" (click)="toggleDatePicker()">
+            <mat-icon>calendar_today</mat-icon>
+            <span class="date-range-label">{{ dateRangeLabel }}</span>
+            <mat-icon class="date-range-chevron">expand_more</mat-icon>
+          </button>
+          <div class="date-range-dropdown" *ngIf="datePickerOpen">
+            <div class="date-presets">
+              <button
+                *ngFor="let preset of datePresets"
+                class="preset-btn"
+                [class.active]="selectedPreset === preset.key"
+                (click)="selectPreset(preset.key)"
+              >{{ preset.label }}</button>
+            </div>
+            <div class="date-custom" *ngIf="selectedPreset === 'custom'">
+              <div class="custom-date-row">
+                <label>From</label>
+                <input type="date" [(ngModel)]="customFrom" class="custom-date-input" />
+              </div>
+              <div class="custom-date-row">
+                <label>To</label>
+                <input type="date" [(ngModel)]="customTo" class="custom-date-input" />
+              </div>
+              <button class="apply-btn" (click)="applyCustomRange()">Apply</button>
+            </div>
+          </div>
         </div>
 
         <!-- Platform filter -->
@@ -231,7 +249,109 @@ import { format, subDays } from 'date-fns';
     .toolbar-group { display: flex; align-items: center; gap: 8px; }
     .toolbar-spacer { flex: 1; }
 
-    .date-field { width: 140px; }
+    .date-range-picker {
+      position: relative;
+    }
+
+    .date-range-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      height: 36px;
+      transition: all var(--transition);
+      white-space: nowrap;
+      mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--accent); }
+      .date-range-chevron { font-size: 16px; width: 16px; height: 16px; color: var(--text-secondary); }
+      &:hover { border-color: var(--accent); background: var(--bg-hover); }
+    }
+
+    .date-range-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 100;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-lg);
+      min-width: 220px;
+      overflow: hidden;
+      animation: dropIn 0.15s ease-out;
+    }
+
+    @keyframes dropIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .date-presets {
+      display: flex;
+      flex-direction: column;
+      padding: 6px;
+    }
+
+    .preset-btn {
+      padding: 8px 14px;
+      border: none;
+      background: transparent;
+      color: var(--text-primary);
+      font-size: 13px;
+      text-align: left;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all var(--transition);
+      &:hover { background: var(--bg-hover); }
+      &.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+    }
+
+    .date-custom {
+      padding: 8px 14px 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .custom-date-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      label { font-size: 12px; color: var(--text-secondary); min-width: 36px; }
+    }
+
+    .custom-date-input {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: inherit;
+      &:focus { outline: none; border-color: var(--accent); }
+    }
+
+    .apply-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent);
+      color: white;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--transition);
+      &:hover { background: var(--accent-hover); }
+    }
+
     .filter-field { width: 130px; }
 
     .platform-filters { display: flex; gap: 4px; }
@@ -417,8 +537,39 @@ export class DashboardComponent implements OnInit, OnDestroy {
   stats: any = null;
   loading = true;
 
+  datePickerOpen = false;
+  selectedPreset = 'last30';
+  customFrom = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+  customTo = format(subDays(new Date(), 1), 'yyyy-MM-dd');
   dateFrom = format(subDays(new Date(), 30), 'yyyy-MM-dd');
   dateTo = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+
+  datePresets = [
+    { key: 'last7', label: 'Last 7 days' },
+    { key: 'last30', label: 'Last 30 days' },
+    { key: 'last90', label: 'Last 90 days' },
+    { key: 'thisMonth', label: 'This month' },
+    { key: 'lastMonth', label: 'Last month' },
+    { key: 'custom', label: 'Custom range' },
+  ];
+
+  get dateRangeLabel(): string {
+    const preset = this.datePresets.find(p => p.key === this.selectedPreset);
+    if (preset && this.selectedPreset !== 'custom') return preset.label;
+    const from = new Date(this.dateFrom + 'T00:00:00');
+    const to = new Date(this.dateTo + 'T00:00:00');
+    const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+    return `${from.toLocaleDateString('en-US', opts)} – ${to.toLocaleDateString('en-US', opts)}`;
+  }
+
+  @ViewChild('dateRangeRef') dateRangeRef!: ElementRef;
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent) {
+    if (this.datePickerOpen && this.dateRangeRef && !this.dateRangeRef.nativeElement.contains(event.target)) {
+      this.datePickerOpen = false;
+    }
+  }
 
   selectedPlatforms = new Set(['META', 'TIKTOK', 'YOUTUBE']);
   selectedFormat = '';
@@ -544,6 +695,55 @@ export class DashboardComponent implements OnInit, OnDestroy {
   onFilterChange(): void {
     this.page = 1;
     this.loadData();
+  }
+
+  toggleDatePicker(): void {
+    this.datePickerOpen = !this.datePickerOpen;
+  }
+
+  selectPreset(key: string): void {
+    this.selectedPreset = key;
+    const today = new Date();
+    const yesterday = subDays(today, 1);
+
+    switch (key) {
+      case 'last7':
+        this.dateFrom = format(subDays(today, 7), 'yyyy-MM-dd');
+        this.dateTo = format(yesterday, 'yyyy-MM-dd');
+        break;
+      case 'last30':
+        this.dateFrom = format(subDays(today, 30), 'yyyy-MM-dd');
+        this.dateTo = format(yesterday, 'yyyy-MM-dd');
+        break;
+      case 'last90':
+        this.dateFrom = format(subDays(today, 90), 'yyyy-MM-dd');
+        this.dateTo = format(yesterday, 'yyyy-MM-dd');
+        break;
+      case 'thisMonth':
+        this.dateFrom = format(startOfMonth(today), 'yyyy-MM-dd');
+        this.dateTo = format(yesterday, 'yyyy-MM-dd');
+        break;
+      case 'lastMonth':
+        const lastM = subMonths(today, 1);
+        this.dateFrom = format(startOfMonth(lastM), 'yyyy-MM-dd');
+        this.dateTo = format(endOfMonth(lastM), 'yyyy-MM-dd');
+        break;
+      case 'custom':
+        this.customFrom = this.dateFrom;
+        this.customTo = this.dateTo;
+        return;
+    }
+    this.datePickerOpen = false;
+    this.onFilterChange();
+  }
+
+  applyCustomRange(): void {
+    if (this.customFrom && this.customTo) {
+      this.dateFrom = this.customFrom;
+      this.dateTo = this.customTo;
+      this.datePickerOpen = false;
+      this.onFilterChange();
+    }
   }
 
   togglePlatform(key: string): void {
