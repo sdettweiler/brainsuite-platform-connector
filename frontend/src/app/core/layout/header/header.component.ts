@@ -19,9 +19,7 @@ import { ThemeService } from '../../services/theme.service';
   ],
   template: `
     <header class="header">
-      <div class="header-left">
-        <span class="org-name">{{ orgName }}</span>
-      </div>
+      <div class="header-left"></div>
 
       <div class="header-right">
         <button mat-icon-button matTooltip="Notifications" class="icon-btn">
@@ -105,11 +103,14 @@ import { ThemeService } from '../../services/theme.service';
       gap: 8px;
       padding: 4px 8px !important;
       border-radius: var(--border-radius) !important;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .avatar {
       width: 32px;
       height: 32px;
+      min-width: 32px;
       border-radius: 50%;
       background: var(--accent);
       color: white;
@@ -117,12 +118,16 @@ import { ThemeService } from '../../services/theme.service';
       align-items: center;
       justify-content: center;
       font-weight: 600;
-      font-size: 13px;
+      font-size: 12px;
+      line-height: 1;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
 
       &.avatar-lg {
         width: 40px;
         height: 40px;
-        font-size: 16px;
+        min-width: 40px;
+        font-size: 15px;
       }
     }
 
@@ -130,10 +135,8 @@ import { ThemeService } from '../../services/theme.service';
       font-size: 13px;
       font-weight: 500;
       color: var(--text-primary);
-      max-width: 140px;
-      overflow: hidden;
-      text-overflow: ellipsis;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .chevron { font-size: 18px !important; color: var(--text-muted); }
