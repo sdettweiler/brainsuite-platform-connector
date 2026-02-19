@@ -252,7 +252,7 @@ const PLATFORMS: PlatformDef[] = [
     </div>
   `,
   styles: [`
-    .page-container { padding: 28px; display: flex; flex-direction: column; gap: 24px; max-width: 960px; }
+    .page-container { padding: 28px; display: flex; flex-direction: column; gap: 24px; max-width: 1200px; }
     .config-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
     .section-header {
       display: flex; align-items: flex-start; justify-content: space-between;
@@ -287,7 +287,7 @@ const PLATFORMS: PlatformDef[] = [
     }
 
     .connection-row {
-      display: grid; grid-template-columns: 1fr 180px 140px 280px 48px;
+      display: grid; grid-template-columns: 1fr 180px 140px auto 48px;
       align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border);
       gap: 12px;
       &:last-child { border-bottom: none; }
