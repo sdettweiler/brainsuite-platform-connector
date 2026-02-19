@@ -59,7 +59,7 @@ async def update_organization(
     return org
 
 
-@router.get("/", response_model=list[UserWithRole])
+@router.get("", response_model=list[UserWithRole])
 async def list_users(
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
