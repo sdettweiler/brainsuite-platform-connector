@@ -336,11 +336,11 @@ export class HomeComponent implements OnInit {
 
   getPlatformLogo(platform: string): string {
     const map: Record<string, string> = {
-      'META': '/assets/images/platform-meta.svg',
-      'TIKTOK': '/assets/images/platform-tiktok.svg',
-      'YOUTUBE': '/assets/images/platform-youtube.svg'
+      'META': '/assets/images/platform-meta-dark.png',
+      'TIKTOK': '/assets/images/platform-tiktok-dark.png',
+      'YOUTUBE': '/assets/images/platform-youtube-dark.png'
     };
-    return map[platform] || '/assets/images/platform-meta.svg';
+    return map[platform] || '/assets/images/platform-meta-dark.png';
   }
 
   getAceClass(score: number | null): string {
