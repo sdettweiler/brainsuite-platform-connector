@@ -12,10 +12,6 @@ externalPort = 80
 localPort = 5000
 externalPort = 80
 
-[[ports]]
-localPort = 8000
-externalPort = 8000
-
 [deployment]
 run = ["bash", "replit_start.sh"]
 deploymentTarget = "autoscale"
@@ -37,13 +33,13 @@ name = "Start App"
 mode = "parallel"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash replit_start.sh"
 waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [agent]
 expertMode = true
