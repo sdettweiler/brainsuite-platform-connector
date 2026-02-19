@@ -260,7 +260,8 @@ import { ApiService } from '../../../core/services/api.service';
     .step-line.active { background: var(--accent); }
 
     form { display: flex; flex-direction: column; gap: 12px; }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-row { display: flex; gap: 12px; }
+    .form-row .input-group { flex: 1; min-width: 0; }
 
     .input-group {
       display: flex;
@@ -272,6 +273,7 @@ import { ApiService } from '../../../core/services/api.service';
       height: 48px;
       transition: border-color 0.2s;
       box-sizing: border-box;
+      overflow: hidden;
     }
 
     .input-group:focus-within { border-color: var(--accent); }
