@@ -9,9 +9,16 @@ FRONTEND_DIR="$REPO_ROOT/frontend"
 FRONTEND_DIST="$FRONTEND_DIR/dist/brainsuite"
 BACKEND_PORT="${PORT:-5000}"
 
-# ── 0. Kill any stale process on the port ─────────────────────────────────────
+# ── 0. Wait for old process to release the port ──────────────────────────────
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if ! lsof -i :"$BACKEND_PORT" -t >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.5
+done
+# Force kill if still occupied
 fuser -k "$BACKEND_PORT"/tcp 2>/dev/null || true
-sleep 0.5
+sleep 0.3
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
