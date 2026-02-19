@@ -18,13 +18,20 @@ _FRONTEND_DIST = os.path.abspath(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    from app.services.sync.scheduler import startup_scheduler
-    await startup_scheduler()
+    try:
+        from app.services.sync.scheduler import startup_scheduler
+        await startup_scheduler()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Scheduler startup failed (non-fatal): {e}")
     yield
     # Shutdown
-    from app.services.sync.scheduler import scheduler
-    if scheduler.running:
-        scheduler.shutdown(wait=False)
+    try:
+        from app.services.sync.scheduler import scheduler
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+    except Exception:
+        pass
 
 
 app = FastAPI(
