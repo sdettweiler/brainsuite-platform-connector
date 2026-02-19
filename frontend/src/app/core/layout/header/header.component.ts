@@ -38,12 +38,9 @@ interface NotificationItem {
           mat-icon-button
           [matMenuTriggerFor]="notifMenu"
           class="icon-btn notif-btn"
-          [matBadge]="unreadCount > 0 ? unreadCount : null"
-          matBadgeColor="warn"
-          matBadgeSize="small"
-          [matBadgeHidden]="unreadCount === 0"
         >
           <mat-icon>{{ unreadCount > 0 ? 'notifications' : 'notifications_none' }}</mat-icon>
+          <span class="custom-badge" *ngIf="unreadCount > 0">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
         </button>
 
         <mat-menu #notifMenu="matMenu" xPosition="before" class="notif-menu">
@@ -144,13 +141,23 @@ interface NotificationItem {
       position: relative;
     }
 
-    :host ::ng-deep .notif-btn .mat-badge-content {
-      background: var(--accent) !important;
-      color: white !important;
-      font-size: 10px;
-      font-weight: 600;
-      right: 4px !important;
-      top: 4px !important;
+    .custom-badge {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 4px;
+      background: var(--accent);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: inherit;
+      line-height: 18px;
+      text-align: center;
+      border-radius: 10px;
+      box-sizing: border-box;
+      pointer-events: none;
     }
 
     .org-name {
