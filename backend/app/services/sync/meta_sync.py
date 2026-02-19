@@ -36,25 +36,56 @@ INSIGHTS_FIELDS = [
     "campaign_id",
     "campaign_name",
     "objective",
+    "buying_type",
+    "bid_strategy",
     "adset_id",
     "adset_name",
+    "optimization_goal",
+    "billing_event",
+    "destination_type",
     "ad_id",
     "ad_name",
+    "configured_status",
+    "effective_status",
     "spend",
     "impressions",
-    "clicks",
-    "ctr",
     "reach",
     "frequency",
     "cpm",
+    "cpp",
+    "clicks",
+    "unique_clicks",
     "cpc",
-    "actions",
-    "action_values",
+    "ctr",
+    "unique_ctr",
+    "inline_link_clicks",
+    "inline_link_click_ctr",
+    "cost_per_inline_link_click",
+    "outbound_clicks",
+    "outbound_clicks_ctr",
+    "cost_per_outbound_click",
+    "video_play_actions",
     "video_p25_watched_actions",
     "video_p50_watched_actions",
     "video_p75_watched_actions",
+    "video_p95_watched_actions",
     "video_p100_watched_actions",
-    "video_play_actions",
+    "video_30_sec_watched_actions",
+    "video_avg_time_watched_actions",
+    "video_thruplay_watched_actions",
+    "cost_per_thruplay",
+    "cost_per_10_sec_video_view",
+    "estimated_ad_recallers",
+    "estimated_ad_recall_rate",
+    "cost_per_estimated_ad_recallers",
+    "estimated_ad_recall_lift_in_people",
+    "actions",
+    "action_values",
+    "cost_per_action_type",
+    "purchase_roas",
+    "page_engagement",
+    "post_engagement",
+    "post_reactions",
 ]
 
 
@@ -197,6 +228,95 @@ class MetaSyncService:
 
         return records
 
+    @staticmethod
+    def _extract_action_value(actions: list, action_types: tuple, as_type=int):
+        for a in actions:
+            if a.get("action_type") in action_types:
+                try:
+                    return as_type(a["value"])
+                except (ValueError, KeyError, TypeError):
+                    pass
+        return None
+
+    @staticmethod
+    def _sum_action_values(actions: list, action_types: tuple, as_type=int):
+        total = None
+        for a in actions:
+            if a.get("action_type") in action_types:
+                try:
+                    v = as_type(a["value"])
+                    total = (total or 0) + v
+                except (ValueError, KeyError, TypeError):
+                    pass
+        return total
+
+    @staticmethod
+    def _extract_video_metric(r: dict, field: str) -> Optional[int]:
+        vals = r.get(field, [])
+        if vals and isinstance(vals, list) and len(vals) > 0:
+            try:
+                return int(vals[0].get("value", 0))
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    @staticmethod
+    def _safe_int(val) -> Optional[int]:
+        if val is None:
+            return None
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _safe_float(val) -> Optional[float]:
+        if val is None:
+            return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _safe_decimal(val) -> Optional[Decimal]:
+        if val is None:
+            return None
+        try:
+            return Decimal(str(val))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _extract_outbound_clicks(r: dict) -> Optional[int]:
+        oc = r.get("outbound_clicks", [])
+        if isinstance(oc, list) and len(oc) > 0:
+            try:
+                return int(oc[0].get("value", 0))
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    @staticmethod
+    def _extract_outbound_clicks_ctr(r: dict) -> Optional[float]:
+        oc = r.get("outbound_clicks_ctr", [])
+        if isinstance(oc, list) and len(oc) > 0:
+            try:
+                return float(oc[0].get("value", 0))
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    @staticmethod
+    def _extract_cost_per_outbound_click(r: dict) -> Optional[Decimal]:
+        cpo = r.get("cost_per_outbound_click", [])
+        if isinstance(cpo, list) and len(cpo) > 0:
+            try:
+                return Decimal(str(cpo[0].get("value", 0)))
+            except Exception:
+                pass
+        return None
+
     async def _upsert_records(
         self,
         db: AsyncSession,
@@ -204,36 +324,70 @@ class MetaSyncService:
         records: List[Dict[str, Any]],
         sync_job_id: Optional[str],
     ) -> int:
-        """Upsert raw records into meta_raw_performance."""
         if not records:
             return 0
 
+        PURCHASE_TYPES = ("purchase", "offsite_conversion.fb_pixel_purchase")
+        LEAD_TYPES = ("lead", "offsite_conversion.fb_pixel_lead")
+        SUBSCRIBE_TYPES = ("subscribe", "offsite_conversion.fb_pixel_complete_registration")
+        CONVERSION_TYPES = PURCHASE_TYPES + LEAD_TYPES + SUBSCRIBE_TYPES
+
         rows = []
         for r in records:
-            actions = r.get("actions", [])
-            conversions = sum(
-                int(a.get("value", 0))
-                for a in actions
-                if a.get("action_type") in ("purchase", "offsite_conversion.fb_pixel_purchase", "lead", "complete_registration")
-            )
-            action_values = r.get("action_values", [])
-            conversion_value = sum(
-                float(a.get("value", 0))
-                for a in action_values
-                if a.get("action_type") in ("purchase", "offsite_conversion.fb_pixel_purchase")
-            )
+            actions = r.get("actions") or []
+            action_values = r.get("action_values") or []
+            cost_per_action = r.get("cost_per_action_type") or []
 
-            video_plays = r.get("video_play_actions", [{}])
-            video_views = int(video_plays[0].get("value", 0)) if video_plays else None
+            conversions = self._sum_action_values(actions, CONVERSION_TYPES, int)
+            conversion_value_f = self._sum_action_values(action_values, PURCHASE_TYPES, float)
+            conversion_value = Decimal(str(conversion_value_f)) if conversion_value_f else None
 
-            video_p100 = r.get("video_p100_watched_actions", [{}])
-            video_completed = int(video_p100[0].get("value", 0)) if video_p100 else None
+            purchase = self._sum_action_values(actions, PURCHASE_TYPES, int)
+            purchase_val_f = self._sum_action_values(action_values, PURCHASE_TYPES, float)
+            purchase_value = Decimal(str(purchase_val_f)) if purchase_val_f else None
+            cost_per_purchase = self._extract_action_value(cost_per_action, PURCHASE_TYPES, lambda v: Decimal(str(v)))
+            lead = self._sum_action_values(actions, LEAD_TYPES, int)
+            cost_per_lead = self._extract_action_value(cost_per_action, LEAD_TYPES, lambda v: Decimal(str(v)))
+            subscribe = self._sum_action_values(actions, SUBSCRIBE_TYPES, int)
 
-            spend = Decimal(str(r.get("spend", 0) or 0))
-            impressions = int(r.get("impressions", 0) or 0)
-            cvr = (conversions / int(r.get("clicks", 1) or 1)) if conversions else None
-            roas = (conversion_value / float(spend)) if spend and conversion_value else None
-            video_view_rate = (video_views / impressions * 100) if video_views and impressions else None
+            post_engagement = self._extract_action_value(actions, ("post_engagement",), int)
+            page_engagement = self._extract_action_value(actions, ("page_engagement",), int)
+            reactions = self._safe_int(r.get("post_reactions"))
+
+            video_play_actions = self._extract_video_metric(r, "video_play_actions")
+            video_p25 = self._extract_video_metric(r, "video_p25_watched_actions")
+            video_p50 = self._extract_video_metric(r, "video_p50_watched_actions")
+            video_p75 = self._extract_video_metric(r, "video_p75_watched_actions")
+            video_p95 = self._extract_video_metric(r, "video_p95_watched_actions")
+            video_p100 = self._extract_video_metric(r, "video_p100_watched_actions")
+            video_30_sec = self._extract_video_metric(r, "video_30_sec_watched_actions")
+            video_thruplay = self._extract_video_metric(r, "video_thruplay_watched_actions")
+
+            video_avg_time_vals = r.get("video_avg_time_watched_actions", [])
+            video_avg_time_ms = None
+            if video_avg_time_vals and isinstance(video_avg_time_vals, list) and len(video_avg_time_vals) > 0:
+                try:
+                    video_avg_time_ms = int(float(video_avg_time_vals[0].get("value", 0)) * 1000)
+                except (ValueError, TypeError):
+                    pass
+
+            spend = self._safe_decimal(r.get("spend")) or Decimal("0")
+            impressions = self._safe_int(r.get("impressions")) or 0
+            clicks = self._safe_int(r.get("clicks")) or 0
+            cvr = (conversions / clicks) if conversions and clicks else None
+            roas_val = (float(conversion_value) / float(spend)) if spend and conversion_value else None
+            video_view_rate = (video_play_actions / impressions * 100) if video_play_actions and impressions else None
+
+            purchase_roas_raw = r.get("purchase_roas")
+            purchase_roas = None
+            if isinstance(purchase_roas_raw, list) and len(purchase_roas_raw) > 0:
+                purchase_roas = self._safe_float(purchase_roas_raw[0].get("value"))
+            elif purchase_roas_raw is not None:
+                purchase_roas = self._safe_float(purchase_roas_raw)
+
+            outbound_clicks = self._extract_outbound_clicks(r)
+            outbound_clicks_ctr = self._extract_outbound_clicks_ctr(r)
+            cost_per_outbound_click = self._extract_cost_per_outbound_click(r)
 
             rows.append({
                 "platform_connection_id": connection.id,
@@ -243,45 +397,79 @@ class MetaSyncService:
                 "campaign_id": r.get("campaign_id"),
                 "campaign_name": r.get("campaign_name"),
                 "campaign_objective": r.get("objective"),
+                "buying_type": r.get("buying_type"),
+                "bid_strategy": r.get("bid_strategy"),
                 "ad_set_id": r.get("adset_id"),
                 "ad_set_name": r.get("adset_name"),
+                "optimization_goal": r.get("optimization_goal"),
+                "billing_event": r.get("billing_event"),
+                "destination_type": r.get("destination_type"),
                 "ad_id": r.get("ad_id"),
                 "ad_name": r.get("ad_name"),
+                "configured_status": r.get("configured_status"),
+                "effective_status": r.get("effective_status"),
                 "currency": connection.currency,
                 "spend": spend,
                 "impressions": impressions,
-                "clicks": int(r.get("clicks", 0) or 0),
-                "ctr": float(r.get("ctr", 0) or 0),
-                "reach": int(r.get("reach", 0) or 0),
-                "frequency": float(r.get("frequency", 0) or 0),
-                "cpm": Decimal(str(r.get("cpm", 0) or 0)),
-                "cpc": Decimal(str(r.get("cpc", 0) or 0)),
-                "conversions": conversions,
-                "conversion_value": Decimal(str(conversion_value)),
-                "cvr": cvr,
-                "roas": roas,
-                "video_views": video_views,
+                "reach": self._safe_int(r.get("reach")),
+                "frequency": self._safe_float(r.get("frequency")),
+                "cpm": self._safe_decimal(r.get("cpm")),
+                "cpp": self._safe_decimal(r.get("cpp")),
+                "clicks": clicks,
+                "unique_clicks": self._safe_int(r.get("unique_clicks")),
+                "cpc": self._safe_decimal(r.get("cpc")),
+                "ctr": self._safe_float(r.get("ctr")),
+                "unique_ctr": self._safe_float(r.get("unique_ctr")),
+                "inline_link_clicks": self._safe_int(r.get("inline_link_clicks")),
+                "inline_link_click_ctr": self._safe_float(r.get("inline_link_click_ctr")),
+                "cost_per_inline_link_click": self._safe_decimal(r.get("cost_per_inline_link_click")),
+                "outbound_clicks": outbound_clicks,
+                "outbound_clicks_ctr": outbound_clicks_ctr,
+                "cost_per_outbound_click": cost_per_outbound_click,
+                "video_play_actions": video_play_actions,
+                "video_p25_watched": video_p25,
+                "video_p50_watched": video_p50,
+                "video_p75_watched": video_p75,
+                "video_p95_watched": video_p95,
+                "video_p100_watched": video_p100,
+                "video_30_sec_watched": video_30_sec,
+                "video_avg_time_watched_ms": video_avg_time_ms,
+                "video_thruplay_watched": video_thruplay,
+                "cost_per_thruplay": self._safe_decimal(r.get("cost_per_thruplay")),
+                "cost_per_10_sec_video_view": self._safe_decimal(r.get("cost_per_10_sec_video_view")),
+                "video_views": video_play_actions,
                 "video_view_rate": video_view_rate,
+                "estimated_ad_recallers": self._safe_int(r.get("estimated_ad_recallers")),
+                "estimated_ad_recall_rate": self._safe_float(r.get("estimated_ad_recall_rate")),
+                "cost_per_estimated_ad_recaller": self._safe_decimal(r.get("cost_per_estimated_ad_recallers")),
+                "estimated_ad_recall_lift": self._safe_float(r.get("estimated_ad_recall_lift_in_people")),
+                "post_engagement": post_engagement,
+                "page_engagement": page_engagement,
+                "reactions": reactions,
+                "conversions": conversions,
+                "conversion_value": conversion_value,
+                "cvr": cvr,
+                "roas": roas_val,
+                "purchase": purchase,
+                "purchase_value": purchase_value,
+                "cost_per_purchase": cost_per_purchase,
+                "purchase_roas": purchase_roas,
+                "lead": lead,
+                "cost_per_lead": cost_per_lead,
+                "subscribe": subscribe,
                 "is_validated": True,
                 "is_processed": False,
             })
 
         stmt = pg_insert(MetaRawPerformance).values(rows)
+        update_cols = {c.name: getattr(stmt.excluded, c.name)
+                       for c in MetaRawPerformance.__table__.columns
+                       if c.name not in ("id", "platform_connection_id", "report_date",
+                                         "ad_id", "ad_account_id", "retrieved_at")}
+        update_cols["is_processed"] = False
         stmt = stmt.on_conflict_do_update(
             constraint="uq_meta_daily_ad",
-            set_={
-                "spend": stmt.excluded.spend,
-                "impressions": stmt.excluded.impressions,
-                "clicks": stmt.excluded.clicks,
-                "ctr": stmt.excluded.ctr,
-                "conversions": stmt.excluded.conversions,
-                "conversion_value": stmt.excluded.conversion_value,
-                "cvr": stmt.excluded.cvr,
-                "roas": stmt.excluded.roas,
-                "video_views": stmt.excluded.video_views,
-                "video_view_rate": stmt.excluded.video_view_rate,
-                "is_processed": False,
-            }
+            set_=update_cols,
         )
         await db.execute(stmt)
         return len(rows)

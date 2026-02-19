@@ -10,7 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 
-from app.db.base import AsyncSessionLocal
+from app.db.base import get_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ async def run_daily_sync(connection_id: str) -> None:
     from app.services.sync.harmonizer import harmonizer
     import uuid
 
-    async with AsyncSessionLocal() as db:
+    async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(
                 PlatformConnection.id == uuid.UUID(connection_id),
@@ -107,7 +107,7 @@ async def run_initial_sync(connection_id: str) -> None:
 
     logger.info(f"=== Starting initial sync for connection {connection_id} ===")
 
-    async with AsyncSessionLocal() as db:
+    async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id))
         )
@@ -178,7 +178,7 @@ async def run_historical_sync(connection_id: str) -> None:
     from app.services.sync.harmonizer import harmonizer
     import uuid
 
-    async with AsyncSessionLocal() as db:
+    async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id))
         )
@@ -274,7 +274,7 @@ async def startup_scheduler(db_session=None) -> None:
 
     pending_initial = []
 
-    async with AsyncSessionLocal() as db:
+    async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(PlatformConnection.is_active == True)
         )

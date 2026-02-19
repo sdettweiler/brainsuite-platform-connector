@@ -44,6 +44,7 @@ replit_start.sh      # Startup script (installs deps, runs migrations, starts se
 - **Logo Assets**: Located in `frontend/src/assets/images/` (orange, white, black, orange-white, signet variants)
 
 ## Recent Changes
+- 2026-02-19: Field reference v3 migration — expanded all 4 performance models (Meta +44 cols, TikTok +56 cols, YouTube +38 cols, Harmonized +26 cols). Updated Meta sync to fetch ~60 fields including individual conversion breakdowns (purchase/lead/subscribe), video quartiles, engagement metrics. Updated TikTok sync with expanded metrics + /ad/get/ call for creative/dimension fields. Updated harmonizer for all 3 platforms with new field mappings including YouTube quartile rate→count conversion. Made db/base.py engine creation lazy to fix Alembic migration compatibility. Migration: d5e6f7g8h9i0.
 - 2026-02-19: Multi-step signup flow with Organization create/join, join request approval workflow, in-app notifications with badge, pending users section on org page
 - 2026-02-19: Complete UI rework — brand colors (Juicy Orange + Dusky Blue), Nunito Sans typography, actual brand logos, comprehensive Material Design overrides for inputs/dropdowns/dialogs
 - 2026-02-19: Imported project to Replit, fixed Angular build errors, configured for port 5000, fixed database connectivity
