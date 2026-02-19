@@ -54,6 +54,7 @@ import { AuthService } from '../../../core/services/auth.service';
             </button>
           </div>
 
+          <div class="pending-msg" *ngIf="pendingMsg">{{ pendingMsg }}</div>
           <div class="error-msg" *ngIf="errorMsg">{{ errorMsg }}</div>
 
           <button
@@ -166,6 +167,15 @@ import { AuthService } from '../../../core/services/auth.service';
 
     .toggle-pw:hover { color: var(--text-secondary); }
 
+    .pending-msg {
+      background: rgba(255, 170, 0, 0.1);
+      color: #FFAA00;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      border: 1px solid rgba(255, 170, 0, 0.25);
+    }
+
     .error-msg {
       background: rgba(231,76,60,0.1);
       color: var(--error);
@@ -212,6 +222,7 @@ export class LoginComponent {
   loading = false;
   showPassword = false;
   errorMsg = '';
+  pendingMsg = '';
 
   constructor(
     private fb: FormBuilder,
@@ -228,6 +239,7 @@ export class LoginComponent {
     if (this.form.invalid) return;
     this.loading = true;
     this.errorMsg = '';
+    this.pendingMsg = '';
     const { email, password } = this.form.value;
     this.auth.login(email, password).subscribe({
       next: () => {
@@ -235,8 +247,12 @@ export class LoginComponent {
           this.router.navigate(['/home']);
         });
       },
-      error: () => {
-        this.errorMsg = 'Invalid email or password';
+      error: (e) => {
+        if (e.status === 403 && e.error?.detail?.toLowerCase().includes('pending')) {
+          this.pendingMsg = e.error.detail;
+        } else {
+          this.errorMsg = 'Invalid email or password';
+        }
         this.loading = false;
       },
     });
