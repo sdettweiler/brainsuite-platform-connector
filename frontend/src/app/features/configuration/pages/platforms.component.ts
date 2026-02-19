@@ -40,9 +40,9 @@ interface PlatformDef {
 }
 
 const PLATFORMS: PlatformDef[] = [
-  { key: 'META', label: 'Meta', color: '#1877F2', icon: 'M', description: 'Facebook & Instagram Ads' },
-  { key: 'TIKTOK', label: 'TikTok', color: '#010101', icon: 'T', description: 'TikTok Ads Manager' },
-  { key: 'YOUTUBE', label: 'YouTube / Google', color: '#FF0000', icon: 'Y', description: 'Google Ads (YouTube)' },
+  { key: 'META', label: 'Meta', color: '#1877F2', icon: 'assets/images/icon-meta.png', description: 'Facebook & Instagram Ads' },
+  { key: 'TIKTOK', label: 'TikTok', color: '#010101', icon: 'assets/images/icon-tiktok.png', description: 'TikTok Ads Manager' },
+  { key: 'YOUTUBE', label: 'YouTube / Google', color: '#FF0000', icon: 'assets/images/icon-youtube.png', description: 'Google Ads (YouTube)' },
 ];
 
 @Component({
@@ -64,7 +64,7 @@ const PLATFORMS: PlatformDef[] = [
 
         <div class="platform-connect-row">
           <div *ngFor="let p of platforms" class="platform-connect-card">
-            <div class="platform-logo" [style.background]="p.color">{{ p.icon }}</div>
+            <div class="platform-logo"><img [src]="p.icon" [alt]="p.label" /></div>
             <div class="platform-info">
               <span class="platform-name">{{ p.label }}</span>
               <span class="platform-desc">{{ p.description }}</span>
@@ -85,8 +85,8 @@ const PLATFORMS: PlatformDef[] = [
         <div *ngIf="!loading; else loadingTpl">
           <div *ngFor="let conn of connections" class="connection-row">
             <div class="conn-platform">
-              <div class="platform-dot" [style.background]="getPlatformColor(conn.platform)">
-                {{ conn.platform[0] }}
+              <div class="platform-dot">
+                <img [src]="getPlatformIcon(conn.platform)" [alt]="conn.platform" />
               </div>
               <div class="conn-info">
                 <span class="conn-name">{{ conn.ad_account_name }}</span>
@@ -249,7 +249,8 @@ const PLATFORMS: PlatformDef[] = [
 
     .platform-logo {
       width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center;
-      justify-content: center; font-weight: 800; color: white; font-size: 16px; flex-shrink: 0;
+      justify-content: center; flex-shrink: 0; overflow: hidden;
+      img { width: 100%; height: 100%; object-fit: contain; }
     }
 
     .platform-info { flex: 1; }
@@ -273,7 +274,8 @@ const PLATFORMS: PlatformDef[] = [
 
     .platform-dot {
       width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
-      justify-content: center; color: white; font-weight: 700; font-size: 13px; flex-shrink: 0;
+      justify-content: center; flex-shrink: 0; overflow: hidden;
+      img { width: 100%; height: 100%; object-fit: contain; }
     }
 
     .conn-name { font-size: 14px; font-weight: 500; display: block; }
@@ -557,5 +559,9 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   getPlatformColor(platform: string): string {
     return PLATFORMS.find(p => p.key === platform)?.color || '#888';
+  }
+
+  getPlatformIcon(platform: string): string {
+    return PLATFORMS.find(p => p.key === platform)?.icon || '';
   }
 }
