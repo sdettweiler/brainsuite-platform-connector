@@ -384,6 +384,7 @@ def _make_callback_html(session_id: str, success: bool, error: str = "") -> str:
 async def platform_oauth_callback(
     platform_key: str,
     code: Optional[str] = None,
+    auth_code: Optional[str] = None,
     state: Optional[str] = None,
     error: Optional[str] = None,
 ):
@@ -401,7 +402,6 @@ async def platform_oauth_callback(
     if not platform or not state:
         return HTMLResponse(_make_callback_html("", False, error or "Invalid request"))
 
-    # state is the session_id
     session_id = state
     session = _oauth_sessions.get(session_id)
     if not session:
@@ -410,15 +410,17 @@ async def platform_oauth_callback(
     if error:
         return HTMLResponse(_make_callback_html(session_id, False, error))
 
+    effective_code = auth_code or code
+
     try:
         if platform == "META":
-            tokens = await meta_oauth.exchange_code_for_token(code)
+            tokens = await meta_oauth.exchange_code_for_token(effective_code)
             accounts = await meta_oauth.fetch_ad_accounts(tokens["access_token"])
         elif platform == "TIKTOK":
-            tokens = await tiktok_oauth.exchange_code_for_token(code)
+            tokens = await tiktok_oauth.exchange_code_for_token(effective_code)
             accounts = await tiktok_oauth.fetch_advertiser_accounts(tokens["access_token"])
         elif platform == "YOUTUBE":
-            tokens = await youtube_oauth.exchange_code_for_token(code)
+            tokens = await youtube_oauth.exchange_code_for_token(effective_code)
             accounts = await youtube_oauth.fetch_accessible_customers(tokens["access_token"])
         else:
             return HTMLResponse(_make_callback_html(session_id, False, "Unknown platform"))
