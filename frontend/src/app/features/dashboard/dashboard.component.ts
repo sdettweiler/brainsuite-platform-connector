@@ -47,7 +47,7 @@ import { format, subDays } from 'date-fns';
             (click)="togglePlatform(p.key)"
             [matTooltip]="p.label"
           >
-            <mat-icon [style.color]="p.color">{{ p.icon }}</mat-icon>
+            <img [src]="p.iconUrl" [alt]="p.label" class="platform-icon" />
           </button>
         </div>
 
@@ -242,9 +242,15 @@ import { format, subDays } from 'date-fns';
       background: transparent;
       display: flex; align-items: center; justify-content: center;
       cursor: pointer; transition: all var(--transition);
-      mat-icon { font-size: 20px; }
+      padding: 6px;
       &:hover { background: var(--bg-hover); }
       &.active { background: var(--accent-light); border-color: var(--accent); }
+    }
+
+    .platform-icon {
+      width: 22px;
+      height: 22px;
+      object-fit: contain;
     }
 
     .sort-dir-btn { color: var(--text-secondary); }
@@ -429,9 +435,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   contextMenu = { visible: false, x: 0, y: 0, asset: null as any };
 
   platforms = [
-    { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2' },
-    { key: 'TIKTOK', label: 'TikTok', icon: 'music_video', color: '#FF0050' },
-    { key: 'YOUTUBE', label: 'YouTube', icon: 'smart_display', color: '#FF0000' },
+    { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2', iconUrl: '/assets/images/icon-meta.png' },
+    { key: 'TIKTOK', label: 'TikTok', icon: 'music_video', color: '#FF0050', iconUrl: '/assets/images/icon-tiktok.png' },
+    { key: 'YOUTUBE', label: 'YouTube', icon: 'smart_display', color: '#FF0000', iconUrl: '/assets/images/icon-youtube.png' },
   ];
 
   private destroy$ = new Subject<void>();
