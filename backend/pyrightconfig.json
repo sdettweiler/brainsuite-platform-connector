@@ -1,0 +1,7 @@
+{
+  "extraPaths": [
+    "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages"
+  ],
+  "pythonVersion": "3.12",
+  "reportMissingImports": false
+}
