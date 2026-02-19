@@ -109,11 +109,13 @@ class TikTokOAuthHandler:
                 resp = await client.get(
                     f"{TIKTOK_API_BASE}/oauth2/advertiser/get/",
                     params={
-                        "access_token": access_token,
                         "app_id": settings.TIKTOK_APP_ID,
                         "secret": settings.TIKTOK_APP_SECRET,
                         "page": page,
                         "page_size": page_size,
+                    },
+                    headers={
+                        "Access-Token": access_token,
                     },
                 )
                 resp.raise_for_status()
