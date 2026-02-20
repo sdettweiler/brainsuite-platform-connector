@@ -573,7 +573,6 @@ class HarmonizationService:
             ace = generate_ace_score(kwargs.get("asset_format"))
             first_seen = kwargs.get("first_seen_at")
             if isinstance(first_seen, str):
-                from datetime import datetime
                 try:
                     first_seen = datetime.strptime(first_seen, "%Y-%m-%d").date()
                 except Exception:
@@ -617,9 +616,8 @@ class HarmonizationService:
             if kwargs.get("first_seen_at"):
                 first_seen = kwargs.get("first_seen_at")
                 if isinstance(first_seen, str):
-                    from datetime import datetime as _dt
                     try:
-                        first_seen = _dt.strptime(first_seen, "%Y-%m-%d").date()
+                        first_seen = datetime.strptime(first_seen, "%Y-%m-%d").date()
                     except Exception:
                         first_seen = None
                 if first_seen:
