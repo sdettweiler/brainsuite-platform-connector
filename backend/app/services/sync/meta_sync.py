@@ -33,6 +33,7 @@ INSIGHTS_FIELDS = [
     "date_start",
     "date_stop",
     "account_id",
+    "account_name",
     "campaign_id",
     "campaign_name",
     "objective",
@@ -55,10 +56,13 @@ INSIGHTS_FIELDS = [
     "unique_ctr",
     "inline_link_clicks",
     "inline_link_click_ctr",
+    "unique_inline_link_clicks",
     "cost_per_inline_link_click",
     "outbound_clicks",
     "outbound_clicks_ctr",
     "cost_per_outbound_click",
+    "unique_outbound_clicks",
+    "unique_outbound_clicks_ctr",
     "video_play_actions",
     "video_p25_watched_actions",
     "video_p50_watched_actions",
@@ -66,9 +70,12 @@ INSIGHTS_FIELDS = [
     "video_p95_watched_actions",
     "video_p100_watched_actions",
     "video_30_sec_watched_actions",
+    "video_3_sec_watched_actions",
     "video_avg_time_watched_actions",
     "video_thruplay_watched_actions",
     "cost_per_thruplay",
+    "unique_video_view_15_sec",
+    "cost_per_unique_video_view_15_sec",
     "estimated_ad_recallers",
     "estimated_ad_recall_rate",
     "cost_per_estimated_ad_recallers",
@@ -76,14 +83,16 @@ INSIGHTS_FIELDS = [
     "action_values",
     "cost_per_action_type",
     "purchase_roas",
+    "quality_ranking",
+    "engagement_rate_ranking",
+    "conversion_rate_ranking",
 ]
 
-AD_DIMENSION_FIELDS = [
-    "bid_strategy",
-    "billing_event",
-    "destination_type",
+AD_ENRICHMENT_FIELDS = [
     "configured_status",
     "effective_status",
+    "creative{id,name,body,title,link_url,image_url,thumbnail_url,image_hash,video_id,call_to_action_type,object_story_spec,instagram_permalink_url,instagram_actor_id,object_type}",
+    "adset{bid_strategy,billing_event,destination_type,optimization_goal}",
 ]
 
 
@@ -319,6 +328,26 @@ class MetaSyncService:
                 pass
         return None
 
+    @staticmethod
+    def _extract_unique_outbound_clicks(r: dict) -> Optional[int]:
+        oc = r.get("unique_outbound_clicks", [])
+        if isinstance(oc, list) and len(oc) > 0:
+            try:
+                return int(oc[0].get("value", 0))
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    @staticmethod
+    def _extract_unique_outbound_clicks_ctr(r: dict) -> Optional[float]:
+        oc = r.get("unique_outbound_clicks_ctr", [])
+        if isinstance(oc, list) and len(oc) > 0:
+            try:
+                return float(oc[0].get("value", 0))
+            except (ValueError, TypeError):
+                pass
+        return None
+
     async def _upsert_records(
         self,
         db: AsyncSession,
@@ -333,6 +362,13 @@ class MetaSyncService:
         LEAD_TYPES = ("lead", "offsite_conversion.fb_pixel_lead")
         SUBSCRIBE_TYPES = ("subscribe", "offsite_conversion.fb_pixel_complete_registration")
         CONVERSION_TYPES = PURCHASE_TYPES + LEAD_TYPES + SUBSCRIBE_TYPES
+        MOBILE_APP_INSTALL_TYPES = ("mobile_app_install", "app_install")
+        MOBILE_APP_PURCHASE_TYPES = ("app_custom_event.fb_mobile_purchase",)
+        OFFLINE_PURCHASE_TYPES = ("offline_conversion.purchase",)
+        OFFLINE_LEAD_TYPES = ("offline_conversion.lead",)
+        MESSAGING_TYPES = ("onsite_conversion.messaging_conversation_started_7d",)
+        ON_FACEBOOK_PURCHASE_TYPES = ("onsite_conversion.purchase",)
+        ON_FACEBOOK_LEAD_TYPES = ("onsite_conversion.lead",)
 
         rows = []
         for r in records:
@@ -352,6 +388,27 @@ class MetaSyncService:
             cost_per_lead = self._extract_action_value(cost_per_action, LEAD_TYPES, lambda v: Decimal(str(v)))
             subscribe = self._sum_action_values(actions, SUBSCRIBE_TYPES, int)
 
+            mobile_app_install = self._sum_action_values(actions, MOBILE_APP_INSTALL_TYPES, int)
+            cost_per_mobile_app_install = self._extract_action_value(cost_per_action, MOBILE_APP_INSTALL_TYPES, lambda v: Decimal(str(v)))
+            mobile_app_purchase = self._sum_action_values(actions, MOBILE_APP_PURCHASE_TYPES, int)
+            mobile_app_purchase_val_f = self._sum_action_values(action_values, MOBILE_APP_PURCHASE_TYPES, float)
+            mobile_app_purchase_value = Decimal(str(mobile_app_purchase_val_f)) if mobile_app_purchase_val_f else None
+
+            offline_purchase = self._sum_action_values(actions, OFFLINE_PURCHASE_TYPES, int)
+            offline_purchase_val_f = self._sum_action_values(action_values, OFFLINE_PURCHASE_TYPES, float)
+            offline_purchase_value = Decimal(str(offline_purchase_val_f)) if offline_purchase_val_f else None
+            cost_per_offline_purchase = self._extract_action_value(cost_per_action, OFFLINE_PURCHASE_TYPES, lambda v: Decimal(str(v)))
+            offline_lead = self._sum_action_values(actions, OFFLINE_LEAD_TYPES, int)
+
+            messaging_conversation_started_7d = self._sum_action_values(actions, MESSAGING_TYPES, int)
+            cost_per_messaging_conversation_started = self._extract_action_value(cost_per_action, MESSAGING_TYPES, lambda v: Decimal(str(v)))
+
+            on_facebook_purchase = self._sum_action_values(actions, ON_FACEBOOK_PURCHASE_TYPES, int)
+            on_facebook_purchase_val_f = self._sum_action_values(action_values, ON_FACEBOOK_PURCHASE_TYPES, float)
+            on_facebook_purchase_value = Decimal(str(on_facebook_purchase_val_f)) if on_facebook_purchase_val_f else None
+            on_facebook_lead = self._sum_action_values(actions, ON_FACEBOOK_LEAD_TYPES, int)
+            cost_per_on_facebook_lead = self._extract_action_value(cost_per_action, ON_FACEBOOK_LEAD_TYPES, lambda v: Decimal(str(v)))
+
             post_engagement = self._extract_action_value(actions, ("post_engagement",), int)
             page_engagement = self._extract_action_value(actions, ("page_engagement",), int)
             reactions = self._extract_action_value(actions, ("post_reaction",), int)
@@ -364,6 +421,7 @@ class MetaSyncService:
             video_p95 = self._extract_video_metric(r, "video_p95_watched_actions")
             video_p100 = self._extract_video_metric(r, "video_p100_watched_actions")
             video_30_sec = self._extract_video_metric(r, "video_30_sec_watched_actions")
+            video_3_sec_watched = self._extract_video_metric(r, "video_3_sec_watched_actions")
             video_thruplay = self._extract_video_metric(r, "video_thruplay_watched_actions")
 
             video_avg_time_vals = r.get("video_avg_time_watched_actions", [])
@@ -388,15 +446,25 @@ class MetaSyncService:
             elif purchase_roas_raw is not None:
                 purchase_roas = self._safe_float(purchase_roas_raw)
 
+            mobile_app_purchase_roas = None
+            if mobile_app_purchase_value and spend:
+                try:
+                    mobile_app_purchase_roas = float(mobile_app_purchase_value) / float(spend)
+                except (ValueError, ZeroDivisionError):
+                    pass
+
             outbound_clicks = self._extract_outbound_clicks(r)
             outbound_clicks_ctr = self._extract_outbound_clicks_ctr(r)
             cost_per_outbound_click = self._extract_cost_per_outbound_click(r)
+            unique_outbound_clicks = self._extract_unique_outbound_clicks(r)
+            unique_outbound_clicks_ctr = self._extract_unique_outbound_clicks_ctr(r)
 
             rows.append({
                 "platform_connection_id": connection.id,
                 "sync_job_id": sync_job_id,
                 "report_date": date.fromisoformat(r.get("date_start")),
                 "ad_account_id": connection.ad_account_id,
+                "account_name": r.get("account_name"),
                 "campaign_id": r.get("campaign_id"),
                 "campaign_name": r.get("campaign_name"),
                 "campaign_objective": r.get("objective"),
@@ -425,10 +493,13 @@ class MetaSyncService:
                 "unique_ctr": self._safe_float(r.get("unique_ctr")),
                 "inline_link_clicks": self._safe_int(r.get("inline_link_clicks")),
                 "inline_link_click_ctr": self._safe_float(r.get("inline_link_click_ctr")),
+                "unique_inline_link_clicks": self._safe_int(r.get("unique_inline_link_clicks")),
                 "cost_per_inline_link_click": self._safe_decimal(r.get("cost_per_inline_link_click")),
                 "outbound_clicks": outbound_clicks,
                 "outbound_clicks_ctr": outbound_clicks_ctr,
                 "cost_per_outbound_click": cost_per_outbound_click,
+                "unique_outbound_clicks": unique_outbound_clicks,
+                "unique_outbound_clicks_ctr": unique_outbound_clicks_ctr,
                 "video_play_actions": video_play_actions,
                 "video_p25_watched": video_p25,
                 "video_p50_watched": video_p50,
@@ -436,12 +507,15 @@ class MetaSyncService:
                 "video_p95_watched": video_p95,
                 "video_p100_watched": video_p100,
                 "video_30_sec_watched": video_30_sec,
+                "video_3_sec_watched": video_3_sec_watched,
                 "video_avg_time_watched_ms": video_avg_time_ms,
                 "video_thruplay_watched": video_thruplay,
                 "cost_per_thruplay": self._safe_decimal(r.get("cost_per_thruplay")),
                 "cost_per_10_sec_video_view": cost_per_10_sec,
                 "video_views": video_play_actions,
                 "video_view_rate": video_view_rate,
+                "unique_video_view_15_sec": self._safe_int(r.get("unique_video_view_15_sec")),
+                "cost_per_unique_video_view_15_sec": self._safe_decimal(r.get("cost_per_unique_video_view_15_sec")),
                 "estimated_ad_recallers": self._safe_int(r.get("estimated_ad_recallers")),
                 "estimated_ad_recall_rate": self._safe_float(r.get("estimated_ad_recall_rate")),
                 "cost_per_estimated_ad_recaller": self._safe_decimal(r.get("cost_per_estimated_ad_recallers")),
@@ -449,6 +523,9 @@ class MetaSyncService:
                 "post_engagement": post_engagement,
                 "page_engagement": page_engagement,
                 "reactions": reactions,
+                "quality_ranking": r.get("quality_ranking"),
+                "engagement_rate_ranking": r.get("engagement_rate_ranking"),
+                "conversion_rate_ranking": r.get("conversion_rate_ranking"),
                 "conversions": conversions,
                 "conversion_value": conversion_value,
                 "cvr": cvr,
@@ -460,6 +537,21 @@ class MetaSyncService:
                 "lead": lead,
                 "cost_per_lead": cost_per_lead,
                 "subscribe": subscribe,
+                "mobile_app_install": mobile_app_install,
+                "cost_per_mobile_app_install": cost_per_mobile_app_install,
+                "mobile_app_purchase": mobile_app_purchase,
+                "mobile_app_purchase_value": mobile_app_purchase_value,
+                "mobile_app_purchase_roas": mobile_app_purchase_roas,
+                "offline_purchase": offline_purchase,
+                "offline_purchase_value": offline_purchase_value,
+                "cost_per_offline_purchase": cost_per_offline_purchase,
+                "offline_lead": offline_lead,
+                "messaging_conversation_started_7d": messaging_conversation_started_7d,
+                "cost_per_messaging_conversation_started": cost_per_messaging_conversation_started,
+                "on_facebook_purchase": on_facebook_purchase,
+                "on_facebook_purchase_value": on_facebook_purchase_value,
+                "on_facebook_lead": on_facebook_lead,
+                "cost_per_on_facebook_lead": cost_per_on_facebook_lead,
                 "is_validated": True,
                 "is_processed": False,
             })
@@ -484,11 +576,11 @@ class MetaSyncService:
         access_token: str,
         ad_ids: List[str],
     ) -> None:
-        """Batch-fetch ad/adset/campaign dimension fields and update existing DB records."""
-        ad_fields = "id,configured_status,effective_status,adset{bid_strategy,billing_event,destination_type}"
+        ad_fields = "id," + ",".join(AD_ENRICHMENT_FIELDS)
         batch_size = 50
 
         ad_info_map: Dict[str, Dict[str, Any]] = {}
+        video_ids_to_fetch: Dict[str, List[str]] = {}
         for i in range(0, len(ad_ids), batch_size):
             batch = ad_ids[i:i + batch_size]
             ids_param = ",".join(batch)
@@ -506,16 +598,59 @@ class MetaSyncService:
                     data = resp.json()
                     for ad_id, info in data.items():
                         adset = info.get("adset", {})
-                        ad_info_map[ad_id] = {
+                        creative = info.get("creative", {})
+                        story_spec = creative.get("object_story_spec", {})
+
+                        sponsor_page_id = None
+                        if story_spec:
+                            sponsor_page_id = story_spec.get("page_id")
+
+                        object_type = (creative.get("object_type") or "").upper()
+                        vid = creative.get("video_id")
+                        has_video_data = "video_data" in story_spec
+                        if not vid and has_video_data:
+                            vid = story_spec.get("video_data", {}).get("video_id")
+                        is_video = object_type == "VIDEO" or bool(vid) or has_video_data
+                        ad_format = "VIDEO" if is_video else "IMAGE"
+
+                        dims = {
                             "configured_status": info.get("configured_status"),
                             "effective_status": info.get("effective_status"),
                             "bid_strategy": adset.get("bid_strategy"),
                             "billing_event": adset.get("billing_event"),
                             "destination_type": adset.get("destination_type"),
+                            "optimization_goal": adset.get("optimization_goal"),
+                            "creative_id": creative.get("id"),
+                            "creative_name": creative.get("name"),
+                            "body": creative.get("body"),
+                            "title": creative.get("title"),
+                            "call_to_action_type": creative.get("call_to_action_type"),
+                            "link_url": creative.get("link_url"),
+                            "image_url": creative.get("image_url"),
+                            "thumbnail_url": creative.get("thumbnail_url"),
+                            "video_id": vid,
+                            "instagram_permalink_url": creative.get("instagram_permalink_url"),
+                            "instagram_actor_id": creative.get("instagram_actor_id"),
+                            "ad_format": ad_format,
+                            "branded_content_sponsor_page_id": sponsor_page_id,
                         }
+                        ad_info_map[ad_id] = dims
+
+                        if vid:
+                            video_ids_to_fetch[vid] = video_ids_to_fetch.get(vid, [])
+                            video_ids_to_fetch[vid].append(ad_id)
             except Exception as e:
                 logger.warning(f"  Failed to fetch ad dimensions batch: {e}")
                 continue
+
+        if video_ids_to_fetch:
+            video_lengths = await self._batch_fetch_video_lengths(access_token, list(video_ids_to_fetch.keys()))
+            for vid, ad_id_list in video_ids_to_fetch.items():
+                length = video_lengths.get(vid)
+                if length is not None:
+                    for ad_id in ad_id_list:
+                        if ad_id in ad_info_map:
+                            ad_info_map[ad_id]["video_length_sec"] = length
 
         if not ad_info_map:
             return
@@ -532,6 +667,40 @@ class MetaSyncService:
             )
             await db.execute(stmt)
         await db.flush()
+
+    async def _batch_fetch_video_lengths(
+        self,
+        access_token: str,
+        video_ids: List[str],
+    ) -> Dict[str, float]:
+        result: Dict[str, float] = {}
+        batch_size = 50
+        for i in range(0, len(video_ids), batch_size):
+            batch = video_ids[i:i + batch_size]
+            ids_param = ",".join(batch)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.get(
+                        f"{META_GRAPH_URL}/",
+                        params={
+                            "ids": ids_param,
+                            "fields": "length",
+                            "access_token": access_token,
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    for vid, info in data.items():
+                        length = info.get("length")
+                        if length is not None:
+                            try:
+                                result[vid] = float(length)
+                            except (ValueError, TypeError):
+                                pass
+            except Exception as e:
+                logger.warning(f"  Failed to fetch video lengths batch: {e}")
+                continue
+        return result
 
     async def _fetch_and_store_creatives(
         self,
