@@ -425,6 +425,8 @@ class HarmonizedPerformance(Base):
     ad_id: Mapped[str] = mapped_column(String(255), nullable=False)
     ad_name: Mapped[str] = mapped_column(String(1000), nullable=True)
     asset_format: Mapped[str] = mapped_column(String(50), nullable=True)
+    publisher_platform: Mapped[str] = mapped_column(String(100), nullable=True)
+    platform_position: Mapped[str] = mapped_column(String(100), nullable=True)
 
     org_currency: Mapped[str] = mapped_column(String(3), nullable=False)
     original_currency: Mapped[str] = mapped_column(String(3), nullable=True)
@@ -506,7 +508,7 @@ class HarmonizedPerformance(Base):
     asset: Mapped["CreativeAsset"] = relationship("CreativeAsset", back_populates="harmonized_performance")
 
     __table_args__ = (
-        UniqueConstraint("asset_id", "platform_connection_id", "report_date", "ad_id", "ad_account_id", name="uq_harmonized_daily_ad"),
+        UniqueConstraint("asset_id", "platform_connection_id", "report_date", "ad_id", "ad_account_id", "publisher_platform", "platform_position", name="uq_harmonized_daily_ad_breakdown"),
         Index("ix_harmonized_date_platform", "report_date", "platform"),
         Index("ix_harmonized_asset", "asset_id"),
     )

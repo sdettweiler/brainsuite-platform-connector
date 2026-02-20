@@ -42,6 +42,7 @@ HARMONIZED_UPDATE_COLS = [
     "unique_clicks", "unique_ctr", "inline_link_clicks", "inline_link_click_ctr",
     "video_3_sec_watched", "video_30_sec_watched",
     "exchange_rate", "platform_extras", "harmonized_at",
+    "publisher_platform", "platform_position",
 ]
 
 
@@ -113,15 +114,12 @@ class HarmonizationService:
         raw_records = result.scalars().all()
         count = 0
 
-        groups: Dict[tuple, List] = {}
         for raw in raw_records:
-            key = (raw.ad_id, raw.report_date, raw.ad_account_id)
-            groups.setdefault(key, []).append(raw)
-
-        for (ad_id, report_date, ad_account_id), breakdown_rows in groups.items():
             try:
-                first = breakdown_rows[0]
-                original_currency = first.currency or connection.currency or "USD"
+                ad_id = raw.ad_id
+                report_date = raw.report_date
+                ad_account_id = raw.ad_account_id
+                original_currency = raw.currency or connection.currency or "USD"
                 exchange_rate = await currency_converter.get_rate(
                     db, original_currency, org_currency, report_date
                 )
@@ -132,169 +130,86 @@ class HarmonizationService:
                     connection=connection,
                     platform="META",
                     ad_id=ad_id,
-                    ad_name=first.ad_name,
-                    campaign_id=first.campaign_id,
-                    campaign_name=first.campaign_name,
-                    campaign_objective=first.campaign_objective,
-                    ad_set_id=first.ad_set_id,
-                    ad_set_name=first.ad_set_name,
+                    ad_name=raw.ad_name,
+                    campaign_id=raw.campaign_id,
+                    campaign_name=raw.campaign_name,
+                    campaign_objective=raw.campaign_objective,
+                    ad_set_id=raw.ad_set_id,
+                    ad_set_name=raw.ad_set_name,
                     ad_account_id=ad_account_id,
-                    asset_format=first.ad_format,
-                    thumbnail_url=first.thumbnail_url,
-                    asset_url=first.asset_url,
-                    creative_id=first.creative_id,
-                    placement=first.placement,
+                    asset_format=raw.ad_format,
+                    thumbnail_url=raw.thumbnail_url,
+                    asset_url=raw.asset_url,
+                    creative_id=raw.creative_id,
+                    placement=raw.placement,
                     first_seen_at=report_date,
                 )
 
-                t_spend = None
-                t_impressions = None
-                t_reach = None
-                t_clicks = None
-                t_outbound_clicks = None
-                t_video_plays = None
-                t_video_views = None
-                t_video_p25 = None
-                t_video_p50 = None
-                t_video_p75 = None
-                t_video_p100 = None
-                t_thruplay = None
-                t_post_engagements = None
-                t_likes = None
-                t_conversions = None
-                t_conversion_value = None
-                t_purchases = None
-                t_purchase_value = None
-                t_leads = None
-                t_app_installs = None
-                t_in_app_purchases = None
-                t_in_app_purchase_value = None
-                t_subscribe = None
-                t_offline_purchases = None
-                t_offline_purchase_value = None
-                t_messaging = None
-                t_ad_recallers = None
-                t_unique_clicks = None
-                t_inline_link_clicks = None
-                t_video_3_sec = None
-                t_video_30_sec = None
-                t_on_fb_purchase = None
-                t_on_fb_purchase_value = None
-                t_on_fb_lead = None
-                t_offline_lead = None
-                t_page_engagement = None
-                total_video_avg_ms_weighted = 0.0
-                total_video_avg_weight = 0
+                spend = raw.spend
+                impressions = raw.impressions
+                reach = raw.reach
+                clicks = raw.clicks
 
-                breakdowns_list = []
-
-                for raw in breakdown_rows:
-                    t_spend = self._safe_add_decimal(t_spend, raw.spend)
-                    t_impressions = self._safe_add(t_impressions, raw.impressions)
-                    t_reach = self._safe_add(t_reach, raw.reach)
-                    t_clicks = self._safe_add(t_clicks, raw.clicks)
-                    t_outbound_clicks = self._safe_add(t_outbound_clicks, raw.outbound_clicks)
-                    t_video_plays = self._safe_add(t_video_plays, raw.video_play_actions)
-                    t_video_views = self._safe_add(t_video_views, raw.video_views)
-                    t_video_p25 = self._safe_add(t_video_p25, raw.video_p25_watched)
-                    t_video_p50 = self._safe_add(t_video_p50, raw.video_p50_watched)
-                    t_video_p75 = self._safe_add(t_video_p75, raw.video_p75_watched)
-                    t_video_p100 = self._safe_add(t_video_p100, raw.video_p100_watched)
-                    t_thruplay = self._safe_add(t_thruplay, raw.video_thruplay_watched)
-                    t_post_engagements = self._safe_add(t_post_engagements, raw.post_engagement)
-                    t_likes = self._safe_add(t_likes, raw.reactions)
-                    t_conversions = self._safe_add(t_conversions, raw.conversions)
-                    t_conversion_value = self._safe_add_decimal(t_conversion_value, raw.conversion_value)
-                    t_purchases = self._safe_add(t_purchases, raw.purchase)
-                    t_purchase_value = self._safe_add_decimal(t_purchase_value, raw.purchase_value)
-                    t_leads = self._safe_add(t_leads, raw.lead)
-                    t_app_installs = self._safe_add(t_app_installs, raw.mobile_app_install)
-                    t_in_app_purchases = self._safe_add(t_in_app_purchases, raw.mobile_app_purchase)
-                    t_in_app_purchase_value = self._safe_add_decimal(t_in_app_purchase_value, raw.mobile_app_purchase_value)
-                    t_subscribe = self._safe_add(t_subscribe, raw.subscribe)
-                    t_offline_purchases = self._safe_add(t_offline_purchases, raw.offline_purchase)
-                    t_offline_purchase_value = self._safe_add_decimal(t_offline_purchase_value, raw.offline_purchase_value)
-                    t_messaging = self._safe_add(t_messaging, raw.messaging_conversation_started_7d)
-                    t_ad_recallers = self._safe_add(t_ad_recallers, raw.estimated_ad_recallers)
-                    t_unique_clicks = self._safe_add(t_unique_clicks, raw.unique_clicks)
-                    t_inline_link_clicks = self._safe_add(t_inline_link_clicks, raw.inline_link_clicks)
-                    t_video_3_sec = self._safe_add(t_video_3_sec, raw.video_3_sec_watched)
-                    t_video_30_sec = self._safe_add(t_video_30_sec, raw.video_30_sec_watched)
-                    t_on_fb_purchase = self._safe_add(t_on_fb_purchase, raw.on_facebook_purchase)
-                    t_on_fb_purchase_value = self._safe_add_decimal(t_on_fb_purchase_value, raw.on_facebook_purchase_value)
-                    t_on_fb_lead = self._safe_add(t_on_fb_lead, raw.on_facebook_lead)
-                    t_offline_lead = self._safe_add(t_offline_lead, raw.offline_lead)
-                    t_page_engagement = self._safe_add(t_page_engagement, raw.page_engagement)
-
-                    if raw.video_avg_time_watched_ms is not None and raw.impressions:
-                        total_video_avg_ms_weighted += raw.video_avg_time_watched_ms * raw.impressions
-                        total_video_avg_weight += raw.impressions
-
-                    if raw.publisher_platform or raw.platform_position:
-                        breakdowns_list.append({
-                            "publisher_platform": raw.publisher_platform,
-                            "platform_position": raw.platform_position,
-                            "spend": float(raw.spend) if raw.spend else 0,
-                            "impressions": raw.impressions or 0,
-                        })
+                spend_converted = convert(spend)
+                cpm = None
+                if spend is not None and impressions:
+                    cpm = convert(Decimal(str(float(spend) / impressions * 1000)))
+                cpc = None
+                if spend is not None and clicks:
+                    cpc = convert(Decimal(str(float(spend) / clicks)))
+                ctr = None
+                if clicks is not None and impressions:
+                    ctr = float(clicks) / impressions * 100
+                outbound_ctr = None
+                if raw.outbound_clicks is not None and impressions:
+                    outbound_ctr = float(raw.outbound_clicks) / impressions * 100
+                vtr = None
+                if raw.video_views is not None and impressions:
+                    vtr = float(raw.video_views) / impressions * 100
+                cvr = None
+                if raw.conversions is not None and clicks:
+                    cvr = float(raw.conversions) / clicks * 100
+                roas = None
+                if raw.conversion_value is not None and spend and float(spend) > 0:
+                    roas = float(raw.conversion_value) / float(spend)
+                purchase_roas = None
+                if raw.purchase_value is not None and spend and float(spend) > 0:
+                    purchase_roas = float(raw.purchase_value) / float(spend)
+                cost_per_thruplay = None
+                if spend is not None and raw.video_thruplay_watched:
+                    cost_per_thruplay = convert(Decimal(str(float(spend) / raw.video_thruplay_watched)))
+                cost_per_lead = None
+                if spend is not None and raw.lead:
+                    cost_per_lead = convert(Decimal(str(float(spend) / raw.lead)))
+                cost_per_conversion = None
+                if spend is not None and raw.conversions:
+                    cost_per_conversion = convert(Decimal(str(float(spend) / raw.conversions)))
+                cost_per_install = None
+                if spend is not None and raw.mobile_app_install:
+                    cost_per_install = convert(Decimal(str(float(spend) / raw.mobile_app_install)))
+                unique_ctr = None
+                if raw.unique_clicks is not None and impressions:
+                    unique_ctr = float(raw.unique_clicks) / impressions * 100
+                inline_link_click_ctr = None
+                if raw.inline_link_clicks is not None and impressions:
+                    inline_link_click_ctr = float(raw.inline_link_clicks) / impressions * 100
+                ad_recall_rate = None
+                if raw.estimated_ad_recallers is not None and impressions:
+                    ad_recall_rate = float(raw.estimated_ad_recallers) / impressions * 100
+                frequency = None
+                if impressions is not None and reach:
+                    frequency = float(impressions) / reach
+                in_app_roas = None
+                if raw.mobile_app_purchase_value is not None and spend and float(spend) > 0:
+                    in_app_roas = float(raw.mobile_app_purchase_value) / float(spend)
 
                 video_avg_watch_seconds = None
-                if total_video_avg_weight > 0:
-                    video_avg_watch_seconds = (total_video_avg_ms_weighted / total_video_avg_weight) / 1000.0
+                if raw.video_avg_time_watched_ms is not None:
+                    video_avg_watch_seconds = raw.video_avg_time_watched_ms / 1000.0
 
-                t_spend_converted = convert(t_spend)
-                t_cpm = None
-                if t_spend is not None and t_impressions:
-                    t_cpm = convert(Decimal(str(float(t_spend) / t_impressions * 1000)))
-                t_cpc = None
-                if t_spend is not None and t_clicks:
-                    t_cpc = convert(Decimal(str(float(t_spend) / t_clicks)))
-                t_ctr = None
-                if t_clicks is not None and t_impressions:
-                    t_ctr = float(t_clicks) / t_impressions * 100
-                t_outbound_ctr = None
-                if t_outbound_clicks is not None and t_impressions:
-                    t_outbound_ctr = float(t_outbound_clicks) / t_impressions * 100
-                t_vtr = None
-                if t_video_views is not None and t_impressions:
-                    t_vtr = float(t_video_views) / t_impressions * 100
-                t_cvr = None
-                if t_conversions is not None and t_clicks:
-                    t_cvr = float(t_conversions) / t_clicks * 100
-                t_roas = None
-                if t_conversion_value is not None and t_spend and float(t_spend) > 0:
-                    t_roas = float(t_conversion_value) / float(t_spend)
-                t_purchase_roas = None
-                if t_purchase_value is not None and t_spend and float(t_spend) > 0:
-                    t_purchase_roas = float(t_purchase_value) / float(t_spend)
-                t_cost_per_thruplay = None
-                if t_spend is not None and t_thruplay:
-                    t_cost_per_thruplay = convert(Decimal(str(float(t_spend) / t_thruplay)))
-                t_cost_per_lead = None
-                if t_spend is not None and t_leads:
-                    t_cost_per_lead = convert(Decimal(str(float(t_spend) / t_leads)))
-                t_cost_per_conversion = None
-                if t_spend is not None and t_conversions:
-                    t_cost_per_conversion = convert(Decimal(str(float(t_spend) / t_conversions)))
-                t_cost_per_install = None
-                if t_spend is not None and t_app_installs:
-                    t_cost_per_install = convert(Decimal(str(float(t_spend) / t_app_installs)))
-                t_unique_ctr = None
-                if t_unique_clicks is not None and t_impressions:
-                    t_unique_ctr = float(t_unique_clicks) / t_impressions * 100
-                t_inline_link_click_ctr = None
-                if t_inline_link_clicks is not None and t_impressions:
-                    t_inline_link_click_ctr = float(t_inline_link_clicks) / t_impressions * 100
-                t_ad_recall_rate = None
-                if t_ad_recallers is not None and t_impressions:
-                    t_ad_recall_rate = float(t_ad_recallers) / t_impressions * 100
-                t_frequency = None
-                if t_impressions is not None and t_reach:
-                    t_frequency = float(t_impressions) / t_reach
-
-                t_in_app_roas = None
-                if t_in_app_purchase_value is not None and t_spend and float(t_spend) > 0:
-                    t_in_app_roas = float(t_in_app_purchase_value) / float(t_spend)
+                video_completion_rate = None
+                if raw.video_p100_watched is not None and impressions:
+                    video_completion_rate = float(raw.video_p100_watched) / impressions * 100
 
                 row = {
                     "asset_id": asset.id,
@@ -302,100 +217,101 @@ class HarmonizationService:
                     "report_date": report_date,
                     "platform": "META",
                     "ad_account_id": ad_account_id,
-                    "campaign_id": first.campaign_id,
-                    "campaign_name": first.campaign_name,
-                    "campaign_objective": first.campaign_objective,
-                    "ad_set_id": first.ad_set_id,
-                    "ad_set_name": first.ad_set_name,
+                    "campaign_id": raw.campaign_id,
+                    "campaign_name": raw.campaign_name,
+                    "campaign_objective": raw.campaign_objective,
+                    "ad_set_id": raw.ad_set_id,
+                    "ad_set_name": raw.ad_set_name,
                     "ad_id": ad_id,
-                    "ad_name": first.ad_name,
-                    "asset_format": first.ad_format or "IMAGE",
+                    "ad_name": raw.ad_name,
+                    "asset_format": raw.ad_format or "IMAGE",
+                    "publisher_platform": raw.publisher_platform,
+                    "platform_position": raw.platform_position,
                     "org_currency": org_currency,
                     "original_currency": original_currency,
                     "exchange_rate": exchange_rate,
-                    "spend": t_spend_converted,
-                    "impressions": t_impressions,
-                    "reach": t_reach,
-                    "frequency": t_frequency,
-                    "cpm": t_cpm,
+                    "spend": spend_converted,
+                    "impressions": impressions,
+                    "reach": reach,
+                    "frequency": frequency,
+                    "cpm": cpm,
                     "cpp": None,
-                    "clicks": t_clicks,
-                    "cpc": t_cpc,
-                    "ctr": t_ctr,
-                    "outbound_clicks": t_outbound_clicks,
-                    "outbound_ctr": t_outbound_ctr,
-                    "cpv": t_cost_per_thruplay,
-                    "video_plays": t_video_plays,
-                    "video_views": t_video_views,
-                    "vtr": t_vtr,
-                    "video_p25": t_video_p25,
-                    "video_p50": t_video_p50,
-                    "video_p75": t_video_p75,
-                    "video_p100": t_video_p100,
+                    "clicks": clicks,
+                    "cpc": cpc,
+                    "ctr": ctr,
+                    "outbound_clicks": raw.outbound_clicks,
+                    "outbound_ctr": outbound_ctr,
+                    "cpv": cost_per_thruplay,
+                    "video_plays": raw.video_play_actions,
+                    "video_views": raw.video_views,
+                    "vtr": vtr,
+                    "video_p25": raw.video_p25_watched,
+                    "video_p50": raw.video_p50_watched,
+                    "video_p75": raw.video_p75_watched,
+                    "video_p100": raw.video_p100_watched,
+                    "video_completion_rate": video_completion_rate,
                     "video_avg_watch_time_seconds": video_avg_watch_seconds,
-                    "cost_per_view": t_cost_per_thruplay,
-                    "thruplay": t_thruplay,
-                    "cost_per_thruplay": t_cost_per_thruplay,
+                    "cost_per_view": cost_per_thruplay,
+                    "thruplay": raw.video_thruplay_watched,
+                    "cost_per_thruplay": cost_per_thruplay,
                     "focused_view": None,
                     "cost_per_focused_view": None,
                     "trueview_views": None,
-                    "post_engagements": t_post_engagements,
-                    "likes": t_likes,
+                    "post_engagements": raw.post_engagement,
+                    "likes": raw.reactions,
                     "comments": None,
                     "shares": None,
                     "follows": None,
-                    "conversions": t_conversions,
-                    "conversion_value": convert(t_conversion_value),
-                    "cvr": t_cvr,
-                    "cost_per_conversion": t_cost_per_conversion,
-                    "roas": t_roas,
-                    "purchases": t_purchases,
-                    "purchase_value": convert(t_purchase_value),
-                    "purchase_roas": t_purchase_roas,
-                    "leads": t_leads,
-                    "cost_per_lead": t_cost_per_lead,
-                    "app_installs": t_app_installs,
-                    "cost_per_install": t_cost_per_install,
-                    "in_app_purchases": t_in_app_purchases,
-                    "in_app_purchase_value": convert(t_in_app_purchase_value),
-                    "in_app_purchase_roas": t_in_app_roas,
-                    "subscribe": t_subscribe,
-                    "offline_purchases": t_offline_purchases,
-                    "offline_purchase_value": convert(t_offline_purchase_value),
-                    "messaging_conversations_started": t_messaging,
-                    "estimated_ad_recallers": t_ad_recallers,
-                    "estimated_ad_recall_rate": t_ad_recall_rate,
-                    "quality_ranking": first.quality_ranking,
-                    "engagement_rate_ranking": first.engagement_rate_ranking,
-                    "conversion_rate_ranking": first.conversion_rate_ranking,
-                    "creative_fatigue": first.creative_fatigue,
-                    "unique_clicks": t_unique_clicks,
-                    "unique_ctr": t_unique_ctr,
-                    "inline_link_clicks": t_inline_link_clicks,
-                    "inline_link_click_ctr": t_inline_link_click_ctr,
-                    "video_3_sec_watched": t_video_3_sec,
-                    "video_30_sec_watched": t_video_30_sec,
+                    "conversions": raw.conversions,
+                    "conversion_value": convert(raw.conversion_value),
+                    "cvr": cvr,
+                    "cost_per_conversion": cost_per_conversion,
+                    "roas": roas,
+                    "purchases": raw.purchase,
+                    "purchase_value": convert(raw.purchase_value),
+                    "purchase_roas": purchase_roas,
+                    "leads": raw.lead,
+                    "cost_per_lead": cost_per_lead,
+                    "app_installs": raw.mobile_app_install,
+                    "cost_per_install": cost_per_install,
+                    "in_app_purchases": raw.mobile_app_purchase,
+                    "in_app_purchase_value": convert(raw.mobile_app_purchase_value),
+                    "in_app_purchase_roas": in_app_roas,
+                    "subscribe": raw.subscribe,
+                    "offline_purchases": raw.offline_purchase,
+                    "offline_purchase_value": convert(raw.offline_purchase_value),
+                    "messaging_conversations_started": raw.messaging_conversation_started_7d,
+                    "estimated_ad_recallers": raw.estimated_ad_recallers,
+                    "estimated_ad_recall_rate": ad_recall_rate,
+                    "quality_ranking": raw.quality_ranking,
+                    "engagement_rate_ranking": raw.engagement_rate_ranking,
+                    "conversion_rate_ranking": raw.conversion_rate_ranking,
+                    "creative_fatigue": raw.creative_fatigue,
+                    "unique_clicks": raw.unique_clicks,
+                    "unique_ctr": unique_ctr,
+                    "inline_link_clicks": raw.inline_link_clicks,
+                    "inline_link_click_ctr": inline_link_click_ctr,
+                    "video_3_sec_watched": raw.video_3_sec_watched,
+                    "video_30_sec_watched": raw.video_30_sec_watched,
                     "platform_extras": {
-                        "page_engagement": t_page_engagement,
-                        "buying_type": first.buying_type,
-                        "bid_strategy": first.bid_strategy,
-                        "optimization_goal": first.optimization_goal,
-                        "on_facebook_purchase": t_on_fb_purchase,
-                        "on_facebook_purchase_value": float(t_on_fb_purchase_value) if t_on_fb_purchase_value else None,
-                        "on_facebook_lead": t_on_fb_lead,
-                        "offline_lead": t_offline_lead,
-                        "breakdowns": breakdowns_list,
+                        "page_engagement": raw.page_engagement,
+                        "buying_type": raw.buying_type,
+                        "bid_strategy": raw.bid_strategy,
+                        "optimization_goal": raw.optimization_goal,
+                        "on_facebook_purchase": raw.on_facebook_purchase,
+                        "on_facebook_purchase_value": float(raw.on_facebook_purchase_value) if raw.on_facebook_purchase_value else None,
+                        "on_facebook_lead": raw.on_facebook_lead,
+                        "offline_lead": raw.offline_lead,
                     },
                 }
 
                 await self._upsert_harmonized(db, row)
-                for raw in breakdown_rows:
-                    raw.is_processed = True
-                    db.add(raw)
+                raw.is_processed = True
+                db.add(raw)
                 count += 1
 
             except Exception as e:
-                logger.error(f"Harmonization error for Meta ad {ad_id} on {report_date}: {e}")
+                logger.error(f"Harmonization error for Meta ad {raw.ad_id} on {raw.report_date}: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
 
@@ -814,7 +730,7 @@ class HarmonizationService:
         stmt = pg_insert(HarmonizedPerformance).values([row])
         update_set = {k: stmt.excluded[k] for k in HARMONIZED_UPDATE_COLS if k in row}
         stmt = stmt.on_conflict_do_update(
-            constraint="uq_harmonized_daily_ad",
+            constraint="uq_harmonized_daily_ad_breakdown",
             set_=update_set,
         )
         await db.execute(stmt)
