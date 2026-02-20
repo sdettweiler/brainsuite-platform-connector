@@ -146,7 +146,7 @@ class MetaRawPerformance(Base):
     is_processed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     __table_args__ = (
-        UniqueConstraint("platform_connection_id", "report_date", "ad_id", "ad_account_id", name="uq_meta_daily_ad"),
+        UniqueConstraint("platform_connection_id", "report_date", "ad_id", "ad_account_id", "publisher_platform", "platform_position", name="uq_meta_daily_ad_breakdown"),
         Index("ix_meta_raw_date_account", "report_date", "ad_account_id"),
         Index("ix_meta_raw_ad_id", "ad_id"),
     )

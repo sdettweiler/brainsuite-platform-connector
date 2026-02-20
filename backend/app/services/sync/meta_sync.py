@@ -185,6 +185,7 @@ class MetaSyncService:
             "access_token": access_token,
             "level": "ad",
             "fields": ",".join(INSIGHTS_FIELDS),
+            "breakdowns": "publisher_platform,platform_position",
             "time_range": f'{{"since":"{date_from.isoformat()}","until":"{date_to.isoformat()}"}}',
             "time_increment": 1,
             "limit": 500,
@@ -462,6 +463,8 @@ class MetaSyncService:
                 "report_date": date.fromisoformat(r.get("date_start")),
                 "ad_account_id": connection.ad_account_id,
                 "account_name": r.get("account_name"),
+                "publisher_platform": r.get("publisher_platform"),
+                "platform_position": r.get("platform_position"),
                 "campaign_id": r.get("campaign_id"),
                 "campaign_name": r.get("campaign_name"),
                 "campaign_objective": r.get("objective"),
@@ -553,14 +556,26 @@ class MetaSyncService:
                 "is_processed": False,
             })
 
+        report_dates = {row["report_date"] for row in rows}
+        for rd in report_dates:
+            await db.execute(
+                MetaRawPerformance.__table__.delete().where(
+                    MetaRawPerformance.platform_connection_id == connection.id,
+                    MetaRawPerformance.ad_account_id == connection.ad_account_id,
+                    MetaRawPerformance.report_date == rd,
+                )
+            )
+        await db.flush()
+
         stmt = pg_insert(MetaRawPerformance).values(rows)
         update_cols = {c.name: getattr(stmt.excluded, c.name)
                        for c in MetaRawPerformance.__table__.columns
                        if c.name not in ("id", "platform_connection_id", "report_date",
-                                         "ad_id", "ad_account_id", "retrieved_at")}
+                                         "ad_id", "ad_account_id", "publisher_platform",
+                                         "platform_position", "retrieved_at")}
         update_cols["is_processed"] = False
         stmt = stmt.on_conflict_do_update(
-            constraint="uq_meta_daily_ad",
+            constraint="uq_meta_daily_ad_breakdown",
             set_=update_cols,
         )
         await db.execute(stmt)
