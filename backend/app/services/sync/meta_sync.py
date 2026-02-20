@@ -70,12 +70,9 @@ INSIGHTS_FIELDS = [
     "video_p95_watched_actions",
     "video_p100_watched_actions",
     "video_30_sec_watched_actions",
-    "video_3_sec_watched_actions",
     "video_avg_time_watched_actions",
     "video_thruplay_watched_actions",
     "cost_per_thruplay",
-    "unique_video_view_15_sec",
-    "cost_per_unique_video_view_15_sec",
     "estimated_ad_recallers",
     "estimated_ad_recall_rate",
     "cost_per_estimated_ad_recallers",
@@ -421,7 +418,7 @@ class MetaSyncService:
             video_p95 = self._extract_video_metric(r, "video_p95_watched_actions")
             video_p100 = self._extract_video_metric(r, "video_p100_watched_actions")
             video_30_sec = self._extract_video_metric(r, "video_30_sec_watched_actions")
-            video_3_sec_watched = self._extract_video_metric(r, "video_3_sec_watched_actions")
+            video_3_sec_watched = self._extract_video_metric(r, "video_play_actions")
             video_thruplay = self._extract_video_metric(r, "video_thruplay_watched_actions")
 
             video_avg_time_vals = r.get("video_avg_time_watched_actions", [])
@@ -514,8 +511,8 @@ class MetaSyncService:
                 "cost_per_10_sec_video_view": cost_per_10_sec,
                 "video_views": video_play_actions,
                 "video_view_rate": video_view_rate,
-                "unique_video_view_15_sec": self._safe_int(r.get("unique_video_view_15_sec")),
-                "cost_per_unique_video_view_15_sec": self._safe_decimal(r.get("cost_per_unique_video_view_15_sec")),
+                "unique_video_view_15_sec": None,
+                "cost_per_unique_video_view_15_sec": None,
                 "estimated_ad_recallers": self._safe_int(r.get("estimated_ad_recallers")),
                 "estimated_ad_recall_rate": self._safe_float(r.get("estimated_ad_recall_rate")),
                 "cost_per_estimated_ad_recaller": self._safe_decimal(r.get("cost_per_estimated_ad_recallers")),
