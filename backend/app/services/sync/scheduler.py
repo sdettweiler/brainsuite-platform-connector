@@ -94,6 +94,83 @@ async def run_daily_sync(connection_id: str) -> None:
             await db.commit()
 
 
+async def run_full_resync(connection_id: str) -> None:
+    """Full resync: re-fetch all historical data (24 months) with latest field mappings."""
+    from sqlalchemy import select
+    from app.models.platform import PlatformConnection
+    from app.models.performance import SyncJob
+    from app.services.sync.meta_sync import meta_sync
+    from app.services.sync.tiktok_sync import tiktok_sync
+    from app.services.sync.youtube_sync import youtube_sync
+    from app.services.sync.harmonizer import harmonizer
+    import uuid
+
+    logger.info(f"=== Starting full resync for connection {connection_id} ===")
+
+    async with get_session_factory()() as db:
+        result = await db.execute(
+            select(PlatformConnection).where(
+                PlatformConnection.id == uuid.UUID(connection_id),
+                PlatformConnection.is_active == True,
+            )
+        )
+        connection = result.scalar_one_or_none()
+
+        if not connection:
+            logger.warning(f"Connection {connection_id} not found for full resync")
+            return
+
+        date_from = date.today() - timedelta(days=730)
+        date_to = date.today() - timedelta(days=1)
+
+        job = SyncJob(
+            platform_connection_id=connection.id,
+            job_type="FULL_RESYNC",
+            status="RUNNING",
+            started_at=datetime.utcnow(),
+            date_from=date_from,
+            date_to=date_to,
+        )
+        db.add(job)
+        await db.flush()
+        job_id = str(job.id)
+
+        try:
+            if connection.platform == "META":
+                sync_result = await meta_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+            elif connection.platform == "TIKTOK":
+                sync_result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+            elif connection.platform == "YOUTUBE":
+                sync_result = await youtube_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+            else:
+                sync_result = {"fetched": 0}
+
+            harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+
+            connection.last_synced_at = datetime.utcnow()
+            connection.sync_status = "ACTIVE"
+            db.add(connection)
+
+            job.status = "COMPLETED"
+            job.completed_at = datetime.utcnow()
+            job.records_fetched = sync_result.get("fetched", 0)
+            job.records_processed = harmonized
+            db.add(job)
+
+            await db.commit()
+            logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
+
+        except Exception as e:
+            logger.error(f"Full resync failed for connection {connection_id}: {e}")
+            job.status = "FAILED"
+            job.error_message = str(e)
+            job.completed_at = datetime.utcnow()
+            db.add(job)
+            connection.sync_status = "ERROR"
+            db.add(connection)
+            await db.commit()
+
+
 async def run_initial_sync(connection_id: str) -> None:
     """Fetch first 30 days immediately after account connect."""
     from sqlalchemy import select
