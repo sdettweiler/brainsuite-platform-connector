@@ -70,8 +70,8 @@ async def run_daily_sync(connection_id: str) -> None:
             # Harmonize new data
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
 
-            # Update connection last_synced
             connection.last_synced_at = datetime.utcnow()
+            connection.sync_status = "ACTIVE"
             db.add(connection)
 
             job.status = "COMPLETED"
