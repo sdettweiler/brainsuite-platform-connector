@@ -37,16 +37,11 @@ INSIGHTS_FIELDS = [
     "campaign_name",
     "objective",
     "buying_type",
-    "bid_strategy",
     "adset_id",
     "adset_name",
     "optimization_goal",
-    "billing_event",
-    "destination_type",
     "ad_id",
     "ad_name",
-    "configured_status",
-    "effective_status",
     "spend",
     "impressions",
     "reach",
@@ -74,18 +69,21 @@ INSIGHTS_FIELDS = [
     "video_avg_time_watched_actions",
     "video_thruplay_watched_actions",
     "cost_per_thruplay",
-    "cost_per_10_sec_video_view",
     "estimated_ad_recallers",
     "estimated_ad_recall_rate",
     "cost_per_estimated_ad_recallers",
-    "estimated_ad_recall_lift_in_people",
     "actions",
     "action_values",
     "cost_per_action_type",
     "purchase_roas",
-    "page_engagement",
-    "post_engagement",
-    "post_reactions",
+]
+
+AD_DIMENSION_FIELDS = [
+    "bid_strategy",
+    "billing_event",
+    "destination_type",
+    "configured_status",
+    "effective_status",
 ]
 
 
@@ -155,6 +153,10 @@ class MetaSyncService:
                 logger.info(f"  No new ads, but checking creatives for {len(all_ad_ids)} existing ads")
 
         if all_ad_ids:
+            logger.info(f"  Enriching {len(all_ad_ids)} ads with dimension fields")
+            await self._enrich_ad_dimensions(
+                db, connection, access_token, list(all_ad_ids)
+            )
             logger.info(f"  Fetching creatives for {len(all_ad_ids)} unique ads")
             await self._fetch_and_store_creatives(
                 db, connection, access_token, account_id, list(all_ad_ids)
@@ -352,7 +354,8 @@ class MetaSyncService:
 
             post_engagement = self._extract_action_value(actions, ("post_engagement",), int)
             page_engagement = self._extract_action_value(actions, ("page_engagement",), int)
-            reactions = self._safe_int(r.get("post_reactions"))
+            reactions = self._extract_action_value(actions, ("post_reaction",), int)
+            cost_per_10_sec = self._extract_action_value(cost_per_action, ("video_view",), lambda v: Decimal(str(v)))
 
             video_play_actions = self._extract_video_metric(r, "video_play_actions")
             video_p25 = self._extract_video_metric(r, "video_p25_watched_actions")
@@ -436,13 +439,13 @@ class MetaSyncService:
                 "video_avg_time_watched_ms": video_avg_time_ms,
                 "video_thruplay_watched": video_thruplay,
                 "cost_per_thruplay": self._safe_decimal(r.get("cost_per_thruplay")),
-                "cost_per_10_sec_video_view": self._safe_decimal(r.get("cost_per_10_sec_video_view")),
+                "cost_per_10_sec_video_view": cost_per_10_sec,
                 "video_views": video_play_actions,
                 "video_view_rate": video_view_rate,
                 "estimated_ad_recallers": self._safe_int(r.get("estimated_ad_recallers")),
                 "estimated_ad_recall_rate": self._safe_float(r.get("estimated_ad_recall_rate")),
                 "cost_per_estimated_ad_recaller": self._safe_decimal(r.get("cost_per_estimated_ad_recallers")),
-                "estimated_ad_recall_lift": self._safe_float(r.get("estimated_ad_recall_lift_in_people")),
+                "estimated_ad_recall_lift": self._safe_int(r.get("estimated_ad_recallers")),
                 "post_engagement": post_engagement,
                 "page_engagement": page_engagement,
                 "reactions": reactions,
@@ -473,6 +476,62 @@ class MetaSyncService:
         )
         await db.execute(stmt)
         return len(rows)
+
+    async def _enrich_ad_dimensions(
+        self,
+        db: AsyncSession,
+        connection: PlatformConnection,
+        access_token: str,
+        ad_ids: List[str],
+    ) -> None:
+        """Batch-fetch ad/adset/campaign dimension fields and update existing DB records."""
+        ad_fields = "id,configured_status,effective_status,adset{bid_strategy,billing_event,destination_type}"
+        batch_size = 50
+
+        ad_info_map: Dict[str, Dict[str, Any]] = {}
+        for i in range(0, len(ad_ids), batch_size):
+            batch = ad_ids[i:i + batch_size]
+            ids_param = ",".join(batch)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.get(
+                        f"{META_GRAPH_URL}/",
+                        params={
+                            "ids": ids_param,
+                            "fields": ad_fields,
+                            "access_token": access_token,
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    for ad_id, info in data.items():
+                        adset = info.get("adset", {})
+                        ad_info_map[ad_id] = {
+                            "configured_status": info.get("configured_status"),
+                            "effective_status": info.get("effective_status"),
+                            "bid_strategy": adset.get("bid_strategy"),
+                            "billing_event": adset.get("billing_event"),
+                            "destination_type": adset.get("destination_type"),
+                        }
+            except Exception as e:
+                logger.warning(f"  Failed to fetch ad dimensions batch: {e}")
+                continue
+
+        if not ad_info_map:
+            return
+
+        from sqlalchemy import update
+        for ad_id, dims in ad_info_map.items():
+            stmt = (
+                update(MetaRawPerformance)
+                .where(
+                    MetaRawPerformance.platform_connection_id == connection.id,
+                    MetaRawPerformance.ad_id == ad_id,
+                )
+                .values(**{k: v for k, v in dims.items() if v is not None})
+            )
+            await db.execute(stmt)
+        await db.flush()
 
     async def _fetch_and_store_creatives(
         self,
