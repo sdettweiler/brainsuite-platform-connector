@@ -10,10 +10,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../../core/services/api.service';
-import { Chart, registerables } from 'chart.js';
+import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Legend, Tooltip } from 'chart.js';
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subYears } from 'date-fns';
 
-Chart.register(...registerables);
+Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Legend, Tooltip);
 
 @Component({
   standalone: true,
@@ -520,6 +520,14 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   }
 
   private renderChart(): void {
+    try {
+      this._doRenderChart();
+    } catch (e) {
+      console.warn('Chart render failed', e);
+    }
+  }
+
+  private _doRenderChart(): void {
     if (this.chart) {
       this.chart.destroy();
       this.chart = null;
@@ -569,11 +577,13 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
         ticks: {
           color: this.chartColors[idx % this.chartColors.length],
           font: { size: 10 },
-          callback: (val: number) => {
-            if (kpi === 'spend' || kpi === 'cpm') return '$' + val.toFixed(0);
-            if (kpi === 'ctr' || kpi === 'vtr' || kpi === 'cvr') return val.toFixed(1) + '%';
-            if (kpi === 'roas') return val.toFixed(1) + 'x';
-            return val.toFixed(0);
+          callback: (val: any) => {
+            const v = typeof val === 'number' ? val : Number(val);
+            if (isNaN(v)) return '';
+            if (kpi === 'spend' || kpi === 'cpm') return '$' + v.toFixed(0);
+            if (kpi === 'ctr' || kpi === 'vtr' || kpi === 'cvr') return v.toFixed(1) + '%';
+            if (kpi === 'roas') return v.toFixed(1) + 'x';
+            return v.toFixed(0);
           },
         },
       };

@@ -455,7 +455,6 @@ import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subY
 
     .overlay-platform-img {
       width: 100%; height: 100%; object-fit: contain;
-      filter: brightness(0) invert(1);
     }
 
     .overlay-ace {
