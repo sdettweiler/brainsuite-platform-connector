@@ -182,11 +182,13 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     </div>
   `,
   styles: [`
-    .detail-dialog { display: flex; flex-direction: column; height: 100%; background: var(--bg-card); }
+    :host { overflow: visible !important; }
+    .detail-dialog { display: flex; flex-direction: column; height: 100%; background: var(--bg-card); overflow: visible; }
 
     .detail-header {
       display: flex; align-items: flex-start; gap: 16px;
       padding: 20px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+      position: relative; z-index: 10; overflow: visible;
     }
 
     .detail-title-area { flex: 1; }

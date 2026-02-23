@@ -249,6 +249,7 @@ input:-webkit-autofill:active {
 .mat-mdc-dialog-container {
   --mdc-dialog-container-color: var(--bg-card);
   border-radius: var(--border-radius-lg) !important;
+  overflow: visible !important;
 
   .mdc-dialog__title {
     color: var(--text-primary) !important;
@@ -256,6 +257,15 @@ input:-webkit-autofill:active {
 
   .mdc-dialog__content {
     color: var(--text-primary) !important;
+    overflow: visible !important;
+  }
+
+  .mdc-dialog__surface {
+    overflow: visible !important;
+  }
+
+  .mat-mdc-dialog-surface {
+    overflow: visible !important;
   }
 }
 
