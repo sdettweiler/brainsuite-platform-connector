@@ -1,4 +1,4 @@
-import { Component, Inject, OnInit, OnDestroy, ViewChild, ElementRef, HostListener } from '@angular/core';
+import { Component, Inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
@@ -12,7 +12,7 @@ import { LineChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { ApiService } from '../../../core/services/api.service';
-import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subYears } from 'date-fns';
+import { DateRangePickerComponent, DateRangeChange } from '../../../shared/components/date-range-picker.component';
 import type { EChartsOption } from 'echarts';
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
@@ -22,7 +22,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
   imports: [
     CommonModule, FormsModule,
     MatDialogModule, MatTabsModule, MatButtonModule, MatIconModule, MatTooltipModule,
-    NgxEchartsDirective,
+    NgxEchartsDirective, DateRangePickerComponent,
   ],
   providers: [
     provideEchartsCore({ echarts }),
@@ -44,34 +44,13 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
         </div>
 
         <div class="detail-controls">
-          <div class="detail-date-picker" #detailDateRef>
-            <button class="date-range-btn" (click)="toggleDatePicker()">
-              <mat-icon>calendar_today</mat-icon>
-              <span class="date-range-label">{{ dateRangeLabel }}</span>
-              <mat-icon class="date-range-chevron">expand_more</mat-icon>
-            </button>
-            <div class="date-range-dropdown" *ngIf="datePickerOpen">
-              <div class="date-presets">
-                <button
-                  *ngFor="let preset of datePresets"
-                  class="preset-btn"
-                  [class.active]="selectedPreset === preset.key"
-                  (click)="selectPreset(preset.key)"
-                >{{ preset.label }}</button>
-              </div>
-              <div class="date-custom" *ngIf="selectedPreset === 'custom'">
-                <div class="custom-date-row">
-                  <label>From</label>
-                  <input type="date" [(ngModel)]="customFrom" class="custom-date-input" />
-                </div>
-                <div class="custom-date-row">
-                  <label>To</label>
-                  <input type="date" [(ngModel)]="customTo" class="custom-date-input" />
-                </div>
-                <button class="apply-btn" (click)="applyCustomRange()">Apply</button>
-              </div>
-            </div>
-          </div>
+          <app-date-range-picker
+            [dateFrom]="dateFrom"
+            [dateTo]="dateTo"
+            [selectedPreset]="selectedPreset"
+            [dropUp]="false"
+            (dateChange)="onDateRangeChange($event)"
+          ></app-date-range-picker>
         </div>
 
         <button mat-icon-button (click)="dialogRef.close()">
@@ -224,54 +203,6 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .chip-key { color: var(--text-muted); }
 
     .detail-controls { display: flex; gap: 8px; }
-    .detail-date-picker { position: relative; }
-
-    .date-range-btn {
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 12px; border-radius: 8px;
-      border: 1px solid var(--border); background: var(--bg-card);
-      color: var(--text-primary); cursor: pointer;
-      font-size: 13px; font-weight: 500; height: 36px;
-      transition: all var(--transition); white-space: nowrap;
-    }
-    .date-range-btn mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--accent); }
-    .date-range-btn .date-range-chevron { font-size: 16px; width: 16px; height: 16px; color: var(--text-secondary); }
-    .date-range-btn:hover { border-color: var(--accent); background: var(--bg-hover); }
-
-    .date-range-dropdown {
-      position: absolute; top: calc(100% + 4px); right: 0; z-index: 100;
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 12px; box-shadow: var(--shadow-lg);
-      min-width: 220px; overflow: hidden;
-      animation: dropIn 0.15s ease-out;
-    }
-
-    @keyframes dropIn {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .date-presets { display: flex; flex-direction: column; padding: 6px; }
-    .preset-btn {
-      padding: 8px 14px; border: none; background: transparent;
-      color: var(--text-primary); font-size: 13px; text-align: left;
-      border-radius: 6px; cursor: pointer; transition: all var(--transition);
-    }
-    .preset-btn:hover { background: var(--bg-hover); }
-    .preset-btn.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
-
-    .date-custom {
-      padding: 8px 14px 14px; border-top: 1px solid var(--border);
-      display: flex; flex-direction: column; gap: 8px;
-    }
-    .custom-date-row { display: flex; align-items: center; gap: 8px; }
-    .custom-date-row label { font-size: 12px; color: var(--text-secondary); min-width: 36px; }
-    .custom-date-input {
-      flex: 1; padding: 6px 10px; border: 1px solid var(--border);
-      border-radius: 6px; background: var(--bg-primary); color: var(--text-primary);
-      font-size: 13px; font-family: inherit;
-    }
-    .custom-date-input:focus { outline: none; border-color: var(--accent); }
 
     .apply-btn {
       padding: 8px 16px; border: none; border-radius: 6px;
@@ -361,22 +292,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
 
   dateFrom: string;
   dateTo: string;
-  datePickerOpen = false;
   selectedPreset = 'last30';
-  customFrom: string;
-  customTo: string;
-
-  datePresets = [
-    { key: 'last7', label: 'Last 7 days' },
-    { key: 'last30', label: 'Last 30 days' },
-    { key: 'last90', label: 'Last 90 days' },
-    { key: 'thisMonth', label: 'This month' },
-    { key: 'lastMonth', label: 'Last month' },
-    { key: 'thisYear', label: 'This year' },
-    { key: 'lastYear', label: 'Last year' },
-    { key: 'lifetime', label: 'Lifetime' },
-    { key: 'custom', label: 'Custom range' },
-  ];
 
   selectedKpis = ['spend', 'ctr', 'roas'];
   activeOverlay = 'none';
@@ -406,14 +322,6 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
 
   private chartColors = ['#FF7700', '#5B8FF9', '#5AD8A6'];
 
-  @ViewChild('detailDateRef') detailDateRef!: ElementRef;
-
-  @HostListener('document:click', ['$event'])
-  onDocumentClick(event: MouseEvent) {
-    if (this.datePickerOpen && this.detailDateRef && !this.detailDateRef.nativeElement.contains(event.target)) {
-      this.datePickerOpen = false;
-    }
-  }
 
   constructor(
     private api: ApiService,
@@ -422,8 +330,6 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   ) {
     this.dateFrom = data.dateFrom;
     this.dateTo = data.dateTo;
-    this.customFrom = data.dateFrom;
-    this.customTo = data.dateTo;
     if (data.selectedPreset) {
       this.selectedPreset = data.selectedPreset;
     }
@@ -435,77 +341,11 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {}
 
-  get dateRangeLabel(): string {
-    const preset = this.datePresets.find(p => p.key === this.selectedPreset);
-    if (preset && this.selectedPreset !== 'custom') return preset.label;
-    const from = new Date(this.dateFrom + 'T00:00:00');
-    const to = new Date(this.dateTo + 'T00:00:00');
-    const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-    return `${from.toLocaleDateString('en-US', opts)} – ${to.toLocaleDateString('en-US', opts)}`;
-  }
-
-  toggleDatePicker(): void {
-    this.datePickerOpen = !this.datePickerOpen;
-  }
-
-  selectPreset(key: string): void {
-    this.selectedPreset = key;
-    const today = new Date();
-    const yesterday = subDays(today, 1);
-
-    switch (key) {
-      case 'last7':
-        this.dateFrom = format(subDays(today, 7), 'yyyy-MM-dd');
-        this.dateTo = format(yesterday, 'yyyy-MM-dd');
-        break;
-      case 'last30':
-        this.dateFrom = format(subDays(today, 30), 'yyyy-MM-dd');
-        this.dateTo = format(yesterday, 'yyyy-MM-dd');
-        break;
-      case 'last90':
-        this.dateFrom = format(subDays(today, 90), 'yyyy-MM-dd');
-        this.dateTo = format(yesterday, 'yyyy-MM-dd');
-        break;
-      case 'thisMonth':
-        this.dateFrom = format(startOfMonth(today), 'yyyy-MM-dd');
-        this.dateTo = format(yesterday, 'yyyy-MM-dd');
-        break;
-      case 'lastMonth': {
-        const lastM = subMonths(today, 1);
-        this.dateFrom = format(startOfMonth(lastM), 'yyyy-MM-dd');
-        this.dateTo = format(endOfMonth(lastM), 'yyyy-MM-dd');
-        break;
-      }
-      case 'thisYear':
-        this.dateFrom = format(startOfYear(today), 'yyyy-MM-dd');
-        this.dateTo = format(yesterday, 'yyyy-MM-dd');
-        break;
-      case 'lastYear': {
-        const lastY = subYears(today, 1);
-        this.dateFrom = format(startOfYear(lastY), 'yyyy-MM-dd');
-        this.dateTo = format(new Date(lastY.getFullYear(), 11, 31), 'yyyy-MM-dd');
-        break;
-      }
-      case 'lifetime':
-        this.dateFrom = '2020-01-01';
-        this.dateTo = format(yesterday, 'yyyy-MM-dd');
-        break;
-      case 'custom':
-        this.customFrom = this.dateFrom;
-        this.customTo = this.dateTo;
-        return;
-    }
-    this.datePickerOpen = false;
+  onDateRangeChange(event: DateRangeChange): void {
+    this.dateFrom = event.dateFrom;
+    this.dateTo = event.dateTo;
+    this.selectedPreset = event.preset;
     this.loadDetail();
-  }
-
-  applyCustomRange(): void {
-    if (this.customFrom && this.customTo) {
-      this.dateFrom = this.customFrom;
-      this.dateTo = this.customTo;
-      this.datePickerOpen = false;
-      this.loadDetail();
-    }
   }
 
   onKpiSelect(idx: number, value: string): void {
