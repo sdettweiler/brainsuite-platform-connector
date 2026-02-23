@@ -10,7 +10,9 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../../core/services/api.service';
+import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
 interface PlatformConnection {
   id: string;
@@ -26,6 +28,14 @@ interface PlatformConnection {
   brainsuite_app_id_image?: string;
   brainsuite_app_id_video?: string;
   default_metadata_values?: Record<string, string>;
+}
+
+interface ConnectionsResponse {
+  items: PlatformConnection[];
+  total: number;
+  page: number;
+  page_size: number;
+  status_summary: Record<string, number>;
 }
 
 interface MetadataField {
@@ -66,7 +76,7 @@ const PLATFORMS: PlatformDef[] = [
   imports: [
     CommonModule, FormsModule, MatButtonModule, MatIconModule, MatMenuModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatSelectModule, MatCheckboxModule,
-    MatFormFieldModule, MatInputModule,
+    MatFormFieldModule, MatInputModule, MatTooltipModule,
   ],
   template: `
     <div class="page-container">
@@ -74,7 +84,7 @@ const PLATFORMS: PlatformDef[] = [
         <div class="section-header">
           <div>
             <h2>Platform Connections</h2>
-            <p>{{ connections.length }} connected account{{ connections.length !== 1 ? 's' : '' }}</p>
+            <p>Manage your connected advertising accounts</p>
           </div>
         </div>
 
@@ -98,82 +108,264 @@ const PLATFORMS: PlatformDef[] = [
           </div>
         </div>
 
-        <div *ngIf="!loading; else loadingTpl">
-          <div *ngFor="let conn of connections" class="connection-row">
-            <div class="conn-platform">
-              <div class="platform-dot">
-                <img [src]="getPlatformIcon(conn.platform)" [alt]="conn.platform" />
-              </div>
-              <div class="conn-info">
-                <span class="conn-name">{{ conn.ad_account_name }}</span>
-                <span class="conn-id">{{ conn.ad_account_id }}</span>
-              </div>
-            </div>
+        <!-- Status Summary Bar -->
+        <div class="status-summary-bar" *ngIf="!loading">
+          <span class="summary-total">{{ totalConnections }} total</span>
+          <span class="summary-divider">·</span>
+          <span class="summary-stat stat-active" (click)="toggleStatusFilter('ACTIVE')">
+            <span class="stat-dot active"></span>{{ statusSummary['ACTIVE'] || 0 }} active
+          </span>
+          <span class="summary-stat stat-pending" (click)="toggleStatusFilter('PENDING')">
+            <span class="stat-dot pending"></span>{{ statusSummary['PENDING'] || 0 }} pending
+          </span>
+          <span class="summary-stat stat-error" (click)="toggleStatusFilter('ERROR')">
+            <span class="stat-dot error"></span>{{ statusSummary['ERROR'] || 0 }} errors
+          </span>
+          <span class="summary-stat stat-expired" (click)="toggleStatusFilter('EXPIRED')">
+            <span class="stat-dot expired"></span>{{ statusSummary['EXPIRED'] || 0 }} expired
+          </span>
+        </div>
 
-            <div class="conn-status">
-              <span class="status-chip" [class]="'status-' + conn.sync_status.toLowerCase()">
-                {{ conn.sync_status }}
-              </span>
-              <span class="sync-time" *ngIf="conn.last_synced_at">
-                Last sync: {{ conn.last_synced_at | date:'short' }}
-              </span>
-              <span class="sync-time" *ngIf="!conn.initial_sync_completed">
-                Initial sync in progress...
-              </span>
-            </div>
-
-            <div class="conn-meta">
-              <span class="meta-pill">{{ conn.currency }}</span>
-              <span class="meta-pill">{{ conn.timezone }}</span>
-            </div>
-
-            <div class="conn-brainsuite">
-              <mat-form-field appearance="outline" class="app-select">
-                <mat-label>Images App</mat-label>
-                <mat-select
-                  [ngModel]="conn.brainsuite_app_id_image"
-                  (ngModelChange)="assignApp(conn, 'brainsuite_app_id_image', $event)"
-                >
-                  <mat-option value="">-- None --</mat-option>
-                  <mat-option *ngFor="let app of brainsuiteApps" [value]="app.id">
-                    {{ app.name }}
-                  </mat-option>
-                </mat-select>
-              </mat-form-field>
-              <mat-form-field appearance="outline" class="app-select">
-                <mat-label>Videos App</mat-label>
-                <mat-select
-                  [ngModel]="conn.brainsuite_app_id_video"
-                  (ngModelChange)="assignApp(conn, 'brainsuite_app_id_video', $event)"
-                >
-                  <mat-option value="">-- None --</mat-option>
-                  <mat-option *ngFor="let app of brainsuiteApps" [value]="app.id">
-                    {{ app.name }}
-                  </mat-option>
-                </mat-select>
-              </mat-form-field>
-            </div>
-
-            <div class="conn-actions">
-              <button mat-icon-button [matMenuTriggerFor]="connMenu" [matMenuTriggerData]="{conn: conn}">
-                <mat-icon>more_vert</mat-icon>
+        <!-- Toolbar -->
+        <div class="table-toolbar">
+          <div class="toolbar-left">
+            <div class="search-box">
+              <mat-icon>search</mat-icon>
+              <input
+                type="text"
+                placeholder="Search accounts..."
+                [ngModel]="searchTerm"
+                (ngModelChange)="onSearchChange($event)"
+              />
+              <button *ngIf="searchTerm" class="clear-search" (click)="clearSearch()">
+                <mat-icon>close</mat-icon>
               </button>
+            </div>
+
+            <div class="filter-chips">
+              <button
+                *ngFor="let p of platforms"
+                class="filter-chip"
+                [class.active]="platformFilters.includes(p.key)"
+                (click)="togglePlatformFilter(p.key)"
+              >
+                <img [src]="p.icon" class="chip-icon" />
+                {{ p.label }}
+              </button>
+            </div>
+
+            <div class="status-filter">
+              <mat-form-field appearance="outline" class="compact-select">
+                <mat-label>Status</mat-label>
+                <mat-select
+                  [(ngModel)]="statusFilters"
+                  multiple
+                  (selectionChange)="onFiltersChanged()"
+                >
+                  <mat-option value="ACTIVE">Active</mat-option>
+                  <mat-option value="PENDING">Pending</mat-option>
+                  <mat-option value="ERROR">Error</mat-option>
+                  <mat-option value="EXPIRED">Expired</mat-option>
+                </mat-select>
+              </mat-form-field>
             </div>
           </div>
 
+          <div class="toolbar-right">
+            <mat-form-field appearance="outline" class="compact-select sort-select">
+              <mat-label>Sort by</mat-label>
+              <mat-select [(ngModel)]="sortBy" (selectionChange)="onFiltersChanged()">
+                <mat-option value="ad_account_name">Name</mat-option>
+                <mat-option value="platform">Platform</mat-option>
+                <mat-option value="status">Status</mat-option>
+                <mat-option value="last_synced">Last Synced</mat-option>
+                <mat-option value="currency">Currency</mat-option>
+              </mat-select>
+            </mat-form-field>
+            <button mat-icon-button (click)="toggleSortOrder()" [matTooltip]="sortOrder === 'asc' ? 'Ascending' : 'Descending'">
+              <mat-icon>{{ sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+            </button>
+          </div>
+        </div>
+
+        <!-- Bulk Actions Bar -->
+        <div class="bulk-actions-bar" *ngIf="selectedIds.size > 0">
+          <div class="bulk-left">
+            <mat-checkbox
+              [checked]="allOnPageSelected()"
+              [indeterminate]="selectedIds.size > 0 && !allOnPageSelected()"
+              (change)="toggleSelectAll()"
+            ></mat-checkbox>
+            <span class="bulk-count">{{ selectedIds.size }} selected</span>
+          </div>
+          <div class="bulk-right">
+            <button mat-stroked-button class="bulk-btn" (click)="bulkResync()">
+              <mat-icon>sync</mat-icon> Resync
+            </button>
+            <button mat-stroked-button class="bulk-btn" [matMenuTriggerFor]="bulkAppMenu">
+              <mat-icon>apps</mat-icon> Assign App
+            </button>
+            <button mat-stroked-button class="bulk-btn bulk-danger" (click)="bulkDisconnect()">
+              <mat-icon>link_off</mat-icon> Disconnect
+            </button>
+          </div>
+        </div>
+
+        <mat-menu #bulkAppMenu="matMenu">
+          <p class="menu-section-label">Assign Image App</p>
+          <button mat-menu-item *ngFor="let app of brainsuiteApps" (click)="bulkAssignApp('assign_image_app', app.id)">
+            {{ app.name }}
+          </button>
+          <mat-divider></mat-divider>
+          <p class="menu-section-label">Assign Video App</p>
+          <button mat-menu-item *ngFor="let app of brainsuiteApps" (click)="bulkAssignApp('assign_video_app', app.id)">
+            {{ app.name }}
+          </button>
+        </mat-menu>
+
+        <!-- Table -->
+        <div class="table-wrapper" *ngIf="!loading; else loadingTpl">
+          <table class="connections-table" *ngIf="connections.length > 0">
+            <thead>
+              <tr>
+                <th class="col-check">
+                  <mat-checkbox
+                    [checked]="allOnPageSelected()"
+                    [indeterminate]="selectedIds.size > 0 && !allOnPageSelected()"
+                    (change)="toggleSelectAll()"
+                  ></mat-checkbox>
+                </th>
+                <th class="col-platform">Platform</th>
+                <th class="col-name">Account</th>
+                <th class="col-status">Status</th>
+                <th class="col-meta">Currency</th>
+                <th class="col-meta">Timezone</th>
+                <th class="col-sync">Last Synced</th>
+                <th class="col-app">Image App</th>
+                <th class="col-app">Video App</th>
+                <th class="col-actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                *ngFor="let conn of connections"
+                [class.selected]="selectedIds.has(conn.id)"
+              >
+                <td class="col-check">
+                  <mat-checkbox
+                    [checked]="selectedIds.has(conn.id)"
+                    (change)="toggleRowSelect(conn.id)"
+                  ></mat-checkbox>
+                </td>
+                <td class="col-platform">
+                  <div class="platform-badge">
+                    <img [src]="getPlatformIcon(conn.platform)" [alt]="conn.platform" />
+                    <span>{{ getPlatformLabel(conn.platform) }}</span>
+                  </div>
+                </td>
+                <td class="col-name">
+                  <span class="cell-name">{{ conn.ad_account_name }}</span>
+                  <span class="cell-id">{{ conn.ad_account_id }}</span>
+                </td>
+                <td class="col-status">
+                  <span class="status-chip" [class]="'status-' + conn.sync_status.toLowerCase()">
+                    {{ conn.sync_status }}
+                  </span>
+                  <span class="sync-sub" *ngIf="!conn.initial_sync_completed">Syncing...</span>
+                </td>
+                <td class="col-meta">{{ conn.currency }}</td>
+                <td class="col-meta">
+                  <span class="tz-label">{{ conn.timezone }}</span>
+                </td>
+                <td class="col-sync">
+                  <span *ngIf="conn.last_synced_at">{{ conn.last_synced_at | date:'MMM d, HH:mm' }}</span>
+                  <span *ngIf="!conn.last_synced_at" class="no-data">—</span>
+                </td>
+                <td class="col-app">
+                  <mat-form-field appearance="outline" class="inline-app-select">
+                    <mat-select
+                      [ngModel]="conn.brainsuite_app_id_image"
+                      (ngModelChange)="assignApp(conn, 'brainsuite_app_id_image', $event)"
+                    >
+                      <mat-option value="">None</mat-option>
+                      <mat-option *ngFor="let app of brainsuiteApps" [value]="app.id">
+                        {{ app.name }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+                </td>
+                <td class="col-app">
+                  <mat-form-field appearance="outline" class="inline-app-select">
+                    <mat-select
+                      [ngModel]="conn.brainsuite_app_id_video"
+                      (ngModelChange)="assignApp(conn, 'brainsuite_app_id_video', $event)"
+                    >
+                      <mat-option value="">None</mat-option>
+                      <mat-option *ngFor="let app of brainsuiteApps" [value]="app.id">
+                        {{ app.name }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+                </td>
+                <td class="col-actions">
+                  <button mat-icon-button [matMenuTriggerFor]="rowMenu" [matMenuTriggerData]="{conn: conn}">
+                    <mat-icon>more_vert</mat-icon>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
           <div *ngIf="connections.length === 0" class="empty-connections">
             <mat-icon>link_off</mat-icon>
-            <span>No platforms connected yet</span>
-            <p>Click "Connect" above to add your first ad account</p>
+            <span *ngIf="hasActiveFilters()">No connections match your filters</span>
+            <span *ngIf="!hasActiveFilters()">No platforms connected yet</span>
+            <p *ngIf="!hasActiveFilters()">Click "Connect New" above to add your first ad account</p>
+            <button *ngIf="hasActiveFilters()" mat-stroked-button (click)="clearAllFilters()">Clear Filters</button>
           </div>
         </div>
 
         <ng-template #loadingTpl>
           <div class="loading-row"><mat-spinner diameter="24"></mat-spinner></div>
         </ng-template>
+
+        <!-- Pagination -->
+        <div class="pagination-bar" *ngIf="totalConnections > 0">
+          <div class="page-size-ctrl">
+            <span>Show</span>
+            <mat-form-field appearance="outline" class="compact-select page-size-select">
+              <mat-select [(ngModel)]="pageSize" (selectionChange)="onPageSizeChange()">
+                <mat-option [value]="25">25</mat-option>
+                <mat-option [value]="50">50</mat-option>
+                <mat-option [value]="100">100</mat-option>
+              </mat-select>
+            </mat-form-field>
+            <span>per page</span>
+          </div>
+
+          <div class="page-info">
+            {{ (currentPage - 1) * pageSize + 1 }}–{{ currentPage * pageSize > totalConnections ? totalConnections : currentPage * pageSize }} of {{ totalConnections }}
+          </div>
+
+          <div class="page-nav">
+            <button mat-icon-button [disabled]="currentPage <= 1" (click)="goToPage(1)" matTooltip="First page">
+              <mat-icon>first_page</mat-icon>
+            </button>
+            <button mat-icon-button [disabled]="currentPage <= 1" (click)="goToPage(currentPage - 1)" matTooltip="Previous">
+              <mat-icon>chevron_left</mat-icon>
+            </button>
+            <span class="page-number">{{ currentPage }} / {{ totalPages }}</span>
+            <button mat-icon-button [disabled]="currentPage >= totalPages" (click)="goToPage(currentPage + 1)" matTooltip="Next">
+              <mat-icon>chevron_right</mat-icon>
+            </button>
+            <button mat-icon-button [disabled]="currentPage >= totalPages" (click)="goToPage(totalPages)" matTooltip="Last page">
+              <mat-icon>last_page</mat-icon>
+            </button>
+          </div>
+        </div>
       </section>
 
-      <mat-menu #connMenu="matMenu">
+      <mat-menu #rowMenu="matMenu">
         <ng-template matMenuContent let-conn="conn">
           <button mat-menu-item (click)="resync(conn)">
             <mat-icon>sync</mat-icon> Force Resync
@@ -206,7 +398,7 @@ const PLATFORMS: PlatformDef[] = [
       </div>
 
       <div class="panel-toolbar">
-        <button mat-button class="select-toggle" (click)="toggleSelectAll()">
+        <button mat-button class="select-toggle" (click)="toggleSelectAllAccounts()">
           <mat-icon>{{ selectedAccounts.length === pendingAccounts.length ? 'deselect' : 'select_all' }}</mat-icon>
           {{ selectedAccounts.length === pendingAccounts.length ? 'Select None' : 'Select All' }}
         </button>
@@ -322,206 +514,7 @@ const PLATFORMS: PlatformDef[] = [
       </div>
     </div>
   `,
-  styles: [`
-    .page-container { padding: 28px; display: flex; flex-direction: column; gap: 24px; max-width: 1200px; }
-    .config-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-    .section-header {
-      display: flex; align-items: flex-start; justify-content: space-between;
-      padding: 20px 24px; border-bottom: 1px solid var(--border);
-      h2 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
-      p { font-size: 13px; color: var(--text-secondary); margin: 0; }
-    }
-
-    .platform-connect-row {
-      display: flex; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border);
-      flex-wrap: wrap;
-    }
-
-    .platform-connect-card {
-      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
-      border: 1px solid var(--border); border-radius: 8px; flex: 1; min-width: 200px;
-    }
-
-    .platform-logo {
-      width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center;
-      justify-content: center; flex-shrink: 0; overflow: hidden;
-      img { width: 100%; height: 100%; object-fit: contain; }
-    }
-
-    .platform-info { flex: 1; }
-    .platform-name { font-size: 14px; font-weight: 500; display: block; }
-    .platform-desc { font-size: 11px; color: var(--text-secondary); }
-
-    .connect-btn {
-      background: var(--accent) !important; color: white !important;
-      display: flex; align-items: center; gap: 6px; font-size: 13px;
-    }
-
-    .connection-row {
-      display: grid; grid-template-columns: 1fr 180px 140px auto 48px;
-      align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border);
-      gap: 12px;
-      &:last-child { border-bottom: none; }
-      &:hover { background: var(--bg-secondary); }
-    }
-
-    .conn-platform { display: flex; align-items: center; gap: 10px; }
-
-    .platform-dot {
-      width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
-      justify-content: center; flex-shrink: 0; overflow: hidden;
-      img { width: 100%; height: 100%; object-fit: contain; }
-    }
-
-    .conn-name { font-size: 14px; font-weight: 500; display: block; }
-    .conn-id { font-size: 11px; color: var(--text-muted); font-family: monospace; }
-
-    .conn-status { display: flex; flex-direction: column; gap: 3px; }
-
-    .status-chip {
-      display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;
-      &.status-active { background: rgba(52,168,83,0.15); color: #34A853; }
-      &.status-expired { background: rgba(234,67,53,0.15); color: #EA4335; }
-      &.status-error { background: rgba(234,67,53,0.15); color: #EA4335; }
-      &.status-pending { background: rgba(251,188,4,0.15); color: #F09300; }
-    }
-
-    .sync-time { font-size: 11px; color: var(--text-muted); }
-
-    .conn-meta { display: flex; flex-wrap: wrap; gap: 4px; }
-    .meta-pill {
-      font-size: 10px; padding: 2px 6px; background: var(--bg-secondary);
-      border-radius: 4px; color: var(--text-secondary);
-    }
-
-    .conn-brainsuite { display: flex; gap: 6px; }
-    .app-select { width: 100%; }
-
-    .empty-connections {
-      display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 48px;
-      color: var(--text-muted);
-      mat-icon { font-size: 36px; opacity: 0.4; }
-      span { font-size: 15px; font-weight: 500; }
-      p { font-size: 13px; color: var(--text-muted); }
-    }
-
-    .loading-row { display: flex; justify-content: center; padding: 32px; }
-    .delete-item { color: var(--error) !important; }
-
-    /* ── Slide-in Panel ────────────────────────────────────── */
-    .slide-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.5);
-      z-index: 999;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease;
-      &.visible {
-        opacity: 1;
-        pointer-events: all;
-      }
-    }
-
-    .slide-panel {
-      position: fixed;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      width: 480px;
-      max-width: 90vw;
-      background: var(--bg-card);
-      border-left: 1px solid var(--border);
-      z-index: 1000;
-      display: flex;
-      flex-direction: column;
-      transform: translateX(100%);
-      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
-      &.open {
-        transform: translateX(0);
-      }
-    }
-
-    .panel-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      padding: 24px 24px 16px;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-      h2 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
-      p { font-size: 13px; color: var(--text-secondary); margin: 0; }
-    }
-
-    .panel-body {
-      flex: 1;
-      overflow-y: auto;
-      padding: 0;
-    }
-
-    .panel-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
-      padding: 16px 24px;
-      border-top: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    /* Account selection inside panel */
-    .accounts-list { }
-
-    .account-item {
-      display: flex; align-items: center; gap: 12px; padding: 14px 24px;
-      cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.15s;
-      &:last-child { border-bottom: none; }
-      &:hover { background: var(--bg-secondary); }
-      &.selected { background: var(--accent-light); }
-    }
-
-    .check-box { color: var(--accent); flex-shrink: 0; }
-
-    .acc-info { flex: 1; min-width: 0; }
-    .acc-name { font-size: 14px; font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .acc-id { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-    .acc-status { font-size: 11px; padding: 2px 6px; background: var(--bg-secondary); border-radius: 4px; flex-shrink: 0; }
-
-    .connect-selected-btn {
-      background: var(--accent) !important; color: white !important;
-      display: flex; align-items: center; gap: 8px;
-    }
-
-    .panel-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 16px 8px 12px;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    .select-toggle {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 13px; color: var(--accent);
-    }
-
-    .select-count {
-      font-size: 12px; color: var(--text-secondary);
-    }
-
-    .empty-meta {
-      display: flex; flex-direction: column; align-items: center; gap: 8px;
-      padding: 48px 24px; text-align: center; color: var(--text-secondary);
-      mat-icon { font-size: 36px; opacity: 0.4; width: 36px; height: 36px; }
-      p { font-size: 13px; margin: 0; }
-    }
-
-    .meta-defaults-form { padding: 20px 24px; display: flex; flex-direction: column; gap: 4px; }
-    .meta-form-hint { font-size: 13px; color: var(--text-secondary); margin: 0 0 12px; }
-    .meta-default-field { }
-    .full-width { width: 100%; }
-  `],
+  styleUrls: ['./platforms.component.scss'],
 })
 export class PlatformsComponent implements OnInit, OnDestroy {
   platforms = PLATFORMS;
@@ -530,6 +523,22 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   loading = true;
   connecting: string | null = null;
   connectingAccounts = false;
+
+  totalConnections = 0;
+  currentPage = 1;
+  pageSize = 50;
+  totalPages = 1;
+  statusSummary: Record<string, number> = {};
+
+  searchTerm = '';
+  platformFilters: string[] = [];
+  statusFilters: string[] = [];
+  sortBy = 'ad_account_name';
+  sortOrder = 'asc';
+
+  selectedIds = new Set<string>();
+
+  private searchSubject = new Subject<string>();
 
   pendingSessionId: string | null = null;
   pendingPlatform: string | null = null;
@@ -553,11 +562,147 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadData();
     window.addEventListener('message', this.boundOAuthMessage);
+    this.searchSubject.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+    ).subscribe(() => {
+      this.currentPage = 1;
+      this.loadConnections();
+    });
   }
 
   ngOnDestroy(): void {
     window.removeEventListener('message', this.boundOAuthMessage);
     if (this.oauthPollInterval) clearInterval(this.oauthPollInterval);
+    this.searchSubject.complete();
+  }
+
+  onSearchChange(value: string): void {
+    this.searchTerm = value;
+    this.searchSubject.next(value);
+  }
+
+  clearSearch(): void {
+    this.searchTerm = '';
+    this.searchSubject.next('');
+  }
+
+  togglePlatformFilter(platform: string): void {
+    const idx = this.platformFilters.indexOf(platform);
+    if (idx >= 0) {
+      this.platformFilters.splice(idx, 1);
+    } else {
+      this.platformFilters.push(platform);
+    }
+    this.currentPage = 1;
+    this.loadConnections();
+  }
+
+  toggleStatusFilter(status: string): void {
+    const idx = this.statusFilters.indexOf(status);
+    if (idx >= 0) {
+      this.statusFilters = this.statusFilters.filter(s => s !== status);
+    } else {
+      this.statusFilters = [status];
+    }
+    this.currentPage = 1;
+    this.loadConnections();
+  }
+
+  onFiltersChanged(): void {
+    this.currentPage = 1;
+    this.loadConnections();
+  }
+
+  toggleSortOrder(): void {
+    this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+    this.loadConnections();
+  }
+
+  hasActiveFilters(): boolean {
+    return this.searchTerm.length > 0 || this.platformFilters.length > 0 || this.statusFilters.length > 0;
+  }
+
+  clearAllFilters(): void {
+    this.searchTerm = '';
+    this.platformFilters = [];
+    this.statusFilters = [];
+    this.currentPage = 1;
+    this.loadConnections();
+  }
+
+  goToPage(page: number): void {
+    if (page < 1 || page > this.totalPages) return;
+    this.currentPage = page;
+    this.loadConnections();
+  }
+
+  onPageSizeChange(): void {
+    this.currentPage = 1;
+    this.loadConnections();
+  }
+
+  toggleRowSelect(id: string): void {
+    if (this.selectedIds.has(id)) {
+      this.selectedIds.delete(id);
+    } else {
+      this.selectedIds.add(id);
+    }
+  }
+
+  allOnPageSelected(): boolean {
+    return this.connections.length > 0 && this.connections.every(c => this.selectedIds.has(c.id));
+  }
+
+  toggleSelectAll(): void {
+    if (this.allOnPageSelected()) {
+      this.connections.forEach(c => this.selectedIds.delete(c.id));
+    } else {
+      this.connections.forEach(c => this.selectedIds.add(c.id));
+    }
+  }
+
+  bulkResync(): void {
+    if (this.selectedIds.size === 0) return;
+    this.api.post('/platforms/connections/bulk-action', {
+      action: 'resync',
+      connection_ids: Array.from(this.selectedIds),
+    }).subscribe({
+      next: (res: any) => {
+        this.snackBar.open(res.detail, '', { duration: 3000 });
+        this.selectedIds.clear();
+      },
+    });
+  }
+
+  bulkDisconnect(): void {
+    if (this.selectedIds.size === 0) return;
+    if (!confirm(`Disconnect ${this.selectedIds.size} connection(s)? All synced data will be retained.`)) return;
+    this.api.post('/platforms/connections/bulk-action', {
+      action: 'disconnect',
+      connection_ids: Array.from(this.selectedIds),
+    }).subscribe({
+      next: (res: any) => {
+        this.snackBar.open(res.detail, '', { duration: 3000 });
+        this.selectedIds.clear();
+        this.loadConnections();
+      },
+    });
+  }
+
+  bulkAssignApp(action: string, appId: string): void {
+    if (this.selectedIds.size === 0) return;
+    this.api.post('/platforms/connections/bulk-action', {
+      action,
+      connection_ids: Array.from(this.selectedIds),
+      payload: { app_id: appId },
+    }).subscribe({
+      next: (res: any) => {
+        this.snackBar.open(res.detail, '', { duration: 3000 });
+        this.selectedIds.clear();
+        this.loadConnections();
+      },
+    });
   }
 
   closePanel(): void {
@@ -626,9 +771,17 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   }
 
   private loadConnections(): void {
-    this.api.get<PlatformConnection[]>('/platforms/connections').subscribe({
-      next: (conns) => {
-        this.connections = conns;
+    let params = `?page=${this.currentPage}&page_size=${this.pageSize}&sort_by=${this.sortBy}&sort_order=${this.sortOrder}`;
+    if (this.searchTerm) params += `&search=${encodeURIComponent(this.searchTerm)}`;
+    if (this.platformFilters.length > 0) params += `&platform=${this.platformFilters.join(',')}`;
+    if (this.statusFilters.length > 0) params += `&status=${this.statusFilters.join(',')}`;
+
+    this.api.get<ConnectionsResponse>(`/platforms/connections${params}`).subscribe({
+      next: (res) => {
+        this.connections = res.items;
+        this.totalConnections = res.total;
+        this.totalPages = Math.max(1, Math.ceil(res.total / this.pageSize));
+        this.statusSummary = res.status_summary || {};
         this.loading = false;
         this.applyDefaultApps();
       },
@@ -703,7 +856,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     });
   }
 
-  toggleSelectAll(): void {
+  toggleSelectAllAccounts(): void {
     if (this.selectedAccounts.length === this.pendingAccounts.length) {
       this.selectedAccounts = [];
     } else {
@@ -764,7 +917,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     if (!confirm(`Disconnect "${conn.ad_account_name}"? All synced data will be retained.`)) return;
     this.api.delete(`/platforms/connections/${conn.id}`).subscribe({
       next: () => {
-        this.connections = this.connections.filter(c => c.id !== conn.id);
+        this.loadConnections();
         this.snackBar.open('Account disconnected', '', { duration: 2000 });
       },
     });
@@ -776,5 +929,9 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   getPlatformIcon(platform: string): string {
     return PLATFORMS.find(p => p.key === platform)?.icon || '';
+  }
+
+  getPlatformLabel(platform: string): string {
+    return PLATFORMS.find(p => p.key === platform)?.label || platform;
   }
 }

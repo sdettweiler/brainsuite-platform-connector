@@ -6,9 +6,9 @@ import secrets
 import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, or_
 import uuid
 
 from app.db.base import get_db
@@ -435,20 +435,86 @@ async def platform_oauth_callback(
 
 # ─── Connection Management ────────────────────────────────────────────────────
 
-@router.get("/connections", response_model=List[PlatformConnectionResponse])
+@router.get("/connections")
 async def list_connections(
     platform: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = Query(default=None),
+    sort_by: str = Query(default="ad_account_name"),
+    sort_order: str = Query(default="asc"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(PlatformConnection).where(
+    base = select(PlatformConnection).where(
         PlatformConnection.organization_id == current_user.organization_id,
         PlatformConnection.is_active == True,
     )
+
     if platform:
-        query = query.where(PlatformConnection.platform == platform.upper())
-    result = await db.execute(query)
-    return result.scalars().all()
+        platforms_list = [p.strip().upper() for p in platform.split(",") if p.strip()]
+        if platforms_list:
+            base = base.where(PlatformConnection.platform.in_(platforms_list))
+
+    if status:
+        statuses = [s.strip().upper() for s in status.split(",") if s.strip()]
+        if statuses:
+            base = base.where(PlatformConnection.sync_status.in_(statuses))
+
+    if search:
+        term = f"%{search}%"
+        base = base.where(
+            or_(
+                PlatformConnection.ad_account_name.ilike(term),
+                PlatformConnection.ad_account_id.ilike(term),
+            )
+        )
+
+    count_q = select(func.count()).select_from(base.subquery())
+    total = (await db.execute(count_q)).scalar() or 0
+
+    status_counts_q = (
+        select(
+            PlatformConnection.sync_status,
+            func.count().label("cnt"),
+        )
+        .where(
+            PlatformConnection.organization_id == current_user.organization_id,
+            PlatformConnection.is_active == True,
+        )
+        .group_by(PlatformConnection.sync_status)
+    )
+    status_rows = (await db.execute(status_counts_q)).all()
+    status_summary = {r.sync_status: r.cnt for r in status_rows}
+
+    sort_col_map = {
+        "ad_account_name": PlatformConnection.ad_account_name,
+        "name": PlatformConnection.ad_account_name,
+        "platform": PlatformConnection.platform,
+        "status": PlatformConnection.sync_status,
+        "last_synced": PlatformConnection.last_synced_at,
+        "currency": PlatformConnection.currency,
+        "created": PlatformConnection.created_at,
+    }
+    col = sort_col_map.get(sort_by, PlatformConnection.ad_account_name)
+    if sort_order.lower() == "desc":
+        base = base.order_by(col.desc().nullslast())
+    else:
+        base = base.order_by(col.asc().nullsfirst())
+
+    base = base.offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(base)
+    items = result.scalars().all()
+
+    from app.schemas.platform import PlatformConnectionResponse
+    return {
+        "items": [PlatformConnectionResponse.model_validate(c) for c in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "status_summary": status_summary,
+    }
 
 
 @router.patch("/connections/{connection_id}")
@@ -516,6 +582,66 @@ async def manual_resync(
     else:
         background_tasks.add_task(run_full_resync, str(connection_id))
         return {"detail": "Full resync started"}
+
+
+@router.post("/connections/bulk-action")
+async def bulk_action(
+    payload: dict,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    action = payload.get("action")
+    connection_ids = payload.get("connection_ids", [])
+    extra = payload.get("payload", {})
+
+    if not action or not connection_ids:
+        raise HTTPException(status_code=400, detail="action and connection_ids required")
+
+    uuids = [uuid.UUID(cid) for cid in connection_ids]
+    result = await db.execute(
+        select(PlatformConnection).where(
+            PlatformConnection.id.in_(uuids),
+            PlatformConnection.organization_id == current_user.organization_id,
+            PlatformConnection.is_active == True,
+        )
+    )
+    conns = result.scalars().all()
+    if not conns:
+        raise HTTPException(status_code=404, detail="No matching connections found")
+
+    affected = len(conns)
+
+    if action == "resync":
+        from app.services.sync.scheduler import run_full_resync, run_initial_sync, run_historical_sync
+        for conn in conns:
+            if not conn.initial_sync_completed:
+                background_tasks.add_task(run_initial_sync, str(conn.id))
+            elif not conn.historical_sync_completed:
+                background_tasks.add_task(run_historical_sync, str(conn.id))
+            else:
+                background_tasks.add_task(run_full_resync, str(conn.id))
+
+    elif action == "disconnect":
+        from app.services.sync.scheduler import remove_connection_schedule
+        for conn in conns:
+            conn.is_active = False
+            db.add(conn)
+            remove_connection_schedule(str(conn.id))
+        await db.commit()
+
+    elif action in ("assign_image_app", "assign_video_app"):
+        app_id = extra.get("app_id")
+        field = "brainsuite_app_id_image" if action == "assign_image_app" else "brainsuite_app_id_video"
+        for conn in conns:
+            setattr(conn, field, uuid.UUID(app_id) if app_id else None)
+            db.add(conn)
+        await db.commit()
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+    return {"detail": f"{action} applied to {affected} connection(s)", "affected": affected}
 
 
 @router.get("/connections/{connection_id}/status")
