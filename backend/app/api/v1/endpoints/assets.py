@@ -345,7 +345,7 @@ async def export_assets(
 
     query = (
         select(CreativeAsset, perf_subq)
-        .outerjoin(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
+        .join(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
         .where(CreativeAsset.organization_id == current_user.organization_id)
     )
 
