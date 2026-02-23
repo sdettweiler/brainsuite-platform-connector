@@ -221,8 +221,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .apply-btn:hover { background: var(--accent-hover); }
 
     .detail-tabs { flex: 1; overflow: hidden; }
-    .tab-content { padding: 20px; overflow-y: auto; max-height: calc(85vh - 160px); }
-    .perf-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; margin-bottom: 20px; }
+    .tab-content { padding: 20px; overflow: hidden; max-height: calc(85vh - 160px); }
+    .perf-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; margin-bottom: 20px; height: calc(85vh - 200px); }
+    .perf-right { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 
     .asset-preview { position: relative; border-radius: 8px; overflow: hidden; background: var(--bg-hover); }
     .asset-media { width: 100%; display: block; object-fit: cover; max-height: 320px; }
@@ -257,9 +258,10 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       text-align: center; color: var(--text-muted); font-size: 13px;
     }
 
-    .kpi-table { margin-top: 16px; display: flex; flex-direction: column; min-height: 0; }
+    .chart-area { flex-shrink: 0; }
+    .kpi-table { margin-top: 16px; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
     .kpi-scroll {
-      overflow-y: auto; max-height: calc(85vh - 340px);
+      overflow-y: auto; flex: 1; min-height: 0;
       scrollbar-width: thin; scrollbar-color: var(--border) transparent;
     }
     .kpi-scroll::-webkit-scrollbar { width: 4px; }
