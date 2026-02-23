@@ -49,7 +49,10 @@ async def get_dashboard_stats(
         base = select(
             func.coalesce(func.sum(HarmonizedPerformance.spend), 0).label("total_spend"),
             func.coalesce(func.sum(HarmonizedPerformance.impressions), 0).label("total_impressions"),
-            func.avg(HarmonizedPerformance.roas).label("avg_roas"),
+            (
+                func.sum(HarmonizedPerformance.conversion_value) /
+                func.nullif(func.sum(HarmonizedPerformance.spend), 0)
+            ).label("avg_roas"),
         ).join(
             CreativeAsset, CreativeAsset.id == HarmonizedPerformance.asset_id
         ).where(
@@ -144,7 +147,10 @@ async def get_dashboard_assets(
                 func.nullif(func.sum(HarmonizedPerformance.spend), 0)
             ).label("roas"),
             func.sum(HarmonizedPerformance.video_views).label("total_video_views"),
-            func.avg(HarmonizedPerformance.vtr).label("avg_vtr"),
+            (
+                func.sum(HarmonizedPerformance.video_views) /
+                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
+            ).label("avg_vtr"),
         )
         .where(
             HarmonizedPerformance.report_date >= date_from,
@@ -290,14 +296,29 @@ async def get_asset_detail(
             func.sum(HarmonizedPerformance.spend).label("spend"),
             func.sum(HarmonizedPerformance.impressions).label("impressions"),
             func.sum(HarmonizedPerformance.clicks).label("clicks"),
-            func.avg(HarmonizedPerformance.ctr).label("ctr"),
-            func.avg(HarmonizedPerformance.cpm).label("cpm"),
+            (
+                func.sum(HarmonizedPerformance.clicks) /
+                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
+            ).label("ctr"),
+            (
+                func.sum(HarmonizedPerformance.spend) /
+                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 1000
+            ).label("cpm"),
             func.sum(HarmonizedPerformance.conversions).label("conversions"),
             func.sum(HarmonizedPerformance.conversion_value).label("conversion_value"),
-            func.avg(HarmonizedPerformance.cvr).label("cvr"),
-            func.avg(HarmonizedPerformance.roas).label("roas"),
+            (
+                func.sum(HarmonizedPerformance.conversions) /
+                func.nullif(func.sum(HarmonizedPerformance.clicks), 0) * 100
+            ).label("cvr"),
+            (
+                func.sum(HarmonizedPerformance.conversion_value) /
+                func.nullif(func.sum(HarmonizedPerformance.spend), 0)
+            ).label("roas"),
             func.sum(HarmonizedPerformance.video_views).label("video_views"),
-            func.avg(HarmonizedPerformance.vtr).label("vtr"),
+            (
+                func.sum(HarmonizedPerformance.video_views) /
+                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
+            ).label("vtr"),
             func.count(func.distinct(HarmonizedPerformance.campaign_id)).label("campaigns_count"),
         ).where(
             HarmonizedPerformance.asset_id == asset_id,
@@ -314,29 +335,51 @@ async def get_asset_detail(
     ts_result = await db.execute(
         select(
             HarmonizedPerformance.report_date,
-            HarmonizedPerformance.spend,
-            HarmonizedPerformance.ctr,
-            HarmonizedPerformance.roas,
-            HarmonizedPerformance.video_views,
-            HarmonizedPerformance.vtr,
-            HarmonizedPerformance.cpm,
-            HarmonizedPerformance.conversions,
-            HarmonizedPerformance.cvr,
+            func.sum(HarmonizedPerformance.spend).label("spend"),
+            func.sum(HarmonizedPerformance.impressions).label("impressions"),
+            func.sum(HarmonizedPerformance.clicks).label("clicks"),
+            func.sum(HarmonizedPerformance.conversions).label("conversions"),
+            func.sum(HarmonizedPerformance.conversion_value).label("conversion_value"),
+            func.sum(HarmonizedPerformance.video_views).label("video_views"),
         ).where(
             HarmonizedPerformance.asset_id == asset_id,
             HarmonizedPerformance.report_date >= date_from,
             HarmonizedPerformance.report_date <= date_to,
+        ).group_by(
+            HarmonizedPerformance.report_date,
         ).order_by(HarmonizedPerformance.report_date)
     )
     ts_rows = ts_result.all()
 
-    timeseries = {k: [] for k in kpi_list}
+    all_kpis = ["spend", "impressions", "clicks", "ctr", "cpm", "conversions",
+                "conversion_value", "cvr", "roas", "video_views", "vtr"]
+    timeseries = {k: [] for k in all_kpis}
     for row in ts_rows:
-        for kpi in kpi_list:
-            val = getattr(row, kpi, None)
+        spend = float(row.spend or 0)
+        impressions = float(row.impressions or 0)
+        clicks = float(row.clicks or 0)
+        conversions = float(row.conversions or 0)
+        conversion_value = float(row.conversion_value or 0)
+        video_views = float(row.video_views or 0)
+
+        computed = {
+            "spend": spend,
+            "impressions": impressions,
+            "clicks": clicks,
+            "conversions": conversions,
+            "conversion_value": conversion_value,
+            "video_views": video_views,
+            "ctr": (clicks / impressions * 100) if impressions else 0,
+            "cpm": (spend / impressions * 1000) if impressions else 0,
+            "cvr": (conversions / clicks * 100) if clicks else 0,
+            "roas": (conversion_value / spend) if spend else 0,
+            "vtr": (video_views / impressions * 100) if impressions else 0,
+        }
+
+        for kpi in all_kpis:
             timeseries[kpi].append({
                 "date": row.report_date.isoformat(),
-                "value": float(val) if val is not None else 0,
+                "value": computed.get(kpi, 0),
             })
 
     # Campaigns used in
@@ -409,7 +452,10 @@ async def get_homepage_widgets(
             select(
                 HarmonizedPerformance.asset_id,
                 func.sum(HarmonizedPerformance.spend).label("total_spend"),
-                func.avg(HarmonizedPerformance.ctr).label("avg_ctr"),
+                (
+                    func.sum(HarmonizedPerformance.clicks) /
+                    func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
+                ).label("avg_ctr"),
             )
             .where(
                 HarmonizedPerformance.platform == platform,
@@ -486,12 +532,24 @@ async def compare_assets(
                 func.sum(HarmonizedPerformance.spend).label("spend"),
                 func.sum(HarmonizedPerformance.impressions).label("impressions"),
                 func.sum(HarmonizedPerformance.clicks).label("clicks"),
-                func.avg(HarmonizedPerformance.ctr).label("ctr"),
-                func.avg(HarmonizedPerformance.cpm).label("cpm"),
+                (
+                    func.sum(HarmonizedPerformance.clicks) /
+                    func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
+                ).label("ctr"),
+                (
+                    func.sum(HarmonizedPerformance.spend) /
+                    func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 1000
+                ).label("cpm"),
                 func.sum(HarmonizedPerformance.conversions).label("conversions"),
-                func.avg(HarmonizedPerformance.roas).label("roas"),
+                (
+                    func.sum(HarmonizedPerformance.conversion_value) /
+                    func.nullif(func.sum(HarmonizedPerformance.spend), 0)
+                ).label("roas"),
                 func.sum(HarmonizedPerformance.video_views).label("video_views"),
-                func.avg(HarmonizedPerformance.vtr).label("vtr"),
+                (
+                    func.sum(HarmonizedPerformance.video_views) /
+                    func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
+                ).label("vtr"),
             ).where(
                 HarmonizedPerformance.asset_id == asset_id,
                 HarmonizedPerformance.report_date >= payload.date_from,
@@ -500,19 +558,34 @@ async def compare_assets(
         )
         perf = perf_result.one()
 
-        # Daily timeseries for comparison chart
+        # Daily timeseries for comparison chart — aggregate by date
         ts_result = await db.execute(
             select(
                 HarmonizedPerformance.report_date,
-                HarmonizedPerformance.spend,
-                HarmonizedPerformance.ctr,
-                HarmonizedPerformance.roas,
+                func.sum(HarmonizedPerformance.spend).label("spend"),
+                func.sum(HarmonizedPerformance.impressions).label("impressions"),
+                func.sum(HarmonizedPerformance.clicks).label("clicks"),
+                func.sum(HarmonizedPerformance.conversion_value).label("conversion_value"),
             ).where(
                 HarmonizedPerformance.asset_id == asset_id,
                 HarmonizedPerformance.report_date >= payload.date_from,
                 HarmonizedPerformance.report_date <= payload.date_to,
-            ).order_by(HarmonizedPerformance.report_date)
+            ).group_by(HarmonizedPerformance.report_date)
+            .order_by(HarmonizedPerformance.report_date)
         )
+
+        ts_data = []
+        for row in ts_result.all():
+            s = float(row.spend or 0)
+            imp = float(row.impressions or 0)
+            cl = float(row.clicks or 0)
+            cv = float(row.conversion_value or 0)
+            ts_data.append({
+                "date": row.report_date.isoformat(),
+                "spend": s,
+                "ctr": (cl / imp * 100) if imp else 0,
+                "roas": (cv / s) if s else 0,
+            })
 
         comparison.append({
             "id": str(asset.id),
@@ -533,15 +606,7 @@ async def compare_assets(
                 "video_views": int(perf.video_views or 0),
                 "vtr": float(perf.vtr or 0),
             },
-            "timeseries": [
-                {
-                    "date": row.report_date.isoformat(),
-                    "spend": float(row.spend or 0),
-                    "ctr": float(row.ctr or 0),
-                    "roas": float(row.roas or 0),
-                }
-                for row in ts_result.all()
-            ],
+            "timeseries": ts_data,
         })
 
     return {"assets": comparison, "date_from": payload.date_from, "date_to": payload.date_to}

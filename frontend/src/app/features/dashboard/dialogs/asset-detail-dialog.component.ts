@@ -94,26 +94,33 @@ import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subY
                   <div class="chart-controls">
                     <span class="section-label">Performance Over Time</span>
                     <div class="kpi-selectors">
-                      <select class="kpi-native-select" [(ngModel)]="chartKpi" (change)="buildChartData()">
+                      <select class="kpi-native-select" *ngFor="let idx of [0,1,2]"
+                        [ngModel]="selectedKpis[idx]"
+                        (ngModelChange)="onKpiSelect(idx, $event)">
+                        <option value="">None</option>
                         <option *ngFor="let k of availableKpis" [value]="k.value">{{ k.label }}</option>
                       </select>
                     </div>
                   </div>
-                  <div class="chart-container" *ngIf="chartPoints.length > 0">
+                  <div class="chart-container" *ngIf="chartSeries.length > 0">
                     <svg [attr.viewBox]="'0 0 ' + chartWidth + ' ' + chartHeight" preserveAspectRatio="none" class="chart-svg">
                       <line *ngFor="let g of chartGridLines" [attr.x1]="0" [attr.y1]="g.y" [attr.x2]="chartWidth" [attr.y2]="g.y" class="chart-grid" />
-                      <path [attr.d]="chartAreaPath" class="chart-area-fill" />
-                      <path [attr.d]="chartLinePath" class="chart-line" />
-                      <circle *ngFor="let pt of chartPoints" [attr.cx]="pt.x" [attr.cy]="pt.y" r="3" class="chart-dot" />
+                      <ng-container *ngFor="let series of chartSeries; let si = index">
+                        <path *ngIf="si === 0" [attr.d]="series.areaPath" class="chart-area-fill" [style.fill]="series.color + '15'" />
+                        <path [attr.d]="series.linePath" class="chart-line" [style.stroke]="series.color" />
+                      </ng-container>
                     </svg>
-                    <div class="chart-y-labels">
-                      <span *ngFor="let g of chartGridLines" [style.top.px]="g.y * (200/chartHeight)">{{ g.label }}</span>
+                    <div class="chart-legend" *ngIf="chartSeries.length > 1">
+                      <span *ngFor="let s of chartSeries" class="legend-item">
+                        <span class="legend-dot" [style.background]="s.color"></span>
+                        {{ s.label }}
+                      </span>
                     </div>
                     <div class="chart-x-labels">
                       <span *ngFor="let lbl of chartXLabels" [style.left]="lbl.pct + '%'">{{ lbl.text }}</span>
                     </div>
                   </div>
-                  <div class="chart-empty" *ngIf="chartPoints.length === 0">
+                  <div class="chart-empty" *ngIf="chartSeries.length === 0">
                     No data available for this period
                   </div>
                 </div>
@@ -333,6 +340,12 @@ import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subY
       transform: translateX(-50%); white-space: nowrap;
     }
 
+    .chart-legend {
+      display: flex; gap: 16px; justify-content: center; margin-top: 8px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
     .chart-empty {
       background: var(--bg-hover); border-radius: 8px; padding: 40px;
       text-align: center; color: var(--text-muted); font-size: 13px;
@@ -399,7 +412,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     { key: 'custom', label: 'Custom range' },
   ];
 
-  chartKpi = 'spend';
+  selectedKpis = ['spend', 'ctr', 'roas'];
   activeOverlay = 'none';
 
   availableKpis = [
@@ -421,11 +434,10 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
 
   chartWidth = 600;
   chartHeight = 160;
-  chartPoints: { x: number; y: number }[] = [];
-  chartLinePath = '';
-  chartAreaPath = '';
+  chartSeries: { label: string; color: string; linePath: string; areaPath: string }[] = [];
   chartGridLines: { y: number; label: string }[] = [];
   chartXLabels: { pct: number; text: string }[] = [];
+  private chartColors = ['#FF7700', '#0009BC', '#2ECC71'];
 
   @ViewChild('detailDateRef') detailDateRef!: ElementRef;
 
@@ -544,57 +556,80 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     });
   }
 
+  onKpiSelect(idx: number, value: string): void {
+    this.selectedKpis[idx] = value;
+    this.buildChartData();
+  }
+
   buildChartData(): void {
-    this.chartPoints = [];
-    this.chartLinePath = '';
-    this.chartAreaPath = '';
+    this.chartSeries = [];
     this.chartGridLines = [];
     this.chartXLabels = [];
 
     if (!this.detail?.timeseries) return;
-    const ts = this.detail.timeseries[this.chartKpi];
-    if (!ts || ts.length === 0) return;
 
-    const values = ts.map((d: any) => d.value || 0);
-    const maxVal = Math.max(...values, 0.001);
-    const minVal = Math.min(...values, 0);
-    const range = maxVal - minVal || 1;
+    const activeKpis = this.selectedKpis.filter(Boolean);
+    if (activeKpis.length === 0) return;
+
+    const firstTs = this.detail.timeseries[activeKpis[0]];
+    if (!firstTs || firstTs.length === 0) return;
+
     const pad = 10;
 
-    const points = values.map((v: number, i: number) => ({
-      x: pad + (i / Math.max(ts.length - 1, 1)) * (this.chartWidth - pad * 2),
-      y: pad + (1 - (v - minVal) / range) * (this.chartHeight - pad * 2),
-    }));
+    activeKpis.forEach((kpi: string, si: number) => {
+      const ts = this.detail.timeseries[kpi];
+      if (!ts || ts.length === 0) return;
 
-    this.chartPoints = points;
+      const values = ts.map((d: any) => d.value || 0);
+      const maxVal = Math.max(...values, 0.001);
+      const minVal = Math.min(...values, 0);
+      const range = maxVal - minVal || 1;
 
-    if (points.length > 0) {
-      this.chartLinePath = 'M ' + points.map((p: any) => `${p.x},${p.y}`).join(' L ');
-      this.chartAreaPath = this.chartLinePath
+      const points = values.map((v: number, i: number) => ({
+        x: pad + (i / Math.max(ts.length - 1, 1)) * (this.chartWidth - pad * 2),
+        y: pad + (1 - (v - minVal) / range) * (this.chartHeight - pad * 2),
+      }));
+
+      const linePath = 'M ' + points.map((p: any) => `${p.x},${p.y}`).join(' L ');
+      const areaPath = linePath
         + ` L ${points[points.length - 1].x},${this.chartHeight - pad}`
         + ` L ${points[0].x},${this.chartHeight - pad} Z`;
-    }
+
+      const kpiMeta = this.availableKpis.find(k => k.value === kpi);
+      this.chartSeries.push({
+        label: kpiMeta?.label || kpi,
+        color: this.chartColors[si % this.chartColors.length],
+        linePath,
+        areaPath,
+      });
+    });
 
     const gridCount = 4;
-    const kpi = this.chartKpi;
+    const primaryKpi = activeKpis[0];
+    const primaryTs = this.detail.timeseries[primaryKpi];
+    const primaryValues = primaryTs.map((d: any) => d.value || 0);
+    const maxVal = Math.max(...primaryValues, 0.001);
+    const minVal = Math.min(...primaryValues, 0);
+    const range = maxVal - minVal || 1;
+
     for (let i = 0; i <= gridCount; i++) {
       const frac = i / gridCount;
       const y = pad + frac * (this.chartHeight - pad * 2);
       const val = maxVal - frac * range;
       let label = '';
-      if (kpi === 'spend' || kpi === 'cpm') label = '$' + val.toFixed(0);
-      else if (kpi === 'ctr' || kpi === 'vtr' || kpi === 'cvr') label = val.toFixed(1) + '%';
-      else if (kpi === 'roas') label = val.toFixed(1) + 'x';
+      if (primaryKpi === 'spend' || primaryKpi === 'cpm') label = '$' + val.toFixed(0);
+      else if (primaryKpi === 'ctr' || primaryKpi === 'vtr' || primaryKpi === 'cvr') label = val.toFixed(1) + '%';
+      else if (primaryKpi === 'roas') label = val.toFixed(1) + 'x';
       else label = val.toFixed(0);
       this.chartGridLines.push({ y, label });
     }
 
-    const labelCount = Math.min(ts.length, 6);
-    const step = Math.max(1, Math.floor(ts.length / labelCount));
-    for (let i = 0; i < ts.length; i += step) {
-      const dt = new Date(ts[i].date + 'T00:00:00');
+    const labelCount = Math.min(firstTs.length, 6);
+    const step = Math.max(1, Math.floor(firstTs.length / labelCount));
+    for (let i = 0; i < firstTs.length; i += step) {
+      const dt = new Date(firstTs[i].date + 'T00:00:00');
       this.chartXLabels.push({
-        pct: (i / Math.max(ts.length - 1, 1)) * 100,
+        pct: (i / Math.max(firstTs.length - 1, 1)) * 100,
         text: dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       });
     }
