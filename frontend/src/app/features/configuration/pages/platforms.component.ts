@@ -239,8 +239,8 @@ const PLATFORMS: PlatformDef[] = [
                 <th class="col-platform">Platform</th>
                 <th class="col-name">Account</th>
                 <th class="col-status">Status</th>
-                <th class="col-meta">Currency</th>
-                <th class="col-meta">Timezone</th>
+                <th class="col-currency">Currency</th>
+                <th class="col-tz">Timezone</th>
                 <th class="col-sync">Last Synced</th>
                 <th class="col-app">Image App</th>
                 <th class="col-app">Video App</th>
@@ -274,10 +274,8 @@ const PLATFORMS: PlatformDef[] = [
                   </span>
                   <span class="sync-sub" *ngIf="!conn.initial_sync_completed">Syncing...</span>
                 </td>
-                <td class="col-meta">{{ conn.currency }}</td>
-                <td class="col-meta">
-                  <span class="tz-label">{{ conn.timezone }}</span>
-                </td>
+                <td class="col-currency">{{ conn.currency }}</td>
+                <td class="col-tz" [matTooltip]="conn.timezone">{{ conn.timezone }}</td>
                 <td class="col-sync">
                   <span *ngIf="conn.last_synced_at">{{ conn.last_synced_at | date:'MMM d, HH:mm' }}</span>
                   <span *ngIf="!conn.last_synced_at" class="no-data">—</span>

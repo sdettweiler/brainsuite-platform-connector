@@ -161,10 +161,15 @@
   .col-platform { width: 120px; }
   .col-name { width: auto; min-width: 180px; }
   .col-status { width: 110px; }
-  .col-meta { width: 80px; }
+  .col-currency { width: 75px; }
+  .col-tz { width: 140px; }
   .col-sync { width: 120px; }
   .col-app { width: 140px; }
   .col-actions { width: 48px; text-align: center; }
+
+  td, th {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 }
 
 .platform-badge {
