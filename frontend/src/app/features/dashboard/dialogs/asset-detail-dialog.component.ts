@@ -6,14 +6,26 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
+import * as echarts from 'echarts/core';
+import { LineChart } from 'echarts/charts';
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components';
+import { CanvasRenderer } from 'echarts/renderers';
 import { ApiService } from '../../../core/services/api.service';
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subYears } from 'date-fns';
+import type { EChartsOption } from 'echarts';
+
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
 
 @Component({
   standalone: true,
   imports: [
     CommonModule, FormsModule,
     MatDialogModule, MatTabsModule, MatButtonModule, MatIconModule, MatTooltipModule,
+    NgxEchartsDirective,
+  ],
+  providers: [
+    provideEchartsCore({ echarts }),
   ],
   template: `
     <div class="detail-dialog">
@@ -102,25 +114,10 @@ import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subY
                       </select>
                     </div>
                   </div>
-                  <div class="chart-container" *ngIf="chartSeries.length > 0">
-                    <svg [attr.viewBox]="'0 0 ' + chartWidth + ' ' + chartHeight" preserveAspectRatio="none" class="chart-svg">
-                      <line *ngFor="let g of chartGridLines" [attr.x1]="0" [attr.y1]="g.y" [attr.x2]="chartWidth" [attr.y2]="g.y" class="chart-grid" />
-                      <ng-container *ngFor="let series of chartSeries; let si = index">
-                        <path *ngIf="si === 0" [attr.d]="series.areaPath" class="chart-area-fill" [style.fill]="series.color + '15'" />
-                        <path [attr.d]="series.linePath" class="chart-line" [style.stroke]="series.color" />
-                      </ng-container>
-                    </svg>
-                    <div class="chart-legend" *ngIf="chartSeries.length > 1">
-                      <span *ngFor="let s of chartSeries" class="legend-item">
-                        <span class="legend-dot" [style.background]="s.color"></span>
-                        {{ s.label }}
-                      </span>
-                    </div>
-                    <div class="chart-x-labels">
-                      <span *ngFor="let lbl of chartXLabels" [style.left]="lbl.pct + '%'">{{ lbl.text }}</span>
-                    </div>
+                  <div class="chart-container" *ngIf="chartOption">
+                    <div echarts [options]="chartOption" [merge]="chartMerge" class="echart-box"></div>
                   </div>
-                  <div class="chart-empty" *ngIf="chartSeries.length === 0">
+                  <div class="chart-empty" *ngIf="!chartOption">
                     No data available for this period
                   </div>
                 </div>
@@ -312,39 +309,8 @@ import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subY
     }
     .kpi-native-select:focus { outline: none; border-color: var(--accent); }
 
-    .chart-container {
-      background: var(--bg-hover); border-radius: 8px; padding: 16px 16px 32px 40px;
-      position: relative; height: 200px;
-    }
-    .chart-svg { width: 100%; height: 100%; display: block; }
-    .chart-grid { stroke: rgba(255,255,255,0.06); stroke-width: 1; }
-    .chart-area-fill { fill: rgba(255,119,0,0.1); }
-    .chart-line { fill: none; stroke: #FF7700; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-    .chart-dot { fill: #FF7700; opacity: 0; }
-    .chart-dot:hover { opacity: 1; }
-
-    .chart-y-labels {
-      position: absolute; left: 0; top: 16px; bottom: 32px; width: 36px;
-      display: flex; flex-direction: column; justify-content: space-between;
-    }
-    .chart-y-labels span {
-      font-size: 9px; color: var(--text-muted); text-align: right;
-      position: absolute; right: 4px; transform: translateY(-50%);
-    }
-
-    .chart-x-labels {
-      position: absolute; bottom: 8px; left: 40px; right: 16px; height: 16px;
-    }
-    .chart-x-labels span {
-      position: absolute; font-size: 9px; color: var(--text-muted);
-      transform: translateX(-50%); white-space: nowrap;
-    }
-
-    .chart-legend {
-      display: flex; gap: 16px; justify-content: center; margin-top: 8px;
-    }
-    .legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); }
-    .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .chart-container { background: var(--bg-hover); border-radius: 8px; overflow: hidden; }
+    .echart-box { width: 100%; height: 260px; }
 
     .chart-empty {
       background: var(--bg-hover); border-radius: 8px; padding: 40px;
@@ -417,12 +383,15 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
 
   availableKpis = [
     { value: 'spend', label: 'Spend' },
+    { value: 'impressions', label: 'Impressions' },
+    { value: 'clicks', label: 'Clicks' },
     { value: 'ctr', label: 'CTR' },
-    { value: 'roas', label: 'ROAS' },
     { value: 'cpm', label: 'CPM' },
+    { value: 'roas', label: 'ROAS' },
+    { value: 'conversions', label: 'Conversions' },
     { value: 'video_views', label: 'Video Views' },
     { value: 'vtr', label: 'VTR' },
-    { value: 'conversions', label: 'Conversions' },
+    { value: 'cvr', label: 'CVR' },
   ];
 
   heatmapOverlays = [
@@ -432,11 +401,9 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     { key: 'fog', label: 'Fog Map' },
   ];
 
-  chartWidth = 600;
-  chartHeight = 160;
-  chartSeries: { label: string; color: string; linePath: string; areaPath: string }[] = [];
-  chartGridLines: { y: number; label: string }[] = [];
-  chartXLabels: { pct: number; text: string }[] = [];
+  chartOption: EChartsOption | null = null;
+  chartMerge: EChartsOption = {};
+
   private chartColors = ['#FF7700', '#0009BC', '#2ECC71'];
 
   @ViewChild('detailDateRef') detailDateRef!: ElementRef;
@@ -538,101 +505,166 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     }
   }
 
+  onKpiSelect(idx: number, value: string): void {
+    this.selectedKpis = [...this.selectedKpis];
+    this.selectedKpis[idx] = value;
+    this.buildChart();
+  }
+
   loadDetail(): void {
     const isFirstLoad = !this.detail;
     if (isFirstLoad) this.loading = true;
     this.api.get<any>(`/dashboard/assets/${this.data.assetId}`, {
       date_from: this.dateFrom,
       date_to: this.dateTo,
-      kpis: 'spend,ctr,roas,cpm,video_views,vtr,conversions',
+      kpis: 'spend,ctr,roas,cpm,video_views,vtr,conversions,cvr,impressions,clicks',
     }).subscribe({
       next: (d) => {
         this.detail = d;
         this.asset = d;
         this.loading = false;
-        this.buildChartData();
+        this.buildChart();
       },
       error: () => { this.loading = false; },
     });
   }
 
-  onKpiSelect(idx: number, value: string): void {
-    this.selectedKpis[idx] = value;
-    this.buildChartData();
-  }
-
-  buildChartData(): void {
-    this.chartSeries = [];
-    this.chartGridLines = [];
-    this.chartXLabels = [];
-
-    if (!this.detail?.timeseries) return;
+  private buildChart(): void {
+    if (!this.detail?.timeseries) {
+      this.chartOption = null;
+      return;
+    }
 
     const activeKpis = this.selectedKpis.filter(Boolean);
-    if (activeKpis.length === 0) return;
+    if (activeKpis.length === 0) {
+      this.chartOption = null;
+      return;
+    }
 
     const firstTs = this.detail.timeseries[activeKpis[0]];
-    if (!firstTs || firstTs.length === 0) return;
+    if (!firstTs || firstTs.length === 0) {
+      this.chartOption = null;
+      return;
+    }
 
-    const pad = 10;
+    const dates = firstTs.map((d: any) => {
+      const dt = new Date(d.date + 'T00:00:00');
+      return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    });
 
-    activeKpis.forEach((kpi: string, si: number) => {
+    const yAxes: any[] = [];
+    const series: any[] = [];
+
+    activeKpis.forEach((kpi: string, idx: number) => {
       const ts = this.detail.timeseries[kpi];
-      if (!ts || ts.length === 0) return;
-
-      const values = ts.map((d: any) => d.value || 0);
-      const maxVal = Math.max(...values, 0.001);
-      const minVal = Math.min(...values, 0);
-      const range = maxVal - minVal || 1;
-
-      const points = values.map((v: number, i: number) => ({
-        x: pad + (i / Math.max(ts.length - 1, 1)) * (this.chartWidth - pad * 2),
-        y: pad + (1 - (v - minVal) / range) * (this.chartHeight - pad * 2),
-      }));
-
-      const linePath = 'M ' + points.map((p: any) => `${p.x},${p.y}`).join(' L ');
-      const areaPath = linePath
-        + ` L ${points[points.length - 1].x},${this.chartHeight - pad}`
-        + ` L ${points[0].x},${this.chartHeight - pad} Z`;
+      if (!ts) return;
 
       const kpiMeta = this.availableKpis.find(k => k.value === kpi);
-      this.chartSeries.push({
-        label: kpiMeta?.label || kpi,
-        color: this.chartColors[si % this.chartColors.length],
-        linePath,
-        areaPath,
+      const label = kpiMeta?.label || kpi;
+      const color = this.chartColors[idx % this.chartColors.length];
+
+      yAxes.push({
+        type: 'value',
+        position: idx === 0 ? 'left' : 'right',
+        offset: idx > 1 ? 60 : 0,
+        show: idx <= 1,
+        axisLine: { show: true, lineStyle: { color } },
+        axisLabel: {
+          color,
+          fontSize: 10,
+          formatter: (val: number) => this.formatKpiValue(kpi, val),
+        },
+        splitLine: { show: idx === 0, lineStyle: { color: 'rgba(255,255,255,0.06)' } },
+      });
+
+      series.push({
+        name: label,
+        type: 'line',
+        yAxisIndex: idx,
+        data: ts.map((d: any) => d.value),
+        smooth: 0.3,
+        symbol: ts.length > 30 ? 'none' : 'circle',
+        symbolSize: 6,
+        lineStyle: { color, width: 2 },
+        itemStyle: { color },
+        areaStyle: idx === 0 ? {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: color + '30' },
+              { offset: 1, color: color + '05' },
+            ],
+          },
+        } : undefined,
       });
     });
 
-    const gridCount = 4;
-    const primaryKpi = activeKpis[0];
-    const primaryTs = this.detail.timeseries[primaryKpi];
-    const primaryValues = primaryTs.map((d: any) => d.value || 0);
-    const maxVal = Math.max(...primaryValues, 0.001);
-    const minVal = Math.min(...primaryValues, 0);
-    const range = maxVal - minVal || 1;
+    const option: EChartsOption = {
+      backgroundColor: 'transparent',
+      grid: {
+        left: 50, right: activeKpis.length > 1 ? 50 : 20,
+        top: 40, bottom: firstTs.length > 30 ? 60 : 30,
+      },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: '#1B1B1B',
+        borderColor: '#333',
+        textStyle: { color: '#fff', fontSize: 12, fontFamily: 'Nunito Sans' },
+        formatter: (params: any) => {
+          if (!Array.isArray(params)) return '';
+          let html = `<div style="margin-bottom:4px;font-weight:600">${params[0].axisValue}</div>`;
+          params.forEach((p: any) => {
+            const kpiKey = activeKpis[p.seriesIndex];
+            html += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
+              <span>${p.seriesName}: <b>${this.formatKpiValue(kpiKey, p.value)}</b></span>
+            </div>`;
+          });
+          return html;
+        },
+      },
+      legend: {
+        show: activeKpis.length > 1,
+        bottom: 0,
+        textStyle: { color: '#999', fontSize: 11, fontFamily: 'Nunito Sans' },
+        icon: 'circle',
+        itemWidth: 8,
+        itemHeight: 8,
+      },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLabel: { color: '#666', fontSize: 10, rotate: 0, interval: 'auto' },
+        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+        axisTick: { show: false },
+      },
+      yAxis: yAxes,
+      series,
+      dataZoom: firstTs.length > 30 ? [{
+        type: 'inside',
+        start: 0,
+        end: 100,
+      }] : [],
+    };
 
-    for (let i = 0; i <= gridCount; i++) {
-      const frac = i / gridCount;
-      const y = pad + frac * (this.chartHeight - pad * 2);
-      const val = maxVal - frac * range;
-      let label = '';
-      if (primaryKpi === 'spend' || primaryKpi === 'cpm') label = '$' + val.toFixed(0);
-      else if (primaryKpi === 'ctr' || primaryKpi === 'vtr' || primaryKpi === 'cvr') label = val.toFixed(1) + '%';
-      else if (primaryKpi === 'roas') label = val.toFixed(1) + 'x';
-      else label = val.toFixed(0);
-      this.chartGridLines.push({ y, label });
+    if (this.chartOption) {
+      this.chartMerge = option;
+    } else {
+      this.chartOption = option;
     }
+  }
 
-    const labelCount = Math.min(firstTs.length, 6);
-    const step = Math.max(1, Math.floor(firstTs.length / labelCount));
-    for (let i = 0; i < firstTs.length; i += step) {
-      const dt = new Date(firstTs[i].date + 'T00:00:00');
-      this.chartXLabels.push({
-        pct: (i / Math.max(firstTs.length - 1, 1)) * 100,
-        text: dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      });
+  private formatKpiValue(kpi: string, val: number): string {
+    if (val == null || isNaN(val)) return '—';
+    if (kpi === 'spend') return '$' + val.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    if (kpi === 'cpm') return '$' + val.toFixed(2);
+    if (kpi === 'ctr' || kpi === 'vtr' || kpi === 'cvr') return val.toFixed(2) + '%';
+    if (kpi === 'roas') return val.toFixed(2) + 'x';
+    if (kpi === 'impressions' || kpi === 'clicks' || kpi === 'conversions' || kpi === 'video_views') {
+      return val.toLocaleString('en-US', { maximumFractionDigits: 0 });
     }
+    return val.toFixed(2);
   }
 
   get assetMetaList(): { label: string; value: string }[] {
@@ -653,6 +685,8 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
       { label: 'Campaigns Used In', value: String(this.detail.campaigns_count || 0) },
       { label: 'ACE Score', value: this.asset.ace_score ? `${this.asset.ace_score.toFixed(1)} (dummy)` : 'N/A' },
       { label: 'Total Spend', value: fmt(p.spend, '$', '', 0) },
+      { label: 'Impressions', value: p.impressions?.toLocaleString() || '0' },
+      { label: 'Clicks', value: p.clicks?.toLocaleString() || '0' },
       { label: 'CPM', value: fmt(p.cpm, '$', '', 2) },
       { label: 'CTR', value: fmt(p.ctr, '', '%', 2) },
       ...(p.video_views ? [{ label: 'VTR', value: fmt(p.vtr, '', '%', 2) }] : []),

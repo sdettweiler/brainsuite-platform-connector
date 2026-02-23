@@ -7,6 +7,7 @@ A platform connector tool that integrates with Meta, TikTok, and YouTube/Google 
 - **Backend**: Python 3.12 + FastAPI (served via uvicorn on port 5000)
 - **Frontend**: Angular 16 (production build served as static files by FastAPI)
 - **Database**: PostgreSQL (Replit-managed)
+- **Charts**: ngx-echarts (Apache ECharts for Angular)
 - **ORM**: SQLAlchemy 2.0 (async with asyncpg)
 - **Migrations**: Alembic
 
