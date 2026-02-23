@@ -639,8 +639,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.contextMenu.visible = false;
     const { AssetDetailDialogComponent } = await import('../dashboard/dialogs/asset-detail-dialog.component');
     this.dialog.open(AssetDetailDialogComponent, {
-      width: '90vw',
-      maxWidth: '1100px',
+      width: '92vw',
+      maxWidth: '1430px',
       height: '85vh',
       data: { assetId: asset.id, dateFrom: this.dateFrom, dateTo: this.dateTo, selectedPreset: this.selectedPreset },
       panelClass: 'asset-detail-dialog',
@@ -650,8 +650,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   async openAssetById(assetId: string): Promise<void> {
     const { AssetDetailDialogComponent } = await import('../dashboard/dialogs/asset-detail-dialog.component');
     this.dialog.open(AssetDetailDialogComponent, {
-      width: '90vw',
-      maxWidth: '1100px',
+      width: '92vw',
+      maxWidth: '1430px',
       height: '85vh',
       data: { assetId, dateFrom: this.dateFrom, dateTo: this.dateTo, selectedPreset: this.selectedPreset },
     });
