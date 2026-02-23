@@ -60,23 +60,36 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
 
       <mat-tab-group class="detail-tabs" *ngIf="!loading && asset">
         <mat-tab label="Performance">
-          <div class="tab-content">
-            <div class="perf-layout">
-              <div class="asset-preview">
-                <video
-                  *ngIf="asset.asset_format === 'VIDEO' && asset.asset_url"
-                  [src]="asset.asset_url"
-                  controls
-                  class="asset-media"
-                ></video>
-                <img
-                  *ngIf="asset.asset_format !== 'VIDEO' || !asset.asset_url"
-                  [src]="asset.asset_url || asset.thumbnail_url || '/assets/images/placeholder.svg'"
-                  class="asset-media"
-                  alt="Creative"
-                />
-                <div class="ace-badge" [class]="getAceClass(asset.ace_score)">
-                  ACE: {{ asset.ace_score | number:'1.0-0' }}
+          <div class="tab-content perf-tab">
+            <div class="perf-layout" #perfLayout>
+              <div class="asset-col">
+                <div class="asset-preview">
+                  <video
+                    *ngIf="asset.asset_format === 'VIDEO' && asset.asset_url"
+                    [src]="asset.asset_url"
+                    controls
+                    class="asset-media"
+                  ></video>
+                  <img
+                    *ngIf="asset.asset_format !== 'VIDEO' || !asset.asset_url"
+                    [src]="asset.asset_url || asset.thumbnail_url || '/assets/images/placeholder.svg'"
+                    class="asset-media"
+                    alt="Creative"
+                  />
+                  <div class="ace-badge" [class]="getAceClass(asset.ace_score)">
+                    ACE: {{ asset.ace_score | number:'1.0-0' }}
+                  </div>
+                </div>
+
+                <div class="campaigns-section" *ngIf="detail?.campaigns?.length">
+                  <div class="section-label">Used in {{ detail.campaigns_count }} Campaign(s)</div>
+                  <div class="campaigns-list">
+                    <div class="campaign-row" *ngFor="let c of detail.campaigns">
+                      <mat-icon>campaign</mat-icon>
+                      <span>{{ c.campaign_name || c.campaign_id }}</span>
+                      <span class="campaign-spend">{{ c.spend | currency:'USD':'symbol':'1.0-0' }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -116,17 +129,6 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                       </div>
                     </ng-container>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="campaigns-section" *ngIf="detail?.campaigns?.length">
-              <div class="section-label">Used in {{ detail.campaigns_count }} Campaign(s)</div>
-              <div class="campaigns-list">
-                <div class="campaign-row" *ngFor="let c of detail.campaigns">
-                  <mat-icon>campaign</mat-icon>
-                  <span>{{ c.campaign_name || c.campaign_id }}</span>
-                  <span class="campaign-spend">{{ c.spend | currency:'USD':'symbol':'1.0-0' }}</span>
                 </div>
               </div>
             </div>
@@ -221,9 +223,13 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .apply-btn:hover { background: var(--accent-hover); }
 
     .detail-tabs { flex: 1; overflow: hidden; }
-    .tab-content { padding: 20px; overflow-y: auto; max-height: calc(85vh - 160px); }
-    .perf-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; margin-bottom: 20px; }
-    .perf-right { display: flex; flex-direction: column; min-height: 0; max-height: calc(85vh - 220px); overflow: hidden; }
+    .tab-content { padding: 20px; overflow: hidden; height: calc(85vh - 160px); }
+    .perf-tab { display: flex; flex-direction: column; }
+    .perf-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; flex: 1; min-height: 0; }
+    .asset-col { display: flex; flex-direction: column; }
+    .asset-preview { flex-shrink: 0; }
+    .campaigns-section { margin-top: auto; padding-top: 16px; }
+    .perf-right { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 
     .asset-preview { position: relative; border-radius: 8px; overflow: hidden; background: var(--bg-hover); }
     .asset-media { width: 100%; display: block; object-fit: cover; max-height: 320px; }
@@ -277,7 +283,6 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .kpi-name { padding: 6px 0; font-size: 12px; color: var(--text-secondary); }
     .kpi-val { padding: 6px 0; font-size: 13px; font-weight: 600; text-align: right; }
 
-    .campaigns-section { border-top: 1px solid var(--border); padding-top: 16px; }
     .campaigns-list { display: flex; flex-direction: column; gap: 6px; }
     .campaign-row {
       display: flex; align-items: center; gap: 8px; padding: 8px;
