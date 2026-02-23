@@ -304,20 +304,16 @@ async def export_assets(
     date_from = payload.date_from or (date.today() - timedelta(days=30))
     date_to = payload.date_to or (date.today() - timedelta(days=1))
 
-    # Fetch all assets with performance
     perf_subq = (
         select(
             HarmonizedPerformance.asset_id,
             func.sum(HarmonizedPerformance.spend).label("spend"),
             func.sum(HarmonizedPerformance.impressions).label("impressions"),
-            func.avg(HarmonizedPerformance.ctr).label("ctr"),
-            func.avg(HarmonizedPerformance.cpm).label("cpm"),
+            func.sum(HarmonizedPerformance.clicks).label("clicks"),
             func.sum(HarmonizedPerformance.conversions).label("conversions"),
             func.sum(HarmonizedPerformance.conversion_value).label("conversion_value"),
-            func.avg(HarmonizedPerformance.cvr).label("cvr"),
-            func.avg(HarmonizedPerformance.roas).label("roas"),
             func.sum(HarmonizedPerformance.video_views).label("video_views"),
-            func.avg(HarmonizedPerformance.vtr).label("vtr"),
+            func.sum(HarmonizedPerformance.reach).label("reach"),
         )
         .where(
             HarmonizedPerformance.report_date >= date_from,
@@ -327,15 +323,37 @@ async def export_assets(
         .subquery()
     )
 
-    result = await db.execute(
+    query = (
         select(CreativeAsset, perf_subq)
         .outerjoin(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
         .where(CreativeAsset.organization_id == current_user.organization_id)
     )
 
+    if payload.platforms:
+        query = query.where(CreativeAsset.platform.in_(payload.platforms))
+    if payload.asset_ids:
+        query = query.where(CreativeAsset.id.in_(payload.asset_ids))
+
+    result = await db.execute(query)
+
     assets_data = []
     for row in result.all():
         asset = row[0]
+        spend = float(row.spend or 0)
+        impressions = int(row.impressions or 0)
+        clicks = int(row.clicks or 0)
+        conversions = int(row.conversions or 0)
+        conversion_value = float(row.conversion_value or 0)
+        video_views = int(row.video_views or 0)
+        reach = int(row.reach or 0)
+
+        ctr = (clicks / impressions * 100) if impressions else 0
+        cpm = (spend / impressions * 1000) if impressions else 0
+        cpc = (spend / clicks) if clicks else 0
+        cvr = (conversions / clicks * 100) if clicks else 0
+        roas = (conversion_value / spend) if spend else 0
+        vtr = (video_views / impressions * 100) if impressions else 0
+
         assets_data.append({
             "ad_name": asset.ad_name or "",
             "campaign_name": asset.campaign_name or "",
@@ -346,37 +364,40 @@ async def export_assets(
             "ace_score": asset.ace_score,
             "brainsuite_metadata": asset.brainsuite_metadata or {},
             "performance": {
-                "spend": float(row.spend or 0),
-                "impressions": int(row.impressions or 0),
-                "clicks": None,
-                "ctr": float(row.ctr or 0),
-                "cpm": float(row.cpm or 0),
-                "conversions": int(row.conversions or 0),
-                "conversion_value": float(row.conversion_value or 0),
-                "cvr": float(row.cvr or 0),
-                "roas": float(row.roas or 0),
-                "video_views": int(row.video_views or 0),
-                "vtr": float(row.vtr or 0),
+                "spend": spend,
+                "impressions": impressions,
+                "clicks": clicks,
+                "ctr": round(ctr, 2),
+                "cpm": round(cpm, 2),
+                "cpc": round(cpc, 2),
+                "conversions": conversions,
+                "conversion_value": round(conversion_value, 2),
+                "cvr": round(cvr, 2),
+                "roas": round(roas, 2),
+                "video_views": video_views,
+                "vtr": round(vtr, 2),
+                "reach": reach,
             },
         })
 
     rows = export_service.prepare_rows(assets_data, payload.fields, date_from, date_to)
 
-    if payload.format == "csv":
+    fmt = payload.format.lower()
+    if fmt == "csv":
         content = export_service.generate_csv(rows)
         return Response(
             content=content,
             media_type="text/csv",
             headers={"Content-Disposition": "attachment; filename=brainsuite_export.csv"},
         )
-    elif payload.format == "excel":
+    elif fmt in ("excel", "xlsx"):
         content = export_service.generate_excel(rows)
         return Response(
             content=content,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": "attachment; filename=brainsuite_export.xlsx"},
         )
-    elif payload.format == "pdf":
+    elif fmt == "pdf":
         content = export_service.generate_pdf(rows)
         return Response(
             content=content,
@@ -384,7 +405,7 @@ async def export_assets(
             headers={"Content-Disposition": "attachment; filename=brainsuite_export.pdf"},
         )
     else:
-        raise HTTPException(status_code=400, detail="Invalid format")
+        raise HTTPException(status_code=400, detail=f"Invalid format: {payload.format}")
 
 
 # ─── Metadata field path aliases (frontend uses /metadata/fields/...) ─────────

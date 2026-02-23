@@ -163,5 +163,10 @@ class ExportRequest(BaseModel):
     date_from: Optional[date] = None
     date_to: Optional[date] = None
     filters: Optional[DashboardFilterParams] = None
-    fields: List[str]  # ordered list of fields to include
-    format: str = "excel"  # pdf, excel, csv
+    platforms: Optional[List[str]] = None
+    asset_ids: Optional[List[uuid.UUID]] = None
+    fields: List[str]
+    format: str = "excel"
+
+    class Config:
+        extra = "ignore"
