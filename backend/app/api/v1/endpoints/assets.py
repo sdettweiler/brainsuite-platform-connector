@@ -299,22 +299,42 @@ async def export_assets(
 ):
     from datetime import date, timedelta
     from app.models.performance import HarmonizedPerformance
-    from sqlalchemy import func
+    from app.services.export_service import (
+        SUMMABLE_INT_FIELDS, SUMMABLE_DECIMAL_FIELDS, RATIO_FORMULAS,
+        WEIGHTED_AVG_FIELDS, _safe_div,
+    )
+    from sqlalchemy import func, case, cast, Float as SAFloat
 
     date_from = payload.date_from or (date.today() - timedelta(days=30))
     date_to = payload.date_to or (date.today() - timedelta(days=1))
 
+    agg_cols = [HarmonizedPerformance.asset_id]
+    for f in SUMMABLE_INT_FIELDS:
+        col = getattr(HarmonizedPerformance, f, None)
+        if col is not None:
+            agg_cols.append(func.coalesce(func.sum(col), 0).label(f))
+    for f in SUMMABLE_DECIMAL_FIELDS:
+        col = getattr(HarmonizedPerformance, f, None)
+        if col is not None:
+            agg_cols.append(func.coalesce(func.sum(col), 0).label(f))
+    for wf, (weight_field,) in WEIGHTED_AVG_FIELDS.items():
+        col = getattr(HarmonizedPerformance, wf, None)
+        weight_col = getattr(HarmonizedPerformance, weight_field, None)
+        if col is not None and weight_col is not None:
+            agg_cols.append(
+                case(
+                    (func.sum(weight_col) > 0,
+                     func.sum(col * weight_col) / func.sum(weight_col)),
+                    else_=None,
+                ).label(wf)
+            )
+    for sf in ["quality_ranking", "engagement_rate_ranking", "conversion_rate_ranking", "creative_fatigue"]:
+        col = getattr(HarmonizedPerformance, sf, None)
+        if col is not None:
+            agg_cols.append(func.max(col).label(sf))
+
     perf_subq = (
-        select(
-            HarmonizedPerformance.asset_id,
-            func.sum(HarmonizedPerformance.spend).label("spend"),
-            func.sum(HarmonizedPerformance.impressions).label("impressions"),
-            func.sum(HarmonizedPerformance.clicks).label("clicks"),
-            func.sum(HarmonizedPerformance.conversions).label("conversions"),
-            func.sum(HarmonizedPerformance.conversion_value).label("conversion_value"),
-            func.sum(HarmonizedPerformance.video_views).label("video_views"),
-            func.sum(HarmonizedPerformance.reach).label("reach"),
-        )
+        select(*agg_cols)
         .where(
             HarmonizedPerformance.report_date >= date_from,
             HarmonizedPerformance.report_date <= date_to,
@@ -339,46 +359,56 @@ async def export_assets(
     assets_data = []
     for row in result.all():
         asset = row[0]
-        spend = float(row.spend or 0)
-        impressions = int(row.impressions or 0)
-        clicks = int(row.clicks or 0)
-        conversions = int(row.conversions or 0)
-        conversion_value = float(row.conversion_value or 0)
-        video_views = int(row.video_views or 0)
-        reach = int(row.reach or 0)
 
-        ctr = (clicks / impressions * 100) if impressions else 0
-        cpm = (spend / impressions * 1000) if impressions else 0
-        cpc = (spend / clicks) if clicks else 0
-        cvr = (conversions / clicks * 100) if clicks else 0
-        roas = (conversion_value / spend) if spend else 0
-        vtr = (video_views / impressions * 100) if impressions else 0
+        sums = {}
+        for f in SUMMABLE_INT_FIELDS:
+            sums[f] = int(getattr(row, f, 0) or 0)
+        for f in SUMMABLE_DECIMAL_FIELDS:
+            sums[f] = float(getattr(row, f, 0) or 0)
 
-        assets_data.append({
+        ratios = {}
+        for key, formula in RATIO_FORMULAS.items():
+            ratios[key] = round(formula(sums), 4)
+
+        weighted = {}
+        for wf in WEIGHTED_AVG_FIELDS:
+            val = getattr(row, wf, None)
+            weighted[wf] = round(float(val), 2) if val is not None else None
+
+        rankings = {}
+        for sf in ["quality_ranking", "engagement_rate_ranking", "conversion_rate_ranking", "creative_fatigue"]:
+            rankings[sf] = getattr(row, sf, None)
+
+        brainsuite = asset.brainsuite_metadata or {}
+
+        entry = {
             "ad_name": asset.ad_name or "",
+            "ad_id": asset.ad_id or "",
+            "creative_id": asset.creative_id or "",
+            "platform": asset.platform,
+            "asset_format": asset.asset_format or "",
+            "campaign_id": asset.campaign_id or "",
             "campaign_name": asset.campaign_name or "",
             "campaign_objective": asset.campaign_objective or "",
-            "platform": asset.platform,
+            "ad_set_id": asset.ad_set_id or "",
+            "ad_set_name": asset.ad_set_name or "",
             "ad_account_id": asset.ad_account_id or "",
-            "asset_format": asset.asset_format or "",
+            "publisher_platform": "",
+            "platform_position": "",
+            "org_currency": "",
+            "original_currency": "",
+            **sums,
+            **ratios,
+            **weighted,
+            **rankings,
             "ace_score": asset.ace_score,
-            "brainsuite_metadata": asset.brainsuite_metadata or {},
-            "performance": {
-                "spend": spend,
-                "impressions": impressions,
-                "clicks": clicks,
-                "ctr": round(ctr, 2),
-                "cpm": round(cpm, 2),
-                "cpc": round(cpc, 2),
-                "conversions": conversions,
-                "conversion_value": round(conversion_value, 2),
-                "cvr": round(cvr, 2),
-                "roas": round(roas, 2),
-                "video_views": video_views,
-                "vtr": round(vtr, 2),
-                "reach": reach,
-            },
-        })
+            "attention_score": brainsuite.get("attention_score"),
+            "brand_score": brainsuite.get("brand_score"),
+            "emotion_score": brainsuite.get("emotion_score"),
+            "message_clarity": brainsuite.get("message_clarity"),
+            "visual_impact": brainsuite.get("visual_impact"),
+        }
+        assets_data.append(entry)
 
     rows = export_service.prepare_rows(assets_data, payload.fields, date_from, date_to)
 

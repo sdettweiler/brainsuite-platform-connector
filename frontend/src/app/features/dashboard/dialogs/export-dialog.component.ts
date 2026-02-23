@@ -9,7 +9,7 @@ import { ApiService } from '../../../core/services/api.service';
 interface ExportField {
   key: string;
   label: string;
-  category: 'dimension' | 'performance' | 'brainsuite';
+  category: string;
 }
 
 interface ExportDialogData {
@@ -194,7 +194,7 @@ interface ExportDialogData {
 
     .field-panel {
       border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
-      max-height: 320px; display: flex; flex-direction: column;
+      max-height: 420px; display: flex; flex-direction: column;
     }
 
     .panel-header {
@@ -258,34 +258,99 @@ export class ExportDialogComponent implements OnInit {
 
   categories = [
     { key: 'dimension', label: 'Dimensions' },
-    { key: 'performance', label: 'Performance KPIs' },
-    { key: 'brainsuite', label: 'Brainsuite KPIs' },
+    { key: 'delivery', label: 'Delivery' },
+    { key: 'video', label: 'Video' },
+    { key: 'engagement', label: 'Engagement' },
+    { key: 'conversion', label: 'Conversions' },
+    { key: 'quality', label: 'Quality & Rankings' },
+    { key: 'brainsuite', label: 'Brainsuite' },
   ];
 
   allFields: ExportField[] = [
-    // Dimensions
     { key: 'ad_name', label: 'Ad Name', category: 'dimension' },
     { key: 'ad_id', label: 'Ad ID', category: 'dimension' },
+    { key: 'creative_id', label: 'Creative ID', category: 'dimension' },
     { key: 'platform', label: 'Platform', category: 'dimension' },
     { key: 'asset_format', label: 'Format', category: 'dimension' },
+    { key: 'campaign_id', label: 'Campaign ID', category: 'dimension' },
     { key: 'campaign_name', label: 'Campaign', category: 'dimension' },
+    { key: 'campaign_objective', label: 'Objective', category: 'dimension' },
+    { key: 'ad_set_id', label: 'Ad Set ID', category: 'dimension' },
     { key: 'ad_set_name', label: 'Ad Set', category: 'dimension' },
-    { key: 'objective', label: 'Objective', category: 'dimension' },
-    { key: 'report_date', label: 'Date', category: 'dimension' },
-    // Performance
-    { key: 'spend', label: 'Spend', category: 'performance' },
-    { key: 'impressions', label: 'Impressions', category: 'performance' },
-    { key: 'clicks', label: 'Clicks', category: 'performance' },
-    { key: 'ctr', label: 'CTR', category: 'performance' },
-    { key: 'cpm', label: 'CPM', category: 'performance' },
-    { key: 'cpc', label: 'CPC', category: 'performance' },
-    { key: 'reach', label: 'Reach', category: 'performance' },
-    { key: 'conversions', label: 'Conversions', category: 'performance' },
-    { key: 'roas', label: 'ROAS', category: 'performance' },
-    { key: 'video_views', label: 'Video Views', category: 'performance' },
-    { key: 'vtr', label: 'VTR', category: 'performance' },
-    { key: 'video_completion_rate', label: 'Video Completion Rate', category: 'performance' },
-    // Brainsuite
+    { key: 'ad_account_id', label: 'Ad Account ID', category: 'dimension' },
+    { key: 'publisher_platform', label: 'Publisher Platform', category: 'dimension' },
+    { key: 'platform_position', label: 'Platform Position', category: 'dimension' },
+    { key: 'org_currency', label: 'Currency', category: 'dimension' },
+    { key: 'original_currency', label: 'Original Currency', category: 'dimension' },
+    { key: 'exchange_rate', label: 'Exchange Rate', category: 'dimension' },
+
+    { key: 'spend', label: 'Spend', category: 'delivery' },
+    { key: 'impressions', label: 'Impressions', category: 'delivery' },
+    { key: 'reach', label: 'Reach', category: 'delivery' },
+    { key: 'frequency', label: 'Frequency', category: 'delivery' },
+    { key: 'clicks', label: 'Clicks', category: 'delivery' },
+    { key: 'ctr', label: 'CTR (%)', category: 'delivery' },
+    { key: 'cpm', label: 'CPM', category: 'delivery' },
+    { key: 'cpp', label: 'CPP', category: 'delivery' },
+    { key: 'cpc', label: 'CPC', category: 'delivery' },
+    { key: 'outbound_clicks', label: 'Outbound Clicks', category: 'delivery' },
+    { key: 'outbound_ctr', label: 'Outbound CTR (%)', category: 'delivery' },
+    { key: 'unique_clicks', label: 'Unique Clicks', category: 'delivery' },
+    { key: 'unique_ctr', label: 'Unique CTR (%)', category: 'delivery' },
+    { key: 'inline_link_clicks', label: 'Inline Link Clicks', category: 'delivery' },
+    { key: 'inline_link_click_ctr', label: 'Inline Link Click CTR (%)', category: 'delivery' },
+
+    { key: 'video_plays', label: 'Video Plays', category: 'video' },
+    { key: 'video_views', label: 'Video Views', category: 'video' },
+    { key: 'vtr', label: 'VTR (%)', category: 'video' },
+    { key: 'cpv', label: 'Cost per View', category: 'video' },
+    { key: 'video_p25', label: 'Video 25%', category: 'video' },
+    { key: 'video_p50', label: 'Video 50%', category: 'video' },
+    { key: 'video_p75', label: 'Video 75%', category: 'video' },
+    { key: 'video_p100', label: 'Video 100%', category: 'video' },
+    { key: 'video_completion_rate', label: 'Completion Rate (%)', category: 'video' },
+    { key: 'video_avg_watch_time_seconds', label: 'Avg Watch Time (s)', category: 'video' },
+    { key: 'video_3_sec_watched', label: '3s Watched', category: 'video' },
+    { key: 'video_30_sec_watched', label: '30s Watched', category: 'video' },
+    { key: 'thruplay', label: 'ThruPlay', category: 'video' },
+    { key: 'cost_per_thruplay', label: 'Cost per ThruPlay', category: 'video' },
+    { key: 'focused_view', label: 'Focused Views', category: 'video' },
+    { key: 'cost_per_focused_view', label: 'Cost per Focused View', category: 'video' },
+    { key: 'trueview_views', label: 'TrueView Views', category: 'video' },
+
+    { key: 'post_engagements', label: 'Post Engagements', category: 'engagement' },
+    { key: 'likes', label: 'Likes', category: 'engagement' },
+    { key: 'comments', label: 'Comments', category: 'engagement' },
+    { key: 'shares', label: 'Shares', category: 'engagement' },
+    { key: 'follows', label: 'Follows', category: 'engagement' },
+
+    { key: 'conversions', label: 'Conversions', category: 'conversion' },
+    { key: 'conversion_value', label: 'Conversion Value', category: 'conversion' },
+    { key: 'cvr', label: 'CVR (%)', category: 'conversion' },
+    { key: 'cost_per_conversion', label: 'Cost per Conversion', category: 'conversion' },
+    { key: 'roas', label: 'ROAS', category: 'conversion' },
+    { key: 'purchases', label: 'Purchases', category: 'conversion' },
+    { key: 'purchase_value', label: 'Purchase Value', category: 'conversion' },
+    { key: 'purchase_roas', label: 'Purchase ROAS', category: 'conversion' },
+    { key: 'leads', label: 'Leads', category: 'conversion' },
+    { key: 'cost_per_lead', label: 'Cost per Lead', category: 'conversion' },
+    { key: 'app_installs', label: 'App Installs', category: 'conversion' },
+    { key: 'cost_per_install', label: 'Cost per Install', category: 'conversion' },
+    { key: 'in_app_purchases', label: 'In-App Purchases', category: 'conversion' },
+    { key: 'in_app_purchase_value', label: 'In-App Purchase Value', category: 'conversion' },
+    { key: 'in_app_purchase_roas', label: 'In-App Purchase ROAS', category: 'conversion' },
+    { key: 'subscribe', label: 'Subscriptions', category: 'conversion' },
+    { key: 'offline_purchases', label: 'Offline Purchases', category: 'conversion' },
+    { key: 'offline_purchase_value', label: 'Offline Purchase Value', category: 'conversion' },
+    { key: 'messaging_conversations_started', label: 'Messaging Conversations', category: 'conversion' },
+    { key: 'estimated_ad_recallers', label: 'Est. Ad Recallers', category: 'conversion' },
+    { key: 'estimated_ad_recall_rate', label: 'Est. Ad Recall Rate (%)', category: 'conversion' },
+
+    { key: 'quality_ranking', label: 'Quality Ranking', category: 'quality' },
+    { key: 'engagement_rate_ranking', label: 'Engagement Rate Ranking', category: 'quality' },
+    { key: 'conversion_rate_ranking', label: 'Conversion Rate Ranking', category: 'quality' },
+    { key: 'creative_fatigue', label: 'Creative Fatigue', category: 'quality' },
+
     { key: 'ace_score', label: 'ACE Score', category: 'brainsuite' },
     { key: 'attention_score', label: 'Attention Score', category: 'brainsuite' },
     { key: 'brand_score', label: 'Brand Score', category: 'brainsuite' },
