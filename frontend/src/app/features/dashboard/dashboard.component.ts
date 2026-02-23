@@ -457,10 +457,10 @@ import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subY
 
     .overlay-ace {
       position: absolute; bottom: 6px; right: 6px;
-      width: 32px; height: 32px;
+      width: 36px; height: 36px;
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-size: 10px; font-weight: 700;
+      font-size: 13px; font-weight: 700;
 
       &.ace-high   { background: rgba(46,204,113,0.85);  color: white; }
       &.ace-medium { background: rgba(243,156,18,0.85);  color: white; }
@@ -589,9 +589,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   contextMenu = { visible: false, x: 0, y: 0, asset: null as any };
 
   platforms = [
-    { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2', iconUrl: '/assets/images/icon-meta.png' },
-    { key: 'TIKTOK', label: 'TikTok', icon: 'music_video', color: '#FF0050', iconUrl: '/assets/images/icon-tiktok.png' },
-    { key: 'YOUTUBE', label: 'YouTube', icon: 'smart_display', color: '#FF0000', iconUrl: '/assets/images/icon-youtube.png' },
+    { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2', iconUrl: '/assets/images/platform-meta.svg' },
+    { key: 'TIKTOK', label: 'TikTok', icon: 'music_video', color: '#FF0050', iconUrl: '/assets/images/platform-tiktok.svg' },
+    { key: 'YOUTUBE', label: 'YouTube', icon: 'smart_display', color: '#FF0000', iconUrl: '/assets/images/platform-youtube.svg' },
   ];
 
   private destroy$ = new Subject<void>();
