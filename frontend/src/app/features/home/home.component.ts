@@ -54,6 +54,23 @@ import { ThemeService } from '../../core/services/theme.service';
         </div>
       </div>
 
+      <!-- Connected Accounts -->
+      <div class="accounts-section" *ngIf="!loading && data?.connected_accounts?.length">
+        <h2>Connected Accounts</h2>
+        <div class="accounts-grid">
+          <div class="account-card" *ngFor="let acc of data.connected_accounts">
+            <img [src]="getPlatformLogo(acc.platform)" [alt]="acc.platform" class="account-platform-logo" />
+            <div class="account-info">
+              <div class="account-name">{{ acc.ad_account_name }}</div>
+              <div class="account-id">{{ acc.ad_account_id }}<span *ngIf="acc.currency"> &middot; {{ acc.currency }}</span></div>
+            </div>
+            <div class="account-status" [class]="'status-' + acc.sync_status?.toLowerCase()">
+              {{ acc.sync_status }}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Platform widgets -->
       <div class="widgets-section">
         <h2>Top Performing Ads — Last 7 Days</h2>
@@ -177,6 +194,50 @@ import { ThemeService } from '../../core/services/theme.service';
 
     .stat-value { font-size: 22px; font-weight: 700; }
     .stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+    .accounts-section { margin-bottom: 32px; }
+    .accounts-section h2 { margin-bottom: 16px; }
+
+    .accounts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+
+    .account-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--border-radius-lg);
+      padding: 14px 16px;
+    }
+
+    .account-platform-logo {
+      height: 18px;
+      width: auto;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .account-info { flex: 1; min-width: 0; }
+    .account-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .account-id { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    .account-status {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      flex-shrink: 0;
+    }
+    .status-active { background: rgba(46,204,113,0.15); color: var(--success); }
+    .status-pending { background: rgba(243,156,18,0.15); color: var(--warning); }
+    .status-error { background: rgba(231,76,60,0.15); color: var(--error); }
+    .status-expired { background: rgba(231,76,60,0.15); color: var(--error); }
 
     .widgets-section h2 { margin-bottom: 20px; }
 

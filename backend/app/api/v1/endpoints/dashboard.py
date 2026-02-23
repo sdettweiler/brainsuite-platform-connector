@@ -15,6 +15,7 @@ from app.db.base import get_db
 from app.models.user import User
 from app.models.creative import CreativeAsset, AssetMetadataValue, AssetProjectMapping
 from app.models.performance import HarmonizedPerformance
+from app.models.platform import PlatformConnection
 from app.schemas.creative import (
     DashboardFilterParams, DashboardStats, CreativeAssetResponse,
     AssetDetailResponse, ComparisonRequest,
@@ -492,7 +493,6 @@ async def get_homepage_widgets(
     stats_result = await db.execute(
         select(
             func.count(func.distinct(CreativeAsset.id)).label("total_assets"),
-            func.count(func.distinct(HarmonizedPerformance.ad_account_id)).label("total_accounts"),
             func.sum(HarmonizedPerformance.spend).label("total_spend"),
         )
         .join(CreativeAsset, CreativeAsset.id == HarmonizedPerformance.asset_id)
@@ -500,13 +500,38 @@ async def get_homepage_widgets(
     )
     stats = stats_result.one()
 
+    # Connected accounts from PlatformConnection (all, not just those with data)
+    connections_result = await db.execute(
+        select(PlatformConnection)
+        .where(
+            PlatformConnection.organization_id == current_user.organization_id,
+            PlatformConnection.is_active == True,
+        )
+        .order_by(PlatformConnection.platform, PlatformConnection.ad_account_name)
+    )
+    connections = connections_result.scalars().all()
+
+    connected_accounts = [
+        {
+            "id": str(c.id),
+            "platform": c.platform,
+            "ad_account_id": c.ad_account_id,
+            "ad_account_name": c.ad_account_name or c.ad_account_id,
+            "currency": c.currency,
+            "sync_status": c.sync_status,
+            "last_synced_at": c.last_synced_at.isoformat() if c.last_synced_at else None,
+        }
+        for c in connections
+    ]
+
     return {
         "widgets": widgets,
         "overall_stats": {
             "total_assets": int(stats.total_assets or 0),
-            "total_accounts": int(stats.total_accounts or 0),
+            "total_accounts": len(connected_accounts),
             "total_spend": float(stats.total_spend or 0),
         },
+        "connected_accounts": connected_accounts,
         "date_range": {"from": date_from.isoformat(), "to": date_to.isoformat()},
     }
 
