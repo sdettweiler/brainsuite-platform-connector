@@ -499,11 +499,16 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   }
 
   onKpiChange(): void {
-    this.loadDetail();
+    if (this.detail?.timeseries) {
+      setTimeout(() => this.renderChart(), 50);
+    } else {
+      this.loadDetail();
+    }
   }
 
   loadDetail(): void {
-    this.loading = true;
+    const isFirstLoad = !this.detail;
+    if (isFirstLoad) this.loading = true;
     this.api.get<any>(`/dashboard/assets/${this.data.assetId}`, {
       date_from: this.dateFrom,
       date_to: this.dateTo,
