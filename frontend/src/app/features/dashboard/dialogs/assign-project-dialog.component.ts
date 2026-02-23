@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -23,13 +22,13 @@ interface AssignProjectDialogData {
   standalone: true,
   imports: [
     CommonModule, FormsModule, MatDialogModule, MatButtonModule,
-    MatIconModule, MatInputModule, MatFormFieldModule, MatProgressSpinnerModule,
+    MatInputModule, MatFormFieldModule, MatProgressSpinnerModule,
   ],
   template: `
     <div class="assign-dialog">
       <div class="dialog-header">
         <h2>Assign to Project</h2>
-        <button mat-icon-button (click)="close()"><mat-icon>close</mat-icon></button>
+        <button mat-icon-button (click)="close()"><i class="bi bi-x-lg"></i></button>
       </div>
 
       <div class="dialog-body">
@@ -40,9 +39,9 @@ interface AssignProjectDialogData {
         <!-- Create New Project -->
         <div class="create-section">
           <div class="create-header" (click)="showCreate = !showCreate">
-            <mat-icon>add_circle_outline</mat-icon>
+            <i class="bi bi-plus-circle"></i>
             <span>Create new project</span>
-            <mat-icon class="chevron" [class.open]="showCreate">expand_more</mat-icon>
+            <i class="bi bi-chevron-down chevron" [class.open]="showCreate"></i>
           </div>
           <div class="create-form" *ngIf="showCreate">
             <mat-form-field appearance="outline" class="w-full">
@@ -80,7 +79,7 @@ interface AssignProjectDialogData {
             </div>
           </div>
           <div *ngIf="projects.length === 0" class="empty-projects">
-            <mat-icon>folder_open</mat-icon>
+            <i class="bi bi-folder2-open"></i>
             <span>No projects yet</span>
           </div>
         </div>
@@ -125,7 +124,7 @@ interface AssignProjectDialogData {
     .create-header {
       display: flex; align-items: center; gap: 8px; padding: 12px 16px;
       cursor: pointer; background: var(--bg-secondary);
-      mat-icon { font-size: 18px; color: var(--accent); }
+      i.bi { font-size: 16px; color: var(--accent); }
       span { flex: 1; font-size: 14px; font-weight: 500; }
       .chevron { color: var(--text-muted); transition: transform 0.2s; &.open { transform: rotate(180deg); } }
     }
@@ -170,7 +169,7 @@ interface AssignProjectDialogData {
     .empty-projects {
       display: flex; flex-direction: column; align-items: center; gap: 8px;
       padding: 32px; color: var(--text-muted); font-size: 13px;
-      mat-icon { font-size: 28px; opacity: 0.4; }
+      i.bi { font-size: 28px; opacity: 0.4; }
     }
 
     .loading-projects { display: flex; justify-content: center; padding: 24px; }

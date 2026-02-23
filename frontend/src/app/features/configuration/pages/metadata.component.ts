@@ -2,7 +2,6 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators, FormArray } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -26,7 +25,7 @@ interface MetadataField {
 @Component({
   standalone: true,
   imports: [
-    CommonModule, FormsModule, ReactiveFormsModule, MatButtonModule, MatIconModule,
+    CommonModule, FormsModule, ReactiveFormsModule, MatButtonModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule,
     MatProgressSpinnerModule, MatSnackBarModule, DragDropModule,
   ],
@@ -39,7 +38,7 @@ interface MetadataField {
             <p>Define custom fields to label and organize your creative assets</p>
           </div>
           <button mat-flat-button class="add-btn" (click)="openAddField()">
-            <mat-icon>add</mat-icon> Add Field
+            <i class="bi bi-plus-lg"></i> Add Field
           </button>
         </div>
 
@@ -58,7 +57,7 @@ interface MetadataField {
               [class.expanded]="expandedId === field.id"
             >
               <div class="field-header" (click)="toggleExpand(field.id)">
-                <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+                <i class="bi bi-grip-vertical drag-handle" cdkDragHandle></i>
                 <div class="field-type-badge" [class]="'type-' + field.field_type.toLowerCase()">
                   {{ field.field_type }}
                 </div>
@@ -74,12 +73,12 @@ interface MetadataField {
                 </div>
                 <div class="field-actions">
                   <button mat-icon-button (click)="editField(field, $event)">
-                    <mat-icon>edit</mat-icon>
+                    <i class="bi bi-pencil"></i>
                   </button>
                   <button mat-icon-button (click)="deleteField(field, $event)">
-                    <mat-icon>delete_outline</mat-icon>
+                    <i class="bi bi-trash"></i>
                   </button>
-                  <mat-icon class="expand-icon">{{ expandedId === field.id ? 'expand_less' : 'expand_more' }}</mat-icon>
+                  <i class="bi expand-icon" [ngClass]="expandedId === field.id ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
                 </div>
               </div>
 
@@ -88,7 +87,7 @@ interface MetadataField {
                 <div class="options-header">
                   <span>Options</span>
                   <button mat-stroked-button class="add-option-btn" (click)="addOption(field)">
-                    <mat-icon>add</mat-icon> Add Option
+                    <i class="bi bi-plus-lg"></i> Add Option
                   </button>
                 </div>
                 <div
@@ -98,11 +97,11 @@ interface MetadataField {
                   class="options-list"
                 >
                   <div *ngFor="let opt of field.allowed_values; let j = index" cdkDrag class="option-row">
-                    <mat-icon cdkDragHandle class="drag-handle-sm">drag_indicator</mat-icon>
+                    <i class="bi bi-grip-vertical drag-handle-sm" cdkDragHandle></i>
                     <input [(ngModel)]="opt.label" class="option-label-input" placeholder="Label" />
                     <input [(ngModel)]="opt.value" class="option-value-input" placeholder="Value (slug)" />
                     <button mat-icon-button (click)="removeOption(field, j)">
-                      <mat-icon>close</mat-icon>
+                      <i class="bi bi-x-lg"></i>
                     </button>
                   </div>
                   <div *ngIf="!field.allowed_values?.length" class="no-options">No options yet</div>
@@ -116,7 +115,7 @@ interface MetadataField {
             </div>
 
             <div *ngIf="fields.length === 0" class="empty-fields">
-              <mat-icon>tune</mat-icon>
+              <i class="bi bi-sliders"></i>
               <span>No metadata fields yet. Add your first field.</span>
             </div>
           </div>
@@ -133,7 +132,7 @@ interface MetadataField {
           <div>
             <h2>{{ editingField ? 'Edit Field' : 'New Metadata Field' }}</h2>
           </div>
-          <button mat-icon-button (click)="cancelForm()"><mat-icon>close</mat-icon></button>
+          <button mat-icon-button (click)="cancelForm()"><i class="bi bi-x-lg"></i></button>
         </div>
         <div class="section-body" *ngIf="fieldForm">
           <form [formGroup]="fieldForm" (ngSubmit)="saveField()">
@@ -253,7 +252,7 @@ interface MetadataField {
     .empty-fields {
       display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 48px;
       color: var(--text-muted);
-      mat-icon { font-size: 32px; opacity: 0.4; }
+      i.bi { font-size: 32px; opacity: 0.4; }
       span { font-size: 14px; }
     }
 

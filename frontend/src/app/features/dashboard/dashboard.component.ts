@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormBuilder, FormGroup, ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -19,7 +18,7 @@ import { format, subDays } from 'date-fns';
 @Component({
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule, FormsModule, MatButtonModule, MatIconModule,
+    CommonModule, ReactiveFormsModule, FormsModule, MatButtonModule,
     MatSelectModule, MatFormFieldModule, MatInputModule, MatMenuModule,
     MatDialogModule, MatTooltipModule, MatCheckboxModule, DateRangePickerComponent,
   ],
@@ -80,14 +79,14 @@ import { format, subDays } from 'date-fns';
           (click)="toggleSortOrder()"
           [matTooltip]="sortOrder === 'desc' ? 'Descending' : 'Ascending'"
         >
-          <mat-icon>{{ sortOrder === 'desc' ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
+          <i class="bi" [ngClass]="sortOrder === 'desc' ? 'bi-arrow-down' : 'bi-arrow-up'"></i>
         </button>
 
         <div class="toolbar-spacer"></div>
 
         <!-- Export button -->
         <button mat-stroked-button (click)="openExport()">
-          <mat-icon>download</mat-icon>
+          <i class="bi bi-download"></i>
           Export
         </button>
       </div>
@@ -98,7 +97,7 @@ import { format, subDays } from 'date-fns';
           <div class="agg-value">{{ s.value }}</div>
           <div class="agg-label">{{ s.label }}</div>
           <div class="agg-change" [class]="s.changeClass" *ngIf="s.change !== null">
-            <mat-icon>{{ s.changeDir }}</mat-icon>
+            <i class="bi" [ngClass]="s.changeDir === 'arrow_upward' ? 'bi-arrow-up' : 'bi-arrow-down'"></i>
             {{ s.change }}
           </div>
         </div>
@@ -175,11 +174,11 @@ import { format, subDays } from 'date-fns';
         <!-- Pagination -->
         <div class="pagination" *ngIf="!loading && totalPages > 1">
           <button mat-icon-button [disabled]="page === 1" (click)="changePage(page - 1)">
-            <mat-icon>chevron_left</mat-icon>
+            <i class="bi bi-chevron-left"></i>
           </button>
           <span class="page-info">Page {{ page }} of {{ totalPages }} · {{ total | number }} assets</span>
           <button mat-icon-button [disabled]="page === totalPages" (click)="changePage(page + 1)">
-            <mat-icon>chevron_right</mat-icon>
+            <i class="bi bi-chevron-right"></i>
           </button>
           <mat-form-field appearance="outline" class="page-size-field">
             <mat-select [(ngModel)]="pageSize" (selectionChange)="onPageSizeChange()">
@@ -195,16 +194,16 @@ import { format, subDays } from 'date-fns';
       <!-- Context menu (positioned via CSS) -->
       <div class="context-menu" *ngIf="contextMenu.visible" [style.top.px]="contextMenu.y" [style.left.px]="contextMenu.x">
         <button (click)="openAssetDetail(contextMenu.asset)">
-          <mat-icon>open_in_new</mat-icon> Open Report
+          <i class="bi bi-box-arrow-up-right"></i> Open Report
         </button>
         <button (click)="openAssignProject(contextMenu.asset)">
-          <mat-icon>folder</mat-icon> Assign to Project
+          <i class="bi bi-folder"></i> Assign to Project
         </button>
         <button [disabled]="selectedAssets.length < 2 || selectedAssets.length > 4" (click)="compareSelected()">
-          <mat-icon>compare</mat-icon> Compare ({{ selectedAssets.length }})
+          <i class="bi bi-arrow-left-right"></i> Compare ({{ selectedAssets.length }})
         </button>
         <button (click)="openEditMetadata(contextMenu.asset)">
-          <mat-icon>label</mat-icon> Edit Metadata
+          <i class="bi bi-tag"></i> Edit Metadata
         </button>
       </div>
 
@@ -285,7 +284,7 @@ import { format, subDays } from 'date-fns';
       gap: 2px;
       font-size: 11px;
       margin-top: 4px;
-      mat-icon { font-size: 12px; width: 12px; height: 12px; }
+      i.bi { font-size: 11px; }
     }
 
     .assets-grid {
@@ -411,7 +410,7 @@ import { format, subDays } from 'date-fns';
         color: var(--text-primary);
         text-align: left;
         transition: background var(--transition);
-        mat-icon { font-size: 16px; width: 16px; height: 16px; color: var(--text-secondary); }
+        i.bi { font-size: 14px; color: var(--text-secondary); }
         &:hover { background: var(--bg-hover); }
         &:disabled { opacity: 0.4; cursor: not-allowed; }
       }

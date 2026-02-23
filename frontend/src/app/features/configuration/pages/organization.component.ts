@@ -2,7 +2,6 @@ import { Component, OnInit, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -125,7 +124,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
 @Component({
   standalone: true,
   imports: [
-    CommonModule, FormsModule, ReactiveFormsModule, MatButtonModule, MatIconModule,
+    CommonModule, FormsModule, ReactiveFormsModule, MatButtonModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatMenuModule,
     MatDialogModule, MatProgressSpinnerModule, MatSnackBarModule,
   ],
@@ -157,7 +156,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
               <span class="slug-label">Organization Slug:</span>
               <code class="slug-value">{{ orgSlug }}</code>
               <button type="button" class="copy-btn" (click)="copySlug()" matTooltip="Copy slug">
-                <mat-icon>content_copy</mat-icon>
+                <i class="bi bi-clipboard"></i>
               </button>
             </div>
             <div class="form-actions">
@@ -175,7 +174,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
         <div class="section-header pending-header">
           <div>
             <h2>
-              <mat-icon class="pending-icon">pending_actions</mat-icon>
+              <i class="bi bi-clock-history pending-icon"></i>
               Pending Join Requests
             </h2>
             <p>{{ joinRequests.length }} pending request{{ joinRequests.length !== 1 ? 's' : '' }}</p>
@@ -201,10 +200,10 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
             </div>
             <div class="col-pending-actions">
               <button mat-flat-button class="approve-btn" (click)="handleJoinRequest(req, 'approve')" [disabled]="req.processing">
-                <mat-icon>check</mat-icon> Approve
+                <i class="bi bi-check-lg"></i> Approve
               </button>
               <button mat-stroked-button class="reject-btn" (click)="handleJoinRequest(req, 'reject')" [disabled]="req.processing">
-                <mat-icon>close</mat-icon> Reject
+                <i class="bi bi-x-lg"></i> Reject
               </button>
             </div>
           </div>
@@ -219,7 +218,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
             <p>{{ users.length }} member{{ users.length !== 1 ? 's' : '' }}</p>
           </div>
           <button mat-flat-button class="invite-btn" (click)="openInvite()">
-            <mat-icon>person_add</mat-icon>
+            <i class="bi bi-person-plus"></i>
             Invite User
           </button>
         </div>
@@ -253,13 +252,13 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
             </div>
             <div class="col-actions">
               <button mat-icon-button [matMenuTriggerFor]="userMenu" [matMenuTriggerData]="{user: user}">
-                <mat-icon>more_vert</mat-icon>
+                <i class="bi bi-three-dots-vertical"></i>
               </button>
             </div>
           </div>
 
           <div *ngIf="users.length === 0" class="empty-table">
-            <mat-icon>people_outline</mat-icon>
+            <i class="bi bi-people" style="font-size: 28px; opacity: 0.4;"></i>
             <span>No users found</span>
           </div>
         </div>
@@ -273,10 +272,10 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
       <mat-menu #userMenu="matMenu">
         <ng-template matMenuContent let-user="user">
           <button mat-menu-item (click)="changeRole(user)">
-            <mat-icon>manage_accounts</mat-icon> Change Role
+            <i class="bi bi-person-gear" style="font-size: 18px; margin-right: 12px;"></i> Change Role
           </button>
           <button mat-menu-item (click)="toggleActive(user)">
-            <mat-icon>{{ user.is_active ? 'block' : 'check_circle' }}</mat-icon>
+            <i class="bi" [ngClass]="user.is_active ? 'bi-slash-circle' : 'bi-check-circle-fill'" style="font-size: 18px; margin-right: 12px;"></i>
             {{ user.is_active ? 'Deactivate' : 'Activate' }}
           </button>
         </ng-template>
@@ -288,7 +287,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
           <div>
             <h2>Invite New User</h2>
           </div>
-          <button mat-icon-button (click)="showInvite = false"><mat-icon>close</mat-icon></button>
+          <button mat-icon-button (click)="showInvite = false"><i class="bi bi-x-lg"></i></button>
         </div>
         <div class="section-body">
           <form [formGroup]="inviteForm" (ngSubmit)="sendInvite()">
@@ -315,7 +314,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
               </mat-form-field>
             </div>
             <div class="invite-note">
-              <mat-icon>info_outline</mat-icon>
+              <i class="bi bi-info-circle"></i>
               <span>User will receive an email with a temporary password to set up their account.</span>
             </div>
             <div class="form-actions">
@@ -345,7 +344,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
     }
 
     .pending-header h2 { color: var(--accent); }
-    .pending-icon { font-size: 20px !important; width: 20px !important; height: 20px !important; color: var(--accent); }
+    .pending-icon { font-size: 18px !important; color: var(--accent); }
 
     .section-body { padding: 24px; }
 
@@ -382,7 +381,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
       align-items: center;
     }
 
-    .copy-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .copy-btn i.bi { font-size: 14px; }
     .copy-btn:hover { color: var(--accent); }
 
     .form-actions { display: flex; justify-content: flex-end; gap: 12px; }
@@ -438,7 +437,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
       display: flex !important; align-items: center; gap: 4px;
     }
 
-    .approve-btn mat-icon { font-size: 16px !important; width: 16px !important; height: 16px !important; }
+    .approve-btn i.bi { font-size: 14px !important; }
 
     .reject-btn {
       color: var(--error) !important; border-color: var(--error) !important;
@@ -446,7 +445,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
       display: flex !important; align-items: center; gap: 4px;
     }
 
-    .reject-btn mat-icon { font-size: 16px !important; width: 16px !important; height: 16px !important; }
+    .reject-btn i.bi { font-size: 14px !important; }
 
     .role-badge {
       padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;
@@ -465,7 +464,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
     .empty-table {
       display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px;
       color: var(--text-muted);
-      mat-icon { font-size: 28px; opacity: 0.4; }
+      i.bi { font-size: 28px; opacity: 0.4; }
       span { font-size: 13px; }
     }
 
@@ -474,7 +473,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
     .invite-note {
       display: flex; align-items: flex-start; gap: 8px; padding: 12px;
       background: var(--accent-light); border-radius: 6px; margin-bottom: 16px;
-      mat-icon { font-size: 16px; color: var(--accent); margin-top: 1px; }
+      i.bi { font-size: 14px; color: var(--accent); margin-top: 1px; }
       span { font-size: 13px; color: var(--text-secondary); }
     }
   `],

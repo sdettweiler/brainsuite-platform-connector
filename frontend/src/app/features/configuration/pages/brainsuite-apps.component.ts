@@ -2,7 +2,6 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -23,7 +22,7 @@ interface BrainsuiteApp {
 @Component({
   standalone: true,
   imports: [
-    CommonModule, FormsModule, ReactiveFormsModule, MatButtonModule, MatIconModule,
+    CommonModule, FormsModule, ReactiveFormsModule, MatButtonModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule,
     MatProgressSpinnerModule, MatSnackBarModule,
   ],
@@ -36,14 +35,14 @@ interface BrainsuiteApp {
             <p>Manage which Brainsuite apps are used to score your creative assets</p>
           </div>
           <button mat-flat-button class="add-btn" (click)="openAdd()">
-            <mat-icon>add</mat-icon> Add App
+            <i class="bi bi-plus-lg"></i> Add App
           </button>
         </div>
 
         <div *ngIf="!loading; else loadingTpl">
           <div *ngFor="let app of apps" class="app-row">
             <div class="app-icon">
-              <mat-icon>psychology</mat-icon>
+              <i class="bi bi-cpu"></i>
             </div>
             <div class="app-info">
               <span class="app-name">{{ app.name }}</span>
@@ -52,20 +51,20 @@ interface BrainsuiteApp {
             </div>
             <div class="app-defaults">
               <div class="default-flag" [class.active]="app.is_default_for_video">
-                <mat-icon>videocam</mat-icon> Default for Video
+                <i class="bi bi-camera-video"></i> Default for Video
               </div>
               <div class="default-flag" [class.active]="app.is_default_for_image">
-                <mat-icon>image</mat-icon> Default for Image
+                <i class="bi bi-image"></i> Default for Image
               </div>
             </div>
             <div class="app-actions">
-              <button mat-icon-button (click)="editApp(app)"><mat-icon>edit</mat-icon></button>
-              <button mat-icon-button (click)="deleteApp(app)"><mat-icon>delete_outline</mat-icon></button>
+              <button mat-icon-button (click)="editApp(app)"><i class="bi bi-pencil"></i></button>
+              <button mat-icon-button (click)="deleteApp(app)"><i class="bi bi-trash"></i></button>
             </div>
           </div>
 
           <div *ngIf="apps.length === 0" class="empty-apps">
-            <mat-icon>psychology</mat-icon>
+            <i class="bi bi-cpu"></i>
             <span>No Brainsuite apps configured</span>
             <p>Add a Brainsuite app to enable creative scoring</p>
           </div>
@@ -82,7 +81,7 @@ interface BrainsuiteApp {
           <div>
             <h2>{{ editingApp ? 'Edit App' : 'Add Brainsuite App' }}</h2>
           </div>
-          <button mat-icon-button (click)="cancelForm()"><mat-icon>close</mat-icon></button>
+          <button mat-icon-button (click)="cancelForm()"><i class="bi bi-x-lg"></i></button>
         </div>
         <div class="section-body">
           <form [formGroup]="appForm!" (ngSubmit)="saveApp()">
@@ -111,7 +110,7 @@ interface BrainsuiteApp {
               <mat-checkbox formControlName="is_default_for_image">Set as default for IMAGE/CAROUSEL assets</mat-checkbox>
             </div>
             <div class="api-note">
-              <mat-icon>info_outline</mat-icon>
+              <i class="bi bi-info-circle"></i>
               <div>
                 <p><strong>Note:</strong> Brainsuite app API credentials are configured server-side via environment variables.</p>
                 <p>Contact your Brainsuite representative to obtain your App ID and API key.</p>
@@ -132,7 +131,7 @@ interface BrainsuiteApp {
       <section class="config-section info-section">
         <div class="section-body">
           <div class="info-header">
-            <mat-icon>help_outline</mat-icon>
+            <i class="bi bi-question-circle"></i>
             <h3>About Brainsuite Apps</h3>
           </div>
           <p>
@@ -171,7 +170,7 @@ interface BrainsuiteApp {
     .app-icon {
       width: 40px; height: 40px; border-radius: 10px; background: var(--accent-light);
       display: flex; align-items: center; justify-content: center;
-      mat-icon { color: var(--accent); }
+      i.bi { color: var(--accent); font-size: 20px; }
     }
 
     .app-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
@@ -191,7 +190,7 @@ interface BrainsuiteApp {
 
     .default-flag {
       display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted);
-      mat-icon { font-size: 14px; }
+      i.bi { font-size: 13px; }
       &.active { color: #34A853; }
     }
 
@@ -200,7 +199,7 @@ interface BrainsuiteApp {
     .empty-apps {
       display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 48px;
       color: var(--text-muted);
-      mat-icon { font-size: 36px; opacity: 0.4; }
+      i.bi { font-size: 36px; opacity: 0.4; }
       span { font-size: 15px; font-weight: 500; }
       p { font-size: 13px; }
     }
@@ -218,7 +217,7 @@ interface BrainsuiteApp {
     .api-note {
       display: flex; gap: 10px; padding: 14px; background: rgba(251,188,4,0.06);
       border: 1px solid rgba(251,188,4,0.3); border-radius: 8px; margin-bottom: 20px;
-      mat-icon { color: #F09300; flex-shrink: 0; margin-top: 2px; }
+      i.bi { color: #F09300; flex-shrink: 0; margin-top: 2px; font-size: 18px; }
       p { font-size: 13px; color: var(--text-secondary); margin: 0 0 4px; &:last-child { margin: 0; } }
     }
 
@@ -230,7 +229,7 @@ interface BrainsuiteApp {
 
     .info-header {
       display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
-      mat-icon { color: var(--text-secondary); }
+      i.bi { color: var(--text-secondary); font-size: 16px; }
       h3 { font-size: 14px; font-weight: 600; margin: 0; }
     }
   `],

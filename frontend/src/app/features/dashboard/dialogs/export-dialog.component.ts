@@ -2,7 +2,6 @@ import { Component, Inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../../core/services/api.service';
 
@@ -23,12 +22,12 @@ interface ExportDialogData {
 
 @Component({
   standalone: true,
-  imports: [CommonModule, MatDialogModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [CommonModule, MatDialogModule, MatButtonModule, MatProgressSpinnerModule],
   template: `
     <div class="export-dialog">
       <div class="dialog-header">
         <h2>Export Data</h2>
-        <button mat-icon-button (click)="close()"><mat-icon>close</mat-icon></button>
+        <button mat-icon-button (click)="close()"><i class="bi bi-x-lg"></i></button>
       </div>
 
       <div class="dialog-body">
@@ -42,7 +41,7 @@ interface ExportDialogData {
               [class.active]="selectedFormat === f.value"
               (click)="selectedFormat = f.value"
             >
-              <mat-icon>{{ f.icon }}</mat-icon>
+              <i class="bi" [ngClass]="'bi-' + f.icon"></i>
               <span>{{ f.label }}</span>
               <span class="format-ext">.{{ f.value }}</span>
             </button>
@@ -53,7 +52,7 @@ interface ExportDialogData {
         <div class="section">
           <h3 class="section-title">Scope</h3>
           <div class="scope-info">
-            <mat-icon>info_outline</mat-icon>
+            <i class="bi bi-info-circle"></i>
             <span *ngIf="data.selectedAssetIds?.length">
               {{ data.selectedAssetIds!.length }} selected assets &middot; {{ data.dateFrom }} to {{ data.dateTo }}
             </span>
@@ -86,9 +85,9 @@ interface ExportDialogData {
                     (dragover)="$event.preventDefault()"
                     (drop)="onDropToSelected($event)"
                   >
-                    <mat-icon class="drag-handle">drag_indicator</mat-icon>
+                    <i class="bi bi-grip-vertical drag-handle"></i>
                     <span>{{ f.label }}</span>
-                    <mat-icon class="add-icon">add</mat-icon>
+                    <i class="bi bi-plus-lg add-icon"></i>
                   </div>
                 </ng-container>
               </div>
@@ -96,7 +95,7 @@ interface ExportDialogData {
 
             <!-- Arrow -->
             <div class="arrow-col">
-              <mat-icon>arrow_forward</mat-icon>
+              <i class="bi bi-arrow-right"></i>
             </div>
 
             <!-- Selected -->
@@ -118,14 +117,14 @@ interface ExportDialogData {
                   (dragover)="onDragOverSelected($event, i)"
                   (drop)="onDropReorder($event, i)"
                 >
-                  <mat-icon class="drag-handle">drag_indicator</mat-icon>
+                  <i class="bi bi-grip-vertical drag-handle"></i>
                   <span>{{ f.label }}</span>
                   <button mat-icon-button class="remove-btn" (click)="removeField(f)">
-                    <mat-icon>close</mat-icon>
+                    <i class="bi bi-x-lg"></i>
                   </button>
                 </div>
                 <div *ngIf="selectedFields.length === 0" class="empty-selected">
-                  <mat-icon>add_circle_outline</mat-icon>
+                  <i class="bi bi-plus-circle"></i>
                   <span>Add fields from the left</span>
                 </div>
               </div>
@@ -136,7 +135,7 @@ interface ExportDialogData {
 
       <div class="dialog-footer">
         <div class="footer-left">
-          <mat-icon>schedule</mat-icon>
+          <i class="bi bi-clock"></i>
           <span class="est-time">Est. export time: ~{{ estimatedTime }}</span>
         </div>
         <div class="footer-right">
@@ -148,7 +147,7 @@ interface ExportDialogData {
             (click)="doExport()"
           >
             <mat-spinner *ngIf="exporting" diameter="16"></mat-spinner>
-            <mat-icon *ngIf="!exporting">file_download</mat-icon>
+            <i class="bi bi-download" *ngIf="!exporting"></i>
             {{ exporting ? 'Exporting...' : 'Export' }}
           </button>
         </div>
@@ -174,17 +173,17 @@ interface ExportDialogData {
       display: flex; flex-direction: column; align-items: center; gap: 4px;
       padding: 16px 24px; border: 1px solid var(--border); border-radius: 8px;
       background: var(--bg-card); cursor: pointer; transition: all 0.15s; min-width: 100px;
-      mat-icon { font-size: 24px; color: var(--text-secondary); }
+      i.bi { font-size: 24px; color: var(--text-secondary); }
       span { font-size: 13px; font-weight: 500; }
       .format-ext { font-size: 11px; color: var(--text-muted); }
       &:hover { border-color: var(--accent); }
-      &.active { border-color: var(--accent); background: var(--accent-light); mat-icon { color: var(--accent); } }
+      &.active { border-color: var(--accent); background: var(--accent-light); i.bi { color: var(--accent); } }
     }
 
     .scope-info {
       display: flex; align-items: center; gap: 8px;
       padding: 10px 14px; background: var(--bg-secondary); border-radius: 6px;
-      mat-icon { font-size: 16px; color: var(--text-secondary); }
+      i.bi { font-size: 14px; color: var(--text-secondary); }
       span { font-size: 13px; color: var(--text-secondary); }
     }
 
@@ -217,29 +216,29 @@ interface ExportDialogData {
       cursor: pointer; transition: background 0.1s; font-size: 13px;
       &:hover { background: var(--bg-secondary); }
       &.selected { cursor: default; }
-      .drag-handle { font-size: 16px; color: var(--text-muted); cursor: grab; }
-      .add-icon { font-size: 16px; color: var(--accent); margin-left: auto; opacity: 0; }
+      .drag-handle { font-size: 14px; color: var(--text-muted); cursor: grab; }
+      .add-icon { font-size: 14px; color: var(--accent); margin-left: auto; opacity: 0; }
       &:hover .add-icon { opacity: 1; }
       .remove-btn { width: 24px; height: 24px; line-height: 24px; margin-left: auto;
-        mat-icon { font-size: 14px; } }
+        i.bi { font-size: 12px; } }
     }
 
     .empty-selected {
       display: flex; flex-direction: column; align-items: center; gap: 8px;
       padding: 40px 16px; color: var(--text-muted); font-size: 13px;
-      mat-icon { font-size: 32px; opacity: 0.4; }
+      i.bi { font-size: 32px; opacity: 0.4; }
     }
 
     .selected-panel { background: var(--bg-secondary); }
 
-    .arrow-col { display: flex; align-items: center; padding-top: 48px; mat-icon { color: var(--text-muted); } }
+    .arrow-col { display: flex; align-items: center; padding-top: 48px; i.bi { color: var(--text-muted); font-size: 18px; } }
 
     .dialog-footer {
       display: flex; align-items: center; justify-content: space-between;
       padding: 16px 24px; border-top: 1px solid var(--border);
     }
 
-    .footer-left { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; mat-icon { font-size: 16px; } }
+    .footer-left { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; i.bi { font-size: 14px; } }
     .footer-right { display: flex; gap: 12px; }
 
     .export-btn {
@@ -250,9 +249,9 @@ interface ExportDialogData {
 })
 export class ExportDialogComponent implements OnInit {
   formats = [
-    { value: 'xlsx', label: 'Excel', icon: 'table_chart' },
-    { value: 'csv', label: 'CSV', icon: 'description' },
-    { value: 'pdf', label: 'PDF', icon: 'picture_as_pdf' },
+    { value: 'xlsx', label: 'Excel', icon: 'file-earmark-spreadsheet' },
+    { value: 'csv', label: 'CSV', icon: 'filetype-csv' },
+    { value: 'pdf', label: 'PDF', icon: 'file-earmark-pdf' },
   ];
   selectedFormat = 'xlsx';
 

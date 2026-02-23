@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
@@ -29,18 +28,18 @@ interface EditMetadataDialogData {
   standalone: true,
   imports: [
     CommonModule, FormsModule, MatDialogModule, MatButtonModule,
-    MatIconModule, MatInputModule, MatFormFieldModule, MatSelectModule, MatProgressSpinnerModule,
+    MatInputModule, MatFormFieldModule, MatSelectModule, MatProgressSpinnerModule,
   ],
   template: `
     <div class="meta-dialog">
       <div class="dialog-header">
         <h2>Edit Metadata</h2>
-        <button mat-icon-button (click)="close()"><mat-icon>close</mat-icon></button>
+        <button mat-icon-button (click)="close()"><i class="bi bi-x-lg"></i></button>
       </div>
 
       <div class="dialog-body">
         <p class="subtitle" *ngIf="data.assetIds.length > 1">
-          <mat-icon>info_outline</mat-icon>
+          <i class="bi bi-info-circle"></i>
           Editing {{ data.assetIds.length }} assets. Blank fields will not be changed.
         </p>
         <p class="subtitle single" *ngIf="data.assetIds.length === 1 && data.singleAssetName">
@@ -86,7 +85,7 @@ interface EditMetadataDialogData {
           </div>
 
           <div *ngIf="metadataFields.length === 0" class="empty-fields">
-            <mat-icon>tune</mat-icon>
+            <i class="bi bi-sliders"></i>
             <span>No metadata fields configured.</span>
             <span>Set them up in Configuration &rarr; Metadata.</span>
           </div>
@@ -121,7 +120,7 @@ interface EditMetadataDialogData {
     .subtitle {
       display: flex; align-items: center; gap: 6px; margin: 0;
       font-size: 13px; color: var(--text-secondary);
-      mat-icon { font-size: 16px; }
+      i.bi { font-size: 14px; }
       &.single { font-weight: 500; color: var(--text-primary); }
     }
 
@@ -142,7 +141,7 @@ interface EditMetadataDialogData {
     .empty-fields {
       display: flex; flex-direction: column; align-items: center; gap: 8px;
       padding: 40px; color: var(--text-muted); text-align: center;
-      mat-icon { font-size: 32px; opacity: 0.4; }
+      i.bi { font-size: 32px; opacity: 0.4; }
       span { font-size: 13px; }
     }
 

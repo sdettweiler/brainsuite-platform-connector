@@ -10,6 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "bootstrap-icons": "^1.13.1",
     "echarts": "^6.0.0",
     "ngx-echarts": "^21.0.0"
   }

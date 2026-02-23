@@ -4,7 +4,6 @@ import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
 import * as echarts from 'echarts/core';
@@ -21,7 +20,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
   standalone: true,
   imports: [
     CommonModule, FormsModule,
-    MatDialogModule, MatTabsModule, MatButtonModule, MatIconModule, MatTooltipModule,
+    MatDialogModule, MatTabsModule, MatButtonModule, MatTooltipModule,
     NgxEchartsDirective, DateRangePickerComponent,
   ],
   providers: [
@@ -54,7 +53,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
         </div>
 
         <button mat-icon-button (click)="dialogRef.close()">
-          <mat-icon>close</mat-icon>
+          <i class="bi bi-x-lg"></i>
         </button>
       </div>
 
@@ -85,7 +84,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                   <div class="section-label">Used in {{ detail.campaigns_count }} Campaign(s)</div>
                   <div class="campaigns-list">
                     <div class="campaign-row" *ngFor="let c of detail.campaigns">
-                      <mat-icon>campaign</mat-icon>
+                      <i class="bi bi-megaphone" style="font-size: 14px;"></i>
                       <span>{{ c.campaign_name || c.campaign_id }}</span>
                       <span class="campaign-spend">{{ c.spend | currency:'USD':'symbol':'1.0-0' }}</span>
                     </div>
@@ -288,7 +287,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       display: flex; align-items: center; gap: 8px; padding: 8px;
       background: var(--bg-hover); border-radius: 6px; font-size: 13px;
     }
-    .campaign-row mat-icon { font-size: 16px; color: var(--text-muted); }
+    .campaign-row i.bi { font-size: 14px; color: var(--text-muted); }
     .campaign-spend { margin-left: auto; font-weight: 600; }
 
     .ce-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }

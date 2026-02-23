@@ -2,7 +2,6 @@ import { Component, Input, Output, EventEmitter } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatIconModule } from '@angular/material/icon';
 
 interface NavItem {
   label: string;
@@ -15,7 +14,7 @@ interface NavItem {
 @Component({
   selector: 'bs-sidebar',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, MatTooltipModule, MatIconModule],
+  imports: [CommonModule, RouterLink, RouterLinkActive, MatTooltipModule],
   template: `
     <aside class="sidebar" [class.collapsed]="collapsed">
       <div class="sidebar-logo">
@@ -34,7 +33,7 @@ interface NavItem {
       </div>
 
       <button class="collapse-btn" (click)="toggleCollapse.emit()" [matTooltip]="collapsed ? 'Expand' : 'Collapse'" matTooltipPosition="right">
-        <mat-icon>{{ collapsed ? 'chevron_right' : 'chevron_left' }}</mat-icon>
+        <i class="bi" [ngClass]="collapsed ? 'bi-chevron-right' : 'bi-chevron-left'"></i>
       </button>
 
       <nav class="sidebar-nav">
@@ -48,7 +47,7 @@ interface NavItem {
             [matTooltip]="collapsed ? item.label : ''"
             matTooltipPosition="right"
           >
-            <mat-icon class="nav-icon">{{ item.icon }}</mat-icon>
+            <i class="bi nav-icon" [ngClass]="'bi-' + item.icon"></i>
             <span class="nav-label" *ngIf="!collapsed">{{ item.label }}</span>
           </a>
         </ng-container>
@@ -116,11 +115,9 @@ interface NavItem {
       padding: 0;
       transition: all var(--transition);
 
-      mat-icon {
+      i {
         font-size: 14px;
-        width: 14px;
-        height: 14px;
-        line-height: 14px;
+        line-height: 1;
       }
 
       &:hover { background: var(--accent); border-color: var(--accent); color: white; }
@@ -166,7 +163,7 @@ interface NavItem {
       }
     }
 
-    .nav-icon { font-size: 20px; width: 20px; height: 20px; flex-shrink: 0; }
+    .nav-icon { font-size: 20px; width: 20px; height: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
     .nav-label { font-size: 14px; }
 
     .sidebar.collapsed .nav-label { display: none; }
@@ -177,9 +174,9 @@ export class SidebarComponent {
   @Output() toggleCollapse = new EventEmitter<void>();
 
   navItems: NavItem[] = [
-    { label: 'Home',        icon: 'home',       route: '/home' },
-    { label: 'Dashboard',   icon: 'bar_chart',  route: '/dashboard' },
-    { label: 'Comparison',  icon: 'compare',    route: '/comparison' },
-    { label: 'Configuration', icon: 'settings', route: '/configuration', separator: true },
+    { label: 'Home',        icon: 'house',              route: '/home' },
+    { label: 'Dashboard',   icon: 'bar-chart',          route: '/dashboard' },
+    { label: 'Comparison',  icon: 'arrow-left-right',   route: '/comparison' },
+    { label: 'Configuration', icon: 'gear',             route: '/configuration', separator: true },
   ];
 }

@@ -3,7 +3,6 @@ import {
   ViewChild, HostListener, OnInit, OnChanges, SimpleChanges
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 
 export interface DateRangeChange {
@@ -27,13 +26,13 @@ interface CalendarDay {
 @Component({
   selector: 'app-date-range-picker',
   standalone: true,
-  imports: [CommonModule, MatIconModule, MatButtonModule],
+  imports: [CommonModule, MatButtonModule],
   template: `
     <div class="drp-wrapper" #drpRef>
       <button class="drp-trigger" (click)="toggle()">
-        <mat-icon class="cal-icon">calendar_today</mat-icon>
+        <i class="bi bi-calendar3 cal-icon"></i>
         <span class="drp-label">{{ displayLabel }}</span>
-        <mat-icon class="drp-chevron">expand_more</mat-icon>
+        <i class="bi bi-chevron-down drp-chevron"></i>
       </button>
 
       <div class="drp-dropdown" *ngIf="open" [class.drop-up]="dropUp">
@@ -51,12 +50,12 @@ interface CalendarDay {
           <div class="drp-calendars">
             <div class="cal-header">
               <button class="nav-btn" (click)="prevMonth()">
-                <mat-icon>chevron_left</mat-icon>
+                <i class="bi bi-chevron-left"></i>
               </button>
               <span class="cal-month-label">{{ monthLabel(leftMonth) }}</span>
               <span class="cal-month-label">{{ monthLabel(rightMonth) }}</span>
               <button class="nav-btn" (click)="nextMonth()">
-                <mat-icon>chevron_right</mat-icon>
+                <i class="bi bi-chevron-right"></i>
               </button>
             </div>
 
@@ -137,8 +136,8 @@ interface CalendarDay {
       font-family: inherit;
     }
     .drp-trigger:hover { border-color: var(--accent); background: var(--bg-hover); }
-    .cal-icon { font-size: 18px; width: 18px; height: 18px; color: var(--accent); }
-    .drp-chevron { font-size: 16px; width: 16px; height: 16px; color: var(--text-secondary); }
+    .cal-icon { font-size: 15px; color: var(--accent); }
+    .drp-chevron { font-size: 12px; color: var(--text-secondary); }
 
     .drp-dropdown {
       position: absolute;
@@ -233,7 +232,7 @@ interface CalendarDay {
       transition: all 0.1s;
     }
     .nav-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-    .nav-btn mat-icon { font-size: 20px; width: 20px; height: 20px; }
+    .nav-btn i.bi { font-size: 16px; }
 
     .cal-grids {
       display: flex;

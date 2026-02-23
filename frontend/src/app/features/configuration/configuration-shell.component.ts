@@ -1,7 +1,6 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { MatIconModule } from '@angular/material/icon';
 
 interface ConfigNav {
   path: string;
@@ -11,10 +10,9 @@ interface ConfigNav {
 
 @Component({
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, MatIconModule],
+  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet],
   template: `
     <div class="config-layout">
-      <!-- Config sidebar nav -->
       <aside class="config-nav">
         <div class="config-nav-title">Configuration</div>
         <nav>
@@ -24,13 +22,12 @@ interface ConfigNav {
             routerLinkActive="active"
             class="config-nav-item"
           >
-            <mat-icon>{{ item.icon }}</mat-icon>
+            <i class="bi" [ngClass]="'bi-' + item.icon"></i>
             <span>{{ item.label }}</span>
           </a>
         </nav>
       </aside>
 
-      <!-- Config content -->
       <main class="config-content">
         <router-outlet></router-outlet>
       </main>
@@ -52,7 +49,7 @@ interface ConfigNav {
     .config-nav-item {
       display: flex; align-items: center; gap: 10px; padding: 10px 16px;
       text-decoration: none; color: var(--text-secondary); font-size: 14px; transition: all 0.15s;
-      mat-icon { font-size: 18px; }
+      i { font-size: 18px; }
       &:hover { background: var(--bg-secondary); color: var(--text-primary); }
       &.active { background: var(--accent-light); color: var(--accent); font-weight: 500; }
     }
@@ -62,9 +59,9 @@ interface ConfigNav {
 })
 export class ConfigurationShellComponent {
   navItems: ConfigNav[] = [
-    { path: 'organization', label: 'Organization & Users', icon: 'business' },
-    { path: 'metadata', label: 'Metadata Fields', icon: 'tune' },
-    { path: 'platforms', label: 'Platform Connections', icon: 'link' },
-    { path: 'brainsuite-apps', label: 'Brainsuite Apps', icon: 'psychology' },
+    { path: 'organization', label: 'Organization & Users', icon: 'building' },
+    { path: 'metadata', label: 'Metadata Fields', icon: 'sliders' },
+    { path: 'platforms', label: 'Platform Connections', icon: 'link-45deg' },
+    { path: 'brainsuite-apps', label: 'Brainsuite Apps', icon: 'cpu' },
   ];
 }

@@ -2,12 +2,10 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
-import { MatBadgeModule } from '@angular/material/badge';
 import { AuthService, CurrentUser } from '../../services/auth.service';
 import { ThemeService } from '../../services/theme.service';
 import { ApiService } from '../../services/api.service';
@@ -25,9 +23,8 @@ interface NotificationItem {
   selector: 'bs-header',
   standalone: true,
   imports: [
-    CommonModule, RouterLink, MatMenuModule, MatIconModule,
+    CommonModule, RouterLink, MatMenuModule,
     MatButtonModule, MatDialogModule, MatTooltipModule, MatDividerModule,
-    MatBadgeModule,
   ],
   template: `
     <header class="header">
@@ -39,7 +36,7 @@ interface NotificationItem {
           [matMenuTriggerFor]="notifMenu"
           class="icon-btn notif-btn"
         >
-          <mat-icon>{{ unreadCount > 0 ? 'notifications' : 'notifications_none' }}</mat-icon>
+          <i class="bi bi-bell"></i>
           <span class="custom-badge" *ngIf="unreadCount > 0">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
         </button>
 
@@ -50,7 +47,7 @@ interface NotificationItem {
           </div>
           <mat-divider />
           <div *ngIf="notifications.length === 0" class="notif-empty" (click)="$event.stopPropagation()">
-            <mat-icon>notifications_none</mat-icon>
+            <i class="bi bi-bell" style="font-size: 24px; opacity: 0.4;"></i>
             <span>No notifications</span>
           </div>
           <button
@@ -61,7 +58,7 @@ interface NotificationItem {
             (click)="markRead(n)"
           >
             <div class="notif-icon-wrap">
-              <mat-icon [class]="getNotifIconClass(n)">{{ getNotifIcon(n) }}</mat-icon>
+              <i class="bi" [ngClass]="[getNotifIcon(n), getNotifIconClass(n)]"></i>
             </div>
             <div class="notif-content">
               <span class="notif-title">{{ n.title }}</span>
@@ -79,7 +76,7 @@ interface NotificationItem {
         >
           <div class="avatar">{{ initials }}</div>
           <span class="avatar-name">{{ user?.full_name || user?.email }}</span>
-          <mat-icon class="chevron">expand_more</mat-icon>
+          <i class="bi bi-chevron-down chevron"></i>
         </button>
 
         <mat-menu #userMenu="matMenu" xPosition="before">
@@ -94,19 +91,19 @@ interface NotificationItem {
           <mat-divider />
 
           <button mat-menu-item (click)="toggleTheme()">
-            <mat-icon>{{ isDark ? 'light_mode' : 'dark_mode' }}</mat-icon>
+            <i class="bi" [ngClass]="isDark ? 'bi-sun' : 'bi-moon'" style="font-size: 18px; margin-right: 12px;"></i>
             {{ isDark ? 'Light Mode' : 'Dark Mode' }}
           </button>
 
           <button mat-menu-item (click)="openEditProfile()">
-            <mat-icon>person</mat-icon>
+            <i class="bi bi-person" style="font-size: 18px; margin-right: 12px;"></i>
             Edit Profile
           </button>
 
           <mat-divider />
 
           <button mat-menu-item (click)="logout()" class="logout-item">
-            <mat-icon>logout</mat-icon>
+            <i class="bi bi-box-arrow-right" style="font-size: 18px; margin-right: 12px;"></i>
             Sign Out
           </button>
         </mat-menu>
@@ -135,6 +132,7 @@ interface NotificationItem {
     .icon-btn {
       color: var(--text-secondary) !important;
       &:hover { color: var(--text-primary) !important; }
+      i { font-size: 20px; }
     }
 
     .notif-btn {
@@ -220,7 +218,7 @@ interface NotificationItem {
       flex-shrink: 0;
     }
 
-    .chevron { font-size: 18px !important; color: var(--text-muted); }
+    .chevron { font-size: 14px !important; color: var(--text-muted); }
 
     .menu-header {
       display: flex;
@@ -266,7 +264,6 @@ interface NotificationItem {
       gap: 8px;
       padding: 24px 16px;
       color: var(--text-muted);
-      mat-icon { font-size: 24px; opacity: 0.4; }
       span { font-size: 13px; }
     }
 
@@ -289,10 +286,8 @@ interface NotificationItem {
       margin-top: 2px;
     }
 
-    .notif-icon-wrap mat-icon {
+    .notif-icon-wrap i {
       font-size: 20px;
-      width: 20px;
-      height: 20px;
     }
 
     .notif-icon-wrap .icon-join { color: var(--accent); }
@@ -387,10 +382,10 @@ export class HeaderComponent implements OnInit, OnDestroy {
 
   getNotifIcon(n: NotificationItem): string {
     switch (n.type) {
-      case 'JOIN_REQUEST': return 'person_add';
-      case 'JOIN_APPROVED': return 'check_circle';
-      case 'JOIN_REJECTED': return 'cancel';
-      default: return 'notifications';
+      case 'JOIN_REQUEST': return 'bi-person-plus';
+      case 'JOIN_APPROVED': return 'bi-check-circle-fill';
+      case 'JOIN_REJECTED': return 'bi-slash-circle';
+      default: return 'bi-bell';
     }
   }
 

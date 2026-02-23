@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -67,7 +66,7 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
 @Component({
   standalone: true,
   imports: [
-    CommonModule, FormsModule, MatButtonModule, MatIconModule,
+    CommonModule, FormsModule, MatButtonModule,
     MatSelectModule, MatFormFieldModule, MatInputModule,
     MatDatepickerModule, MatNativeDateModule, MatTooltipModule, MatProgressSpinnerModule,
   ],
@@ -77,7 +76,7 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
       <div class="page-header">
         <div class="header-left">
           <button mat-icon-button (click)="goBack()">
-            <mat-icon>arrow_back</mat-icon>
+            <i class="bi bi-arrow-left"></i>
           </button>
           <div>
             <h1>Asset Comparison</h1>
@@ -141,7 +140,7 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
               />
               <ng-template #noThumb>
                 <div class="thumb-placeholder">
-                  <mat-icon>image_not_supported</mat-icon>
+                  <i class="bi bi-file-earmark-x" style="font-size: 32px;"></i>
                 </div>
               </ng-template>
               <div class="platform-badge" [style.background]="getPlatformColor(asset.platform)">
@@ -156,7 +155,7 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
               </div>
             </div>
             <button mat-icon-button class="remove-btn" (click)="removeAsset(asset.id)" [matTooltip]="'Remove from comparison'">
-              <mat-icon>close</mat-icon>
+              <i class="bi bi-x-lg"></i>
             </button>
           </div>
         </div>
@@ -287,7 +286,7 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
     .thumb-placeholder {
       width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
       background: var(--bg-secondary);
-      mat-icon { font-size: 32px; color: var(--text-muted); }
+      i.bi { font-size: 32px; color: var(--text-muted); }
     }
 
     .platform-badge {

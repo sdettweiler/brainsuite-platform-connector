@@ -2,7 +2,6 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -75,7 +74,7 @@ const PLATFORMS: PlatformDef[] = [
 @Component({
   standalone: true,
   imports: [
-    CommonModule, FormsModule, MatButtonModule, MatIconModule, MatMenuModule,
+    CommonModule, FormsModule, MatButtonModule, MatMenuModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatSelectModule, MatCheckboxModule,
     MatFormFieldModule, MatInputModule, MatTooltipModule, MatDividerModule,
   ],
@@ -103,7 +102,7 @@ const PLATFORMS: PlatformDef[] = [
               (click)="startOAuth(p.key)"
             >
               <mat-spinner *ngIf="connecting === p.key" diameter="14"></mat-spinner>
-              <mat-icon *ngIf="connecting !== p.key">add</mat-icon>
+              <i class="bi bi-plus-lg" *ngIf="connecting !== p.key"></i>
               {{ connecting === p.key ? 'Connecting...' : 'Connect New' }}
             </button>
           </div>
@@ -131,7 +130,7 @@ const PLATFORMS: PlatformDef[] = [
         <div class="table-toolbar">
           <div class="toolbar-left">
             <div class="search-box">
-              <mat-icon>search</mat-icon>
+              <i class="bi bi-search"></i>
               <input
                 type="text"
                 placeholder="Search accounts..."
@@ -139,7 +138,7 @@ const PLATFORMS: PlatformDef[] = [
                 (ngModelChange)="onSearchChange($event)"
               />
               <button *ngIf="searchTerm" class="clear-search" (click)="clearSearch()">
-                <mat-icon>close</mat-icon>
+                <i class="bi bi-x-lg"></i>
               </button>
             </div>
 
@@ -184,7 +183,7 @@ const PLATFORMS: PlatformDef[] = [
               </mat-select>
             </mat-form-field>
             <button mat-icon-button (click)="toggleSortOrder()" [matTooltip]="sortOrder === 'asc' ? 'Ascending' : 'Descending'">
-              <mat-icon>{{ sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+              <i class="bi" [ngClass]="sortOrder === 'asc' ? 'bi-arrow-up' : 'bi-arrow-down'"></i>
             </button>
           </div>
         </div>
@@ -201,13 +200,13 @@ const PLATFORMS: PlatformDef[] = [
           </div>
           <div class="bulk-right">
             <button mat-stroked-button class="bulk-btn" (click)="bulkResync()">
-              <mat-icon>sync</mat-icon> Resync
+              <i class="bi bi-arrow-repeat"></i> Resync
             </button>
             <button mat-stroked-button class="bulk-btn" [matMenuTriggerFor]="bulkAppMenu">
-              <mat-icon>apps</mat-icon> Assign App
+              <i class="bi bi-grid-3x3-gap"></i> Assign App
             </button>
             <button mat-stroked-button class="bulk-btn bulk-danger" (click)="bulkDisconnect()">
-              <mat-icon>link_off</mat-icon> Disconnect
+              <i class="bi bi-plug"></i> Disconnect
             </button>
           </div>
         </div>
@@ -308,7 +307,7 @@ const PLATFORMS: PlatformDef[] = [
                 </td>
                 <td class="col-actions">
                   <button mat-icon-button [matMenuTriggerFor]="rowMenu" [matMenuTriggerData]="{conn: conn}">
-                    <mat-icon>more_vert</mat-icon>
+                    <i class="bi bi-three-dots-vertical"></i>
                   </button>
                 </td>
               </tr>
@@ -316,7 +315,7 @@ const PLATFORMS: PlatformDef[] = [
           </table>
 
           <div *ngIf="connections.length === 0" class="empty-connections">
-            <mat-icon>link_off</mat-icon>
+            <i class="bi bi-plug" style="font-size: 32px;"></i>
             <span *ngIf="hasActiveFilters()">No connections match your filters</span>
             <span *ngIf="!hasActiveFilters()">No platforms connected yet</span>
             <p *ngIf="!hasActiveFilters()">Click "Connect New" above to add your first ad account</p>
@@ -348,17 +347,17 @@ const PLATFORMS: PlatformDef[] = [
 
           <div class="page-nav">
             <button mat-icon-button [disabled]="currentPage <= 1" (click)="goToPage(1)" matTooltip="First page">
-              <mat-icon>first_page</mat-icon>
+              <i class="bi bi-chevron-double-left"></i>
             </button>
             <button mat-icon-button [disabled]="currentPage <= 1" (click)="goToPage(currentPage - 1)" matTooltip="Previous">
-              <mat-icon>chevron_left</mat-icon>
+              <i class="bi bi-chevron-left"></i>
             </button>
             <span class="page-number">{{ currentPage }} / {{ totalPages }}</span>
             <button mat-icon-button [disabled]="currentPage >= totalPages" (click)="goToPage(currentPage + 1)" matTooltip="Next">
-              <mat-icon>chevron_right</mat-icon>
+              <i class="bi bi-chevron-right"></i>
             </button>
             <button mat-icon-button [disabled]="currentPage >= totalPages" (click)="goToPage(totalPages)" matTooltip="Last page">
-              <mat-icon>last_page</mat-icon>
+              <i class="bi bi-chevron-double-right"></i>
             </button>
           </div>
         </div>
@@ -367,13 +366,13 @@ const PLATFORMS: PlatformDef[] = [
       <mat-menu #rowMenu="matMenu">
         <ng-template matMenuContent let-conn="conn">
           <button mat-menu-item (click)="resync(conn)">
-            <mat-icon>sync</mat-icon> Force Resync
+            <i class="bi bi-arrow-repeat" style="font-size: 18px; margin-right: 12px;"></i> Force Resync
           </button>
           <button mat-menu-item (click)="openMetadataPanel(conn)">
-            <mat-icon>tune</mat-icon> Default Metadata
+            <i class="bi bi-sliders" style="font-size: 18px; margin-right: 12px;"></i> Default Metadata
           </button>
           <button mat-menu-item class="delete-item" (click)="deleteConnection(conn)">
-            <mat-icon>link_off</mat-icon> Disconnect
+            <i class="bi bi-plug" style="font-size: 18px; margin-right: 12px;"></i> Disconnect
           </button>
         </ng-template>
       </mat-menu>
@@ -393,12 +392,12 @@ const PLATFORMS: PlatformDef[] = [
           <h2>Select Ad Accounts</h2>
           <p>{{ pendingPlatform }} — {{ pendingAccounts.length }} account{{ pendingAccounts.length !== 1 ? 's' : '' }} available</p>
         </div>
-        <button mat-icon-button (click)="cancelPending()"><mat-icon>close</mat-icon></button>
+        <button mat-icon-button (click)="cancelPending()"><i class="bi bi-x-lg"></i></button>
       </div>
 
       <div class="panel-toolbar">
         <button mat-button class="select-toggle" (click)="toggleSelectAllAccounts()">
-          <mat-icon>{{ selectedAccounts.length === pendingAccounts.length ? 'deselect' : 'select_all' }}</mat-icon>
+          <i class="bi" [ngClass]="selectedAccounts.length === pendingAccounts.length ? 'bi-dash-square' : 'bi-check2-square'"></i>
           {{ selectedAccounts.length === pendingAccounts.length ? 'Select None' : 'Select All' }}
         </button>
         <span class="select-count">{{ selectedAccounts.length }} of {{ pendingAccounts.length }} selected</span>
@@ -413,8 +412,7 @@ const PLATFORMS: PlatformDef[] = [
             (click)="toggleAccount(acc.id)"
           >
             <div class="check-box">
-              <mat-icon *ngIf="selectedAccounts.includes(acc.id)">check_box</mat-icon>
-              <mat-icon *ngIf="!selectedAccounts.includes(acc.id)">check_box_outline_blank</mat-icon>
+              <i class="bi" [ngClass]="selectedAccounts.includes(acc.id) ? 'bi-check-square-fill' : 'bi-square'"></i>
             </div>
             <div class="acc-info">
               <span class="acc-name">{{ acc.name }}</span>
@@ -446,7 +444,7 @@ const PLATFORMS: PlatformDef[] = [
           <h2>Default Metadata</h2>
           <p *ngIf="selectedConnection">{{ selectedConnection.ad_account_name }}</p>
         </div>
-        <button mat-icon-button (click)="selectedConnection = null"><mat-icon>close</mat-icon></button>
+        <button mat-icon-button (click)="selectedConnection = null"><i class="bi bi-x-lg"></i></button>
       </div>
 
       <div class="panel-body" *ngIf="selectedConnection">
@@ -455,7 +453,7 @@ const PLATFORMS: PlatformDef[] = [
         </div>
 
         <div *ngIf="!loadingMetaFields && metadataFields.length === 0" class="empty-meta">
-          <mat-icon>info_outline</mat-icon>
+          <i class="bi bi-info-circle" style="font-size: 24px;"></i>
           <p>No metadata fields configured yet.</p>
           <p>Go to the <strong>Metadata Fields</strong> section to create fields first.</p>
         </div>

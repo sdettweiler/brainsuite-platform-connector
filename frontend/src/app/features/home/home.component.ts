@@ -1,7 +1,6 @@
 import { Component, OnInit, OnDestroy, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subscription } from 'rxjs';
@@ -11,7 +10,7 @@ import { ThemeService } from '../../core/services/theme.service';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, MatIconModule, MatButtonModule, MatTooltipModule],
+  imports: [CommonModule, MatButtonModule, MatTooltipModule],
   template: `
     <div class="page-enter">
       <!-- Welcome header -->
@@ -27,7 +26,7 @@ import { ThemeService } from '../../core/services/theme.service';
       <div class="stats-grid" *ngIf="!loading">
         <div class="stat-card">
           <div class="stat-icon" style="background: var(--accent-light);">
-            <mat-icon style="color: var(--accent)">image</mat-icon>
+            <i class="bi bi-images" style="color: var(--accent); font-size: 24px;"></i>
           </div>
           <div>
             <div class="stat-value">{{ data?.overall_stats?.total_assets | number }}</div>
@@ -36,7 +35,7 @@ import { ThemeService } from '../../core/services/theme.service';
         </div>
         <div class="stat-card">
           <div class="stat-icon" style="background: rgba(46,204,113,0.15);">
-            <mat-icon style="color: var(--success)">account_balance_wallet</mat-icon>
+            <i class="bi bi-wallet2" style="color: var(--success); font-size: 24px;"></i>
           </div>
           <div>
             <div class="stat-value">{{ data?.overall_stats?.total_accounts | number }}</div>
@@ -45,7 +44,7 @@ import { ThemeService } from '../../core/services/theme.service';
         </div>
         <div class="stat-card">
           <div class="stat-icon" style="background: rgba(243,156,18,0.15);">
-            <mat-icon style="color: var(--warning)">payments</mat-icon>
+            <i class="bi bi-cash-stack" style="color: var(--warning); font-size: 24px;"></i>
           </div>
           <div>
             <div class="stat-value">{{ data?.overall_stats?.total_spend | currency:'USD':'symbol':'1.0-0' }}</div>
@@ -103,11 +102,11 @@ import { ThemeService } from '../../core/services/theme.service';
                     <div class="ad-name">{{ ad.ad_name || 'Unnamed Ad' }}</div>
                     <div class="ad-metrics">
                       <span class="metric">
-                        <mat-icon>payments</mat-icon>
+                        <i class="bi bi-cash-stack"></i>
                         {{ ad.spend_l7d | currency:'USD':'symbol':'1.0-0' }}
                       </span>
                       <span class="metric">
-                        <mat-icon>touch_app</mat-icon>
+                        <i class="bi bi-hand-index"></i>
                         {{ (ad.ctr * 100 | number:'1.1-1') }}% CTR
                       </span>
                     </div>
@@ -118,7 +117,7 @@ import { ThemeService } from '../../core/services/theme.service';
                 </div>
 
                 <div class="empty-state" *ngIf="getWidget(platform).length === 0">
-                  <mat-icon>campaign</mat-icon>
+                  <i class="bi bi-megaphone"></i>
                   <p>No data for the last 7 days</p>
                   <small>Connect a {{ platform }} account to start tracking</small>
                 </div>
@@ -172,7 +171,7 @@ import { ThemeService } from '../../core/services/theme.service';
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      mat-icon { font-size: 24px; }
+      i.bi { font-size: 24px; }
     }
 
     .stat-value { font-size: 22px; font-weight: 700; }
@@ -280,7 +279,7 @@ import { ThemeService } from '../../core/services/theme.service';
       gap: 3px;
       font-size: 11px;
       color: var(--text-secondary);
-      mat-icon { font-size: 12px; width: 12px; height: 12px; }
+      i.bi { font-size: 12px; }
     }
 
     .ace-score {
@@ -303,7 +302,7 @@ import { ThemeService } from '../../core/services/theme.service';
       text-align: center;
       padding: 32px 20px;
       color: var(--text-muted);
-      mat-icon { font-size: 32px; opacity: 0.4; }
+      i.bi { font-size: 32px; opacity: 0.4; }
       p { font-size: 13px; margin: 8px 0 4px; }
       small { font-size: 11px; }
     }
