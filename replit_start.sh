@@ -90,6 +90,7 @@ alembic upgrade head 2>&1 || true
 echo "✓ Database up to date"
 
 # ── 6. Check frontend build ─────────────────────────────────────────────────
+export NG_CLI_ANALYTICS=false
 if [ ! -f "$FRONTEND_DIST/index.html" ]; then
   echo "► Building Angular frontend..."
   cd "$FRONTEND_DIR"
