@@ -11,6 +11,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDividerModule } from '@angular/material/divider';
 import { ApiService } from '../../../core/services/api.service';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
@@ -76,7 +77,7 @@ const PLATFORMS: PlatformDef[] = [
   imports: [
     CommonModule, FormsModule, MatButtonModule, MatIconModule, MatMenuModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatSelectModule, MatCheckboxModule,
-    MatFormFieldModule, MatInputModule, MatTooltipModule,
+    MatFormFieldModule, MatInputModule, MatTooltipModule, MatDividerModule,
   ],
   template: `
     <div class="page-container">
