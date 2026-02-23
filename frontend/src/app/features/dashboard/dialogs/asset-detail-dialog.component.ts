@@ -103,12 +103,19 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
 
                 <div class="kpi-table">
                   <div class="section-label">Performance Summary</div>
-                  <table>
-                    <tr *ngFor="let row of kpiRows">
-                      <td class="kpi-name">{{ row.label }}</td>
-                      <td class="kpi-val">{{ row.value }}</td>
-                    </tr>
-                  </table>
+                  <div class="kpi-scroll">
+                    <ng-container *ngFor="let cat of kpiCategories">
+                      <div class="kpi-category" *ngIf="cat.rows.length">
+                        <div class="kpi-cat-label">{{ cat.label }}</div>
+                        <table>
+                          <tr *ngFor="let row of cat.rows">
+                            <td class="kpi-name">{{ row.label }}</td>
+                            <td class="kpi-val">{{ row.value }}</td>
+                          </tr>
+                        </table>
+                      </div>
+                    </ng-container>
+                  </div>
                 </div>
               </div>
             </div>
@@ -250,11 +257,23 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       text-align: center; color: var(--text-muted); font-size: 13px;
     }
 
-    .kpi-table { margin-top: 16px; }
+    .kpi-table { margin-top: 16px; display: flex; flex-direction: column; min-height: 0; }
+    .kpi-scroll {
+      overflow-y: auto; max-height: calc(85vh - 340px);
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    }
+    .kpi-scroll::-webkit-scrollbar { width: 4px; }
+    .kpi-scroll::-webkit-scrollbar-track { background: transparent; }
+    .kpi-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .kpi-category { margin-bottom: 8px; }
+    .kpi-cat-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+      color: var(--text-muted); padding: 8px 0 4px; border-bottom: 1px solid var(--border);
+    }
     .kpi-table table { width: 100%; }
     .kpi-table tr { border-bottom: 1px solid var(--border); }
-    .kpi-name { padding: 8px 0; font-size: 12px; color: var(--text-secondary); }
-    .kpi-val { padding: 8px 0; font-size: 13px; font-weight: 600; text-align: right; }
+    .kpi-name { padding: 6px 0; font-size: 12px; color: var(--text-secondary); }
+    .kpi-val { padding: 6px 0; font-size: 13px; font-weight: 600; text-align: right; }
 
     .campaigns-section { border-top: 1px solid var(--border); padding-top: 16px; }
     .campaigns-list { display: flex; flex-direction: column; gap: 6px; }
@@ -521,22 +540,96 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     return items;
   }
 
-  get kpiRows(): { label: string; value: string }[] {
+  get kpiCategories(): { label: string; rows: { label: string; value: string }[] }[] {
     const p = this.detail?.performance;
     if (!p) return [];
-    const fmt = (v: number | null, prefix = '', suffix = '', decimals = 0) =>
-      v != null ? `${prefix}${v.toFixed(decimals)}${suffix}` : 'N/A';
+
+    const num = (v: any) => v != null && v !== undefined;
+    const fmtInt = (v: any) => num(v) ? Number(v).toLocaleString() : null;
+    const fmtDec = (v: any, d = 2) => num(v) ? Number(v).toFixed(d) : null;
+    const fmtCur = (v: any, d = 2) => num(v) ? '$' + Number(v).toFixed(d) : null;
+    const fmtPct = (v: any, d = 2) => num(v) ? Number(v).toFixed(d) + '%' : null;
+    const fmtX = (v: any, d = 2) => num(v) ? Number(v).toFixed(d) + 'x' : null;
+
+    const row = (label: string, value: string | null) => value ? { label, value } : null;
+
+    const delivery = [
+      row('Spend', fmtCur(p.spend, 0)),
+      row('Impressions', fmtInt(p.impressions)),
+      row('Reach', fmtInt(p.reach)),
+      row('Frequency', fmtDec(p.frequency)),
+      row('Clicks', fmtInt(p.clicks)),
+      row('CTR', fmtPct(p.ctr)),
+      row('CPM', fmtCur(p.cpm)),
+      row('CPP', fmtCur(p.cpp)),
+      row('CPC', fmtCur(p.cpc)),
+      row('Outbound Clicks', fmtInt(p.outbound_clicks)),
+      row('Outbound CTR', fmtPct(p.outbound_ctr)),
+      row('Unique Clicks', fmtInt(p.unique_clicks)),
+      row('Unique CTR', fmtPct(p.unique_ctr)),
+      row('Inline Link Clicks', fmtInt(p.inline_link_clicks)),
+      row('Inline Link Click CTR', fmtPct(p.inline_link_click_ctr)),
+    ].filter(Boolean) as { label: string; value: string }[];
+
+    const video = [
+      row('Video Plays', fmtInt(p.video_plays)),
+      row('Video Views', fmtInt(p.video_views)),
+      row('VTR', fmtPct(p.vtr)),
+      row('3-sec Watched', fmtInt(p.video_3_sec_watched)),
+      row('30-sec Watched', fmtInt(p.video_30_sec_watched)),
+      row('25% Watched', fmtInt(p.video_p25)),
+      row('50% Watched', fmtInt(p.video_p50)),
+      row('75% Watched', fmtInt(p.video_p75)),
+      row('100% Watched', fmtInt(p.video_p100)),
+      row('Completion Rate', fmtPct(p.video_completion_rate)),
+      row('Cost per View', fmtCur(p.cost_per_view)),
+      row('ThruPlay', fmtInt(p.thruplay)),
+      row('Cost per ThruPlay', fmtCur(p.cost_per_thruplay)),
+      row('Focused Views', fmtInt(p.focused_view)),
+      row('Cost per Focused View', fmtCur(p.cost_per_focused_view)),
+      row('TrueView Views', fmtInt(p.trueview_views)),
+    ].filter(Boolean) as { label: string; value: string }[];
+
+    const engagement = [
+      row('Post Engagements', fmtInt(p.post_engagements)),
+      row('Likes', fmtInt(p.likes)),
+      row('Comments', fmtInt(p.comments)),
+      row('Shares', fmtInt(p.shares)),
+      row('Follows', fmtInt(p.follows)),
+    ].filter(Boolean) as { label: string; value: string }[];
+
+    const conversions = [
+      row('Conversions', fmtInt(p.conversions)),
+      row('Conversion Value', fmtCur(p.conversion_value)),
+      row('CVR', fmtPct(p.cvr)),
+      row('Cost per Conversion', fmtCur(p.cost_per_conversion)),
+      row('ROAS', fmtX(p.roas)),
+      row('Purchases', fmtInt(p.purchases)),
+      row('Purchase Value', fmtCur(p.purchase_value)),
+      row('Purchase ROAS', fmtX(p.purchase_roas)),
+      row('Leads', fmtInt(p.leads)),
+      row('Cost per Lead', fmtCur(p.cost_per_lead)),
+      row('App Installs', fmtInt(p.app_installs)),
+      row('Cost per Install', fmtCur(p.cost_per_install)),
+      row('In-App Purchases', fmtInt(p.in_app_purchases)),
+      row('In-App Purchase Value', fmtCur(p.in_app_purchase_value)),
+      row('Subscribes', fmtInt(p.subscribe)),
+      row('Offline Purchases', fmtInt(p.offline_purchases)),
+      row('Offline Purchase Value', fmtCur(p.offline_purchase_value)),
+      row('Messaging Conversations', fmtInt(p.messaging_conversations_started)),
+    ].filter(Boolean) as { label: string; value: string }[];
+
+    const quality = [
+      row('Est. Ad Recallers', fmtInt(p.estimated_ad_recallers)),
+      row('Est. Ad Recall Rate', fmtPct(p.estimated_ad_recall_rate)),
+    ].filter(Boolean) as { label: string; value: string }[];
+
     return [
-      { label: 'Campaigns Used In', value: String(this.detail.campaigns_count || 0) },
-      { label: 'ACE Score', value: this.asset.ace_score ? `${this.asset.ace_score.toFixed(1)} (dummy)` : 'N/A' },
-      { label: 'Total Spend', value: fmt(p.spend, '$', '', 0) },
-      { label: 'Impressions', value: p.impressions?.toLocaleString() || '0' },
-      { label: 'Clicks', value: p.clicks?.toLocaleString() || '0' },
-      { label: 'CPM', value: fmt(p.cpm, '$', '', 2) },
-      { label: 'CTR', value: fmt(p.ctr, '', '%', 2) },
-      ...(p.video_views ? [{ label: 'VTR', value: fmt(p.vtr, '', '%', 2) }] : []),
-      ...(p.cvr ? [{ label: 'CVR', value: fmt(p.cvr, '', '%', 2) }] : []),
-      ...(p.roas ? [{ label: 'ROAS', value: fmt(p.roas, '', 'x', 2) }] : []),
+      { label: 'Delivery', rows: delivery },
+      { label: 'Video', rows: video },
+      { label: 'Engagement', rows: engagement },
+      { label: 'Conversions', rows: conversions },
+      { label: 'Quality & Recall', rows: quality },
     ];
   }
 

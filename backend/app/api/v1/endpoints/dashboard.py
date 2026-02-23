@@ -291,40 +291,78 @@ async def get_asset_detail(
     )
     project_ids = [str(p.project_id) for p in proj_result.scalars().all()]
 
-    # Aggregate performance
+    HP = HarmonizedPerformance
+    _imp = func.nullif(func.sum(HP.impressions), 0)
+    _clk = func.nullif(func.sum(HP.clicks), 0)
+    _spd = func.nullif(func.sum(HP.spend), 0)
+
     perf_result = await db.execute(
         select(
-            func.sum(HarmonizedPerformance.spend).label("spend"),
-            func.sum(HarmonizedPerformance.impressions).label("impressions"),
-            func.sum(HarmonizedPerformance.clicks).label("clicks"),
-            (
-                func.sum(HarmonizedPerformance.clicks) /
-                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
-            ).label("ctr"),
-            (
-                func.sum(HarmonizedPerformance.spend) /
-                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 1000
-            ).label("cpm"),
-            func.sum(HarmonizedPerformance.conversions).label("conversions"),
-            func.sum(HarmonizedPerformance.conversion_value).label("conversion_value"),
-            (
-                func.sum(HarmonizedPerformance.conversions) /
-                func.nullif(func.sum(HarmonizedPerformance.clicks), 0) * 100
-            ).label("cvr"),
-            (
-                func.sum(HarmonizedPerformance.conversion_value) /
-                func.nullif(func.sum(HarmonizedPerformance.spend), 0)
-            ).label("roas"),
-            func.sum(HarmonizedPerformance.video_views).label("video_views"),
-            (
-                func.sum(HarmonizedPerformance.video_views) /
-                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
-            ).label("vtr"),
-            func.count(func.distinct(HarmonizedPerformance.campaign_id)).label("campaigns_count"),
+            func.sum(HP.spend).label("spend"),
+            func.sum(HP.impressions).label("impressions"),
+            func.sum(HP.reach).label("reach"),
+            (func.sum(HP.impressions) / func.nullif(func.sum(HP.reach), 0)).label("frequency"),
+            func.sum(HP.clicks).label("clicks"),
+            (func.sum(HP.clicks) / _imp * 100).label("ctr"),
+            (func.sum(HP.spend) / _imp * 1000).label("cpm"),
+            (func.sum(HP.spend) / func.nullif(func.sum(HP.reach), 0) * 1000).label("cpp"),
+            (func.sum(HP.spend) / _clk).label("cpc"),
+            func.sum(HP.outbound_clicks).label("outbound_clicks"),
+            (func.sum(HP.outbound_clicks) / _imp * 100).label("outbound_ctr"),
+            func.sum(HP.unique_clicks).label("unique_clicks"),
+            (func.sum(HP.unique_clicks) / _imp * 100).label("unique_ctr"),
+            func.sum(HP.inline_link_clicks).label("inline_link_clicks"),
+            (func.sum(HP.inline_link_clicks) / _imp * 100).label("inline_link_click_ctr"),
+
+            func.sum(HP.video_plays).label("video_plays"),
+            func.sum(HP.video_views).label("video_views"),
+            (func.sum(HP.video_views) / _imp * 100).label("vtr"),
+            func.sum(HP.video_3_sec_watched).label("video_3_sec_watched"),
+            func.sum(HP.video_30_sec_watched).label("video_30_sec_watched"),
+            func.sum(HP.video_p25).label("video_p25"),
+            func.sum(HP.video_p50).label("video_p50"),
+            func.sum(HP.video_p75).label("video_p75"),
+            func.sum(HP.video_p100).label("video_p100"),
+            (func.sum(HP.video_p100) / func.nullif(func.sum(HP.video_plays), 0) * 100).label("video_completion_rate"),
+            (func.sum(HP.spend) / func.nullif(func.sum(HP.video_views), 0)).label("cost_per_view"),
+            func.sum(HP.thruplay).label("thruplay"),
+            (func.sum(HP.spend) / func.nullif(func.sum(HP.thruplay), 0)).label("cost_per_thruplay"),
+            func.sum(HP.focused_view).label("focused_view"),
+            (func.sum(HP.spend) / func.nullif(func.sum(HP.focused_view), 0)).label("cost_per_focused_view"),
+            func.sum(HP.trueview_views).label("trueview_views"),
+
+            func.sum(HP.post_engagements).label("post_engagements"),
+            func.sum(HP.likes).label("likes"),
+            func.sum(HP.comments).label("comments"),
+            func.sum(HP.shares).label("shares"),
+            func.sum(HP.follows).label("follows"),
+
+            func.sum(HP.conversions).label("conversions"),
+            func.sum(HP.conversion_value).label("conversion_value"),
+            (func.sum(HP.conversions) / _clk * 100).label("cvr"),
+            (func.sum(HP.spend) / func.nullif(func.sum(HP.conversions), 0)).label("cost_per_conversion"),
+            (func.sum(HP.conversion_value) / _spd).label("roas"),
+            func.sum(HP.purchases).label("purchases"),
+            func.sum(HP.purchase_value).label("purchase_value"),
+            (func.sum(HP.purchase_value) / _spd).label("purchase_roas"),
+            func.sum(HP.leads).label("leads"),
+            (func.sum(HP.spend) / func.nullif(func.sum(HP.leads), 0)).label("cost_per_lead"),
+            func.sum(HP.app_installs).label("app_installs"),
+            (func.sum(HP.spend) / func.nullif(func.sum(HP.app_installs), 0)).label("cost_per_install"),
+            func.sum(HP.in_app_purchases).label("in_app_purchases"),
+            func.sum(HP.in_app_purchase_value).label("in_app_purchase_value"),
+            func.sum(HP.subscribe).label("subscribe"),
+            func.sum(HP.offline_purchases).label("offline_purchases"),
+            func.sum(HP.offline_purchase_value).label("offline_purchase_value"),
+            func.sum(HP.messaging_conversations_started).label("messaging_conversations_started"),
+            func.sum(HP.estimated_ad_recallers).label("estimated_ad_recallers"),
+            (func.sum(HP.estimated_ad_recallers) / _imp * 100).label("estimated_ad_recall_rate"),
+
+            func.count(func.distinct(HP.campaign_id)).label("campaigns_count"),
         ).where(
-            HarmonizedPerformance.asset_id == asset_id,
-            HarmonizedPerformance.report_date >= date_from,
-            HarmonizedPerformance.report_date <= date_to,
+            HP.asset_id == asset_id,
+            HP.report_date >= date_from,
+            HP.report_date <= date_to,
         )
     )
     perf = perf_result.one()
@@ -421,19 +459,64 @@ async def get_asset_detail(
         "projects": project_ids,
         "campaigns_count": int(perf.campaigns_count or 0),
         "campaigns": campaigns,
-        "performance": {
-            "spend": float(perf.spend or 0),
-            "impressions": int(perf.impressions or 0),
-            "clicks": int(perf.clicks or 0),
-            "ctr": float(perf.ctr or 0),
-            "cpm": float(perf.cpm or 0),
-            "conversions": int(perf.conversions or 0),
-            "conversion_value": float(perf.conversion_value or 0),
-            "cvr": float(perf.cvr or 0),
-            "roas": float(perf.roas or 0),
-            "video_views": int(perf.video_views or 0),
-            "vtr": float(perf.vtr or 0),
-        },
+        "performance": {k: v for k, v in {
+            "spend": float(perf.spend) if perf.spend else None,
+            "impressions": int(perf.impressions) if perf.impressions else None,
+            "reach": int(perf.reach) if perf.reach else None,
+            "frequency": float(perf.frequency) if perf.frequency else None,
+            "clicks": int(perf.clicks) if perf.clicks else None,
+            "ctr": float(perf.ctr) if perf.ctr else None,
+            "cpm": float(perf.cpm) if perf.cpm else None,
+            "cpp": float(perf.cpp) if perf.cpp else None,
+            "cpc": float(perf.cpc) if perf.cpc else None,
+            "outbound_clicks": int(perf.outbound_clicks) if perf.outbound_clicks else None,
+            "outbound_ctr": float(perf.outbound_ctr) if perf.outbound_ctr else None,
+            "unique_clicks": int(perf.unique_clicks) if perf.unique_clicks else None,
+            "unique_ctr": float(perf.unique_ctr) if perf.unique_ctr else None,
+            "inline_link_clicks": int(perf.inline_link_clicks) if perf.inline_link_clicks else None,
+            "inline_link_click_ctr": float(perf.inline_link_click_ctr) if perf.inline_link_click_ctr else None,
+            "video_plays": int(perf.video_plays) if perf.video_plays else None,
+            "video_views": int(perf.video_views) if perf.video_views else None,
+            "vtr": float(perf.vtr) if perf.vtr else None,
+            "video_3_sec_watched": int(perf.video_3_sec_watched) if perf.video_3_sec_watched else None,
+            "video_30_sec_watched": int(perf.video_30_sec_watched) if perf.video_30_sec_watched else None,
+            "video_p25": int(perf.video_p25) if perf.video_p25 else None,
+            "video_p50": int(perf.video_p50) if perf.video_p50 else None,
+            "video_p75": int(perf.video_p75) if perf.video_p75 else None,
+            "video_p100": int(perf.video_p100) if perf.video_p100 else None,
+            "video_completion_rate": float(perf.video_completion_rate) if perf.video_completion_rate else None,
+            "cost_per_view": float(perf.cost_per_view) if perf.cost_per_view else None,
+            "thruplay": int(perf.thruplay) if perf.thruplay else None,
+            "cost_per_thruplay": float(perf.cost_per_thruplay) if perf.cost_per_thruplay else None,
+            "focused_view": int(perf.focused_view) if perf.focused_view else None,
+            "cost_per_focused_view": float(perf.cost_per_focused_view) if perf.cost_per_focused_view else None,
+            "trueview_views": int(perf.trueview_views) if perf.trueview_views else None,
+            "post_engagements": int(perf.post_engagements) if perf.post_engagements else None,
+            "likes": int(perf.likes) if perf.likes else None,
+            "comments": int(perf.comments) if perf.comments else None,
+            "shares": int(perf.shares) if perf.shares else None,
+            "follows": int(perf.follows) if perf.follows else None,
+            "conversions": int(perf.conversions) if perf.conversions else None,
+            "conversion_value": float(perf.conversion_value) if perf.conversion_value else None,
+            "cvr": float(perf.cvr) if perf.cvr else None,
+            "cost_per_conversion": float(perf.cost_per_conversion) if perf.cost_per_conversion else None,
+            "roas": float(perf.roas) if perf.roas else None,
+            "purchases": int(perf.purchases) if perf.purchases else None,
+            "purchase_value": float(perf.purchase_value) if perf.purchase_value else None,
+            "purchase_roas": float(perf.purchase_roas) if perf.purchase_roas else None,
+            "leads": int(perf.leads) if perf.leads else None,
+            "cost_per_lead": float(perf.cost_per_lead) if perf.cost_per_lead else None,
+            "app_installs": int(perf.app_installs) if perf.app_installs else None,
+            "cost_per_install": float(perf.cost_per_install) if perf.cost_per_install else None,
+            "in_app_purchases": int(perf.in_app_purchases) if perf.in_app_purchases else None,
+            "in_app_purchase_value": float(perf.in_app_purchase_value) if perf.in_app_purchase_value else None,
+            "subscribe": int(perf.subscribe) if perf.subscribe else None,
+            "offline_purchases": int(perf.offline_purchases) if perf.offline_purchases else None,
+            "offline_purchase_value": float(perf.offline_purchase_value) if perf.offline_purchase_value else None,
+            "messaging_conversations_started": int(perf.messaging_conversations_started) if perf.messaging_conversations_started else None,
+            "estimated_ad_recallers": int(perf.estimated_ad_recallers) if perf.estimated_ad_recallers else None,
+            "estimated_ad_recall_rate": float(perf.estimated_ad_recall_rate) if perf.estimated_ad_recall_rate else None,
+        }.items() if v is not None},
         "timeseries": timeseries,
     }
 
