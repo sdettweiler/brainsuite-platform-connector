@@ -221,9 +221,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .apply-btn:hover { background: var(--accent-hover); }
 
     .detail-tabs { flex: 1; overflow: hidden; }
-    .tab-content { padding: 20px; overflow: hidden; max-height: calc(85vh - 160px); }
-    .perf-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; margin-bottom: 20px; height: calc(85vh - 200px); }
-    .perf-right { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .tab-content { padding: 20px; overflow-y: auto; max-height: calc(85vh - 160px); }
+    .perf-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; margin-bottom: 20px; }
+    .perf-right { display: flex; flex-direction: column; min-height: 0; max-height: calc(85vh - 220px); overflow: hidden; }
 
     .asset-preview { position: relative; border-radius: 8px; overflow: hidden; background: var(--bg-hover); }
     .asset-media { width: 100%; display: block; object-fit: cover; max-height: 320px; }
