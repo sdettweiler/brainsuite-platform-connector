@@ -418,12 +418,15 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   constructor(
     private api: ApiService,
     public dialogRef: MatDialogRef<AssetDetailDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: { assetId: string; dateFrom: string; dateTo: string },
+    @Inject(MAT_DIALOG_DATA) public data: { assetId: string; dateFrom: string; dateTo: string; selectedPreset?: string },
   ) {
     this.dateFrom = data.dateFrom;
     this.dateTo = data.dateTo;
     this.customFrom = data.dateFrom;
     this.customTo = data.dateTo;
+    if (data.selectedPreset) {
+      this.selectedPreset = data.selectedPreset;
+    }
   }
 
   ngOnInit(): void {
@@ -604,7 +607,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
       backgroundColor: 'transparent',
       grid: {
         left: 50, right: activeKpis.length > 1 ? 50 : 20,
-        top: 40, bottom: firstTs.length > 30 ? 60 : 30,
+        top: 30, bottom: activeKpis.length > 1 ? 50 : 30,
       },
       tooltip: {
         trigger: 'axis',

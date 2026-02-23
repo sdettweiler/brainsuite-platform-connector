@@ -839,7 +839,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       width: '90vw',
       maxWidth: '1100px',
       height: '85vh',
-      data: { assetId: asset.id, dateFrom: this.dateFrom, dateTo: this.dateTo },
+      data: { assetId: asset.id, dateFrom: this.dateFrom, dateTo: this.dateTo, selectedPreset: this.selectedPreset },
       panelClass: 'asset-detail-dialog',
     });
   }
@@ -850,7 +850,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       width: '90vw',
       maxWidth: '1100px',
       height: '85vh',
-      data: { assetId, dateFrom: this.dateFrom, dateTo: this.dateTo },
+      data: { assetId, dateFrom: this.dateFrom, dateTo: this.dateTo, selectedPreset: this.selectedPreset },
     });
   }
 
