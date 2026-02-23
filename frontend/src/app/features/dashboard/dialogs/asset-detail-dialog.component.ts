@@ -404,7 +404,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   chartOption: EChartsOption | null = null;
   chartMerge: EChartsOption = {};
 
-  private chartColors = ['#FF7700', '#0009BC', '#2ECC71'];
+  private chartColors = ['#FF7700', '#5B8FF9', '#5AD8A6'];
 
   @ViewChild('detailDateRef') detailDateRef!: ElementRef;
 
@@ -574,7 +574,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
           fontSize: 10,
           formatter: (val: number) => this.formatKpiValue(kpi, val),
         },
-        splitLine: { show: idx === 0, lineStyle: { color: 'rgba(255,255,255,0.06)' } },
+        splitLine: { show: idx === 0, lineStyle: { color: 'rgba(128,128,128,0.15)' } },
       });
 
       series.push({
@@ -635,8 +635,8 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
       xAxis: {
         type: 'category',
         data: dates,
-        axisLabel: { color: '#666', fontSize: 10, rotate: 0, interval: 'auto' },
-        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+        axisLabel: { color: '#999', fontSize: 10, rotate: 0, interval: 'auto' },
+        axisLine: { lineStyle: { color: 'rgba(128,128,128,0.2)' } },
         axisTick: { show: false },
       },
       yAxis: yAxes,
