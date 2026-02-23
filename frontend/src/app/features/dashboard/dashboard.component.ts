@@ -162,9 +162,7 @@ import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subY
               <!-- Overlays -->
               <span class="overlay-format">{{ asset.asset_format }}</span>
               <span class="overlay-platform">
-                <mat-icon [class]="'platform-' + asset.platform.toLowerCase()">
-                  {{ getPlatformIcon(asset.platform) }}
-                </mat-icon>
+                <img [src]="getPlatformOverlayIcon(asset.platform)" [alt]="asset.platform" class="overlay-platform-img" />
               </span>
               <div class="overlay-ace" [class]="getAceClass(asset.ace_score)">
                 {{ asset.ace_score | number:'1.0-0' }}
@@ -450,9 +448,14 @@ import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subY
       position: absolute; top: 6px; right: 6px;
       background: rgba(0,0,0,0.5);
       border-radius: 6px;
-      width: 24px; height: 24px;
+      width: 26px; height: 26px;
       display: flex; align-items: center; justify-content: center;
-      mat-icon { font-size: 14px; width: 14px; height: 14px; }
+      padding: 4px;
+    }
+
+    .overlay-platform-img {
+      width: 100%; height: 100%; object-fit: contain;
+      filter: brightness(0) invert(1);
     }
 
     .overlay-ace {
@@ -589,9 +592,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   contextMenu = { visible: false, x: 0, y: 0, asset: null as any };
 
   platforms = [
-    { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2', iconUrl: '/assets/images/platform-meta.svg' },
-    { key: 'TIKTOK', label: 'TikTok', icon: 'music_video', color: '#FF0050', iconUrl: '/assets/images/platform-tiktok.svg' },
-    { key: 'YOUTUBE', label: 'YouTube', icon: 'smart_display', color: '#FF0000', iconUrl: '/assets/images/platform-youtube.svg' },
+    { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2', iconUrl: '/assets/images/icon-meta.png' },
+    { key: 'TIKTOK', label: 'TikTok', icon: 'music_video', color: '#FF0050', iconUrl: '/assets/images/icon-tiktok.png' },
+    { key: 'YOUTUBE', label: 'YouTube', icon: 'smart_display', color: '#FF0000', iconUrl: '/assets/images/icon-youtube.png' },
   ];
 
   private destroy$ = new Subject<void>();
@@ -905,6 +908,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
       YOUTUBE: 'smart_display',
     };
     return icons[platform] || 'ads_click';
+  }
+
+  getPlatformOverlayIcon(platform: string): string {
+    const urls: Record<string, string> = {
+      META: '/assets/images/icon-meta.png',
+      TIKTOK: '/assets/images/icon-tiktok.png',
+      YOUTUBE: '/assets/images/icon-youtube.png',
+    };
+    return urls[platform] || '';
   }
 
   getAceClass(score: number | null): string {
