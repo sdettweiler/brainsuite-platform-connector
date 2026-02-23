@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 DIMENSION_FIELDS = OrderedDict([
+    ("asset_id", "Brainsuite Asset ID"),
     ("ad_name", "Ad Name"),
     ("ad_id", "Ad ID"),
     ("creative_id", "Creative ID"),

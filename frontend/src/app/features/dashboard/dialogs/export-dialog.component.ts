@@ -267,6 +267,7 @@ export class ExportDialogComponent implements OnInit {
   ];
 
   allFields: ExportField[] = [
+    { key: 'asset_id', label: 'Brainsuite Asset ID', category: 'dimension' },
     { key: 'ad_name', label: 'Ad Name', category: 'dimension' },
     { key: 'ad_id', label: 'Ad ID', category: 'dimension' },
     { key: 'creative_id', label: 'Creative ID', category: 'dimension' },

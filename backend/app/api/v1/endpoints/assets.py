@@ -382,6 +382,7 @@ async def export_assets(
         brainsuite = asset.brainsuite_metadata or {}
 
         entry = {
+            "asset_id": str(asset.id),
             "ad_name": asset.ad_name or "",
             "ad_id": asset.ad_id or "",
             "creative_id": asset.creative_id or "",
