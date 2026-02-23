@@ -13,7 +13,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
-import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, subYears } from 'date-fns';
 
 @Component({
   standalone: true,
@@ -550,6 +550,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     { key: 'last90', label: 'Last 90 days' },
     { key: 'thisMonth', label: 'This month' },
     { key: 'lastMonth', label: 'Last month' },
+    { key: 'thisYear', label: 'This year' },
+    { key: 'lastYear', label: 'Last year' },
+    { key: 'lifetime', label: 'Lifetime' },
     { key: 'custom', label: 'Custom range' },
   ];
 
@@ -727,6 +730,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
         const lastM = subMonths(today, 1);
         this.dateFrom = format(startOfMonth(lastM), 'yyyy-MM-dd');
         this.dateTo = format(endOfMonth(lastM), 'yyyy-MM-dd');
+        break;
+      case 'thisYear':
+        this.dateFrom = format(startOfYear(today), 'yyyy-MM-dd');
+        this.dateTo = format(yesterday, 'yyyy-MM-dd');
+        break;
+      case 'lastYear':
+        const lastY = subYears(today, 1);
+        this.dateFrom = format(startOfYear(lastY), 'yyyy-MM-dd');
+        this.dateTo = format(new Date(lastY.getFullYear(), 11, 31), 'yyyy-MM-dd');
+        break;
+      case 'lifetime':
+        this.dateFrom = '2020-01-01';
+        this.dateTo = format(yesterday, 'yyyy-MM-dd');
         break;
       case 'custom':
         this.customFrom = this.dateFrom;
