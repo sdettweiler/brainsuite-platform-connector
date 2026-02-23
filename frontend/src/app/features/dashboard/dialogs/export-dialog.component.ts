@@ -267,7 +267,6 @@ export class ExportDialogComponent implements OnInit {
   ];
 
   allFields: ExportField[] = [
-    { key: 'asset_id', label: 'Brainsuite Asset ID', category: 'dimension' },
     { key: 'ad_name', label: 'Ad Name', category: 'dimension' },
     { key: 'ad_id', label: 'Ad ID', category: 'dimension' },
     { key: 'creative_id', label: 'Creative ID', category: 'dimension' },
@@ -447,7 +446,7 @@ export class ExportDialogComponent implements OnInit {
         date_to: this.data.dateTo,
         platforms: this.data.platforms,
         format: this.selectedFormat,
-        fields: this.selectedFields.map(f => f.key),
+        fields: ['asset_id', ...this.selectedFields.map(f => f.key).filter(k => k !== 'asset_id')],
         asset_ids: this.data.selectedAssetIds || [],
       };
 
