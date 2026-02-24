@@ -465,6 +465,7 @@ class MetaSyncService:
                 "account_name": r.get("account_name"),
                 "publisher_platform": r.get("publisher_platform"),
                 "platform_position": r.get("platform_position"),
+                "placement": f"{r.get('publisher_platform', '')}_{r.get('platform_position', '')}".strip("_") if r.get("publisher_platform") or r.get("platform_position") else None,
                 "campaign_id": r.get("campaign_id"),
                 "campaign_name": r.get("campaign_name"),
                 "campaign_objective": r.get("objective"),
