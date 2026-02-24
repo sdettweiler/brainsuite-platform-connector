@@ -311,7 +311,7 @@ import { ThemeService } from '../../core/services/theme.service';
 export class HomeComponent implements OnInit, OnDestroy {
   data: any = null;
   loading = true;
-  platforms = ['META', 'TIKTOK', 'YOUTUBE'];
+  platforms = ['META', 'TIKTOK', 'GOOGLE_ADS', 'DV360'];
   today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   isDark = true;
   private themeSub!: Subscription;
@@ -351,7 +351,8 @@ export class HomeComponent implements OnInit, OnDestroy {
     const map: Record<string, string> = {
       'META': `/assets/images/platform-meta-${suffix}.png`,
       'TIKTOK': `/assets/images/platform-tiktok-${suffix}.png`,
-      'YOUTUBE': `/assets/images/platform-youtube-${suffix}.png`
+      'GOOGLE_ADS': `/assets/images/platform-google-ads.svg`,
+      'DV360': `/assets/images/platform-dv360.svg`,
     };
     return map[platform] || `/assets/images/platform-meta-${suffix}.png`;
   }

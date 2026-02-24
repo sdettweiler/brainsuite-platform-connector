@@ -58,7 +58,8 @@ interface KpiOption {
 const PLATFORM_COLORS: Record<string, string> = {
   META: '#1877F2',
   TIKTOK: '#010101',
-  YOUTUBE: '#FF0000',
+  GOOGLE_ADS: '#4285F4',
+  DV360: '#00897B',
 };
 
 const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];

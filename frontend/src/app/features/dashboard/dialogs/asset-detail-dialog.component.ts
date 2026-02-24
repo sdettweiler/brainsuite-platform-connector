@@ -655,7 +655,8 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     const urls: Record<string, string> = {
       META: '/assets/images/icon-meta.png',
       TIKTOK: '/assets/images/icon-tiktok.png',
-      YOUTUBE: '/assets/images/icon-youtube.png',
+      GOOGLE_ADS: '/assets/images/icon-google-ads.png',
+      DV360: '/assets/images/icon-dv360.png',
     };
     return urls[platform] || '';
   }

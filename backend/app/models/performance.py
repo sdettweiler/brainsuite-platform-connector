@@ -407,6 +407,89 @@ class GoogleAdsRawPerformance(Base):
     )
 
 
+class Dv360RawPerformance(Base):
+    __tablename__ = "dv360_raw_performance"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    platform_connection_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform_connections.id"), nullable=False)
+    sync_job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sync_jobs.id"), nullable=True)
+
+    report_date: Mapped[date] = mapped_column(Date, nullable=False)
+    ad_account_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    advertiser_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    advertiser_name: Mapped[str] = mapped_column(String(1000), nullable=True)
+    campaign_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    campaign_name: Mapped[str] = mapped_column(String(1000), nullable=True)
+    insertion_order_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    insertion_order_name: Mapped[str] = mapped_column(String(1000), nullable=True)
+    line_item_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    line_item_name: Mapped[str] = mapped_column(String(1000), nullable=True)
+    line_item_type: Mapped[str] = mapped_column(String(255), nullable=True)
+    creative_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    creative_name: Mapped[str] = mapped_column(String(1000), nullable=True)
+    creative_type: Mapped[str] = mapped_column(String(100), nullable=True)
+    creative_source: Mapped[str] = mapped_column(String(255), nullable=True)
+    ad_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    ad_name: Mapped[str] = mapped_column(String(1000), nullable=True)
+    ad_type: Mapped[str] = mapped_column(String(100), nullable=True)
+    exchange: Mapped[str] = mapped_column(String(255), nullable=True)
+    environment: Mapped[str] = mapped_column(String(100), nullable=True)
+
+    thumbnail_url: Mapped[str] = mapped_column(Text, nullable=True)
+    asset_url: Mapped[str] = mapped_column(Text, nullable=True)
+    video_duration_seconds: Mapped[float] = mapped_column(Float, nullable=True)
+    asset_format: Mapped[str] = mapped_column(String(50), nullable=True)
+
+    currency: Mapped[str] = mapped_column(String(3), nullable=True)
+    spend: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
+    impressions: Mapped[int] = mapped_column(Integer, nullable=True)
+    clicks: Mapped[int] = mapped_column(Integer, nullable=True)
+    ctr: Mapped[float] = mapped_column(Float, nullable=True)
+    cpm: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
+    cpc: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
+
+    total_media_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
+    billable_impressions: Mapped[int] = mapped_column(Integer, nullable=True)
+    active_view_measurable_impressions: Mapped[int] = mapped_column(Integer, nullable=True)
+    active_view_viewable_impressions: Mapped[int] = mapped_column(Integer, nullable=True)
+    active_view_viewability: Mapped[float] = mapped_column(Float, nullable=True)
+    reach: Mapped[int] = mapped_column(Integer, nullable=True)
+    frequency: Mapped[float] = mapped_column(Float, nullable=True)
+
+    video_views: Mapped[int] = mapped_column(Integer, nullable=True)
+    video_plays: Mapped[int] = mapped_column(Integer, nullable=True)
+    video_completions: Mapped[int] = mapped_column(Integer, nullable=True)
+    video_first_quartile: Mapped[int] = mapped_column(Integer, nullable=True)
+    video_midpoint: Mapped[int] = mapped_column(Integer, nullable=True)
+    video_third_quartile: Mapped[int] = mapped_column(Integer, nullable=True)
+    video_completion_rate: Mapped[float] = mapped_column(Float, nullable=True)
+    video_view_rate: Mapped[float] = mapped_column(Float, nullable=True)
+    trueview_views: Mapped[int] = mapped_column(Integer, nullable=True)
+    companion_impressions: Mapped[int] = mapped_column(Integer, nullable=True)
+    companion_clicks: Mapped[int] = mapped_column(Integer, nullable=True)
+
+    total_conversions: Mapped[float] = mapped_column(Float, nullable=True)
+    post_click_conversions: Mapped[float] = mapped_column(Float, nullable=True)
+    post_view_conversions: Mapped[float] = mapped_column(Float, nullable=True)
+    conversion_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
+    roas: Mapped[float] = mapped_column(Float, nullable=True)
+    cost_per_conversion: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
+
+    engagements: Mapped[int] = mapped_column(Integer, nullable=True)
+    engagement_rate: Mapped[float] = mapped_column(Float, nullable=True)
+    rich_media_interactions: Mapped[int] = mapped_column(Integer, nullable=True)
+
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    is_validated: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_processed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    __table_args__ = (
+        UniqueConstraint("platform_connection_id", "report_date", "ad_id", "ad_account_id", name="uq_dv360_daily_ad"),
+        Index("ix_dv360_raw_date_account", "report_date", "ad_account_id"),
+        Index("ix_dv360_raw_ad_id", "ad_id"),
+    )
+
+
 class HarmonizedPerformance(Base):
     __tablename__ = "harmonized_performance"
 

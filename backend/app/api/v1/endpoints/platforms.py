@@ -169,6 +169,7 @@ async def init_oauth(
     from app.services.platform.meta_oauth import meta_oauth
     from app.services.platform.tiktok_oauth import tiktok_oauth
     from app.services.platform.google_ads_oauth import google_ads_oauth
+    from app.services.platform.dv360_oauth import dv360_oauth
 
     session_id = secrets.token_urlsafe(32)
 
@@ -178,6 +179,8 @@ async def init_oauth(
         raise HTTPException(status_code=503, detail="TikTok app credentials not configured")
     if not settings.GOOGLE_CLIENT_ID and payload.platform == "GOOGLE_ADS":
         raise HTTPException(status_code=503, detail="Google app credentials not configured")
+    if not settings.DV360_CLIENT_ID and payload.platform == "DV360":
+        raise HTTPException(status_code=503, detail="DV360 app credentials not configured")
 
     _oauth_sessions[session_id] = {
         "platform": payload.platform,
@@ -192,6 +195,8 @@ async def init_oauth(
         auth_url = tiktok_oauth.generate_auth_url(session_id)
     elif payload.platform == "GOOGLE_ADS":
         auth_url = google_ads_oauth.generate_auth_url(session_id)
+    elif payload.platform == "DV360":
+        auth_url = dv360_oauth.generate_auth_url(session_id)
     else:
         raise HTTPException(status_code=400, detail="Unknown platform")
 
@@ -207,6 +212,7 @@ async def oauth_callback(
     from app.services.platform.meta_oauth import meta_oauth
     from app.services.platform.tiktok_oauth import tiktok_oauth
     from app.services.platform.google_ads_oauth import google_ads_oauth
+    from app.services.platform.dv360_oauth import dv360_oauth
 
     session_id = payload.state  # state doubles as session_id
     session = _oauth_sessions.get(session_id)
@@ -226,6 +232,9 @@ async def oauth_callback(
         elif payload.platform == "GOOGLE_ADS":
             tokens = await google_ads_oauth.exchange_code_for_token(payload.code)
             accounts = await google_ads_oauth.fetch_accessible_customers(tokens["access_token"])
+        elif payload.platform == "DV360":
+            tokens = await dv360_oauth.exchange_code_for_token(payload.code)
+            accounts = await dv360_oauth.fetch_accessible_advertisers(tokens["access_token"])
         else:
             raise HTTPException(status_code=400, detail="Unknown platform")
     except Exception as e:
@@ -395,8 +404,9 @@ async def platform_oauth_callback(
     from app.services.platform.meta_oauth import meta_oauth
     from app.services.platform.tiktok_oauth import tiktok_oauth
     from app.services.platform.google_ads_oauth import google_ads_oauth
+    from app.services.platform.dv360_oauth import dv360_oauth
 
-    platform_map = {"meta": "META", "tiktok": "TIKTOK", "google": "GOOGLE_ADS"}
+    platform_map = {"meta": "META", "tiktok": "TIKTOK", "google": "GOOGLE_ADS", "dv360": "DV360"}
     platform = platform_map.get(platform_key.lower())
 
     if not platform or not state:
@@ -422,6 +432,9 @@ async def platform_oauth_callback(
         elif platform == "GOOGLE_ADS":
             tokens = await google_ads_oauth.exchange_code_for_token(effective_code)
             accounts = await google_ads_oauth.fetch_accessible_customers(tokens["access_token"])
+        elif platform == "DV360":
+            tokens = await dv360_oauth.exchange_code_for_token(effective_code)
+            accounts = await dv360_oauth.fetch_accessible_advertisers(tokens["access_token"])
         else:
             return HTMLResponse(_make_callback_html(session_id, False, "Unknown platform"))
 

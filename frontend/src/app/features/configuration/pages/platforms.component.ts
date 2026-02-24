@@ -16,7 +16,7 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
 interface PlatformConnection {
   id: string;
-  platform: 'META' | 'TIKTOK' | 'YOUTUBE';
+  platform: 'META' | 'TIKTOK' | 'GOOGLE_ADS' | 'DV360';
   ad_account_id: string;
   ad_account_name: string;
   currency: string;
@@ -68,7 +68,8 @@ interface PlatformDef {
 const PLATFORMS: PlatformDef[] = [
   { key: 'META', label: 'Meta', color: '#1877F2', icon: 'assets/images/icon-meta.png', description: 'Facebook & Instagram Ads' },
   { key: 'TIKTOK', label: 'TikTok', color: '#010101', icon: 'assets/images/icon-tiktok.png', description: 'TikTok Ads Manager' },
-  { key: 'YOUTUBE', label: 'YouTube / Google', color: '#FF0000', icon: 'assets/images/icon-youtube.png', description: 'Google Ads (YouTube)' },
+  { key: 'GOOGLE_ADS', label: 'Google Ads', color: '#4285F4', icon: 'assets/images/icon-google-ads.png', description: 'Search, Display & Video campaigns' },
+  { key: 'DV360', label: 'DV360', color: '#00897B', icon: 'assets/images/icon-dv360.png', description: 'Display & Video 360' },
 ];
 
 @Component({

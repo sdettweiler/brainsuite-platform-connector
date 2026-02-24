@@ -6,6 +6,7 @@ from app.models.performance import (
     MetaRawPerformance,
     TikTokRawPerformance,
     GoogleAdsRawPerformance,
+    Dv360RawPerformance,
     HarmonizedPerformance,
     CurrencyRate,
     SyncJob,
@@ -17,5 +18,6 @@ __all__ = [
     "CreativeAsset", "Project", "AssetProjectMapping", "AssetMetadataValue",
     "MetadataField", "MetadataFieldValue",
     "MetaRawPerformance", "TikTokRawPerformance", "GoogleAdsRawPerformance",
+    "Dv360RawPerformance",
     "HarmonizedPerformance", "CurrencyRate", "SyncJob",
 ]

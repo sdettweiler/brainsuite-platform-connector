@@ -432,7 +432,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   dateFrom = format(subDays(new Date(), 30), 'yyyy-MM-dd');
   dateTo = format(subDays(new Date(), 1), 'yyyy-MM-dd');
 
-  selectedPlatforms = new Set(['META', 'TIKTOK', 'YOUTUBE']);
+  selectedPlatforms = new Set(['META', 'TIKTOK', 'GOOGLE_ADS', 'DV360']);
   selectedFormat = '';
   sortBy = 'spend';
   sortOrder = 'desc';
@@ -449,7 +449,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   platforms = [
     { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2', iconUrl: '/assets/images/icon-meta.png' },
     { key: 'TIKTOK', label: 'TikTok', icon: 'music_video', color: '#FF0050', iconUrl: '/assets/images/icon-tiktok.png' },
-    { key: 'YOUTUBE', label: 'YouTube', icon: 'smart_display', color: '#FF0000', iconUrl: '/assets/images/icon-youtube.png' },
+    { key: 'GOOGLE_ADS', label: 'Google Ads', icon: 'google', color: '#4285F4', iconUrl: '/assets/images/icon-google-ads.png' },
+    { key: 'DV360', label: 'DV360', icon: 'display', color: '#00897B', iconUrl: '/assets/images/icon-dv360.png' },
   ];
 
   private destroy$ = new Subject<void>();
@@ -706,7 +707,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const icons: Record<string, string> = {
       META: 'facebook',
       TIKTOK: 'music_video',
-      YOUTUBE: 'smart_display',
+      GOOGLE_ADS: 'google',
+      DV360: 'display',
     };
     return icons[platform] || 'ads_click';
   }
@@ -715,7 +717,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const urls: Record<string, string> = {
       META: '/assets/images/icon-meta.png',
       TIKTOK: '/assets/images/icon-tiktok.png',
-      YOUTUBE: '/assets/images/icon-youtube.png',
+      GOOGLE_ADS: '/assets/images/icon-google-ads.png',
+      DV360: '/assets/images/icon-dv360.png',
     };
     return urls[platform] || '';
   }
