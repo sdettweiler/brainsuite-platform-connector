@@ -5,9 +5,10 @@ All video ad performance data lives in Google Ads, not YouTube Data API.
 """
 import httpx
 import logging
+import os
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -15,6 +16,10 @@ from app.models.platform import PlatformConnection
 from app.models.performance import GoogleAdsRawPerformance
 from app.core.security import decrypt_token
 from app.services.platform.google_ads_oauth import google_ads_oauth
+
+_CREATIVES_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "static", "creatives")
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +41,10 @@ class GoogleAdsSyncService:
 
         asset_map = await self._fetch_youtube_asset_map(access_token, customer_id)
 
+        org_id = str(connection.organization_id)
+        org_dir = os.path.join(_CREATIVES_DIR, org_id)
+        os.makedirs(org_dir, exist_ok=True)
+
         total_fetched = 0
         total_upserted = 0
 
@@ -45,7 +54,9 @@ class GoogleAdsSyncService:
             records = await self._fetch_video_ad_performance(
                 access_token, customer_id, chunk_start, chunk_end
             )
-            upserted = await self._upsert_records(db, connection, records, sync_job_id, asset_map)
+            upserted = await self._upsert_records(
+                db, connection, records, sync_job_id, asset_map, org_id, org_dir
+            )
             total_fetched += len(records)
             total_upserted += upserted
             chunk_start = chunk_end + timedelta(days=1)
@@ -196,6 +207,51 @@ class GoogleAdsSyncService:
         logger.info(f"Total records fetched for {customer_id}: {len(records)}")
         return records
 
+    def _extract_youtube_id(
+        self, ad: Dict[str, Any], asset_map: Dict[str, str]
+    ) -> Optional[str]:
+        video_ad = ad.get("videoAd", {})
+        asset_ref = video_ad.get("video", {}).get("asset", "")
+        if asset_ref and asset_ref in asset_map:
+            return asset_map[asset_ref]
+
+        responsive_ad = ad.get("videoResponsiveAd", {})
+        videos = responsive_ad.get("videos", [])
+        for v in videos:
+            asset_ref = v.get("asset", "")
+            if asset_ref and asset_ref in asset_map:
+                return asset_map[asset_ref]
+
+        return None
+
+    async def _download_thumbnail(
+        self,
+        youtube_video_id: str,
+        org_dir: str,
+        org_id: str,
+        ad_id: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        filename = f"thumb_yt_{ad_id}.jpg"
+        local_path = os.path.join(org_dir, filename)
+
+        if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+            served_url = f"/static/creatives/{org_id}/{filename}"
+            return local_path, served_url
+
+        thumb_url = f"https://img.youtube.com/vi/{youtube_video_id}/hqdefault.jpg"
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                resp = await client.get(thumb_url)
+                resp.raise_for_status()
+                with open(local_path, "wb") as f:
+                    f.write(resp.content)
+            served_url = f"/static/creatives/{org_id}/{filename}"
+            logger.info(f"  Downloaded YouTube thumbnail: {filename} ({len(resp.content)} bytes)")
+            return local_path, served_url
+        except Exception as e:
+            logger.warning(f"  Failed to download YouTube thumbnail for ad {ad_id} (video {youtube_video_id}): {e}")
+            return None, None
+
     async def _upsert_records(
         self,
         db: AsyncSession,
@@ -203,6 +259,8 @@ class GoogleAdsSyncService:
         records: List[Dict[str, Any]],
         sync_job_id: Optional[str],
         asset_map: Optional[Dict[str, str]] = None,
+        org_id: Optional[str] = None,
+        org_dir: Optional[str] = None,
     ) -> int:
         if not records:
             return 0
@@ -231,8 +289,16 @@ class GoogleAdsSyncService:
             report_date = date.fromisoformat(report_date_str) if report_date_str else None
 
             youtube_video_id = self._extract_youtube_id(ad, asset_map)
+            ad_id_str = str(ad.get("id", ""))
+
             video_url = f"https://www.youtube.com/watch?v={youtube_video_id}" if youtube_video_id else None
-            thumbnail_url = f"https://img.youtube.com/vi/{youtube_video_id}/hqdefault.jpg" if youtube_video_id else None
+            thumbnail_url = None
+            if youtube_video_id and org_id and org_dir:
+                _, thumbnail_url = await self._download_thumbnail(
+                    youtube_video_id, org_dir, org_id, ad_id_str
+                )
+            if not thumbnail_url and youtube_video_id:
+                thumbnail_url = f"https://img.youtube.com/vi/{youtube_video_id}/hqdefault.jpg"
 
             rows.append({
                 "platform_connection_id": connection.id,
@@ -244,8 +310,9 @@ class GoogleAdsSyncService:
                 "campaign_objective": campaign.get("advertisingChannelSubType"),
                 "ad_group_id": str(ad_group.get("id", "")),
                 "ad_group_name": ad_group.get("name"),
-                "ad_id": str(ad.get("id", "")),
+                "ad_id": ad_id_str,
                 "ad_name": ad.get("name"),
+                "video_id": youtube_video_id,
                 "video_url": video_url,
                 "thumbnail_url": thumbnail_url,
                 "placement_type": campaign.get("advertisingChannelType"),
@@ -280,6 +347,9 @@ class GoogleAdsSyncService:
                 "conversions": stmt.excluded.conversions,
                 "roas": stmt.excluded.roas,
                 "video_views": stmt.excluded.video_views,
+                "video_id": stmt.excluded.video_id,
+                "video_url": stmt.excluded.video_url,
+                "thumbnail_url": stmt.excluded.thumbnail_url,
                 "is_processed": False,
             }
         )
