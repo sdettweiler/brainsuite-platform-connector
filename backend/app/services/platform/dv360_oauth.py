@@ -95,15 +95,21 @@ class DV360OAuthHandler:
     async def fetch_accessible_advertisers(self, access_token: str) -> List[Dict[str, Any]]:
         """
         Fetch all DV360 advertisers accessible to this user.
-        Uses Display & Video 360 API v4 advertisers.list.
+        Strategy:
+        1. Try listing partners first (partner-level access)
+        2. If partner listing fails (403), return empty list with
+           requires_manual_entry flag — the frontend will prompt
+           user to enter advertiser IDs manually.
         """
         advertisers = []
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-        }
+        headers = {"Authorization": f"Bearer {access_token}"}
 
         async with httpx.AsyncClient() as client:
             partners = await self._fetch_partners(client, headers)
+
+            if not partners:
+                logger.info("No partners accessible — user likely has advertiser-level access only")
+                return []
 
             for partner in partners:
                 partner_id = partner.get("partnerId")
@@ -130,16 +136,7 @@ class DV360OAuthHandler:
 
                     data = resp.json()
                     for adv in data.get("advertisers", []):
-                        advertisers.append({
-                            "id": adv.get("advertiserId"),
-                            "name": adv.get("displayName", f"Advertiser {adv.get('advertiserId')}"),
-                            "currency": adv.get("generalConfig", {}).get("currencyCode", "USD"),
-                            "timezone": adv.get("generalConfig", {}).get("timeZone", "UTC"),
-                            "status": adv.get("entityStatus", "ACTIVE").replace("ENTITY_STATUS_", ""),
-                            "platform": "DV360",
-                            "partner_id": partner_id,
-                            "partner_name": partner.get("displayName", ""),
-                        })
+                        advertisers.append(self._format_advertiser(adv, partner))
 
                     page_token = data.get("nextPageToken")
                     if not page_token:
@@ -147,8 +144,39 @@ class DV360OAuthHandler:
 
         return advertisers
 
+    async def fetch_advertiser_by_id(self, access_token: str, advertiser_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a single DV360 advertiser by ID.
+        Used for manual entry when partner-level listing is not available.
+        """
+        headers = {"Authorization": f"Bearer {access_token}"}
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{DV360_API_BASE}/advertisers/{advertiser_id}",
+                headers=headers,
+            )
+            if resp.status_code != 200:
+                logger.error(f"Failed to fetch advertiser {advertiser_id}: {resp.text}")
+                return None
+
+            adv = resp.json()
+            return self._format_advertiser(adv)
+
+    def _format_advertiser(self, adv: Dict[str, Any], partner: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Format a DV360 advertiser response into a standard dict."""
+        return {
+            "id": adv.get("advertiserId"),
+            "name": adv.get("displayName", f"Advertiser {adv.get('advertiserId')}"),
+            "currency": adv.get("generalConfig", {}).get("currencyCode", "USD"),
+            "timezone": adv.get("generalConfig", {}).get("timeZone", "UTC"),
+            "status": adv.get("entityStatus", "ACTIVE").replace("ENTITY_STATUS_", ""),
+            "platform": "DV360",
+            "partner_id": partner.get("partnerId") if partner else adv.get("partnerId"),
+            "partner_name": partner.get("displayName", "") if partner else "",
+        }
+
     async def _fetch_partners(self, client: httpx.AsyncClient, headers: dict) -> List[Dict[str, Any]]:
-        """Fetch accessible DV360 partners."""
+        """Fetch accessible DV360 partners. Returns empty list on failure."""
         partners = []
         page_token = None
         while True:
@@ -161,9 +189,12 @@ class DV360OAuthHandler:
                 headers=headers,
                 params=params,
             )
+            if resp.status_code == 403:
+                logger.info("Partner-level access denied (403) — user has advertiser-level access")
+                return []
             if resp.status_code != 200:
                 logger.error(f"Failed to list partners: {resp.text}")
-                break
+                return []
 
             data = resp.json()
             partners.extend(data.get("partners", []))

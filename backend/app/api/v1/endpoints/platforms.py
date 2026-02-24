@@ -267,7 +267,46 @@ async def get_oauth_session(
         "platform": session.get("platform"),
         "accounts": session.get("accounts", []),
         "ready": "accounts" in session,
+        "requires_manual_entry": session.get("platform") == "DV360" and "accounts" in session and len(session.get("accounts", [])) == 0,
     }
+
+
+@router.post("/oauth/dv360-lookup")
+async def dv360_lookup_advertiser(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """Look up a DV360 advertiser by ID using stored session tokens."""
+    from app.services.platform.dv360_oauth import dv360_oauth
+
+    session_id = payload.get("session_id")
+    advertiser_id = payload.get("advertiser_id", "").strip()
+
+    if not session_id or not advertiser_id:
+        raise HTTPException(status_code=400, detail="session_id and advertiser_id required")
+
+    session = _oauth_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    if session.get("user_id") != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    tokens = session.get("tokens", {})
+    access_token = tokens.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="No access token in session")
+
+    advertiser = await dv360_oauth.fetch_advertiser_by_id(access_token, advertiser_id)
+    if not advertiser:
+        raise HTTPException(status_code=404, detail=f"Advertiser {advertiser_id} not found or not accessible")
+
+    if "accounts" not in session:
+        session["accounts"] = []
+    existing_ids = {a["id"] for a in session["accounts"]}
+    if advertiser["id"] not in existing_ids:
+        session["accounts"].append(advertiser)
+
+    return {"advertiser": advertiser, "accounts": session["accounts"]}
 
 
 @router.post("/oauth/connect")

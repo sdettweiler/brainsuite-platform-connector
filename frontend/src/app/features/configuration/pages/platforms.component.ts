@@ -384,21 +384,48 @@ const PLATFORMS: PlatformDef[] = [
     <!-- Backdrop -->
     <div
       class="slide-backdrop"
-      [class.visible]="pendingAccounts.length > 0 || selectedConnection"
+      [class.visible]="pendingAccounts.length > 0 || dv360ManualEntry || selectedConnection"
       (click)="closePanel()"
     ></div>
 
     <!-- Ad Account Selection Slide Panel -->
-    <div class="slide-panel" [class.open]="pendingAccounts.length > 0">
+    <div class="slide-panel" [class.open]="pendingAccounts.length > 0 || dv360ManualEntry">
       <div class="panel-header">
         <div>
           <h2>Select Ad Accounts</h2>
-          <p>{{ pendingPlatform }} — {{ pendingAccounts.length }} account{{ pendingAccounts.length !== 1 ? 's' : '' }} available</p>
+          <p *ngIf="!dv360ManualEntry || pendingAccounts.length > 0">{{ pendingPlatform }} — {{ pendingAccounts.length }} account{{ pendingAccounts.length !== 1 ? 's' : '' }} available</p>
+          <p *ngIf="dv360ManualEntry && pendingAccounts.length === 0">{{ pendingPlatform }} — Enter advertiser IDs manually</p>
         </div>
         <button mat-icon-button (click)="cancelPending()"><i class="bi bi-x-lg"></i></button>
       </div>
 
-      <div class="panel-toolbar">
+      <div class="dv360-manual-entry" *ngIf="dv360ManualEntry">
+        <div class="manual-entry-hint">
+          <i class="bi bi-info-circle"></i>
+          <span>Your account has advertiser-level access. Enter your DV360 Advertiser ID(s) to add them.</span>
+        </div>
+        <div class="manual-entry-row">
+          <input
+            type="text"
+            placeholder="Enter DV360 Advertiser ID"
+            [(ngModel)]="dv360AdvertiserId"
+            (keydown.enter)="lookupDv360Advertiser()"
+            class="manual-entry-input"
+          />
+          <button
+            mat-flat-button
+            class="lookup-btn"
+            [disabled]="!dv360AdvertiserId.trim() || dv360LookupLoading"
+            (click)="lookupDv360Advertiser()"
+          >
+            <mat-spinner *ngIf="dv360LookupLoading" diameter="14"></mat-spinner>
+            <span *ngIf="!dv360LookupLoading">Add</span>
+          </button>
+        </div>
+        <div class="lookup-error" *ngIf="dv360LookupError">{{ dv360LookupError }}</div>
+      </div>
+
+      <div class="panel-toolbar" *ngIf="pendingAccounts.length > 0">
         <button mat-button class="select-toggle" (click)="toggleSelectAllAccounts()">
           <i class="bi" [ngClass]="selectedAccounts.length === pendingAccounts.length ? 'bi-dash-square' : 'bi-check2-square'"></i>
           {{ selectedAccounts.length === pendingAccounts.length ? 'Select None' : 'Select All' }}
@@ -406,7 +433,7 @@ const PLATFORMS: PlatformDef[] = [
         <span class="select-count">{{ selectedAccounts.length }} of {{ pendingAccounts.length }} selected</span>
       </div>
 
-      <div class="panel-body">
+      <div class="panel-body" *ngIf="pendingAccounts.length > 0">
         <div class="accounts-list">
           <div
             *ngFor="let acc of pendingAccounts"
@@ -544,6 +571,10 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   pendingPlatform: string | null = null;
   pendingAccounts: any[] = [];
   selectedAccounts: string[] = [];
+  dv360ManualEntry = false;
+  dv360AdvertiserId = '';
+  dv360LookupLoading = false;
+  dv360LookupError = '';
   selectedConnection: PlatformConnection | null = null;
   metadataFields: MetadataField[] = [];
   metadataDefaults: Record<string, string> = {};
@@ -849,9 +880,37 @@ export class PlatformsComponent implements OnInit, OnDestroy {
       next: (session) => {
         this.pendingAccounts = session.accounts || [];
         this.selectedAccounts = this.pendingAccounts.map((a: any) => a.id);
+        if (session.requires_manual_entry) {
+          this.dv360ManualEntry = true;
+          this.dv360AdvertiserId = '';
+          this.dv360LookupError = '';
+        } else {
+          this.dv360ManualEntry = false;
+        }
       },
       error: () => {
         this.snackBar.open('OAuth failed. Please try again.', '', { duration: 4000 });
+      },
+    });
+  }
+
+  lookupDv360Advertiser(): void {
+    if (!this.dv360AdvertiserId.trim() || !this.pendingSessionId) return;
+    this.dv360LookupLoading = true;
+    this.dv360LookupError = '';
+    this.api.post<any>('/platforms/oauth/dv360-lookup', {
+      session_id: this.pendingSessionId,
+      advertiser_id: this.dv360AdvertiserId.trim(),
+    }).subscribe({
+      next: (res) => {
+        this.dv360LookupLoading = false;
+        this.pendingAccounts = res.accounts || [];
+        this.selectedAccounts = this.pendingAccounts.map((a: any) => a.id);
+        this.dv360AdvertiserId = '';
+      },
+      error: (err) => {
+        this.dv360LookupLoading = false;
+        this.dv360LookupError = err.error?.detail || 'Advertiser not found or not accessible';
       },
     });
   }
@@ -896,6 +955,10 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     this.pendingSessionId = null;
     this.pendingPlatform = null;
     this.selectedAccounts = [];
+    this.dv360ManualEntry = false;
+    this.dv360AdvertiserId = '';
+    this.dv360LookupError = '';
+    this.dv360LookupLoading = false;
   }
 
   assignApp(conn: PlatformConnection, field: 'brainsuite_app_id_image' | 'brainsuite_app_id_video', appId: string): void {
