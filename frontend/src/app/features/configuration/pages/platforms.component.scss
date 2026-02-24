@@ -30,6 +30,22 @@
 .connect-btn {
   background: var(--accent) !important; color: white !important;
   display: flex; align-items: center; gap: 6px; font-size: 13px;
+  white-space: nowrap; overflow: hidden; min-width: 32px;
+  .btn-label-mid { display: none; }
+}
+
+.platform-connect-card {
+  container-type: inline-size;
+}
+
+@container (max-width: 280px) {
+  .connect-btn .btn-label-full { display: none; }
+  .connect-btn .btn-label-mid { display: inline; }
+}
+
+@container (max-width: 200px) {
+  .connect-btn .btn-label-full { display: none; }
+  .connect-btn .btn-label-mid { display: none; }
 }
 
 .status-summary-bar {

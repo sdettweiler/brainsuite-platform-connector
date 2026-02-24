@@ -104,7 +104,9 @@ const PLATFORMS: PlatformDef[] = [
             >
               <mat-spinner *ngIf="connecting === p.key" diameter="14"></mat-spinner>
               <i class="bi bi-plus-lg" *ngIf="connecting !== p.key"></i>
-              {{ connecting === p.key ? 'Connecting...' : 'Connect New' }}
+              <span class="btn-label-full" *ngIf="connecting !== p.key">Connect Now</span>
+              <span class="btn-label-mid" *ngIf="connecting !== p.key">Connect</span>
+              <span *ngIf="connecting === p.key">Connecting...</span>
             </button>
           </div>
         </div>
