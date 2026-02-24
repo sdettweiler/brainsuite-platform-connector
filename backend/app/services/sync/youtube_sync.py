@@ -115,7 +115,7 @@ class YouTubeSyncService:
             FROM ad_group_ad
             WHERE
                 segments.date BETWEEN '{date_from.strftime("%Y-%m-%d")}' AND '{date_to.strftime("%Y-%m-%d")}'
-                AND campaign.advertising_channel_type IN ('VIDEO', 'DISPLAY')
+                AND campaign.advertising_channel_type IN ('VIDEO', 'DISPLAY', 'PERFORMANCE_MAX')
                 AND ad_group_ad.status != 'REMOVED'
             ORDER BY segments.date DESC
         """
@@ -145,12 +145,17 @@ class YouTubeSyncService:
 
                 data = resp.json()
                 results = data.get("results", [])
+                if results:
+                    logger.info(f"Fetched {len(results)} records for {customer_id} ({date_from} to {date_to})")
+                else:
+                    logger.info(f"No results for {customer_id} ({date_from} to {date_to})")
                 records.extend(results)
 
                 next_page_token = data.get("nextPageToken")
                 if not next_page_token:
                     break
 
+        logger.info(f"Total records fetched for {customer_id}: {len(records)}")
         return records
 
     async def _upsert_records(
