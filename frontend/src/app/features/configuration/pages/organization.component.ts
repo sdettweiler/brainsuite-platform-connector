@@ -543,6 +543,7 @@ export class OrganizationComponent implements OnInit {
       next: () => {
         this.savingOrg = false;
         this.snackBar.open('Organization settings saved', '', { duration: 3000 });
+        this.auth.loadCurrentUser().subscribe();
       },
       error: () => { this.savingOrg = false; },
     });
