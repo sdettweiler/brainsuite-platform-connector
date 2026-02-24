@@ -99,18 +99,21 @@ class YouTubeOAuthHandler:
         Uses the CustomerService.ListAccessibleCustomers RPC.
         """
         accounts = []
+        dev_token = (settings.GOOGLE_DEVELOPER_TOKEN or "").strip()
         headers = {
             "Authorization": f"Bearer {access_token}",
-            "developer-token": settings.GOOGLE_DEVELOPER_TOKEN or "",
+            "developer-token": dev_token,
         }
 
         async with httpx.AsyncClient() as client:
-            # List accessible customer resource names
             resp = await client.get(
                 f"{GOOGLE_ADS_API_BASE}/customers:listAccessibleCustomers",
                 headers=headers,
             )
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                body = resp.text
+                logger.error(f"listAccessibleCustomers failed ({resp.status_code}): {body}")
+                resp.raise_for_status()
             data = resp.json()
             resource_names = data.get("resourceNames", [])
 
