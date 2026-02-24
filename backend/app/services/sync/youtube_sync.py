@@ -116,6 +116,20 @@ class YouTubeSyncService:
             WHERE
                 segments.date BETWEEN '{date_from.strftime("%Y-%m-%d")}' AND '{date_to.strftime("%Y-%m-%d")}'
                 AND campaign.advertising_channel_type IN ('VIDEO', 'DISPLAY')
+                AND ad_group_ad.ad.type IN (
+                    'VIDEO_AD',
+                    'IMAGE_AD',
+                    'VIDEO_RESPONSIVE_AD',
+                    'RESPONSIVE_DISPLAY_AD',
+                    'VIDEO_BUMPER_AD',
+                    'VIDEO_NON_SKIPPABLE_IN_STREAM_AD',
+                    'VIDEO_OUTSTREAM_AD',
+                    'VIDEO_TRUEVIEW_IN_STREAM_AD',
+                    'IN_FEED_VIDEO_AD',
+                    'DEMAND_GEN_MULTI_ASSET_AD',
+                    'DEMAND_GEN_CAROUSEL_AD',
+                    'DEMAND_GEN_VIDEO_RESPONSIVE_AD'
+                )
                 AND ad_group_ad.status != 'REMOVED'
             ORDER BY segments.date DESC
         """
