@@ -18,6 +18,7 @@ export interface CurrentUser {
   business_unit: string | null;
   language: string;
   organization_id: string;
+  organization_currency: string;
   role?: string;
 }
 

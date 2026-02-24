@@ -11,6 +11,7 @@ import { LineChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { ApiService } from '../../../core/services/api.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../../shared/components/date-range-picker.component';
 import type { EChartsOption } from 'echarts';
 
@@ -86,7 +87,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                     <div class="campaign-row" *ngFor="let c of detail.campaigns">
                       <i class="bi bi-megaphone" style="font-size: 14px;"></i>
                       <span>{{ c.campaign_name || c.campaign_id }}</span>
-                      <span class="campaign-spend">{{ c.spend | currency:'USD':'symbol':'1.0-0' }}</span>
+                      <span class="campaign-spend">{{ c.spend | currency:orgCurrency:'symbol':'1.0-0' }}</span>
                     </div>
                   </div>
                 </div>
@@ -350,8 +351,13 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   private chartColors = ['#FF7700', '#5B8FF9', '#5AD8A6'];
 
 
+  get orgCurrency(): string {
+    return this.auth.currentUser?.organization_currency || 'USD';
+  }
+
   constructor(
     private api: ApiService,
+    private auth: AuthService,
     public dialogRef: MatDialogRef<AssetDetailDialogComponent>,
     @Inject(MAT_DIALOG_DATA) public data: { assetId: string; dateFrom: string; dateTo: string; selectedPreset?: string },
   ) {

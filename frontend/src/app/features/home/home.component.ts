@@ -47,7 +47,7 @@ import { ThemeService } from '../../core/services/theme.service';
             <i class="bi bi-cash-stack" style="color: var(--warning); font-size: 24px;"></i>
           </div>
           <div>
-            <div class="stat-value">{{ data?.overall_stats?.total_spend | currency:'USD':'symbol':'1.0-0' }}</div>
+            <div class="stat-value">{{ data?.overall_stats?.total_spend | currency:orgCurrency:'symbol':'1.0-0' }}</div>
             <div class="stat-label">Total Lifetime Spend</div>
           </div>
         </div>
@@ -103,7 +103,7 @@ import { ThemeService } from '../../core/services/theme.service';
                     <div class="ad-metrics">
                       <span class="metric">
                         <i class="bi bi-cash-stack"></i>
-                        {{ ad.spend_l7d | currency:'USD':'symbol':'1.0-0' }}
+                        {{ ad.spend_l7d | currency:orgCurrency:'symbol':'1.0-0' }}
                       </span>
                       <span class="metric">
                         <i class="bi bi-hand-index"></i>
@@ -336,6 +336,10 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   get firstName(): string {
     return this.auth.currentUser?.first_name || 'there';
+  }
+
+  get orgCurrency(): string {
+    return this.auth.currentUser?.organization_currency || 'USD';
   }
 
   getWidget(platform: string): any[] {

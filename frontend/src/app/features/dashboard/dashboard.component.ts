@@ -12,6 +12,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
 import { format, subDays } from 'date-fns';
 
@@ -154,7 +155,7 @@ import { format, subDays } from 'date-fns';
               <div class="tile-metrics">
                 <span>
                   <span class="metric-label">Spend</span>
-                  <span class="metric-value">{{ asset.performance?.spend | currency:'USD':'symbol':'1.0-0' }}</span>
+                  <span class="metric-value">{{ asset.performance?.spend | currency:orgCurrency:'symbol':'1.0-0' }}</span>
                 </span>
                 <span>
                   <span class="metric-label">CTR</span>
@@ -457,10 +458,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   constructor(
     private api: ApiService,
+    private auth: AuthService,
     private dialog: MatDialog,
     private route: ActivatedRoute,
     private router: Router,
   ) {}
+
+  get orgCurrency(): string {
+    return this.auth.currentUser?.organization_currency || 'USD';
+  }
 
   ngOnInit(): void {
     // Handle query params (from homepage navigation or direct link)
@@ -486,7 +492,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return [
       {
         label: 'Total Spend',
-        value: new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(s.total_spend || 0),
+        value: new Intl.NumberFormat('en-US', { style: 'currency', currency: this.orgCurrency, maximumFractionDigits: 0 }).format(s.total_spend || 0),
         change: this.pctChange(s.total_spend, s.prev_total_spend),
         changeClass: this.changeClass(s.total_spend, s.prev_total_spend),
         changeDir: (s.total_spend || 0) >= (s.prev_total_spend || 0) ? 'arrow_upward' : 'arrow_downward',

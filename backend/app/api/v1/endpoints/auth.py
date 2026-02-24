@@ -260,6 +260,13 @@ async def logout(
     return {"detail": "Logged out"}
 
 
-@router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+@router.get("/me")
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.user import Organization
+    org = await db.get(Organization, current_user.organization_id) if current_user.organization_id else None
+    user_data = UserResponse.model_validate(current_user).model_dump()
+    user_data["organization_currency"] = org.currency if org else "USD"
+    return user_data

@@ -11,6 +11,7 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 
 interface AssetDetail {
   id: string;
@@ -434,10 +435,19 @@ export class ComparisonComponent implements OnInit {
     { key: 'visual_impact', label: 'Visual Impact' },
   ];
 
+  get currencySymbol(): string {
+    const code = this.auth.currentUser?.organization_currency || 'USD';
+    try {
+      return new Intl.NumberFormat('en', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' })
+        .formatToParts(0).find(p => p.type === 'currency')?.value || code;
+    } catch { return code; }
+  }
+
   constructor(
     private route: ActivatedRoute,
     private router: Router,
     private api: ApiService,
+    private auth: AuthService,
   ) {
     const now = new Date();
     this.dateTo = now;
@@ -581,7 +591,7 @@ export class ComparisonComponent implements OnInit {
     if (v === null || v === undefined) return '—';
     const opt = this.kpiOptions.find(k => k.key === key) || this.kpiRows.find(k => k.key === key) as any;
     const fmt = opt?.format || 'number';
-    if (fmt === 'currency') return '$' + this.formatNum(v);
+    if (fmt === 'currency') return this.currencySymbol + this.formatNum(v);
     if (fmt === 'percent') return (v * 100).toFixed(2) + '%';
     if (fmt === 'decimal') return Number(v).toFixed(2) + 'x';
     return this.formatNum(v);
