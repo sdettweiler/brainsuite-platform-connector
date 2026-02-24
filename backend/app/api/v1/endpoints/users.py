@@ -1,5 +1,6 @@
+import logging
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 import uuid
@@ -13,6 +14,8 @@ from app.schemas.user import (
 )
 from app.api.v1.deps import get_current_user, get_current_admin
 from app.core.security import get_password_hash
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -50,18 +53,55 @@ async def get_organization(
 @router.patch("/organization", response_model=OrganizationResponse)
 async def update_organization(
     payload: OrganizationUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     org = await db.get(Organization, current_user.organization_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
+
+    old_currency = org.currency
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(org, field, value)
     db.add(org)
     await db.commit()
     await db.refresh(org)
+
+    if payload.currency and payload.currency != old_currency:
+        logger.info(f"Organization {org.id} currency changed from {old_currency} to {payload.currency}, triggering re-harmonization")
+        background_tasks.add_task(_reharmonize_all_connections, str(org.id))
+
     return org
+
+
+async def _reharmonize_all_connections(organization_id: str):
+    """Re-harmonize all connections for an organization after currency change."""
+    from app.db.base import get_session_factory
+    from app.models.platform import PlatformConnection
+    from app.services.sync.harmonizer import HarmonizationService
+
+    harmonizer = HarmonizationService()
+    factory = get_session_factory()
+
+    async with factory() as db:
+        result = await db.execute(
+            select(PlatformConnection).where(
+                PlatformConnection.organization_id == organization_id,
+                PlatformConnection.is_active == True,
+            )
+        )
+        connections = result.scalars().all()
+        total = 0
+        for conn in connections:
+            try:
+                count = await harmonizer.harmonize_connection(db, conn)
+                total += count
+                logger.info(f"Re-harmonized {count} rows for connection {conn.id} ({conn.platform})")
+            except Exception as e:
+                logger.error(f"Failed to re-harmonize connection {conn.id}: {e}")
+        await db.commit()
+        logger.info(f"Currency re-harmonization complete: {total} total rows across {len(connections)} connections")
 
 
 @router.get("", response_model=list[UserWithRole])
