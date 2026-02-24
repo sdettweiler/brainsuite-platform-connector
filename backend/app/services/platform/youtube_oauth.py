@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v19"
+GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v23"
 
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/adwords",
