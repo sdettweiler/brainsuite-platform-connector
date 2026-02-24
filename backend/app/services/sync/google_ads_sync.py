@@ -34,6 +34,8 @@ class GoogleAdsSyncService:
         access_token = await self._get_valid_token(db, connection)
         customer_id = connection.ad_account_id
 
+        asset_map = await self._fetch_youtube_asset_map(access_token, customer_id)
+
         total_fetched = 0
         total_upserted = 0
 
@@ -43,12 +45,48 @@ class GoogleAdsSyncService:
             records = await self._fetch_video_ad_performance(
                 access_token, customer_id, chunk_start, chunk_end
             )
-            upserted = await self._upsert_records(db, connection, records, sync_job_id)
+            upserted = await self._upsert_records(db, connection, records, sync_job_id, asset_map)
             total_fetched += len(records)
             total_upserted += upserted
             chunk_start = chunk_end + timedelta(days=1)
 
         return {"fetched": total_fetched, "upserted": total_upserted}
+
+    async def _fetch_youtube_asset_map(
+        self, access_token: str, customer_id: str
+    ) -> Dict[str, str]:
+        """Build a map of asset resource name -> YouTube video ID."""
+        from app.core.config import settings
+
+        query = """
+            SELECT asset.resource_name,
+                   asset.youtube_video_asset.youtube_video_id
+            FROM asset
+            WHERE asset.type = 'YOUTUBE_VIDEO'
+        """
+        asset_map: Dict[str, str] = {}
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{GOOGLE_ADS_API_BASE}/customers/{customer_id}/googleAds:search",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "developer-token": settings.GOOGLE_DEVELOPER_TOKEN or "",
+                    "login-customer-id": customer_id,
+                },
+                json={"query": query},
+            )
+            if resp.status_code == 200:
+                for r in resp.json().get("results", []):
+                    asset = r.get("asset", {})
+                    res_name = asset.get("resourceName", "")
+                    yt_id = asset.get("youtubeVideoAsset", {}).get("youtubeVideoId", "")
+                    if res_name and yt_id:
+                        asset_map[res_name] = yt_id
+            else:
+                logger.warning(f"Failed to fetch YouTube assets: {resp.status_code}")
+
+        logger.info(f"Built YouTube asset map with {len(asset_map)} entries for {customer_id}")
+        return asset_map
 
     async def _get_valid_token(
         self, db: AsyncSession, connection: PlatformConnection
@@ -94,6 +132,8 @@ class GoogleAdsSyncService:
                 ad_group_ad.ad.id,
                 ad_group_ad.ad.name,
                 ad_group_ad.ad.type,
+                ad_group_ad.ad.video_ad.video.asset,
+                ad_group_ad.ad.video_responsive_ad.videos,
                 segments.date,
                 metrics.cost_micros,
                 metrics.impressions,
@@ -162,9 +202,12 @@ class GoogleAdsSyncService:
         connection: PlatformConnection,
         records: List[Dict[str, Any]],
         sync_job_id: Optional[str],
+        asset_map: Optional[Dict[str, str]] = None,
     ) -> int:
         if not records:
             return 0
+
+        asset_map = asset_map or {}
 
         rows = []
         for r in records:
@@ -187,6 +230,10 @@ class GoogleAdsSyncService:
             report_date_str = segments.get("date", "")
             report_date = date.fromisoformat(report_date_str) if report_date_str else None
 
+            youtube_video_id = self._extract_youtube_id(ad, asset_map)
+            video_url = f"https://www.youtube.com/watch?v={youtube_video_id}" if youtube_video_id else None
+            thumbnail_url = f"https://img.youtube.com/vi/{youtube_video_id}/hqdefault.jpg" if youtube_video_id else None
+
             rows.append({
                 "platform_connection_id": connection.id,
                 "sync_job_id": sync_job_id,
@@ -199,8 +246,8 @@ class GoogleAdsSyncService:
                 "ad_group_name": ad_group.get("name"),
                 "ad_id": str(ad.get("id", "")),
                 "ad_name": ad.get("name"),
-                "video_url": None,
-                "thumbnail_url": None,
+                "video_url": video_url,
+                "thumbnail_url": thumbnail_url,
                 "placement_type": campaign.get("advertisingChannelType"),
                 "currency": connection.currency,
                 "spend": spend,
