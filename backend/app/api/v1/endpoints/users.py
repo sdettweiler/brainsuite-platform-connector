@@ -77,9 +77,22 @@ async def update_organization(
 
 async def _reharmonize_all_connections(organization_id: str):
     """Re-harmonize all connections for an organization after currency change."""
+    from sqlalchemy import update, delete
     from app.db.base import get_session_factory
     from app.models.platform import PlatformConnection
+    from app.models.performance import (
+        MetaRawPerformance, TikTokRawPerformance,
+        GoogleAdsRawPerformance, Dv360RawPerformance,
+        HarmonizedPerformance,
+    )
     from app.services.sync.harmonizer import HarmonizationService
+
+    RAW_MODEL_MAP = {
+        "META": MetaRawPerformance,
+        "TIKTOK": TikTokRawPerformance,
+        "GOOGLE_ADS": GoogleAdsRawPerformance,
+        "DV360": Dv360RawPerformance,
+    }
 
     harmonizer = HarmonizationService()
     factory = get_session_factory()
@@ -95,6 +108,20 @@ async def _reharmonize_all_connections(organization_id: str):
         total = 0
         for conn in connections:
             try:
+                await db.execute(
+                    delete(HarmonizedPerformance).where(
+                        HarmonizedPerformance.platform_connection_id == conn.id
+                    )
+                )
+                raw_model = RAW_MODEL_MAP.get(conn.platform)
+                if raw_model:
+                    await db.execute(
+                        update(raw_model)
+                        .where(raw_model.platform_connection_id == conn.id)
+                        .values(is_processed=False)
+                    )
+                await db.flush()
+
                 count = await harmonizer.harmonize_connection(db, conn)
                 total += count
                 logger.info(f"Re-harmonized {count} rows for connection {conn.id} ({conn.platform})")
