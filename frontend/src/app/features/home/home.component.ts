@@ -63,7 +63,7 @@ import { ThemeService } from '../../core/services/theme.service';
               <!-- Widget header -->
               <div class="widget-header">
                 <div class="platform-label">
-                  <img [src]="getPlatformLogo(platform)" [alt]="platform" class="platform-logo" />
+                  <img [src]="getPlatformLogo(platform)" [alt]="platform" class="platform-logo" [class.invert-for-dark]="isDark && (platform === 'GOOGLE_ADS' || platform === 'DV360')" />
                 </div>
                 <a class="see-all-link" (click)="navigateToDashboard(platform)">
                   See all {{ platform }} ads →
@@ -204,6 +204,10 @@ import { ThemeService } from '../../core/services/theme.service';
       height: 20px;
       width: auto;
       object-fit: contain;
+    }
+
+    .platform-logo.invert-for-dark {
+      filter: brightness(0) invert(1);
     }
 
     .see-all-link {
@@ -351,8 +355,8 @@ export class HomeComponent implements OnInit, OnDestroy {
     const map: Record<string, string> = {
       'META': `/assets/images/platform-meta-${suffix}.png`,
       'TIKTOK': `/assets/images/platform-tiktok-${suffix}.png`,
-      'GOOGLE_ADS': `/assets/images/platform-google-ads-${suffix}.png`,
-      'DV360': `/assets/images/platform-dv360-${suffix}.png`,
+      'GOOGLE_ADS': `/assets/images/platform-google-ads-light.png`,
+      'DV360': `/assets/images/platform-dv360-light.png`,
     };
     return map[platform] || `/assets/images/platform-meta-${suffix}.png`;
   }
