@@ -18,7 +18,7 @@ from app.services.platform.youtube_oauth import youtube_oauth
 
 logger = logging.getLogger(__name__)
 
-GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v15"
+GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v19"
 
 
 class YouTubeSyncService:
