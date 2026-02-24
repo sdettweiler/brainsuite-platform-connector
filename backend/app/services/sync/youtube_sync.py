@@ -1,6 +1,6 @@
 """
 YouTube / Google Ads data sync service.
-Uses Google Ads API v15 with GAQL (Google Ads Query Language).
+Uses Google Ads API v23 with GAQL (Google Ads Query Language).
 All video ad performance data lives in Google Ads, not YouTube Data API.
 """
 import httpx
@@ -96,8 +96,6 @@ class YouTubeSyncService:
                 ad_group_ad.ad.id,
                 ad_group_ad.ad.name,
                 ad_group_ad.ad.type,
-                ad_group_ad.ad.video_ad.video.resource_name,
-                ad_group_ad.ad.image_ad.image_url,
                 segments.date,
                 metrics.cost_micros,
                 metrics.impressions,
@@ -106,8 +104,8 @@ class YouTubeSyncService:
                 metrics.average_cpm,
                 metrics.conversions,
                 metrics.conversions_value,
-                metrics.video_views,
-                metrics.video_view_rate,
+                metrics.video_trueview_views,
+                metrics.video_trueview_view_rate,
                 metrics.video_quartile_p25_rate,
                 metrics.video_quartile_p50_rate,
                 metrics.video_quartile_p75_rate,
@@ -183,9 +181,6 @@ class YouTubeSyncService:
             roas = float(conversion_value / spend) if spend and conversion_value else None
             cvr = (conversions / clicks) if clicks else None
 
-            video_id = ad.get("videoAd", {}).get("video", {}).get("resourceName", "")
-            thumbnail_url = ad.get("imageAd", {}).get("imageUrl")
-
             rows.append({
                 "platform_connection_id": connection.id,
                 "sync_job_id": sync_job_id,
@@ -198,8 +193,8 @@ class YouTubeSyncService:
                 "ad_group_name": ad_group.get("name"),
                 "ad_id": str(ad.get("id", "")),
                 "ad_name": ad.get("name"),
-                "video_url": video_id,
-                "thumbnail_url": thumbnail_url,
+                "video_url": None,
+                "thumbnail_url": None,
                 "placement_type": campaign.get("advertisingChannelType"),
                 "currency": connection.currency,
                 "spend": spend,
@@ -211,8 +206,8 @@ class YouTubeSyncService:
                 "conversion_value": conversion_value,
                 "cvr": cvr,
                 "roas": roas,
-                "video_views": int(metrics.get("videoViews", 0) or 0),
-                "view_rate": float(metrics.get("videoViewRate", 0) or 0),
+                "video_views": int(metrics.get("videoTrueviewViews", 0) or 0),
+                "view_rate": float(metrics.get("videoTrueviewViewRate", 0) or 0),
                 "video_view_through_rate": float(metrics.get("videoQuartileP100Rate", 0) or 0),
                 "video_quartile_p25": float(metrics.get("videoQuartileP25Rate", 0) or 0),
                 "video_quartile_p50": float(metrics.get("videoQuartileP50Rate", 0) or 0),
