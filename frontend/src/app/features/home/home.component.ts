@@ -63,7 +63,7 @@ import { ThemeService } from '../../core/services/theme.service';
               <!-- Widget header -->
               <div class="widget-header">
                 <div class="platform-label">
-                  <img [src]="getPlatformLogo(platform)" [alt]="platform" class="platform-logo" [class.invert-for-dark]="isDark && (platform === 'GOOGLE_ADS' || platform === 'DV360')" />
+                  <img [src]="getPlatformLogo(platform)" [alt]="platform" class="platform-logo" />
                 </div>
                 <a class="see-all-link" (click)="navigateToDashboard(platform)">
                   See all {{ platform }} ads →
@@ -204,10 +204,6 @@ import { ThemeService } from '../../core/services/theme.service';
       height: 20px;
       width: auto;
       object-fit: contain;
-    }
-
-    .platform-logo.invert-for-dark {
-      filter: brightness(0) invert(1);
     }
 
     .see-all-link {
