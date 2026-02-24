@@ -168,7 +168,7 @@ async def init_oauth(
     """Generate OAuth authorization URL for a platform."""
     from app.services.platform.meta_oauth import meta_oauth
     from app.services.platform.tiktok_oauth import tiktok_oauth
-    from app.services.platform.youtube_oauth import youtube_oauth
+    from app.services.platform.google_ads_oauth import google_ads_oauth
 
     session_id = secrets.token_urlsafe(32)
 
@@ -176,7 +176,7 @@ async def init_oauth(
         raise HTTPException(status_code=503, detail="Meta app credentials not configured")
     if not settings.TIKTOK_APP_ID and payload.platform == "TIKTOK":
         raise HTTPException(status_code=503, detail="TikTok app credentials not configured")
-    if not settings.GOOGLE_CLIENT_ID and payload.platform == "YOUTUBE":
+    if not settings.GOOGLE_CLIENT_ID and payload.platform == "GOOGLE_ADS":
         raise HTTPException(status_code=503, detail="Google app credentials not configured")
 
     _oauth_sessions[session_id] = {
@@ -190,8 +190,8 @@ async def init_oauth(
         auth_url = meta_oauth.generate_auth_url(session_id)
     elif payload.platform == "TIKTOK":
         auth_url = tiktok_oauth.generate_auth_url(session_id)
-    elif payload.platform == "YOUTUBE":
-        auth_url = youtube_oauth.generate_auth_url(session_id)
+    elif payload.platform == "GOOGLE_ADS":
+        auth_url = google_ads_oauth.generate_auth_url(session_id)
     else:
         raise HTTPException(status_code=400, detail="Unknown platform")
 
@@ -206,7 +206,7 @@ async def oauth_callback(
     """Exchange OAuth code for token and fetch available ad accounts."""
     from app.services.platform.meta_oauth import meta_oauth
     from app.services.platform.tiktok_oauth import tiktok_oauth
-    from app.services.platform.youtube_oauth import youtube_oauth
+    from app.services.platform.google_ads_oauth import google_ads_oauth
 
     session_id = payload.state  # state doubles as session_id
     session = _oauth_sessions.get(session_id)
@@ -223,9 +223,9 @@ async def oauth_callback(
         elif payload.platform == "TIKTOK":
             tokens = await tiktok_oauth.exchange_code_for_token(payload.code)
             accounts = await tiktok_oauth.fetch_advertiser_accounts(tokens["access_token"])
-        elif payload.platform == "YOUTUBE":
-            tokens = await youtube_oauth.exchange_code_for_token(payload.code)
-            accounts = await youtube_oauth.fetch_accessible_customers(tokens["access_token"])
+        elif payload.platform == "GOOGLE_ADS":
+            tokens = await google_ads_oauth.exchange_code_for_token(payload.code)
+            accounts = await google_ads_oauth.fetch_accessible_customers(tokens["access_token"])
         else:
             raise HTTPException(status_code=400, detail="Unknown platform")
     except Exception as e:
@@ -394,9 +394,9 @@ async def platform_oauth_callback(
     """
     from app.services.platform.meta_oauth import meta_oauth
     from app.services.platform.tiktok_oauth import tiktok_oauth
-    from app.services.platform.youtube_oauth import youtube_oauth
+    from app.services.platform.google_ads_oauth import google_ads_oauth
 
-    platform_map = {"meta": "META", "tiktok": "TIKTOK", "google": "YOUTUBE"}
+    platform_map = {"meta": "META", "tiktok": "TIKTOK", "google": "GOOGLE_ADS"}
     platform = platform_map.get(platform_key.lower())
 
     if not platform or not state:
@@ -419,9 +419,9 @@ async def platform_oauth_callback(
         elif platform == "TIKTOK":
             tokens = await tiktok_oauth.exchange_code_for_token(effective_code)
             accounts = await tiktok_oauth.fetch_advertiser_accounts(tokens["access_token"])
-        elif platform == "YOUTUBE":
-            tokens = await youtube_oauth.exchange_code_for_token(effective_code)
-            accounts = await youtube_oauth.fetch_accessible_customers(tokens["access_token"])
+        elif platform == "GOOGLE_ADS":
+            tokens = await google_ads_oauth.exchange_code_for_token(effective_code)
+            accounts = await google_ads_oauth.fetch_accessible_customers(tokens["access_token"])
         else:
             return HTMLResponse(_make_callback_html(session_id, False, "Unknown platform"))
 

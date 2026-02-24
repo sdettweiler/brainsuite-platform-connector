@@ -32,7 +32,7 @@ class CreativeAsset(Base):
     platform_connection_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform_connections.id"), nullable=False)
 
     # Platform identifiers
-    platform: Mapped[str] = mapped_column(String(50), nullable=False)  # META, TIKTOK, YOUTUBE
+    platform: Mapped[str] = mapped_column(String(50), nullable=False)  # META, TIKTOK, GOOGLE_ADS, DV360
     ad_id: Mapped[str] = mapped_column(String(255), nullable=False)
     ad_name: Mapped[str] = mapped_column(String(1000), nullable=True)
     ad_set_id: Mapped[str] = mapped_column(String(255), nullable=True)

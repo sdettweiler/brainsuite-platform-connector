@@ -24,7 +24,7 @@ async def run_daily_sync(connection_id: str) -> None:
     from app.models.performance import SyncJob
     from app.services.sync.meta_sync import meta_sync
     from app.services.sync.tiktok_sync import tiktok_sync
-    from app.services.sync.youtube_sync import youtube_sync
+    from app.services.sync.google_ads_sync import google_ads_sync
     from app.services.sync.harmonizer import harmonizer
     import uuid
 
@@ -62,8 +62,8 @@ async def run_daily_sync(connection_id: str) -> None:
                 result = await meta_sync.sync_date_range(db, connection, date_from, date_to, job_id)
             elif connection.platform == "TIKTOK":
                 result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, job_id)
-            elif connection.platform == "YOUTUBE":
-                result = await youtube_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+            elif connection.platform == "GOOGLE_ADS":
+                result = await google_ads_sync.sync_date_range(db, connection, date_from, date_to, job_id)
             else:
                 result = {"fetched": 0, "upserted": 0}
 
@@ -101,7 +101,7 @@ async def run_full_resync(connection_id: str) -> None:
     from app.models.performance import SyncJob
     from app.services.sync.meta_sync import meta_sync
     from app.services.sync.tiktok_sync import tiktok_sync
-    from app.services.sync.youtube_sync import youtube_sync
+    from app.services.sync.google_ads_sync import google_ads_sync
     from app.services.sync.harmonizer import harmonizer
     import uuid
 
@@ -140,8 +140,8 @@ async def run_full_resync(connection_id: str) -> None:
                 sync_result = await meta_sync.sync_date_range(db, connection, date_from, date_to, job_id)
             elif connection.platform == "TIKTOK":
                 sync_result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, job_id)
-            elif connection.platform == "YOUTUBE":
-                sync_result = await youtube_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+            elif connection.platform == "GOOGLE_ADS":
+                sync_result = await google_ads_sync.sync_date_range(db, connection, date_from, date_to, job_id)
             else:
                 sync_result = {"fetched": 0}
 
@@ -178,7 +178,7 @@ async def run_initial_sync(connection_id: str) -> None:
     from app.models.performance import SyncJob
     from app.services.sync.meta_sync import meta_sync
     from app.services.sync.tiktok_sync import tiktok_sync
-    from app.services.sync.youtube_sync import youtube_sync
+    from app.services.sync.google_ads_sync import google_ads_sync
     from app.services.sync.harmonizer import harmonizer
     import uuid
 
@@ -214,8 +214,8 @@ async def run_initial_sync(connection_id: str) -> None:
                 sync_result = await meta_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
             elif connection.platform == "TIKTOK":
                 sync_result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
-            elif connection.platform == "YOUTUBE":
-                sync_result = await youtube_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
+            elif connection.platform == "GOOGLE_ADS":
+                sync_result = await google_ads_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
             else:
                 sync_result = {"fetched": 0}
 
@@ -251,7 +251,7 @@ async def run_historical_sync(connection_id: str) -> None:
     from app.models.performance import SyncJob
     from app.services.sync.meta_sync import meta_sync
     from app.services.sync.tiktok_sync import tiktok_sync
-    from app.services.sync.youtube_sync import youtube_sync
+    from app.services.sync.google_ads_sync import google_ads_sync
     from app.services.sync.harmonizer import harmonizer
     import uuid
 
@@ -287,8 +287,8 @@ async def run_historical_sync(connection_id: str) -> None:
                 sync_result = await meta_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
             elif connection.platform == "TIKTOK":
                 sync_result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
-            elif connection.platform == "YOUTUBE":
-                sync_result = await youtube_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
+            elif connection.platform == "GOOGLE_ADS":
+                sync_result = await google_ads_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
             else:
                 sync_result = {"fetched": 0}
 

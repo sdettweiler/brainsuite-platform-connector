@@ -303,8 +303,8 @@ class TikTokRawPerformance(Base):
     )
 
 
-class YouTubeRawPerformance(Base):
-    __tablename__ = "youtube_raw_performance"
+class GoogleAdsRawPerformance(Base):
+    __tablename__ = "google_ads_raw_performance"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     platform_connection_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("platform_connections.id"), nullable=False)
@@ -401,9 +401,9 @@ class YouTubeRawPerformance(Base):
     is_processed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     __table_args__ = (
-        UniqueConstraint("platform_connection_id", "report_date", "ad_id", "ad_account_id", name="uq_youtube_daily_ad"),
-        Index("ix_youtube_raw_date_account", "report_date", "ad_account_id"),
-        Index("ix_youtube_raw_ad_id", "ad_id"),
+        UniqueConstraint("platform_connection_id", "report_date", "ad_id", "ad_account_id", name="uq_google_ads_daily_ad"),
+        Index("ix_google_ads_raw_date_account", "report_date", "ad_account_id"),
+        Index("ix_google_ads_raw_ad_id", "ad_id"),
     )
 
 

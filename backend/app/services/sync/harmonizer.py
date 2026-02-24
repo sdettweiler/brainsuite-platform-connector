@@ -10,7 +10,7 @@ from app.models.creative import CreativeAsset
 from app.models.performance import (
     MetaRawPerformance,
     TikTokRawPerformance,
-    YouTubeRawPerformance,
+    GoogleAdsRawPerformance,
     HarmonizedPerformance,
 )
 from app.models.platform import PlatformConnection
@@ -62,8 +62,8 @@ class HarmonizationService:
             return await self._harmonize_meta(db, connection, org_currency, date_from, date_to)
         elif connection.platform == "TIKTOK":
             return await self._harmonize_tiktok(db, connection, org_currency, date_from, date_to)
-        elif connection.platform == "YOUTUBE":
-            return await self._harmonize_youtube(db, connection, org_currency, date_from, date_to)
+        elif connection.platform == "GOOGLE_ADS":
+            return await self._harmonize_google_ads(db, connection, org_currency, date_from, date_to)
         return 0
 
     @staticmethod
@@ -479,7 +479,7 @@ class HarmonizationService:
         await db.flush()
         return count
 
-    async def _harmonize_youtube(
+    async def _harmonize_google_ads(
         self,
         db: AsyncSession,
         connection: PlatformConnection,
@@ -487,14 +487,14 @@ class HarmonizationService:
         date_from: Optional[date],
         date_to: Optional[date],
     ) -> int:
-        query = select(YouTubeRawPerformance).where(
-            YouTubeRawPerformance.platform_connection_id == connection.id,
-            YouTubeRawPerformance.is_processed == False,
+        query = select(GoogleAdsRawPerformance).where(
+            GoogleAdsRawPerformance.platform_connection_id == connection.id,
+            GoogleAdsRawPerformance.is_processed == False,
         )
         if date_from:
-            query = query.where(YouTubeRawPerformance.report_date >= date_from)
+            query = query.where(GoogleAdsRawPerformance.report_date >= date_from)
         if date_to:
-            query = query.where(YouTubeRawPerformance.report_date <= date_to)
+            query = query.where(GoogleAdsRawPerformance.report_date <= date_to)
 
         result = await db.execute(query)
         raw_records = result.scalars().all()
@@ -511,7 +511,7 @@ class HarmonizationService:
                 asset = await self._ensure_asset(
                     db,
                     connection=connection,
-                    platform="YOUTUBE",
+                    platform="GOOGLE_ADS",
                     ad_id=raw.ad_id,
                     ad_name=raw.ad_name,
                     campaign_id=raw.campaign_id,
@@ -538,7 +538,7 @@ class HarmonizationService:
                     "asset_id": asset.id,
                     "platform_connection_id": connection.id,
                     "report_date": raw.report_date,
-                    "platform": "YOUTUBE",
+                    "platform": "GOOGLE_ADS",
                     "ad_account_id": raw.ad_account_id,
                     "publisher_platform": "",
                     "platform_position": "",
@@ -638,7 +638,7 @@ class HarmonizationService:
                 count += 1
 
             except Exception as e:
-                logger.error(f"Harmonization error for YouTube record {raw.id}: {e}")
+                logger.error(f"Harmonization error for Google Ads record {raw.id}: {e}")
 
         await db.flush()
         return count

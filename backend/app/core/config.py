@@ -41,11 +41,16 @@ class Settings(BaseSettings):
     TIKTOK_APP_SECRET: Optional[str] = None
     TIKTOK_REDIRECT_URI: str = f"{_get_base_url()}/api/v1/platforms/oauth/callback/tiktok"
 
-    # YouTube / Google
+    # Google Ads
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: str = f"{_get_base_url()}/api/v1/platforms/oauth/callback/google"
     GOOGLE_DEVELOPER_TOKEN: Optional[str] = None
+
+    # DV360
+    DV360_CLIENT_ID: Optional[str] = None
+    DV360_CLIENT_SECRET: Optional[str] = None
+    DV360_REDIRECT_URI: str = f"{_get_base_url()}/api/v1/platforms/oauth/callback/dv360"
 
     # Currency
     EXCHANGERATE_API_KEY: Optional[str] = None

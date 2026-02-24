@@ -1,5 +1,5 @@
 """
-YouTube / Google Ads data sync service.
+Google Ads data sync service.
 Uses Google Ads API v23 with GAQL (Google Ads Query Language).
 All video ad performance data lives in Google Ads, not YouTube Data API.
 """
@@ -12,16 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.models.platform import PlatformConnection
-from app.models.performance import YouTubeRawPerformance
+from app.models.performance import GoogleAdsRawPerformance
 from app.core.security import decrypt_token
-from app.services.platform.youtube_oauth import youtube_oauth
+from app.services.platform.google_ads_oauth import google_ads_oauth
 
 logger = logging.getLogger(__name__)
 
 GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v23"
 
 
-class YouTubeSyncService:
+class GoogleAdsSyncService:
 
     async def sync_date_range(
         self,
@@ -37,7 +37,6 @@ class YouTubeSyncService:
         total_fetched = 0
         total_upserted = 0
 
-        # Fetch in 30-day chunks
         chunk_start = date_from
         while chunk_start <= date_to:
             chunk_end = min(chunk_start + timedelta(days=29), date_to)
@@ -61,9 +60,8 @@ class YouTubeSyncService:
         if connection.token_expiry and connection.token_expiry > now:
             return decrypt_token(connection.access_token_encrypted)
 
-        # Refresh
         refresh_token = decrypt_token(connection.refresh_token_encrypted)
-        new_tokens = await youtube_oauth.refresh_access_token(refresh_token)
+        new_tokens = await google_ads_oauth.refresh_access_token(refresh_token)
         new_access = new_tokens.get("access_token")
 
         from app.core.security import encrypt_token
@@ -222,9 +220,9 @@ class YouTubeSyncService:
                 "is_processed": False,
             })
 
-        stmt = pg_insert(YouTubeRawPerformance).values(rows)
+        stmt = pg_insert(GoogleAdsRawPerformance).values(rows)
         stmt = stmt.on_conflict_do_update(
-            constraint="uq_youtube_daily_ad",
+            constraint="uq_google_ads_daily_ad",
             set_={
                 "spend": stmt.excluded.spend,
                 "impressions": stmt.excluded.impressions,
@@ -239,4 +237,4 @@ class YouTubeSyncService:
         return len(rows)
 
 
-youtube_sync = YouTubeSyncService()
+google_ads_sync = GoogleAdsSyncService()

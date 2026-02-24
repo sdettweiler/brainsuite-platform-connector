@@ -35,7 +35,7 @@ class PlatformConnection(Base):
     brainsuite_app_id_image: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("brainsuite_apps.id"), nullable=True)
     brainsuite_app_id_video: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("brainsuite_apps.id"), nullable=True)
 
-    platform: Mapped[str] = mapped_column(String(50), nullable=False)  # META, TIKTOK, YOUTUBE
+    platform: Mapped[str] = mapped_column(String(50), nullable=False)  # META, TIKTOK, GOOGLE_ADS, DV360
     ad_account_id: Mapped[str] = mapped_column(String(255), nullable=False)
     ad_account_name: Mapped[str] = mapped_column(String(500), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), nullable=True)

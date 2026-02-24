@@ -5,7 +5,7 @@ from app.models.metadata import MetadataField, MetadataFieldValue
 from app.models.performance import (
     MetaRawPerformance,
     TikTokRawPerformance,
-    YouTubeRawPerformance,
+    GoogleAdsRawPerformance,
     HarmonizedPerformance,
     CurrencyRate,
     SyncJob,
@@ -16,6 +16,6 @@ __all__ = [
     "PlatformConnection", "BrainsuiteApp",
     "CreativeAsset", "Project", "AssetProjectMapping", "AssetMetadataValue",
     "MetadataField", "MetadataFieldValue",
-    "MetaRawPerformance", "TikTokRawPerformance", "YouTubeRawPerformance",
+    "MetaRawPerformance", "TikTokRawPerformance", "GoogleAdsRawPerformance",
     "HarmonizedPerformance", "CurrencyRate", "SyncJob",
 ]

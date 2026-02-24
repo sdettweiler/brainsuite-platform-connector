@@ -1,5 +1,5 @@
 """
-YouTube / Google Ads OAuth 2.0 handler.
+Google Ads OAuth 2.0 handler.
 
 Auth flow:
 1. Generate authorization URL pointing to Google OAuth 2.0
@@ -36,7 +36,7 @@ GOOGLE_SCOPES = [
 ]
 
 
-class YouTubeOAuthHandler:
+class GoogleAdsOAuthHandler:
 
     def generate_auth_url(self, state: str) -> str:
         """Generate Google OAuth popup URL."""
@@ -117,7 +117,6 @@ class YouTubeOAuthHandler:
             data = resp.json()
             resource_names = data.get("resourceNames", [])
 
-            # Fetch details for each customer
             for resource_name in resource_names:
                 customer_id = resource_name.split("/")[-1]
                 try:
@@ -131,7 +130,7 @@ class YouTubeOAuthHandler:
                             "currency": detail.get("currencyCode", "USD"),
                             "timezone": detail.get("timeZone", "UTC"),
                             "status": "ACTIVE" if not detail.get("testAccount") else "TEST",
-                            "platform": "YOUTUBE",
+                            "platform": "GOOGLE_ADS",
                         })
                 except Exception as e:
                     logger.warning(f"Could not fetch details for customer {customer_id}: {e}")
@@ -170,4 +169,4 @@ class YouTubeOAuthHandler:
         return None
 
 
-youtube_oauth = YouTubeOAuthHandler()
+google_ads_oauth = GoogleAdsOAuthHandler()

@@ -34,7 +34,7 @@ class BrainsuiteAppResponse(BrainsuiteAppBase):
 
 
 class PlatformConnectionCreate(BaseModel):
-    platform: str  # META, TIKTOK, YOUTUBE
+    platform: str  # META, TIKTOK, GOOGLE_ADS, DV360
     ad_account_id: str
     ad_account_name: Optional[str] = None
     brainsuite_app_id: Optional[uuid.UUID] = None
@@ -71,7 +71,7 @@ class PlatformConnectionResponse(BaseModel):
 
 
 class OAuthInitRequest(BaseModel):
-    platform: str  # META, TIKTOK, YOUTUBE
+    platform: str  # META, TIKTOK, GOOGLE_ADS, DV360
 
 
 class OAuthCallbackRequest(BaseModel):
