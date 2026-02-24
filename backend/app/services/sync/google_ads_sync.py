@@ -184,10 +184,13 @@ class GoogleAdsSyncService:
             roas = float(conversion_value / spend) if spend and conversion_value else None
             cvr = (conversions / clicks) if clicks else None
 
+            report_date_str = segments.get("date", "")
+            report_date = date.fromisoformat(report_date_str) if report_date_str else None
+
             rows.append({
                 "platform_connection_id": connection.id,
                 "sync_job_id": sync_job_id,
-                "report_date": segments.get("date"),
+                "report_date": report_date,
                 "ad_account_id": connection.ad_account_id,
                 "campaign_id": str(campaign.get("id", "")),
                 "campaign_name": campaign.get("name"),
