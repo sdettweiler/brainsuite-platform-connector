@@ -351,8 +351,8 @@ export class HomeComponent implements OnInit, OnDestroy {
     const map: Record<string, string> = {
       'META': `/assets/images/platform-meta-${suffix}.png`,
       'TIKTOK': `/assets/images/platform-tiktok-${suffix}.png`,
-      'GOOGLE_ADS': `/assets/images/platform-google-ads.svg`,
-      'DV360': `/assets/images/platform-dv360.svg`,
+      'GOOGLE_ADS': `/assets/images/platform-google-ads-${suffix}.png`,
+      'DV360': `/assets/images/platform-dv360-${suffix}.png`,
     };
     return map[platform] || `/assets/images/platform-meta-${suffix}.png`;
   }
