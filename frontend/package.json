@@ -26,6 +26,7 @@
     "@ngrx/entity": "^16.3.0",
     "@ngrx/store": "^16.3.0",
     "@ngrx/store-devtools": "^16.3.0",
+    "bootstrap-icons": "^1.13.1",
     "date-fns": "^2.30.0",
     "echarts": "^5.6.0",
     "ng2-charts": "^5.0.0",
