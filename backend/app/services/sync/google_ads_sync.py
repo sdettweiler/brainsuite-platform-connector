@@ -3,6 +3,7 @@ Google Ads data sync service.
 Uses Google Ads API v23 with GAQL (Google Ads Query Language).
 All video ad performance data lives in Google Ads, not YouTube Data API.
 """
+import asyncio
 import httpx
 import logging
 import os
@@ -252,6 +253,53 @@ class GoogleAdsSyncService:
             logger.warning(f"  Failed to download YouTube thumbnail for ad {ad_id} (video {youtube_video_id}): {e}")
             return None, None
 
+    async def _download_video(
+        self,
+        youtube_video_id: str,
+        org_dir: str,
+        org_id: str,
+        ad_id: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        filename = f"vid_yt_{ad_id}.mp4"
+        local_path = os.path.join(org_dir, filename)
+
+        if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+            served_url = f"/static/creatives/{org_id}/{filename}"
+            return local_path, served_url
+
+        url = f"https://www.youtube.com/watch?v={youtube_video_id}"
+
+        def _do_download():
+            import yt_dlp
+            ydl_opts = {
+                "outtmpl": local_path,
+                "format": "best[ext=mp4][height<=720]/best[ext=mp4]/best[height<=720]/best",
+                "quiet": True,
+                "no_warnings": True,
+                "socket_timeout": 30,
+                "merge_output_format": "mp4",
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _do_download)
+
+            if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+                size_mb = os.path.getsize(local_path) / (1024 * 1024)
+                served_url = f"/static/creatives/{org_id}/{filename}"
+                logger.info(f"  Downloaded YouTube video: {filename} ({size_mb:.1f} MB)")
+                return local_path, served_url
+            else:
+                logger.warning(f"  yt-dlp finished but file not found: {local_path}")
+                return None, None
+        except Exception as e:
+            logger.warning(f"  Failed to download YouTube video for ad {ad_id} (video {youtube_video_id}): {e}")
+            if os.path.exists(local_path):
+                os.remove(local_path)
+            return None, None
+
     async def _upsert_records(
         self,
         db: AsyncSession,
@@ -291,14 +339,19 @@ class GoogleAdsSyncService:
             youtube_video_id = self._extract_youtube_id(ad, asset_map)
             ad_id_str = str(ad.get("id", ""))
 
-            video_url = f"https://www.youtube.com/watch?v={youtube_video_id}" if youtube_video_id else None
+            video_url = None
             thumbnail_url = None
             if youtube_video_id and org_id and org_dir:
                 _, thumbnail_url = await self._download_thumbnail(
                     youtube_video_id, org_dir, org_id, ad_id_str
                 )
+                _, video_url = await self._download_video(
+                    youtube_video_id, org_dir, org_id, ad_id_str
+                )
             if not thumbnail_url and youtube_video_id:
                 thumbnail_url = f"https://img.youtube.com/vi/{youtube_video_id}/hqdefault.jpg"
+            if not video_url and youtube_video_id:
+                video_url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
             rows.append({
                 "platform_connection_id": connection.id,
