@@ -1,11 +1,11 @@
 # Brainsuite Platform Connector
 
 ## Overview
-A platform connector tool that integrates with Meta, TikTok, and YouTube/Google advertising platforms. Built with a FastAPI backend and Angular 16 frontend, using PostgreSQL for data storage.
+A platform connector tool that integrates with Meta, TikTok, and YouTube/Google advertising platforms. Built with a FastAPI backend and Angular 17 frontend, using PostgreSQL for data storage.
 
 ## Architecture
 - **Backend**: Python 3.12 + FastAPI (served via uvicorn on port 5000)
-- **Frontend**: Angular 16 (production build served as static files by FastAPI)
+- **Frontend**: Angular 17 (production build served as static files by FastAPI)
 - **Database**: PostgreSQL (Replit-managed)
 - **Charts**: ngx-echarts (Apache ECharts for Angular)
 - **ORM**: SQLAlchemy 2.0 (async with asyncpg)
@@ -46,6 +46,7 @@ replit_start.sh      # Startup script (installs deps, runs migrations, starts se
 - **Logo Assets**: Located in `frontend/src/assets/images/` (orange, white, black, orange-white, signet variants)
 
 ## Recent Changes
+- 2026-02-25: Security dependency updates — Backend: aiohttp 3.9.1→3.9.4, cryptography 41.0.7→42.0.4, fastapi 0.104.1→0.115.0, python-jose 3.3.0→3.4.0, python-multipart 0.0.6→0.0.7. Frontend: Angular 16→17 (all @angular/* and @ngrx/* packages), zone.js 0.13→0.14, typescript 5.1→5.2, ngx-skeleton-loader 7→9. npm overrides applied for minimatch→10.2.3 and tar→7.5.9 (transitive build-tool deps).
 - 2026-02-23: Bootstrap Icons migration complete — replaced all Material Icons (`<mat-icon>`) with Bootstrap Icons (`<i class="bi bi-xxx">`) across all 15 component files (sidebar, header, home, dashboard, comparison, 4 dialogs, 4 config pages, date-range-picker). Removed all `MatIconModule` imports. Icon CSS loaded via `styles.scss`. Key mappings: home→house, bar_chart→bar-chart, compare→arrow-left-right, settings→gear, close→x-lg, add→plus-lg, etc.
 - 2026-02-23: Connections page rebuild — replaced flat card list with server-side paginated table view. Backend: GET /connections now returns `{items, total, page, page_size, status_summary}` with search (name/ID), platform filter (comma-separated), status filter, sort_by/sort_order, pagination params. Added POST /connections/bulk-action for resync/disconnect/assign_image_app/assign_video_app on multiple connections. Frontend: compact table with checkboxes, platform badges, inline app mapping dropdowns, status chips, search bar with debounce, platform filter chips, status dropdown, sort controls, pagination bar (25/50/100 per page), bulk action bar (resync/disconnect/assign app), status summary bar. Styles extracted to platforms.component.scss.
 - 2026-02-20: Field reference v4 migration — major expansion of all 4 performance models. Meta +45 cols (creative metadata from /adcreatives enrichment, publisher_platform/platform_position breakdowns, quality/engagement/conversion rankings, app install/offline/messaging/on-facebook conversion metrics, unique outbound clicks, video 3-sec views). TikTok +44 cols (campaign/adgroup status, creative asset details, interactive add-on metrics, app/page/onsite/live commerce metrics, secondary goals, gross impressions, 7-day frequency, CTA/VTA attribution). YouTube +8 cols (ad network/format types, impression share, video 30s views, earned views). Harmonized +21 cols (app installs, in-app purchases, subscribe, offline, messaging, ad recall, quality rankings, unique clicks, video 3/30 sec watched). Removed deprecated TikTok paid_* metrics from sync (paid_likes/comments/shares/follows deprecated in API v1.3 Aug 2023). Meta sync now fetches creative metadata via Graph API field expansion on /ads endpoint. Migration: e6f7g8h9i0j1.
