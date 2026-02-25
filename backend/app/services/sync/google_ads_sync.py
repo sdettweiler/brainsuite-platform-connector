@@ -282,7 +282,7 @@ class GoogleAdsSyncService:
             import tempfile
             ydl_opts = {
                 "outtmpl": local_path,
-                "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
+                "format": "best[ext=mp4]/best",
                 "quiet": True,
                 "no_warnings": True,
                 "socket_timeout": 30,
