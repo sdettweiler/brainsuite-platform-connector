@@ -1,5 +1,23 @@
 @use '@angular/material' as mat;
+
+$bs-primary: mat.define-palette(mat.$orange-palette, 700);
+$bs-accent:  mat.define-palette(mat.$orange-palette, 500);
+$bs-warn:    mat.define-palette(mat.$red-palette);
+
+$bs-dark-theme: mat.define-dark-theme((
+  color: (
+    primary: $bs-primary,
+    accent: $bs-accent,
+    warn: $bs-warn,
+  ),
+  typography: mat.define-typography-config(
+    $font-family: #{"'Nunito Sans', 'Avenir Next', sans-serif"},
+  ),
+  density: 0,
+));
+
 @include mat.core();
+@include mat.all-component-themes($bs-dark-theme);
 
 @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,500&display=swap');
 @import 'bootstrap-icons/font/bootstrap-icons.css';
