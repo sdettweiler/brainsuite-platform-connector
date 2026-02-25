@@ -164,9 +164,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                   />
                   <img
                     *ngIf="activeOverlay !== 'none'"
-                    src="/assets/images/heatmap_dummy.png"
+                    [src]="getOverlayImage()"
                     class="heatmap-overlay"
-                    alt="Heatmap"
+                    alt="Overlay"
                   />
                 </div>
               </div>
@@ -339,10 +339,9 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   ];
 
   heatmapOverlays = [
-    { key: 'none', label: 'Original' },
-    { key: 'attention', label: 'Attention' },
-    { key: 'heatmap', label: 'Heatmap' },
-    { key: 'fog', label: 'Fog Map' },
+    { key: 'none', label: 'Original', overlay: '' },
+    { key: 'heatmap', label: 'Heatmap', overlay: '/assets/images/overlay_heatmap.png' },
+    { key: 'fog', label: 'Fog Map', overlay: '/assets/images/overlay_fog.png' },
   ];
 
   chartOption: EChartsOption | null = null;
@@ -662,6 +661,11 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
       { label: 'Message Clarity', value: bm.message_clarity || 0 },
       { label: 'Visual Impact', value: bm.visual_impact || 0 },
     ];
+  }
+
+  getOverlayImage(): string {
+    const match = this.heatmapOverlays.find(o => o.key === this.activeOverlay);
+    return match?.overlay || '';
   }
 
   getPlatformIconUrl(platform: string): string {
