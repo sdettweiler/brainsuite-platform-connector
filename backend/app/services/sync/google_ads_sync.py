@@ -291,10 +291,13 @@ class GoogleAdsSyncService:
             cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
             cookie_file = None
             if cookies_data:
+                cleaned = "\n".join(
+                    line.lstrip() for line in cookies_data.splitlines()
+                )
                 cookie_file = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".txt", delete=False
                 )
-                cookie_file.write(cookies_data)
+                cookie_file.write(cleaned)
                 cookie_file.close()
                 ydl_opts["cookiefile"] = cookie_file.name
             try:
