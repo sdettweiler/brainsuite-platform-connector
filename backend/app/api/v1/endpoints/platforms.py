@@ -369,7 +369,8 @@ async def connect_accounts(
         existing_conn = existing.scalar_one_or_none()
 
         if existing_conn:
-            # Reconnect — update tokens
+            # Reconnect — update tokens and reactivate
+            existing_conn.is_active = True
             existing_conn.access_token_encrypted = encrypt_token(tokens.get("access_token", ""))
             if tokens.get("refresh_token"):
                 existing_conn.refresh_token_encrypted = encrypt_token(tokens["refresh_token"])
