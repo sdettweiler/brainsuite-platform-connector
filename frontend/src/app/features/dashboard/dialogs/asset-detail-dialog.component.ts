@@ -359,7 +359,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     private api: ApiService,
     private auth: AuthService,
     public dialogRef: MatDialogRef<AssetDetailDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: { assetId: string; dateFrom: string; dateTo: string; selectedPreset?: string },
+    @Inject(MAT_DIALOG_DATA) public data: { assetId: string; dateFrom: string; dateTo: string; selectedPreset?: string; preloaded?: any },
   ) {
     this.dateFrom = data.dateFrom;
     this.dateTo = data.dateTo;
@@ -369,7 +369,14 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    this.loadDetail();
+    if (this.data.preloaded) {
+      this.detail = this.data.preloaded;
+      this.asset = this.data.preloaded;
+      this.loading = false;
+      this.buildChart();
+    } else {
+      this.loadDetail();
+    }
   }
 
   ngOnDestroy(): void {}

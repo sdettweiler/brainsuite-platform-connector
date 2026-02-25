@@ -10,7 +10,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { Subject, debounceTime, takeUntil } from 'rxjs';
+import { Subject, debounceTime, takeUntil, forkJoin } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
@@ -447,6 +447,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   contextMenu = { visible: false, x: 0, y: 0, asset: null as any };
 
+  private assetDetailCache = new Map<string, any>();
+
   platforms = [
     { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2', iconUrl: '/assets/images/icon-meta.png' },
     { key: 'TIKTOK', label: 'TikTok', icon: 'music_video', color: '#FF0050', iconUrl: '/assets/images/icon-tiktok.png' },
@@ -551,6 +553,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.total = d.total;
         this.totalPages = d.total_pages;
         this.loading = false;
+        this.preloadAssetDetails();
       },
       error: () => { this.loading = false; },
     });
@@ -641,6 +644,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
     };
   }
 
+  private preloadAssetDetails(): void {
+    this.assetDetailCache.clear();
+    if (!this.assets?.length) return;
+
+    const kpis = 'spend,ctr,roas,cpm,video_views,vtr,conversions,cvr,impressions,clicks';
+    for (const asset of this.assets) {
+      this.api.get<any>(`/dashboard/assets/${asset.id}`, {
+        date_from: this.dateFrom,
+        date_to: this.dateTo,
+        kpis,
+      }).subscribe({
+        next: (d) => this.assetDetailCache.set(asset.id, d),
+      });
+    }
+  }
+
   async openAssetDetail(asset: any): Promise<void> {
     this.contextMenu.visible = false;
     const { AssetDetailDialogComponent } = await import('../dashboard/dialogs/asset-detail-dialog.component');
@@ -648,7 +667,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       width: '92vw',
       maxWidth: '1430px',
       height: '85vh',
-      data: { assetId: asset.id, dateFrom: this.dateFrom, dateTo: this.dateTo, selectedPreset: this.selectedPreset },
+      data: {
+        assetId: asset.id,
+        dateFrom: this.dateFrom,
+        dateTo: this.dateTo,
+        selectedPreset: this.selectedPreset,
+        preloaded: this.assetDetailCache.get(asset.id) || null,
+      },
       panelClass: 'asset-detail-dialog',
     });
   }
@@ -659,7 +684,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       width: '92vw',
       maxWidth: '1430px',
       height: '85vh',
-      data: { assetId, dateFrom: this.dateFrom, dateTo: this.dateTo, selectedPreset: this.selectedPreset },
+      data: {
+        assetId,
+        dateFrom: this.dateFrom,
+        dateTo: this.dateTo,
+        selectedPreset: this.selectedPreset,
+        preloaded: this.assetDetailCache.get(assetId) || null,
+      },
     });
   }
 
