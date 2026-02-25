@@ -116,22 +116,30 @@
 }
 
 .compact-select {
-  ::ng-deep .mat-mdc-form-field-subscript-wrapper { display: none; }
-  ::ng-deep .mdc-text-field--outlined {
-    --mdc-outlined-text-field-container-shape: 6px;
-  }
-  ::ng-deep .mat-mdc-form-field-infix {
-    padding: 8px 0 !important; min-height: unset !important;
-    display: flex; align-items: center;
-  }
-  ::ng-deep .mat-mdc-select {
-    font-family: 'Nunito Sans', sans-serif; font-size: 13px; line-height: normal;
-  }
-  ::ng-deep .mat-mdc-select-value { font-size: 13px; line-height: normal; }
-  ::ng-deep .mat-mdc-select-trigger { height: auto; display: flex; align-items: center; }
-  ::ng-deep .mdc-floating-label { font-size: 13px; font-family: 'Nunito Sans', sans-serif; }
-  ::ng-deep .mat-mdc-text-field-wrapper {
-    padding: 0 12px !important;
+  ::ng-deep {
+    .mat-mdc-form-field-subscript-wrapper { display: none; }
+    .mdc-text-field--outlined {
+      --mdc-outlined-text-field-container-shape: 6px;
+      --mat-form-field-container-height: 36px;
+      --mat-form-field-container-vertical-padding: 8px;
+    }
+    .mat-mdc-form-field-infix {
+      min-height: unset !important;
+    }
+    .mat-mdc-select {
+      font-family: 'Nunito Sans', sans-serif;
+      font-size: 13px;
+    }
+    .mat-mdc-select-value {
+      font-size: 13px;
+    }
+    .mdc-floating-label {
+      font-size: 13px;
+      font-family: 'Nunito Sans', sans-serif;
+    }
+    .mat-mdc-text-field-wrapper {
+      padding: 0 12px !important;
+    }
   }
 }
 
