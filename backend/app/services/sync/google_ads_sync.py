@@ -279,6 +279,7 @@ class GoogleAdsSyncService:
 
         def _do_download():
             import yt_dlp
+            import tempfile
             ydl_opts = {
                 "outtmpl": local_path,
                 "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
@@ -287,8 +288,21 @@ class GoogleAdsSyncService:
                 "socket_timeout": 30,
                 "merge_output_format": "mp4",
             }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+            cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
+            cookie_file = None
+            if cookies_data:
+                cookie_file = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", delete=False
+                )
+                cookie_file.write(cookies_data)
+                cookie_file.close()
+                ydl_opts["cookiefile"] = cookie_file.name
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+            finally:
+                if cookie_file and os.path.exists(cookie_file.name):
+                    os.remove(cookie_file.name)
 
         try:
             loop = asyncio.get_event_loop()
