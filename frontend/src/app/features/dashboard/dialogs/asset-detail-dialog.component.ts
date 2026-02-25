@@ -157,8 +157,8 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                     class="asset-media"
                   ></video>
                   <img
-                    *ngIf="asset.asset_format !== 'VIDEO' || !asset.asset_url || activeOverlay !== 'none'"
-                    [src]="asset.asset_url || asset.thumbnail_url || '/assets/images/placeholder.svg'"
+                    *ngIf="activeOverlay !== 'none' || asset.asset_format !== 'VIDEO' || !asset.asset_url"
+                    [src]="getBaseImage()"
                     class="asset-media"
                     alt="Creative"
                   />
@@ -661,6 +661,12 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
       { label: 'Message Clarity', value: bm.message_clarity || 0 },
       { label: 'Visual Impact', value: bm.visual_impact || 0 },
     ];
+  }
+
+  getBaseImage(): string {
+    if (this.asset?.thumbnail_url) return this.asset.thumbnail_url;
+    if (this.asset?.asset_format !== 'VIDEO' && this.asset?.asset_url) return this.asset.asset_url;
+    return '/assets/images/placeholder.svg';
   }
 
   getOverlayImage(): string {
