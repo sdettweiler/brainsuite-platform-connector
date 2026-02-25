@@ -239,10 +239,18 @@ class GoogleAdsSyncService:
             served_url = f"/static/creatives/{org_id}/{filename}"
             return local_path, served_url
 
-        thumb_url = f"https://img.youtube.com/vi/{youtube_video_id}/hqdefault.jpg"
+        thumb_candidates = [
+            f"https://img.youtube.com/vi/{youtube_video_id}/maxresdefault.jpg",
+            f"https://img.youtube.com/vi/{youtube_video_id}/sddefault.jpg",
+            f"https://img.youtube.com/vi/{youtube_video_id}/hqdefault.jpg",
+        ]
         try:
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-                resp = await client.get(thumb_url)
+                resp = None
+                for thumb_url in thumb_candidates:
+                    resp = await client.get(thumb_url)
+                    if resp.status_code == 200 and len(resp.content) > 1000:
+                        break
                 resp.raise_for_status()
                 with open(local_path, "wb") as f:
                     f.write(resp.content)
@@ -273,7 +281,7 @@ class GoogleAdsSyncService:
             import yt_dlp
             ydl_opts = {
                 "outtmpl": local_path,
-                "format": "best[ext=mp4][height<=720]/best[ext=mp4]/best[height<=720]/best",
+                "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
                 "quiet": True,
                 "no_warnings": True,
                 "socket_timeout": 30,
@@ -349,7 +357,7 @@ class GoogleAdsSyncService:
                     youtube_video_id, org_dir, org_id, ad_id_str
                 )
             if not thumbnail_url and youtube_video_id:
-                thumbnail_url = f"https://img.youtube.com/vi/{youtube_video_id}/hqdefault.jpg"
+                thumbnail_url = f"https://img.youtube.com/vi/{youtube_video_id}/maxresdefault.jpg"
             if not video_url and youtube_video_id:
                 video_url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
