@@ -92,7 +92,7 @@ import { ThemeService } from '../../core/services/theme.service';
                   <div class="ad-thumb-container">
                     <img
                       class="ad-thumb"
-                      [src]="ad.asset_url || ad.thumbnail_url || '/assets/images/placeholder.svg'"
+                      [src]="getAdThumbnail(ad)"
                       [alt]="ad.ad_name"
                       (error)="onImgError($event)"
                     />
@@ -374,6 +374,12 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   openAdDetail(ad: any): void {
     this.router.navigate(['/dashboard'], { queryParams: { assetId: ad.id } });
+  }
+
+  getAdThumbnail(ad: any): string {
+    if (ad.thumbnail_url) return ad.thumbnail_url;
+    if (ad.asset_url && !ad.asset_url.endsWith('.mp4')) return ad.asset_url;
+    return '/assets/images/placeholder.svg';
   }
 
   onImgError(event: Event): void {

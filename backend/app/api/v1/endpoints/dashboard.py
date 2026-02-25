@@ -531,7 +531,7 @@ async def get_homepage_widgets(
     date_from = date_to - timedelta(days=6)
 
     widgets = {}
-    for platform in ["META", "TIKTOK", "YOUTUBE"]:
+    for platform in ["META", "TIKTOK", "GOOGLE_ADS", "DV360"]:
         perf_subq = (
             select(
                 HarmonizedPerformance.asset_id,
