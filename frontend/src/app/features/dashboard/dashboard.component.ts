@@ -134,7 +134,7 @@ import { format, subDays } from 'date-fns';
             <!-- Thumbnail -->
             <div class="tile-thumb">
               <img
-                [src]="asset.asset_url || asset.thumbnail_url || '/assets/images/placeholder.svg'"
+                [src]="getTileThumbnail(asset)"
                 [alt]="asset.ad_name"
                 (error)="onImgError($event)"
               />
@@ -740,6 +740,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (tag === 'Top Performer') return 'tag-top';
     if (tag === 'Below Average') return 'tag-below';
     return 'tag-avg';
+  }
+
+  getTileThumbnail(asset: any): string {
+    if (asset.thumbnail_url) return asset.thumbnail_url;
+    if (asset.asset_url && !asset.asset_url.endsWith('.mp4')) return asset.asset_url;
+    return '/assets/images/placeholder.svg';
   }
 
   onImgError(event: Event): void {
