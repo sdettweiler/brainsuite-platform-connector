@@ -19,7 +19,7 @@ from app.core.security import decrypt_token
 from app.services.platform.google_ads_oauth import google_ads_oauth
 
 _CREATIVES_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "static", "creatives")
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "static", "creatives")
 )
 
 logger = logging.getLogger(__name__)
