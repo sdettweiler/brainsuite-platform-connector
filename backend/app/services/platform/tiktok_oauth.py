@@ -39,11 +39,12 @@ TIKTOK_SCOPES = [
 
 class TikTokOAuthHandler:
 
-    def generate_auth_url(self, state: str) -> str:
+    def generate_auth_url(self, state: str, redirect_uri: str = "") -> str:
         """Generate TikTok OAuth popup URL."""
+        uri = redirect_uri or settings.get_redirect_uri("TIKTOK")
         params = {
             "app_id": settings.TIKTOK_APP_ID,
-            "redirect_uri": settings.TIKTOK_REDIRECT_URI,
+            "redirect_uri": uri,
             "state": state,
             "scope": ",".join(TIKTOK_SCOPES),
             "response_type": "code",

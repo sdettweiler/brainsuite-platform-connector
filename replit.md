@@ -45,7 +45,16 @@ replit_start.sh      # Startup script (installs deps, runs migrations, starts se
 - **CSS Variables**: All colors use CSS custom properties defined in `styles.scss` (--accent, --bg-primary, etc.)
 - **Logo Assets**: Located in `frontend/src/assets/images/` (orange, white, black, orange-white, signet variants)
 
+## OAuth Redirect URIs
+- Redirect URIs are now derived dynamically from the incoming HTTP request's `Host` header at runtime
+- `settings.get_redirect_uri_from_request(request, platform)` builds the URI from the request origin
+- OAuth handlers (`meta_oauth`, `tiktok_oauth`, `google_ads_oauth`, `dv360_oauth`) accept `redirect_uri` as an optional parameter
+- The redirect URI is stored in the in-memory OAuth session so the callback handler uses the same URI that was sent during init
+- Pattern: `https://{request_host}/api/v1/platforms/oauth/callback/{meta|tiktok|google|dv360}`
+- `_get_base_url()` in `config.py` detects deployment vs dev via `REPLIT_DEPLOYMENT` env var
+
 ## Recent Changes
+- 2026-02-25: Fixed OAuth redirect URIs for deployment — removed static `META_REDIRECT_URI`/`TIKTOK_REDIRECT_URI`/`GOOGLE_REDIRECT_URI`/`DV360_REDIRECT_URI` config fields. Redirect URIs are now computed at request time from the HTTP Host header, ensuring they match the actual domain (dev or production) the user is accessing. OAuth handlers accept `redirect_uri` parameter; `init_oauth` endpoint derives URI from request and stores in session for callback use.
 - 2026-02-25: Security dependency updates — Backend: aiohttp 3.9.1→3.9.4, cryptography 41.0.7→42.0.4, fastapi 0.104.1→0.115.0, python-jose 3.3.0→3.4.0, python-multipart 0.0.6→0.0.7. Frontend: Angular 16→17 (all @angular/* and @ngrx/* packages), zone.js 0.13→0.14, typescript 5.1→5.2, ngx-skeleton-loader 7→9. npm overrides applied for minimatch→10.2.3 and tar→7.5.9 (transitive build-tool deps).
 - 2026-02-23: Bootstrap Icons migration complete — replaced all Material Icons (`<mat-icon>`) with Bootstrap Icons (`<i class="bi bi-xxx">`) across all 15 component files (sidebar, header, home, dashboard, comparison, 4 dialogs, 4 config pages, date-range-picker). Removed all `MatIconModule` imports. Icon CSS loaded via `styles.scss`. Key mappings: home→house, bar_chart→bar-chart, compare→arrow-left-right, settings→gear, close→x-lg, add→plus-lg, etc.
 - 2026-02-23: Connections page rebuild — replaced flat card list with server-side paginated table view. Backend: GET /connections now returns `{items, total, page, page_size, status_summary}` with search (name/ID), platform filter (comma-separated), status filter, sort_by/sort_order, pagination params. Added POST /connections/bulk-action for resync/disconnect/assign_image_app/assign_video_app on multiple connections. Frontend: compact table with checkboxes, platform badges, inline app mapping dropdowns, status chips, search bar with debounce, platform filter chips, status dropdown, sort controls, pagination bar (25/50/100 per page), bulk action bar (resync/disconnect/assign app), status summary bar. Styles extracted to platforms.component.scss.

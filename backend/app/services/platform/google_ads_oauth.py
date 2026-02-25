@@ -38,23 +38,25 @@ GOOGLE_SCOPES = [
 
 class GoogleAdsOAuthHandler:
 
-    def generate_auth_url(self, state: str) -> str:
+    def generate_auth_url(self, state: str, redirect_uri: str = "") -> str:
         """Generate Google OAuth popup URL."""
+        uri = redirect_uri or settings.get_redirect_uri("GOOGLE_ADS")
         scope = " ".join(GOOGLE_SCOPES)
         params = {
             "client_id": settings.GOOGLE_CLIENT_ID,
-            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "redirect_uri": uri,
             "response_type": "code",
             "scope": scope,
-            "access_type": "offline",  # Required for refresh_token
-            "prompt": "consent",  # Force consent to always get refresh_token
+            "access_type": "offline",
+            "prompt": "consent",
             "state": state,
         }
         query = "&".join(f"{k}={v}" for k, v in params.items())
         return f"{GOOGLE_AUTH_URL}?{query}"
 
-    async def exchange_code_for_token(self, code: str) -> Dict[str, Any]:
+    async def exchange_code_for_token(self, code: str, redirect_uri: str = "") -> Dict[str, Any]:
         """Exchange authorization code for tokens."""
+        uri = redirect_uri or settings.get_redirect_uri("GOOGLE_ADS")
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 GOOGLE_TOKEN_URL,
@@ -62,7 +64,7 @@ class GoogleAdsOAuthHandler:
                     "code": code,
                     "client_id": settings.GOOGLE_CLIENT_ID,
                     "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                    "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+                    "redirect_uri": uri,
                     "grant_type": "authorization_code",
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},

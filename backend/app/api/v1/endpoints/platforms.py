@@ -6,7 +6,7 @@ import secrets
 import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 import uuid
@@ -163,6 +163,7 @@ async def delete_brainsuite_app_alias(
 @router.post("/oauth/init")
 async def init_oauth(
     payload: OAuthInitRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
 ):
     """Generate OAuth authorization URL for a platform."""
@@ -182,21 +183,24 @@ async def init_oauth(
     if not settings.DV360_CLIENT_ID and payload.platform == "DV360":
         raise HTTPException(status_code=503, detail="DV360 app credentials not configured")
 
+    redirect_uri = settings.get_redirect_uri_from_request(request, payload.platform)
+
     _oauth_sessions[session_id] = {
         "platform": payload.platform,
         "user_id": str(current_user.id),
         "org_id": str(current_user.organization_id),
         "created_at": datetime.utcnow().isoformat(),
+        "redirect_uri": redirect_uri,
     }
 
     if payload.platform == "META":
-        auth_url = meta_oauth.generate_auth_url(session_id)
+        auth_url = meta_oauth.generate_auth_url(session_id, redirect_uri)
     elif payload.platform == "TIKTOK":
-        auth_url = tiktok_oauth.generate_auth_url(session_id)
+        auth_url = tiktok_oauth.generate_auth_url(session_id, redirect_uri)
     elif payload.platform == "GOOGLE_ADS":
-        auth_url = google_ads_oauth.generate_auth_url(session_id)
+        auth_url = google_ads_oauth.generate_auth_url(session_id, redirect_uri)
     elif payload.platform == "DV360":
-        auth_url = dv360_oauth.generate_auth_url(session_id)
+        auth_url = dv360_oauth.generate_auth_url(session_id, redirect_uri)
     else:
         raise HTTPException(status_code=400, detail="Unknown platform")
 
@@ -460,19 +464,20 @@ async def platform_oauth_callback(
         return HTMLResponse(_make_callback_html(session_id, False, error))
 
     effective_code = auth_code or code
+    stored_redirect_uri = session.get("redirect_uri", "")
 
     try:
         if platform == "META":
-            tokens = await meta_oauth.exchange_code_for_token(effective_code)
+            tokens = await meta_oauth.exchange_code_for_token(effective_code, stored_redirect_uri)
             accounts = await meta_oauth.fetch_ad_accounts(tokens["access_token"])
         elif platform == "TIKTOK":
             tokens = await tiktok_oauth.exchange_code_for_token(effective_code)
             accounts = await tiktok_oauth.fetch_advertiser_accounts(tokens["access_token"])
         elif platform == "GOOGLE_ADS":
-            tokens = await google_ads_oauth.exchange_code_for_token(effective_code)
+            tokens = await google_ads_oauth.exchange_code_for_token(effective_code, stored_redirect_uri)
             accounts = await google_ads_oauth.fetch_accessible_customers(tokens["access_token"])
         elif platform == "DV360":
-            tokens = await dv360_oauth.exchange_code_for_token(effective_code)
+            tokens = await dv360_oauth.exchange_code_for_token(effective_code, stored_redirect_uri)
             accounts = await dv360_oauth.fetch_accessible_advertisers(tokens["access_token"])
         else:
             return HTMLResponse(_make_callback_html(session_id, False, "Unknown platform"))

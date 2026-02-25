@@ -6,7 +6,10 @@ import secrets
 
 
 def _get_base_url() -> str:
-    domain = os.environ.get("REPLIT_DEV_DOMAIN") or os.environ.get("REPLIT_DOMAINS", "").split(",")[0]
+    if os.environ.get("REPLIT_DEPLOYMENT") == "1":
+        domain = os.environ.get("REPLIT_DOMAINS", "").split(",")[0]
+    else:
+        domain = os.environ.get("REPLIT_DEV_DOMAIN") or os.environ.get("REPLIT_DOMAINS", "").split(",")[0]
     if domain:
         return f"https://{domain}"
     return "http://localhost:5000"
@@ -34,23 +37,19 @@ class Settings(BaseSettings):
     # Meta
     META_APP_ID: Optional[str] = None
     META_APP_SECRET: Optional[str] = None
-    META_REDIRECT_URI: str = f"{_get_base_url()}/api/v1/platforms/oauth/callback/meta"
 
     # TikTok
     TIKTOK_APP_ID: Optional[str] = None
     TIKTOK_APP_SECRET: Optional[str] = None
-    TIKTOK_REDIRECT_URI: str = f"{_get_base_url()}/api/v1/platforms/oauth/callback/tiktok"
 
     # Google Ads
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_REDIRECT_URI: str = f"{_get_base_url()}/api/v1/platforms/oauth/callback/google"
     GOOGLE_DEVELOPER_TOKEN: Optional[str] = None
 
     # DV360
     DV360_CLIENT_ID: Optional[str] = None
     DV360_CLIENT_SECRET: Optional[str] = None
-    DV360_REDIRECT_URI: str = f"{_get_base_url()}/api/v1/platforms/oauth/callback/dv360"
 
     # Currency
     EXCHANGERATE_API_KEY: Optional[str] = None
@@ -59,6 +58,36 @@ class Settings(BaseSettings):
 
     # Token encryption
     TOKEN_ENCRYPTION_KEY: Optional[str] = None
+
+    def get_base_url(self) -> str:
+        return _get_base_url()
+
+    def get_redirect_uri(self, platform: str) -> str:
+        platform_keys = {
+            "META": "meta",
+            "TIKTOK": "tiktok",
+            "GOOGLE_ADS": "google",
+            "DV360": "dv360",
+        }
+        key = platform_keys.get(platform, platform.lower())
+        return f"{self.get_base_url()}/api/v1/platforms/oauth/callback/{key}"
+
+    @staticmethod
+    def get_redirect_uri_from_request(request, platform: str) -> str:
+        platform_keys = {
+            "META": "meta",
+            "TIKTOK": "tiktok",
+            "GOOGLE_ADS": "google",
+            "DV360": "dv360",
+        }
+        key = platform_keys.get(platform, platform.lower())
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        scheme = request.headers.get("x-forwarded-proto", "https")
+        if host:
+            base = f"{scheme}://{host}"
+        else:
+            base = str(request.base_url).rstrip("/")
+        return f"{base}/api/v1/platforms/oauth/callback/{key}"
 
     class Config:
         env_file = ".env"

@@ -37,12 +37,13 @@ DV360_SCOPES = [
 
 class DV360OAuthHandler:
 
-    def generate_auth_url(self, state: str) -> str:
+    def generate_auth_url(self, state: str, redirect_uri: str = "") -> str:
         """Generate Google OAuth popup URL for DV360 scopes."""
+        uri = redirect_uri or settings.get_redirect_uri("DV360")
         scope = " ".join(DV360_SCOPES)
         params = {
             "client_id": settings.DV360_CLIENT_ID,
-            "redirect_uri": settings.DV360_REDIRECT_URI,
+            "redirect_uri": uri,
             "response_type": "code",
             "scope": scope,
             "access_type": "offline",
@@ -52,8 +53,9 @@ class DV360OAuthHandler:
         query = "&".join(f"{k}={v}" for k, v in params.items())
         return f"{GOOGLE_AUTH_URL}?{query}"
 
-    async def exchange_code_for_token(self, code: str) -> Dict[str, Any]:
+    async def exchange_code_for_token(self, code: str, redirect_uri: str = "") -> Dict[str, Any]:
         """Exchange authorization code for tokens."""
+        uri = redirect_uri or settings.get_redirect_uri("DV360")
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 GOOGLE_TOKEN_URL,
@@ -61,7 +63,7 @@ class DV360OAuthHandler:
                     "code": code,
                     "client_id": settings.DV360_CLIENT_ID,
                     "client_secret": settings.DV360_CLIENT_SECRET,
-                    "redirect_uri": settings.DV360_REDIRECT_URI,
+                    "redirect_uri": uri,
                     "grant_type": "authorization_code",
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},

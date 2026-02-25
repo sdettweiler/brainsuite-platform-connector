@@ -41,11 +41,12 @@ META_SCOPES = [
 
 class MetaOAuthHandler:
 
-    def generate_auth_url(self, state: str) -> str:
+    def generate_auth_url(self, state: str, redirect_uri: str = "") -> str:
         """Generate Facebook OAuth popup URL."""
+        uri = redirect_uri or settings.get_redirect_uri("META")
         params = {
             "client_id": settings.META_APP_ID,
-            "redirect_uri": settings.META_REDIRECT_URI,
+            "redirect_uri": uri,
             "scope": ",".join(META_SCOPES),
             "response_type": "code",
             "state": state,
@@ -53,8 +54,9 @@ class MetaOAuthHandler:
         query = "&".join(f"{k}={v}" for k, v in params.items())
         return f"{META_AUTH_URL}?{query}"
 
-    async def exchange_code_for_token(self, code: str) -> Dict[str, Any]:
+    async def exchange_code_for_token(self, code: str, redirect_uri: str = "") -> Dict[str, Any]:
         """Exchange authorization code for short-lived access token, then upgrade to long-lived."""
+        uri = redirect_uri or settings.get_redirect_uri("META")
         async with httpx.AsyncClient() as client:
             # Step 1: Get short-lived token
             resp = await client.get(
@@ -62,7 +64,7 @@ class MetaOAuthHandler:
                 params={
                     "client_id": settings.META_APP_ID,
                     "client_secret": settings.META_APP_SECRET,
-                    "redirect_uri": settings.META_REDIRECT_URI,
+                    "redirect_uri": uri,
                     "code": code,
                 },
             )
