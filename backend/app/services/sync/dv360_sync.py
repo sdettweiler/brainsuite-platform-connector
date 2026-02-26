@@ -434,8 +434,6 @@ class DV360SyncService:
                     "METRIC_BILLABLE_IMPRESSIONS",
                     "METRIC_AVERAGE_IMPRESSION_FREQUENCY_PER_USER",
                     "METRIC_TRUEVIEW_VIEW_RATE",
-                    "METRIC_COMPANION_IMPRESSIONS",
-                    "METRIC_COMPANION_CLICKS",
                     "METRIC_COST_PER_ACTION_ADVERTISER",
                 ],
                 "filters": [
