@@ -286,10 +286,7 @@ class DV360SyncService:
         page_token = None
 
         while True:
-            params: Dict[str, Any] = {
-                "pageSize": 100,
-                "view": "CREATIVE_VIEW_FULL",
-            }
+            params: Dict[str, Any] = {"pageSize": 100}
             if page_token:
                 params["pageToken"] = page_token
 
@@ -387,6 +384,7 @@ class DV360SyncService:
                 "groupBys": [
                     "FILTER_DATE",
                     "FILTER_ADVERTISER",
+                    "FILTER_ADVERTISER_CURRENCY",
                     "FILTER_INSERTION_ORDER",
                     "FILTER_LINE_ITEM",
                     "FILTER_CREATIVE_ID",
@@ -623,7 +621,7 @@ class DV360SyncService:
                 "ad_type": li_type,
                 "thumbnail_url": thumbnail_url,
                 "asset_format": asset_format,
-                "currency": connection.currency,
+                "currency": r.get("Advertiser Currency") or connection.currency,
                 "spend": spend,
                 "impressions": impressions,
                 "clicks": clicks,
