@@ -53,7 +53,15 @@ replit_start.sh      # Startup script (installs deps, runs migrations, starts se
 - Pattern: `https://{request_host}/api/v1/platforms/oauth/callback/{meta|tiktok|google|dv360}`
 - `_get_base_url()` in `config.py` detects deployment vs dev via `REPLIT_DEPLOYMENT` env var
 
+## DV360 Dual-API Architecture
+The DV360 integration uses two separate Google APIs:
+- **DV360 API v4** (`displayvideo.googleapis.com/v4`): OAuth advertiser listing + entity metadata (campaigns, insertion orders, line items, creatives). Provides names, types, statuses, thumbnails, and the campaign→IO→LI hierarchy.
+- **Bid Manager API v2** (`doubleclickbidmanager.googleapis.com/v2`): Reporting queries. Creates query, runs it, polls for completion, downloads CSV with performance metrics.
+- Sync flow: fetch v4 entity maps → run Bid Manager report → enrich CSV records with v4 metadata → upsert into `dv360_raw_performance`.
+- Key files: `dv360_oauth.py` (OAuth + advertiser listing via v4), `dv360_sync.py` (entity metadata via v4 + reporting via Bid Manager v2).
+
 ## Recent Changes
+- 2026-02-26: DV360 API v4 entity metadata integration — sync now fetches campaigns, insertion orders, line items, and creatives from DV360 API v4 to enrich Bid Manager report records with proper names, types, creative details, and campaign hierarchy (campaign→IO→LI). Upsert now updates metadata fields on conflict. Restored `campaign_id` field via IO→campaign lookup since Bid Manager v2 removed `FILTER_CAMPAIGN_ID`.
 - 2026-02-25: Added YouTube cookie authentication for yt-dlp video downloads. `YOUTUBE_COOKIES` env var (Netscape cookie format) is written to a temp file at runtime and passed to yt-dlp via `cookiefile` option. Cookies expire periodically and need manual refresh.
 - 2026-02-25: Fixed OAuth redirect URIs for deployment — removed static `META_REDIRECT_URI`/`TIKTOK_REDIRECT_URI`/`GOOGLE_REDIRECT_URI`/`DV360_REDIRECT_URI` config fields. Redirect URIs are now computed at request time from the HTTP Host header, ensuring they match the actual domain (dev or production) the user is accessing. OAuth handlers accept `redirect_uri` parameter; `init_oauth` endpoint derives URI from request and stores in session for callback use.
 - 2026-02-25: Security dependency updates — Backend: aiohttp 3.9.1→3.9.4, cryptography 41.0.7→42.0.4, fastapi 0.104.1→0.115.0, python-jose 3.3.0→3.4.0, python-multipart 0.0.6→0.0.7. Frontend: Angular 16→17 (all @angular/* and @ngrx/* packages), zone.js 0.13→0.14, typescript 5.1→5.2, ngx-skeleton-loader 7→9. npm overrides applied for minimatch→10.2.3 and tar→7.5.9 (transitive build-tool deps).
