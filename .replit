@@ -2,7 +2,7 @@ modules = ["python-3.12", "nodejs-20", "bash", "web", "postgresql-16"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["imagemagick", "libxcrypt", "ffmpeg"]
+packages = ["imagemagick", "libxcrypt", "ffmpeg", "deno"]
 
 [[ports]]
 localPort = 5000

@@ -738,10 +738,9 @@ class DV360SyncService:
                 "outtmpl": local_path,
                 "format": "bv*+ba/b",
                 "quiet": True,
-                "no_warnings": True,
+                "no_warnings": False,
                 "socket_timeout": 30,
                 "merge_output_format": "mp4",
-                "ignore_no_formats_error": True,
             }
             cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
             cookie_file = None
