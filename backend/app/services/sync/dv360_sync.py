@@ -496,13 +496,24 @@ class DV360SyncService:
         return records
 
     def _parse_csv(self, csv_text: str) -> List[Dict[str, Any]]:
-        """Parse Bid Manager v2 CSV report output into records."""
+        """Parse Bid Manager v2 CSV report output into records.
+        
+        Bid Manager CSVs may contain non-data rows at the end such as
+        'No data returned by the reporting service.' or 'Filter by Partner ID:'.
+        We validate that the Date field is a real YYYY/MM/DD date before including.
+        """
         records = []
         reader = csv.DictReader(io.StringIO(csv_text))
         for row in reader:
-            if not row.get("Date"):
+            date_val = row.get("Date", "")
+            if not date_val:
                 continue
-            records.append(row)
+            try:
+                parts = date_val.replace("-", "/").split("/")
+                if len(parts) == 3 and all(p.isdigit() for p in parts):
+                    records.append(row)
+            except Exception:
+                continue
         return records
 
     async def _upsert_records(
