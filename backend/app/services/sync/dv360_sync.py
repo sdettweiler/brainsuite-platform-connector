@@ -90,7 +90,7 @@ class DV360SyncService:
             "metadata": {
                 "title": f"brainsuite_dv360_{advertiser_id}_{date_from}_{date_to}",
                 "dataRange": {
-                    "range": "RANGE_TYPE_CUSTOM",
+                    "range": "CUSTOM_DATES",
                     "customStartDate": {
                         "year": date_from.year,
                         "month": date_from.month,
@@ -105,7 +105,7 @@ class DV360SyncService:
                 "format": "CSV",
             },
             "params": {
-                "type": "TYPE_GENERAL",
+                "type": "STANDARD",
                 "groupBys": [
                     "FILTER_DATE",
                     "FILTER_ADVERTISER",
