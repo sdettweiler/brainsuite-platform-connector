@@ -706,7 +706,7 @@ class HarmonizationService:
                     if spend is not None and clicks:
                         cpc = Decimal(str(float(spend) / clicks))
 
-                    publisher_platform = row.channel_name or row.media_type or ""
+                    publisher_platform = row.media_type or ""
                     platform_position = row.ad_position or ""
                     frequency = row.average_impression_frequency if row.average_impression_frequency is not None else row.frequency
                     vtr = row.video_view_rate
@@ -800,9 +800,6 @@ class HarmonizationService:
                             "post_click_conversions": row.post_click_conversions,
                             "post_view_conversions": row.post_view_conversions,
                             "active_view_viewability": row.active_view_viewability,
-                            "channel_id": row.channel_id,
-                            "channel_type": row.channel_type,
-                            "channel_name": row.channel_name,
                             "io_goal_type": row.io_goal_type,
                             "advertiser_timezone": row.advertiser_timezone,
                             "youtube_ad_video_id": row.youtube_ad_video_id,
