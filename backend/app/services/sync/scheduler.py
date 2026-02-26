@@ -70,7 +70,24 @@ async def run_daily_sync(connection_id: str) -> None:
             else:
                 result = {"fetched": 0, "upserted": 0}
 
-            # Harmonize new data
+            job.records_fetched = result.get("fetched", 0)
+            db.add(job)
+            await db.commit()
+            logger.info(f"Daily sync raw data committed for {connection.platform}: {result}")
+
+        except Exception as e:
+            logger.error(f"Daily sync fetch failed for connection {connection_id}: {e}")
+            await db.rollback()
+            job.status = "FAILED"
+            job.error_message = str(e)[:4000]
+            job.completed_at = datetime.utcnow()
+            db.add(job)
+            connection.sync_status = "ERROR"
+            db.add(connection)
+            await db.commit()
+            return
+
+        try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
 
             connection.last_synced_at = datetime.utcnow()
@@ -79,7 +96,6 @@ async def run_daily_sync(connection_id: str) -> None:
 
             job.status = "COMPLETED"
             job.completed_at = datetime.utcnow()
-            job.records_fetched = result.get("fetched", 0)
             job.records_processed = harmonized
             db.add(job)
 
@@ -87,10 +103,10 @@ async def run_daily_sync(connection_id: str) -> None:
             logger.info(f"Daily sync completed for {connection.platform} {connection.ad_account_id}: {result}")
 
         except Exception as e:
-            logger.error(f"Daily sync failed for connection {connection_id}: {e}")
+            logger.error(f"Daily sync harmonization failed for connection {connection_id}: {e}")
             await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)[:4000]
+            job.error_message = f"Harmonization: {str(e)[:3980]}"
             job.completed_at = datetime.utcnow()
             db.add(job)
             connection.sync_status = "ERROR"
@@ -152,6 +168,26 @@ async def run_full_resync(connection_id: str) -> None:
             else:
                 sync_result = {"fetched": 0}
 
+            job.records_fetched = sync_result.get("fetched", 0)
+            db.add(job)
+            await db.commit()
+            logger.info(f"Full resync raw data committed for {connection.platform}: {sync_result}")
+
+        except Exception as e:
+            logger.error(f"Full resync fetch failed for connection {connection_id}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            await db.rollback()
+            job.status = "FAILED"
+            job.error_message = str(e)[:4000]
+            job.completed_at = datetime.utcnow()
+            db.add(job)
+            connection.sync_status = "ERROR"
+            db.add(connection)
+            await db.commit()
+            return
+
+        try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
 
             connection.last_synced_at = datetime.utcnow()
@@ -160,7 +196,6 @@ async def run_full_resync(connection_id: str) -> None:
 
             job.status = "COMPLETED"
             job.completed_at = datetime.utcnow()
-            job.records_fetched = sync_result.get("fetched", 0)
             job.records_processed = harmonized
             db.add(job)
 
@@ -168,10 +203,12 @@ async def run_full_resync(connection_id: str) -> None:
             logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
 
         except Exception as e:
-            logger.error(f"Full resync failed for connection {connection_id}: {e}")
+            logger.error(f"Full resync harmonization failed for connection {connection_id}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)[:4000]
+            job.error_message = f"Harmonization: {str(e)[:3980]}"
             job.completed_at = datetime.utcnow()
             db.add(job)
             connection.sync_status = "ERROR"
@@ -230,6 +267,21 @@ async def run_initial_sync(connection_id: str) -> None:
             else:
                 sync_result = {"fetched": 0}
 
+            job.records_fetched = sync_result.get("fetched", 0)
+            db.add(job)
+            await db.commit()
+            logger.info(f"Initial sync raw data committed for {connection.platform}: {sync_result}")
+
+        except Exception as e:
+            logger.error(f"Initial sync fetch failed for {connection_id}: {e}")
+            await db.rollback()
+            job.status = "FAILED"
+            job.error_message = str(e)[:4000]
+            db.add(job)
+            await db.commit()
+            return
+
+        try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
 
             connection.initial_sync_completed = True
@@ -238,20 +290,18 @@ async def run_initial_sync(connection_id: str) -> None:
 
             job.status = "COMPLETED"
             job.completed_at = datetime.utcnow()
-            job.records_fetched = sync_result.get("fetched", 0)
             job.records_processed = harmonized
             db.add(job)
 
             await db.commit()
 
-            # Kick off historical sync in background
             asyncio.create_task(run_historical_sync(connection_id))
 
         except Exception as e:
-            logger.error(f"Initial sync failed for {connection_id}: {e}")
+            logger.error(f"Initial sync harmonization failed for {connection_id}: {e}")
             await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)[:4000]
+            job.error_message = f"Harmonization: {str(e)[:3980]}"
             db.add(job)
             await db.commit()
 
@@ -307,6 +357,21 @@ async def run_historical_sync(connection_id: str) -> None:
             else:
                 sync_result = {"fetched": 0}
 
+            job.records_fetched = sync_result.get("fetched", 0)
+            db.add(job)
+            await db.commit()
+            logger.info(f"Historical sync raw data committed for {connection.platform}: {sync_result}")
+
+        except Exception as e:
+            logger.error(f"Historical sync fetch failed for {connection_id}: {e}")
+            await db.rollback()
+            job.status = "FAILED"
+            job.error_message = str(e)[:4000]
+            db.add(job)
+            await db.commit()
+            return
+
+        try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
 
             connection.historical_sync_completed = True
@@ -314,17 +379,16 @@ async def run_historical_sync(connection_id: str) -> None:
 
             job.status = "COMPLETED"
             job.completed_at = datetime.utcnow()
-            job.records_fetched = sync_result.get("fetched", 0)
             job.records_processed = harmonized
             db.add(job)
 
             await db.commit()
 
         except Exception as e:
-            logger.error(f"Historical sync failed for {connection_id}: {e}")
+            logger.error(f"Historical sync harmonization failed for {connection_id}: {e}")
             await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)[:4000]
+            job.error_message = f"Harmonization: {str(e)[:3980]}"
             db.add(job)
             await db.commit()
 

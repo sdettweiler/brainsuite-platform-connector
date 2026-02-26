@@ -517,8 +517,8 @@ class HarmonizedPerformance(Base):
     ad_id: Mapped[str] = mapped_column(String(255), nullable=False)
     ad_name: Mapped[str] = mapped_column(String(1000), nullable=True)
     asset_format: Mapped[str] = mapped_column(String(50), nullable=True)
-    publisher_platform: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
-    platform_position: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
+    publisher_platform: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
+    platform_position: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
 
     org_currency: Mapped[str] = mapped_column(String(3), nullable=False)
     original_currency: Mapped[str] = mapped_column(String(3), nullable=True)

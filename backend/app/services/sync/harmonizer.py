@@ -670,161 +670,166 @@ class HarmonizationService:
             return 0
 
         harmonized_count = 0
+        error_count = 0
         for row in rows:
             try:
-                asset = await self._ensure_asset(
-                    db,
-                    connection=connection,
-                    platform="DV360",
-                    ad_id=row.ad_id,
-                    ad_name=row.ad_name or row.creative_name,
-                    creative_id=row.creative_id,
-                    ad_account_id=row.ad_account_id,
-                    thumbnail_url=row.thumbnail_url,
-                    asset_url=row.asset_url,
-                    video_duration=row.video_duration_seconds,
-                    asset_format=row.asset_format or "DISPLAY",
-                    first_seen_at=row.report_date,
-                )
+                async with db.begin_nested():
+                    asset = await self._ensure_asset(
+                        db,
+                        connection=connection,
+                        platform="DV360",
+                        ad_id=row.ad_id,
+                        ad_name=row.ad_name or row.creative_name,
+                        creative_id=row.creative_id,
+                        ad_account_id=row.ad_account_id,
+                        thumbnail_url=row.thumbnail_url,
+                        asset_url=row.asset_url,
+                        video_duration=row.video_duration_seconds,
+                        asset_format=row.asset_format or "DISPLAY",
+                        first_seen_at=row.report_date,
+                    )
 
-                original_currency = row.currency or connection.currency or "USD"
-                exchange_rate = await currency_converter.get_rate(
-                    db, original_currency, org_currency, row.report_date
-                )
-                convert = self._make_converter(exchange_rate)
+                    original_currency = row.currency or connection.currency or "USD"
+                    exchange_rate = await currency_converter.get_rate(
+                        db, original_currency, org_currency, row.report_date
+                    )
+                    convert = self._make_converter(exchange_rate)
 
-                spend = convert(row.spend)
-                impressions = row.impressions or 0
-                clicks = row.clicks or 0
+                    spend = convert(row.spend)
+                    impressions = row.impressions or 0
+                    clicks = row.clicks or 0
 
-                cpm = None
-                if spend is not None and impressions:
-                    cpm = Decimal(str(float(spend) / impressions * 1000))
-                cpc = None
-                if spend is not None and clicks:
-                    cpc = Decimal(str(float(spend) / clicks))
+                    cpm = None
+                    if spend is not None and impressions:
+                        cpm = Decimal(str(float(spend) / impressions * 1000))
+                    cpc = None
+                    if spend is not None and clicks:
+                        cpc = Decimal(str(float(spend) / clicks))
 
-                publisher_platform = row.channel_name or row.media_type or ""
-                platform_position = row.ad_position or ""
-                frequency = row.average_impression_frequency if row.average_impression_frequency is not None else row.frequency
-                vtr = row.video_view_rate
+                    publisher_platform = row.channel_name or row.media_type or ""
+                    platform_position = row.ad_position or ""
+                    frequency = row.average_impression_frequency if row.average_impression_frequency is not None else row.frequency
+                    vtr = row.video_view_rate
 
-                h_row = {
-                    "asset_id": asset.id,
-                    "platform_connection_id": connection.id,
-                    "report_date": row.report_date,
-                    "platform": "DV360",
-                    "ad_account_id": row.ad_account_id,
-                    "campaign_id": row.campaign_id,
-                    "campaign_name": row.campaign_name,
-                    "campaign_objective": None,
-                    "ad_set_id": row.line_item_id,
-                    "ad_set_name": row.line_item_name,
-                    "ad_id": row.ad_id,
-                    "ad_name": row.ad_name or row.creative_name,
-                    "asset_format": row.asset_format or "DISPLAY",
-                    "publisher_platform": publisher_platform,
-                    "platform_position": platform_position,
-                    "org_currency": org_currency,
-                    "original_currency": original_currency,
-                    "exchange_rate": exchange_rate,
-                    "spend": spend,
-                    "impressions": impressions,
-                    "reach": row.reach,
-                    "frequency": frequency,
-                    "cpm": cpm,
-                    "cpp": None,
-                    "clicks": clicks,
-                    "cpc": cpc,
-                    "ctr": row.ctr,
-                    "outbound_clicks": None,
-                    "outbound_ctr": None,
-                    "cpv": None,
-                    "video_plays": row.video_plays,
-                    "video_views": row.trueview_views,
-                    "vtr": vtr,
-                    "video_p25": row.video_first_quartile,
-                    "video_p50": row.video_midpoint,
-                    "video_p75": row.video_third_quartile,
-                    "video_p100": row.video_completions,
-                    "video_completion_rate": row.video_completion_rate,
-                    "video_avg_watch_time_seconds": None,
-                    "cost_per_view": None,
-                    "thruplay": None,
-                    "cost_per_thruplay": None,
-                    "focused_view": None,
-                    "cost_per_focused_view": None,
-                    "trueview_views": row.trueview_views,
-                    "post_engagements": row.engagements,
-                    "likes": None,
-                    "comments": None,
-                    "shares": None,
-                    "follows": None,
-                    "conversions": int(row.total_conversions or 0),
-                    "conversion_value": convert(row.conversion_value),
-                    "cvr": None,
-                    "cost_per_conversion": convert(row.cost_per_conversion),
-                    "roas": row.roas,
-                    "purchases": None,
-                    "purchase_value": None,
-                    "purchase_roas": None,
-                    "leads": None,
-                    "cost_per_lead": None,
-                    "app_installs": None,
-                    "cost_per_install": None,
-                    "in_app_purchases": None,
-                    "in_app_purchase_value": None,
-                    "in_app_purchase_roas": None,
-                    "subscribe": None,
-                    "offline_purchases": None,
-                    "offline_purchase_value": None,
-                    "messaging_conversations_started": None,
-                    "estimated_ad_recallers": None,
-                    "estimated_ad_recall_rate": None,
-                    "quality_ranking": None,
-                    "engagement_rate_ranking": None,
-                    "conversion_rate_ranking": None,
-                    "creative_fatigue": None,
-                    "unique_clicks": None,
-                    "unique_ctr": None,
-                    "inline_link_clicks": None,
-                    "inline_link_click_ctr": None,
-                    "video_3_sec_watched": None,
-                    "video_30_sec_watched": None,
-                    "platform_extras": {
-                        "insertion_order_id": row.insertion_order_id,
-                        "insertion_order_name": row.insertion_order_name,
-                        "post_click_conversions": row.post_click_conversions,
-                        "post_view_conversions": row.post_view_conversions,
-                        "active_view_viewability": row.active_view_viewability,
-                        "channel_id": row.channel_id,
-                        "channel_type": row.channel_type,
-                        "channel_name": row.channel_name,
-                        "io_goal_type": row.io_goal_type,
-                        "advertiser_timezone": row.advertiser_timezone,
-                        "youtube_ad_video_id": row.youtube_ad_video_id,
-                        "billable_cost": float(row.billable_cost) if row.billable_cost else None,
-                        "billable_impressions": row.billable_impressions,
-                        "ad_position": row.ad_position,
-                        "ad_type": row.ad_type,
-                        "media_type": row.media_type,
-                    },
-                }
+                    h_row = {
+                        "asset_id": asset.id,
+                        "platform_connection_id": connection.id,
+                        "report_date": row.report_date,
+                        "platform": "DV360",
+                        "ad_account_id": row.ad_account_id,
+                        "campaign_id": row.campaign_id,
+                        "campaign_name": row.campaign_name,
+                        "campaign_objective": None,
+                        "ad_set_id": row.line_item_id,
+                        "ad_set_name": row.line_item_name,
+                        "ad_id": row.ad_id,
+                        "ad_name": row.ad_name or row.creative_name,
+                        "asset_format": row.asset_format or "DISPLAY",
+                        "publisher_platform": publisher_platform,
+                        "platform_position": platform_position,
+                        "org_currency": org_currency,
+                        "original_currency": original_currency,
+                        "exchange_rate": exchange_rate,
+                        "spend": spend,
+                        "impressions": impressions,
+                        "reach": row.reach,
+                        "frequency": frequency,
+                        "cpm": cpm,
+                        "cpp": None,
+                        "clicks": clicks,
+                        "cpc": cpc,
+                        "ctr": row.ctr,
+                        "outbound_clicks": None,
+                        "outbound_ctr": None,
+                        "cpv": None,
+                        "video_plays": row.video_plays,
+                        "video_views": row.trueview_views,
+                        "vtr": vtr,
+                        "video_p25": row.video_first_quartile,
+                        "video_p50": row.video_midpoint,
+                        "video_p75": row.video_third_quartile,
+                        "video_p100": row.video_completions,
+                        "video_completion_rate": row.video_completion_rate,
+                        "video_avg_watch_time_seconds": None,
+                        "cost_per_view": None,
+                        "thruplay": None,
+                        "cost_per_thruplay": None,
+                        "focused_view": None,
+                        "cost_per_focused_view": None,
+                        "trueview_views": row.trueview_views,
+                        "post_engagements": row.engagements,
+                        "likes": None,
+                        "comments": None,
+                        "shares": None,
+                        "follows": None,
+                        "conversions": int(row.total_conversions or 0),
+                        "conversion_value": convert(row.conversion_value),
+                        "cvr": None,
+                        "cost_per_conversion": convert(row.cost_per_conversion),
+                        "roas": row.roas,
+                        "purchases": None,
+                        "purchase_value": None,
+                        "purchase_roas": None,
+                        "leads": None,
+                        "cost_per_lead": None,
+                        "app_installs": None,
+                        "cost_per_install": None,
+                        "in_app_purchases": None,
+                        "in_app_purchase_value": None,
+                        "in_app_purchase_roas": None,
+                        "subscribe": None,
+                        "offline_purchases": None,
+                        "offline_purchase_value": None,
+                        "messaging_conversations_started": None,
+                        "estimated_ad_recallers": None,
+                        "estimated_ad_recall_rate": None,
+                        "quality_ranking": None,
+                        "engagement_rate_ranking": None,
+                        "conversion_rate_ranking": None,
+                        "creative_fatigue": None,
+                        "unique_clicks": None,
+                        "unique_ctr": None,
+                        "inline_link_clicks": None,
+                        "inline_link_click_ctr": None,
+                        "video_3_sec_watched": None,
+                        "video_30_sec_watched": None,
+                        "harmonized_at": datetime.utcnow(),
+                        "platform_extras": {
+                            "insertion_order_id": row.insertion_order_id,
+                            "insertion_order_name": row.insertion_order_name,
+                            "post_click_conversions": row.post_click_conversions,
+                            "post_view_conversions": row.post_view_conversions,
+                            "active_view_viewability": row.active_view_viewability,
+                            "channel_id": row.channel_id,
+                            "channel_type": row.channel_type,
+                            "channel_name": row.channel_name,
+                            "io_goal_type": row.io_goal_type,
+                            "advertiser_timezone": row.advertiser_timezone,
+                            "youtube_ad_video_id": row.youtube_ad_video_id,
+                            "billable_cost": float(row.billable_cost) if row.billable_cost else None,
+                            "billable_impressions": row.billable_impressions,
+                            "ad_position": row.ad_position,
+                            "ad_type": row.ad_type,
+                            "media_type": row.media_type,
+                        },
+                    }
 
-                await self._upsert_harmonized(db, h_row)
-                row.is_processed = True
-                db.add(row)
-                harmonized_count += 1
-
-                if harmonized_count % 500 == 0:
-                    await db.flush()
+                    await self._upsert_harmonized(db, h_row)
+                    row.is_processed = True
+                    db.add(row)
+                    harmonized_count += 1
 
             except Exception as e:
-                logger.error(f"Harmonization error for DV360 record {row.id}: {e}")
+                error_count += 1
+                if error_count <= 5:
+                    logger.error(f"Harmonization error for DV360 record {row.id} (ad={row.ad_id}): {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
                 continue
 
-        await db.flush()
-        logger.info(f"Harmonized {harmonized_count} DV360 records for connection {connection.id}")
+        if harmonized_count > 0:
+            await db.flush()
+        logger.info(f"Harmonized {harmonized_count} DV360 records for connection {connection.id} ({error_count} errors)")
         return harmonized_count
 
     async def _ensure_asset(

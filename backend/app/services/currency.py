@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 class CurrencyConverterService:
     """Fetches and caches daily exchange rates. Primary: exchangerate-api.com, Fallback: frankfurter.app"""
 
+    def __init__(self):
+        self._mem_cache: dict[tuple, float] = {}
+
     async def get_rate(
         self,
         db: AsyncSession,
@@ -25,20 +28,24 @@ class CurrencyConverterService:
             return 1.0
 
         target_date = rate_date or date.today()
+        cache_key = (from_currency.upper(), to_currency.upper(), target_date)
 
-        # Check DB cache first
+        if cache_key in self._mem_cache:
+            return self._mem_cache[cache_key]
+
         cached = await self._get_cached_rate(db, from_currency, to_currency, target_date)
         if cached:
+            self._mem_cache[cache_key] = cached
             return cached
 
-        # Fetch from API
         rate = await self._fetch_rate(from_currency, to_currency, target_date)
         if rate:
+            self._mem_cache[cache_key] = rate
             await self._cache_rate(db, from_currency, to_currency, target_date, rate)
             return rate
 
-        # Last resort: 1.0 with warning
         logger.error(f"Could not fetch exchange rate {from_currency}->{to_currency} for {target_date}, using 1.0")
+        self._mem_cache[cache_key] = 1.0
         return 1.0
 
     async def convert(
@@ -76,18 +83,19 @@ class CurrencyConverterService:
         rate: float,
         source: str = "api",
     ) -> None:
-        record = CurrencyRate(
-            rate_date=rate_date,
-            from_currency=from_currency.upper(),
-            to_currency=to_currency.upper(),
-            rate=rate,
-            source=source,
-        )
-        db.add(record)
         try:
-            await db.flush()
+            async with db.begin_nested():
+                record = CurrencyRate(
+                    rate_date=rate_date,
+                    from_currency=from_currency.upper(),
+                    to_currency=to_currency.upper(),
+                    rate=rate,
+                    source=source,
+                )
+                db.add(record)
+                await db.flush()
         except Exception:
-            await db.rollback()
+            pass
 
     async def _fetch_rate(
         self, from_currency: str, to_currency: str, rate_date: date

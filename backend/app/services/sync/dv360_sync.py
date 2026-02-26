@@ -801,7 +801,8 @@ class DV360SyncService:
             if not campaign_name and campaign_id:
                 campaign_name = f"Campaign {campaign_id}"
 
-            if org_dir and org_id and csv_yt_video_id:
+            skip_downloads = len(records) > 500
+            if org_dir and org_id and csv_yt_video_id and not skip_downloads:
                 try:
                     vid_path, vid_served = await self._download_video_asset(
                         csv_yt_video_id, org_dir, org_id, ad_id
@@ -817,7 +818,7 @@ class DV360SyncService:
                         thumbnail_url = thumb_served
                 except Exception as e:
                     logger.warning(f"  Asset download failed for DV360 ad {ad_id}: {e}")
-            elif org_dir and org_id and thumbnail_url and thumbnail_url.startswith("http"):
+            elif org_dir and org_id and thumbnail_url and thumbnail_url.startswith("http") and not skip_downloads:
                 try:
                     _, img_served = await self._download_image_asset(
                         thumbnail_url, org_dir, org_id, ad_id
