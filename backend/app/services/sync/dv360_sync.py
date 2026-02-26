@@ -402,7 +402,6 @@ class DV360SyncService:
                     "FILTER_CHANNEL_ID",
                     "FILTER_CHANNEL_TYPE",
                     "FILTER_CHANNEL_NAME",
-                    "FILTER_YOUTUBE_AD_VIDEO_ID",
                     "FILTER_MEDIA_PLAN",
                     "FILTER_MEDIA_PLAN_NAME",
                     "FILTER_MEDIA_TYPE",
@@ -430,9 +429,7 @@ class DV360SyncService:
                     "METRIC_ENGAGEMENTS",
                     "METRIC_ENGAGEMENT_RATE",
                     "METRIC_RICH_MEDIA_VIDEO_PLAYS",
-                    "METRIC_BILLABLE_COST_ADVERTISER",
                     "METRIC_BILLABLE_IMPRESSIONS",
-                    "METRIC_AVERAGE_IMPRESSION_FREQUENCY_PER_USER",
                     "METRIC_TRUEVIEW_VIEW_RATE",
                     "METRIC_MEDIA_COST_ECPA_ADVERTISER",
                 ],
@@ -755,7 +752,7 @@ class DV360SyncService:
             csv_creative_type = r.get("Creative Type") or ""
             csv_creative_source = r.get("Creative Source") or ""
             csv_ad_type = r.get("Ad Type") or ""
-            csv_yt_video_id = r.get("YouTube Ad Video ID") or ""
+            csv_yt_video_id = r.get("YouTube Ad Video ID", "")
 
             parsed_date = r.get("_parsed_date")
             if csv_creative_id and csv_li_id:
@@ -831,8 +828,6 @@ class DV360SyncService:
                 except Exception as e:
                     logger.warning(f"  Image download failed for DV360 ad {ad_id}: {e}")
 
-            avg_freq = safe_float(r.get("Average Impression Frequency per User"))
-
             rows.append({
                 "platform_connection_id": connection.id,
                 "sync_job_id": sync_job_id,
@@ -875,10 +870,7 @@ class DV360SyncService:
                 "cpm": safe_decimal(r.get("Media Cost eCPM (Advertiser Currency)")),
                 "cpc": safe_decimal(r.get("Media Cost eCPC (Advertiser Currency)")),
                 "total_media_cost": safe_decimal(r.get("Total Media Cost (Advertiser Currency)")),
-                "billable_cost": safe_decimal(r.get("Billable Cost (Advertiser Currency)")),
                 "billable_impressions": safe_int(r.get("Billable Impressions")),
-                "average_impression_frequency": avg_freq,
-                "frequency": avg_freq,
                 "total_conversions": total_conversions,
                 "post_click_conversions": safe_float(r.get("Post-Click Conversions")),
                 "post_view_conversions": safe_float(r.get("Post-View Conversions")),
@@ -955,10 +947,7 @@ class DV360SyncService:
                     "cpm": stmt.excluded.cpm,
                     "cpc": stmt.excluded.cpc,
                     "total_media_cost": stmt.excluded.total_media_cost,
-                    "billable_cost": stmt.excluded.billable_cost,
                     "billable_impressions": stmt.excluded.billable_impressions,
-                    "average_impression_frequency": stmt.excluded.average_impression_frequency,
-                    "frequency": stmt.excluded.frequency,
                     "total_conversions": stmt.excluded.total_conversions,
                     "cost_per_conversion": stmt.excluded.cost_per_conversion,
                     "roas": stmt.excluded.roas,
