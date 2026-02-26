@@ -432,11 +432,19 @@ class Dv360RawPerformance(Base):
     ad_id: Mapped[str] = mapped_column(String(255), nullable=False)
     ad_name: Mapped[str] = mapped_column(String(1000), nullable=True)
     ad_type: Mapped[str] = mapped_column(String(100), nullable=True)
-    exchange: Mapped[str] = mapped_column(String(255), nullable=True)
+    ad_position: Mapped[str] = mapped_column(String(100), nullable=True)
+    advertiser_timezone: Mapped[str] = mapped_column(String(100), nullable=True)
+    channel_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    channel_type: Mapped[str] = mapped_column(String(100), nullable=True)
+    channel_name: Mapped[str] = mapped_column(String(500), nullable=True)
+    io_goal_type: Mapped[str] = mapped_column(String(255), nullable=True)
+    youtube_ad_video_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    media_type: Mapped[str] = mapped_column(String(100), nullable=True)
     environment: Mapped[str] = mapped_column(String(100), nullable=True)
 
     thumbnail_url: Mapped[str] = mapped_column(Text, nullable=True)
     asset_url: Mapped[str] = mapped_column(Text, nullable=True)
+    video_url: Mapped[str] = mapped_column(Text, nullable=True)
     video_duration_seconds: Mapped[float] = mapped_column(Float, nullable=True)
     asset_format: Mapped[str] = mapped_column(String(50), nullable=True)
 
@@ -449,12 +457,14 @@ class Dv360RawPerformance(Base):
     cpc: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
 
     total_media_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
+    billable_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
     billable_impressions: Mapped[int] = mapped_column(Integer, nullable=True)
     active_view_measurable_impressions: Mapped[int] = mapped_column(Integer, nullable=True)
     active_view_viewable_impressions: Mapped[int] = mapped_column(Integer, nullable=True)
     active_view_viewability: Mapped[float] = mapped_column(Float, nullable=True)
     reach: Mapped[int] = mapped_column(Integer, nullable=True)
     frequency: Mapped[float] = mapped_column(Float, nullable=True)
+    average_impression_frequency: Mapped[float] = mapped_column(Float, nullable=True)
 
     video_views: Mapped[int] = mapped_column(Integer, nullable=True)
     video_plays: Mapped[int] = mapped_column(Integer, nullable=True)
@@ -477,7 +487,6 @@ class Dv360RawPerformance(Base):
 
     engagements: Mapped[int] = mapped_column(Integer, nullable=True)
     engagement_rate: Mapped[float] = mapped_column(Float, nullable=True)
-    rich_media_interactions: Mapped[int] = mapped_column(Integer, nullable=True)
 
     retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     is_validated: Mapped[bool] = mapped_column(Boolean, default=False)

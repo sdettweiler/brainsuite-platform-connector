@@ -12,17 +12,22 @@ Dual-API architecture:
 The sync flow:
 1. Fetch entity metadata maps from DV360 API v4 (campaigns, IOs, line items, creatives)
 2. Create + run a Bid Manager report query for the date range
-3. Parse CSV results and enrich records with v4 metadata (names, types, thumbnails)
-4. Upsert enriched records into dv360_raw_performance
+3. Parse CSV results and enrich records with v4 metadata (creative thumbnails/assets)
+4. Download creative assets (images via httpx, videos via yt-dlp)
+5. Upsert enriched records into dv360_raw_performance
 """
 import httpx
 import csv
 import io
+import os
+import re
 import logging
 import asyncio
+import subprocess
+import json
 from datetime import date, timedelta, datetime
 from decimal import Decimal
-from typing import Optional, List, Dict, Any, NamedTuple
+from typing import Optional, List, Dict, Any, NamedTuple, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -32,6 +37,13 @@ from app.core.security import decrypt_token
 from app.services.platform.dv360_oauth import dv360_oauth
 
 logger = logging.getLogger(__name__)
+
+_CREATIVES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "static", "creatives")
+
+_SAFE_FILENAME_RE = re.compile(r'[^a-zA-Z0-9_\-]')
+
+def _sanitize_for_filename(val: str) -> str:
+    return _SAFE_FILENAME_RE.sub('_', val)[:200]
 
 BID_MANAGER_API_BASE = "https://doubleclickbidmanager.googleapis.com/v2"
 DV360_API_BASE = "https://displayvideo.googleapis.com/v4"
@@ -375,10 +387,25 @@ class DV360SyncService:
                 "groupBys": [
                     "FILTER_DATE",
                     "FILTER_ADVERTISER",
+                    "FILTER_ADVERTISER_NAME",
                     "FILTER_ADVERTISER_CURRENCY",
+                    "FILTER_ADVERTISER_TIMEZONE",
+                    "FILTER_AD_POSITION",
+                    "FILTER_AD_TYPE",
                     "FILTER_INSERTION_ORDER",
+                    "FILTER_INSERTION_ORDER_GOAL_TYPE",
                     "FILTER_LINE_ITEM",
+                    "FILTER_LINE_ITEM_TYPE",
                     "FILTER_CREATIVE_ID",
+                    "FILTER_CREATIVE_TYPE",
+                    "FILTER_CREATIVE_SOURCE",
+                    "FILTER_CHANNEL_ID",
+                    "FILTER_CHANNEL_TYPE",
+                    "FILTER_CHANNEL_NAME",
+                    "FILTER_YOUTUBE_AD_VIDEO_ID",
+                    "FILTER_MEDIA_PLAN",
+                    "FILTER_MEDIA_PLAN_NAME",
+                    "FILTER_MEDIA_TYPE",
                 ],
                 "metrics": [
                     "METRIC_IMPRESSIONS",
@@ -403,6 +430,13 @@ class DV360SyncService:
                     "METRIC_ENGAGEMENTS",
                     "METRIC_ENGAGEMENT_RATE",
                     "METRIC_RICH_MEDIA_VIDEO_PLAYS",
+                    "METRIC_BILLABLE_COST_ADVERTISER",
+                    "METRIC_BILLABLE_IMPRESSIONS",
+                    "METRIC_AVERAGE_IMPRESSION_FREQUENCY_PER_USER",
+                    "METRIC_TRUEVIEW_VIEW_RATE",
+                    "METRIC_COMPANION_IMPRESSIONS",
+                    "METRIC_COMPANION_CLICKS",
+                    "METRIC_COST_PER_ACTION_ADVERTISER",
                 ],
                 "filters": [
                     {
@@ -508,6 +542,166 @@ class DV360SyncService:
                 continue
         return records
 
+    async def _download_image_asset(
+        self,
+        url: str,
+        org_dir: str,
+        org_id: str,
+        ad_id: str,
+        prefix: str = "img",
+    ) -> Tuple[Optional[str], Optional[str]]:
+        try:
+            safe_id = _sanitize_for_filename(ad_id)
+            ext = ".jpg"
+            if ".png" in url.lower():
+                ext = ".png"
+            elif ".webp" in url.lower():
+                ext = ".webp"
+
+            filename = f"{prefix}_dv360_{safe_id}{ext}"
+            local_path = os.path.join(org_dir, filename)
+
+            if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+                served_url = f"/static/creatives/{org_id}/{filename}"
+                return local_path, served_url
+
+            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+
+                content_type = resp.headers.get("content-type", "")
+                if "png" in content_type:
+                    ext = ".png"
+                elif "webp" in content_type:
+                    ext = ".webp"
+
+                filename = f"{prefix}_dv360_{safe_id}{ext}"
+                local_path = os.path.join(org_dir, filename)
+
+                with open(local_path, "wb") as f:
+                    f.write(resp.content)
+
+            served_url = f"/static/creatives/{org_id}/{filename}"
+            logger.info(f"  Downloaded DV360 asset: {filename} ({len(resp.content)} bytes)")
+            return local_path, served_url
+        except Exception as e:
+            logger.warning(f"  Failed to download DV360 image for ad {ad_id}: {e}")
+            return None, None
+
+    async def _download_video_asset(
+        self,
+        youtube_video_id: str,
+        org_dir: str,
+        org_id: str,
+        ad_id: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        safe_id = _sanitize_for_filename(ad_id)
+        filename = f"vid_dv360_{safe_id}.mp4"
+        local_path = os.path.join(org_dir, filename)
+
+        if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+            served_url = f"/static/creatives/{org_id}/{filename}"
+            return local_path, served_url
+
+        url = f"https://www.youtube.com/watch?v={youtube_video_id}"
+
+        def _do_download():
+            import yt_dlp
+            import tempfile
+            ydl_opts = {
+                "outtmpl": local_path,
+                "format": "bv*+ba/b",
+                "quiet": True,
+                "no_warnings": True,
+                "socket_timeout": 30,
+                "merge_output_format": "mp4",
+                "ignore_no_formats_error": True,
+            }
+            cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
+            cookie_file = None
+            if cookies_data:
+                cleaned = "\n".join(
+                    line.lstrip() for line in cookies_data.splitlines()
+                )
+                cookie_file = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", delete=False
+                )
+                cookie_file.write(cleaned)
+                cookie_file.close()
+                ydl_opts["cookiefile"] = cookie_file.name
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+            finally:
+                if cookie_file and os.path.exists(cookie_file.name):
+                    os.remove(cookie_file.name)
+
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _do_download)
+
+            if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+                size_mb = os.path.getsize(local_path) / (1024 * 1024)
+                served_url = f"/static/creatives/{org_id}/{filename}"
+                logger.info(f"  Downloaded DV360 YouTube video: {filename} ({size_mb:.1f} MB)")
+                return local_path, served_url
+            else:
+                logger.warning(f"  yt-dlp finished but file not found: {local_path}")
+                return None, None
+        except Exception as e:
+            logger.warning(f"  Failed to download DV360 YouTube video for ad {ad_id} (video {youtube_video_id}): {e}")
+            if os.path.exists(local_path):
+                os.remove(local_path)
+            return None, None
+
+    async def _download_youtube_thumbnail(
+        self,
+        youtube_video_id: str,
+        org_dir: str,
+        org_id: str,
+        ad_id: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        safe_id = _sanitize_for_filename(ad_id)
+        filename = f"thumb_dv360_{safe_id}.jpg"
+        local_path = os.path.join(org_dir, filename)
+
+        if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+            served_url = f"/static/creatives/{org_id}/{filename}"
+            return local_path, served_url
+
+        candidates = [
+            f"https://img.youtube.com/vi/{youtube_video_id}/maxresdefault.jpg",
+            f"https://img.youtube.com/vi/{youtube_video_id}/sddefault.jpg",
+            f"https://img.youtube.com/vi/{youtube_video_id}/hqdefault.jpg",
+        ]
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                for thumb_url in candidates:
+                    resp = await client.get(thumb_url)
+                    if resp.status_code == 200 and len(resp.content) > 1000:
+                        with open(local_path, "wb") as f:
+                            f.write(resp.content)
+                        served_url = f"/static/creatives/{org_id}/{filename}"
+                        return local_path, served_url
+        except Exception as e:
+            logger.warning(f"  Failed to download YouTube thumbnail for ad {ad_id}: {e}")
+        return None, None
+
+    def _get_video_duration(self, file_path: str) -> Optional[float]:
+        try:
+            result = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", file_path],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                duration = data.get("format", {}).get("duration")
+                if duration:
+                    return float(duration)
+        except Exception as e:
+            logger.debug(f"  ffprobe failed for {file_path}: {e}")
+        return None
+
     async def _upsert_records(
         self,
         db: AsyncSession,
@@ -519,26 +713,32 @@ class DV360SyncService:
         if not records:
             return 0
 
+        org_id = str(connection.organization_id) if hasattr(connection, "organization_id") and connection.organization_id else None
+        org_dir = None
+        if org_id:
+            org_dir = os.path.join(_CREATIVES_DIR, org_id)
+            os.makedirs(org_dir, exist_ok=True)
+
+        def safe_decimal(val, default=None):
+            try:
+                return Decimal(str(val)) if val else default
+            except Exception:
+                return default
+
+        def safe_int(val, default=None):
+            try:
+                return int(float(val)) if val else default
+            except Exception:
+                return default
+
+        def safe_float(val, default=None):
+            try:
+                return float(val) if val else default
+            except Exception:
+                return default
+
         rows = []
         for r in records:
-            def safe_decimal(val, default=None):
-                try:
-                    return Decimal(str(val)) if val else default
-                except Exception:
-                    return default
-
-            def safe_int(val, default=None):
-                try:
-                    return int(float(val)) if val else default
-                except Exception:
-                    return default
-
-            def safe_float(val, default=None):
-                try:
-                    return float(val) if val else default
-                except Exception:
-                    return default
-
             spend = safe_decimal(r.get("Revenue (Adv Currency)") or r.get("Total Media Cost (Advertiser Currency)"))
             impressions = safe_int(r.get("Impressions"))
             clicks = safe_int(r.get("Clicks"))
@@ -546,10 +746,18 @@ class DV360SyncService:
             conversion_value = safe_decimal(r.get("Revenue (Adv Currency)"))
             roas_val = float(conversion_value / spend) if spend and conversion_value and spend > 0 else None
 
-            csv_creative_id = r.get("Creative ID") or r.get("Creative") or ""
+            csv_creative_id = r.get("Creative ID") or ""
             csv_io_id = r.get("Insertion Order ID") or ""
             csv_li_id = r.get("Line Item ID") or ""
-            csv_advertiser_id = r.get("Advertiser ID") or r.get("Advertiser") or ""
+            csv_advertiser_id = r.get("Advertiser ID") or ""
+
+            csv_campaign_id = r.get("Campaign ID") or ""
+            csv_campaign_name = r.get("Campaign") or ""
+            csv_li_type = r.get("Line Item Type") or ""
+            csv_creative_type = r.get("Creative Type") or ""
+            csv_creative_source = r.get("Creative Source") or ""
+            csv_ad_type = r.get("Ad Type") or ""
+            csv_yt_video_id = r.get("YouTube Ad Video ID") or ""
 
             parsed_date = r.get("_parsed_date")
             if csv_creative_id and csv_li_id:
@@ -559,61 +767,81 @@ class DV360SyncService:
             else:
                 ad_id = f"{csv_li_id}_{parsed_date.isoformat() if parsed_date else ''}"
 
-            campaign_id = ""
-            campaign_name = ""
+            campaign_id = csv_campaign_id
+            campaign_name = csv_campaign_name
             io_name = r.get("Insertion Order") or ""
             li_name = r.get("Line Item") or ""
-            li_type = ""
+            li_type = csv_li_type
             creative_name = r.get("Creative") or ""
-            creative_type = ""
-            creative_source = ""
+            creative_type = csv_creative_type
+            creative_source = csv_creative_source
             thumbnail_url = ""
+            asset_url = ""
+            video_url = ""
+            video_duration = None
             asset_format = ""
 
             if entity_maps:
-                io_meta = entity_maps.insertion_orders.get(str(csv_io_id))
-                if io_meta:
-                    if not io_name:
-                        io_name = io_meta.get("name", "")
-                    campaign_id = io_meta.get("campaign_id", "")
+                if not campaign_id:
+                    io_meta = entity_maps.insertion_orders.get(str(csv_io_id))
+                    if io_meta:
+                        campaign_id = io_meta.get("campaign_id", "")
+                    if not campaign_id:
+                        li_meta = entity_maps.line_items.get(str(csv_li_id))
+                        if li_meta and li_meta.get("campaign_id"):
+                            campaign_id = li_meta.get("campaign_id", "")
 
-                if campaign_id:
+                if campaign_id and not campaign_name:
                     c_meta = entity_maps.campaigns.get(campaign_id)
                     if c_meta:
                         campaign_name = c_meta.get("name", "")
-
-                li_meta = entity_maps.line_items.get(str(csv_li_id))
-                if li_meta:
-                    if not li_name:
-                        li_name = li_meta.get("name", "")
-                    li_type = li_meta.get("type", "")
-                    if not campaign_id and li_meta.get("campaign_id"):
-                        campaign_id = li_meta.get("campaign_id", "")
-                        c_meta = entity_maps.campaigns.get(campaign_id)
-                        if c_meta:
-                            campaign_name = c_meta.get("name", "")
 
                 cr_meta = entity_maps.creatives.get(str(csv_creative_id))
                 if cr_meta:
                     if not creative_name:
                         creative_name = cr_meta.get("name", "")
-                    creative_type = cr_meta.get("type", "")
-                    creative_source = cr_meta.get("hosting_source", "")
                     thumbnail_url = cr_meta.get("thumbnail_url", "")
                     asset_format = cr_meta.get("asset_format", "")
 
-            if not campaign_id:
-                logger.debug(f"DV360 v4: No campaign found for IO {csv_io_id}, line item {csv_li_id}")
             if not campaign_name and campaign_id:
                 campaign_name = f"Campaign {campaign_id}"
+
+            if org_dir and org_id and csv_yt_video_id:
+                try:
+                    vid_path, vid_served = await self._download_video_asset(
+                        csv_yt_video_id, org_dir, org_id, ad_id
+                    )
+                    if vid_served:
+                        video_url = vid_served
+                        asset_url = vid_served
+                        video_duration = self._get_video_duration(vid_path)
+                    thumb_path, thumb_served = await self._download_youtube_thumbnail(
+                        csv_yt_video_id, org_dir, org_id, ad_id
+                    )
+                    if thumb_served:
+                        thumbnail_url = thumb_served
+                except Exception as e:
+                    logger.warning(f"  Asset download failed for DV360 ad {ad_id}: {e}")
+            elif org_dir and org_id and thumbnail_url and thumbnail_url.startswith("http"):
+                try:
+                    _, img_served = await self._download_image_asset(
+                        thumbnail_url, org_dir, org_id, ad_id
+                    )
+                    if img_served:
+                        asset_url = img_served
+                        thumbnail_url = img_served
+                except Exception as e:
+                    logger.warning(f"  Image download failed for DV360 ad {ad_id}: {e}")
+
+            avg_freq = safe_float(r.get("Average Impression Frequency per User"))
 
             rows.append({
                 "platform_connection_id": connection.id,
                 "sync_job_id": sync_job_id,
-                "report_date": r.get("_parsed_date"),
+                "report_date": parsed_date,
                 "ad_account_id": connection.ad_account_id,
                 "advertiser_id": csv_advertiser_id,
-                "advertiser_name": r.get("Advertiser"),
+                "advertiser_name": r.get("Advertiser") or r.get("Advertiser Name") or "",
                 "campaign_id": campaign_id,
                 "campaign_name": campaign_name,
                 "insertion_order_id": csv_io_id,
@@ -627,29 +855,49 @@ class DV360SyncService:
                 "creative_source": creative_source,
                 "ad_id": ad_id,
                 "ad_name": creative_name or li_name,
-                "ad_type": li_type,
+                "ad_type": csv_ad_type,
+                "ad_position": r.get("Ad Position") or "",
+                "advertiser_timezone": r.get("Advertiser Time Zone") or "",
+                "channel_id": r.get("Channel ID") or "",
+                "channel_type": r.get("Channel Type") or "",
+                "channel_name": r.get("Channel") or "",
+                "io_goal_type": r.get("Insertion Order Goal Type") or "",
+                "youtube_ad_video_id": csv_yt_video_id,
+                "media_type": r.get("Media Type") or "",
                 "thumbnail_url": thumbnail_url,
+                "asset_url": asset_url,
+                "video_url": video_url,
+                "video_duration_seconds": video_duration,
                 "asset_format": asset_format,
                 "currency": r.get("Advertiser Currency") or connection.currency,
                 "spend": spend,
                 "impressions": impressions,
                 "clicks": clicks,
                 "ctr": safe_float(r.get("CTR")),
-                "cpm": safe_decimal(r.get("Media Cost eCPM (Advertiser Currency)") or r.get("CPM (Advertiser Currency)")),
-                "cpc": safe_decimal(r.get("Media Cost eCPC (Advertiser Currency)") or r.get("CPC (Advertiser Currency)")),
+                "cpm": safe_decimal(r.get("Media Cost eCPM (Advertiser Currency)")),
+                "cpc": safe_decimal(r.get("Media Cost eCPC (Advertiser Currency)")),
                 "total_media_cost": safe_decimal(r.get("Total Media Cost (Advertiser Currency)")),
+                "billable_cost": safe_decimal(r.get("Billable Cost (Advertiser Currency)")),
+                "billable_impressions": safe_int(r.get("Billable Impressions")),
+                "average_impression_frequency": avg_freq,
+                "frequency": avg_freq,
                 "total_conversions": total_conversions,
-                "post_click_conversions": safe_float(r.get("Post-Click Conversions") or r.get("Post-Click Conversions")),
-                "post_view_conversions": safe_float(r.get("Post-View Conversions") or r.get("Post-View Conversions")),
+                "post_click_conversions": safe_float(r.get("Post-Click Conversions")),
+                "post_view_conversions": safe_float(r.get("Post-View Conversions")),
                 "conversion_value": conversion_value,
                 "roas": roas_val,
+                "cost_per_conversion": safe_decimal(r.get("Cost Per Action (Advertiser Currency)")),
                 "trueview_views": safe_int(r.get("TrueView Views")),
-                "video_completions": safe_int(r.get("Complete Views (Video)") or r.get("Video Completions")),
-                "video_first_quartile": safe_int(r.get("First-Quartile Views (Video)") or r.get("Video First Quartile Views")),
-                "video_midpoint": safe_int(r.get("Midpoint Views (Video)") or r.get("Video Midpoint Views")),
-                "video_third_quartile": safe_int(r.get("Third-Quartile Views (Video)") or r.get("Video Third Quartile Views")),
-                "video_completion_rate": safe_float(r.get("Completion Rate (Video)") or r.get("Video Completion Rate")),
-                "video_plays": safe_int(r.get("Starts (Video)") or r.get("Rich Media Video Plays")),
+                "video_views": safe_int(r.get("TrueView Views")),
+                "video_completions": safe_int(r.get("Complete Views (Video)")),
+                "video_first_quartile": safe_int(r.get("First-Quartile Views (Video)")),
+                "video_midpoint": safe_int(r.get("Midpoint Views (Video)")),
+                "video_third_quartile": safe_int(r.get("Third-Quartile Views (Video)")),
+                "video_completion_rate": safe_float(r.get("Completion Rate (Video)")),
+                "video_view_rate": safe_float(r.get("TrueView View Rate")),
+                "video_plays": safe_int(r.get("Starts (Video)")),
+                "companion_impressions": safe_int(r.get("Companion Impressions")),
+                "companion_clicks": safe_int(r.get("Companion Clicks")),
                 "active_view_viewable_impressions": safe_int(r.get("Active View: Viewable Impressions")),
                 "active_view_measurable_impressions": safe_int(r.get("Active View: Measurable Impressions")),
                 "active_view_viewability": safe_float(r.get("Active View: % Viewable Impressions")),
@@ -687,16 +935,39 @@ class DV360SyncService:
                     "creative_name": stmt.excluded.creative_name,
                     "creative_type": stmt.excluded.creative_type,
                     "creative_source": stmt.excluded.creative_source,
-                    "thumbnail_url": stmt.excluded.thumbnail_url,
-                    "asset_format": stmt.excluded.asset_format,
                     "ad_name": stmt.excluded.ad_name,
                     "ad_type": stmt.excluded.ad_type,
+                    "ad_position": stmt.excluded.ad_position,
+                    "advertiser_timezone": stmt.excluded.advertiser_timezone,
+                    "channel_id": stmt.excluded.channel_id,
+                    "channel_type": stmt.excluded.channel_type,
+                    "channel_name": stmt.excluded.channel_name,
+                    "io_goal_type": stmt.excluded.io_goal_type,
+                    "youtube_ad_video_id": stmt.excluded.youtube_ad_video_id,
+                    "media_type": stmt.excluded.media_type,
+                    "thumbnail_url": stmt.excluded.thumbnail_url,
+                    "asset_url": stmt.excluded.asset_url,
+                    "video_url": stmt.excluded.video_url,
+                    "video_duration_seconds": stmt.excluded.video_duration_seconds,
+                    "asset_format": stmt.excluded.asset_format,
                     "spend": stmt.excluded.spend,
                     "impressions": stmt.excluded.impressions,
                     "clicks": stmt.excluded.clicks,
+                    "ctr": stmt.excluded.ctr,
+                    "cpm": stmt.excluded.cpm,
+                    "cpc": stmt.excluded.cpc,
+                    "total_media_cost": stmt.excluded.total_media_cost,
+                    "billable_cost": stmt.excluded.billable_cost,
+                    "billable_impressions": stmt.excluded.billable_impressions,
+                    "average_impression_frequency": stmt.excluded.average_impression_frequency,
+                    "frequency": stmt.excluded.frequency,
                     "total_conversions": stmt.excluded.total_conversions,
+                    "cost_per_conversion": stmt.excluded.cost_per_conversion,
                     "roas": stmt.excluded.roas,
                     "video_completions": stmt.excluded.video_completions,
+                    "video_view_rate": stmt.excluded.video_view_rate,
+                    "companion_impressions": stmt.excluded.companion_impressions,
+                    "companion_clicks": stmt.excluded.companion_clicks,
                     "is_processed": False,
                 }
             )

@@ -682,6 +682,7 @@ class HarmonizationService:
                     ad_account_id=row.ad_account_id,
                     thumbnail_url=row.thumbnail_url,
                     asset_url=row.asset_url,
+                    video_duration=row.video_duration_seconds,
                     asset_format=row.asset_format or "DISPLAY",
                     first_seen_at=row.report_date,
                 )
@@ -703,6 +704,11 @@ class HarmonizationService:
                 if spend is not None and clicks:
                     cpc = Decimal(str(float(spend) / clicks))
 
+                publisher_platform = row.channel_name or row.media_type or ""
+                platform_position = row.ad_position or ""
+                frequency = row.average_impression_frequency if row.average_impression_frequency is not None else row.frequency
+                vtr = row.video_view_rate
+
                 h_row = {
                     "asset_id": asset.id,
                     "platform_connection_id": connection.id,
@@ -717,15 +723,15 @@ class HarmonizationService:
                     "ad_id": row.ad_id,
                     "ad_name": row.ad_name or row.creative_name,
                     "asset_format": row.asset_format or "DISPLAY",
-                    "publisher_platform": row.exchange or "",
-                    "platform_position": row.environment or "",
+                    "publisher_platform": publisher_platform,
+                    "platform_position": platform_position,
                     "org_currency": org_currency,
                     "original_currency": original_currency,
                     "exchange_rate": exchange_rate,
                     "spend": spend,
                     "impressions": impressions,
                     "reach": row.reach,
-                    "frequency": row.frequency,
+                    "frequency": frequency,
                     "cpm": cpm,
                     "cpp": None,
                     "clicks": clicks,
@@ -736,7 +742,7 @@ class HarmonizationService:
                     "cpv": None,
                     "video_plays": row.video_plays,
                     "video_views": row.trueview_views,
-                    "vtr": row.video_view_rate,
+                    "vtr": vtr,
                     "video_p25": row.video_first_quartile,
                     "video_p50": row.video_midpoint,
                     "video_p75": row.video_third_quartile,
@@ -791,6 +797,17 @@ class HarmonizationService:
                         "post_click_conversions": row.post_click_conversions,
                         "post_view_conversions": row.post_view_conversions,
                         "active_view_viewability": row.active_view_viewability,
+                        "channel_id": row.channel_id,
+                        "channel_type": row.channel_type,
+                        "channel_name": row.channel_name,
+                        "io_goal_type": row.io_goal_type,
+                        "advertiser_timezone": row.advertiser_timezone,
+                        "youtube_ad_video_id": row.youtube_ad_video_id,
+                        "billable_cost": float(row.billable_cost) if row.billable_cost else None,
+                        "billable_impressions": row.billable_impressions,
+                        "ad_position": row.ad_position,
+                        "ad_type": row.ad_type,
+                        "media_type": row.media_type,
                     },
                 }
 
