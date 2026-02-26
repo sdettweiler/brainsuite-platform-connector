@@ -88,8 +88,9 @@ async def run_daily_sync(connection_id: str) -> None:
 
         except Exception as e:
             logger.error(f"Daily sync failed for connection {connection_id}: {e}")
+            await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)
+            job.error_message = str(e)[:4000]
             job.completed_at = datetime.utcnow()
             db.add(job)
             connection.sync_status = "ERROR"
@@ -168,8 +169,9 @@ async def run_full_resync(connection_id: str) -> None:
 
         except Exception as e:
             logger.error(f"Full resync failed for connection {connection_id}: {e}")
+            await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)
+            job.error_message = str(e)[:4000]
             job.completed_at = datetime.utcnow()
             db.add(job)
             connection.sync_status = "ERROR"
@@ -247,8 +249,9 @@ async def run_initial_sync(connection_id: str) -> None:
 
         except Exception as e:
             logger.error(f"Initial sync failed for {connection_id}: {e}")
+            await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)
+            job.error_message = str(e)[:4000]
             db.add(job)
             await db.commit()
 
@@ -319,8 +322,9 @@ async def run_historical_sync(connection_id: str) -> None:
 
         except Exception as e:
             logger.error(f"Historical sync failed for {connection_id}: {e}")
+            await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)
+            job.error_message = str(e)[:4000]
             db.add(job)
             await db.commit()
 

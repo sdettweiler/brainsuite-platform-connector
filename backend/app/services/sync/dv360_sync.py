@@ -552,7 +552,12 @@ class DV360SyncService:
             csv_advertiser_id = r.get("Advertiser ID") or r.get("Advertiser") or ""
 
             parsed_date = r.get("_parsed_date")
-            ad_id = csv_creative_id if csv_creative_id else f"{csv_li_id}_{parsed_date.isoformat() if parsed_date else ''}"
+            if csv_creative_id and csv_li_id:
+                ad_id = f"{csv_li_id}_{csv_creative_id}"
+            elif csv_creative_id:
+                ad_id = csv_creative_id
+            else:
+                ad_id = f"{csv_li_id}_{parsed_date.isoformat() if parsed_date else ''}"
 
             campaign_id = ""
             campaign_name = ""
@@ -653,6 +658,16 @@ class DV360SyncService:
                 "is_validated": True,
                 "is_processed": False,
             })
+
+        if not rows:
+            return 0
+
+        seen_keys = {}
+        for row in rows:
+            key = (str(row["platform_connection_id"]), str(row["report_date"]), row["ad_id"], row["ad_account_id"])
+            seen_keys[key] = row
+        rows = list(seen_keys.values())
+        logger.info(f"DV360 upsert: {len(rows)} unique rows after dedup")
 
         if not rows:
             return 0
