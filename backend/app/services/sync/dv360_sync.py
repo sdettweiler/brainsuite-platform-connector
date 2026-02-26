@@ -59,21 +59,12 @@ class DV360SyncService:
 
         entity_maps = await self._fetch_entity_metadata(access_token, advertiser_id)
 
-        total_fetched = 0
-        total_upserted = 0
+        records = await self._run_report(
+            access_token, advertiser_id, date_from, date_to
+        )
+        upserted = await self._upsert_records(db, connection, records, sync_job_id, entity_maps)
 
-        chunk_start = date_from
-        while chunk_start <= date_to:
-            chunk_end = min(chunk_start + timedelta(days=29), date_to)
-            records = await self._run_report(
-                access_token, advertiser_id, chunk_start, chunk_end
-            )
-            upserted = await self._upsert_records(db, connection, records, sync_job_id, entity_maps)
-            total_fetched += len(records)
-            total_upserted += upserted
-            chunk_start = chunk_end + timedelta(days=1)
-
-        return {"fetched": total_fetched, "upserted": total_upserted}
+        return {"fetched": len(records), "upserted": upserted}
 
     async def _get_valid_token(
         self, db: AsyncSession, connection: PlatformConnection
@@ -500,7 +491,8 @@ class DV360SyncService:
         
         Bid Manager CSVs may contain non-data rows at the end such as
         'No data returned by the reporting service.' or 'Filter by Partner ID:'.
-        We validate that the Date field is a real YYYY/MM/DD date before including.
+        We validate that the Date field is a real date before including.
+        The Date column uses YYYY/MM/DD format — we parse it into a date object.
         """
         records = []
         reader = csv.DictReader(io.StringIO(csv_text))
@@ -509,10 +501,10 @@ class DV360SyncService:
             if not date_val:
                 continue
             try:
-                parts = date_val.replace("-", "/").split("/")
-                if len(parts) == 3 and all(p.isdigit() for p in parts):
-                    records.append(row)
-            except Exception:
+                parsed = datetime.strptime(date_val.replace("-", "/"), "%Y/%m/%d").date()
+                row["_parsed_date"] = parsed
+                records.append(row)
+            except (ValueError, TypeError):
                 continue
         return records
 
@@ -559,7 +551,8 @@ class DV360SyncService:
             csv_li_id = r.get("Line Item ID") or ""
             csv_advertiser_id = r.get("Advertiser ID") or r.get("Advertiser") or ""
 
-            ad_id = csv_creative_id if csv_creative_id else f"{csv_li_id}_{r.get('Date', '')}"
+            parsed_date = r.get("_parsed_date")
+            ad_id = csv_creative_id if csv_creative_id else f"{csv_li_id}_{parsed_date.isoformat() if parsed_date else ''}"
 
             campaign_id = ""
             campaign_name = ""
@@ -612,7 +605,7 @@ class DV360SyncService:
             rows.append({
                 "platform_connection_id": connection.id,
                 "sync_job_id": sync_job_id,
-                "report_date": r.get("Date"),
+                "report_date": r.get("_parsed_date"),
                 "ad_account_id": connection.ad_account_id,
                 "advertiser_id": csv_advertiser_id,
                 "advertiser_name": r.get("Advertiser"),
@@ -664,32 +657,37 @@ class DV360SyncService:
         if not rows:
             return 0
 
-        stmt = pg_insert(Dv360RawPerformance).values(rows)
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_dv360_daily_ad",
-            set_={
-                "campaign_id": stmt.excluded.campaign_id,
-                "campaign_name": stmt.excluded.campaign_name,
-                "insertion_order_name": stmt.excluded.insertion_order_name,
-                "line_item_name": stmt.excluded.line_item_name,
-                "line_item_type": stmt.excluded.line_item_type,
-                "creative_name": stmt.excluded.creative_name,
-                "creative_type": stmt.excluded.creative_type,
-                "creative_source": stmt.excluded.creative_source,
-                "thumbnail_url": stmt.excluded.thumbnail_url,
-                "asset_format": stmt.excluded.asset_format,
-                "ad_name": stmt.excluded.ad_name,
-                "ad_type": stmt.excluded.ad_type,
-                "spend": stmt.excluded.spend,
-                "impressions": stmt.excluded.impressions,
-                "clicks": stmt.excluded.clicks,
-                "total_conversions": stmt.excluded.total_conversions,
-                "roas": stmt.excluded.roas,
-                "video_completions": stmt.excluded.video_completions,
-                "is_processed": False,
-            }
-        )
-        await db.execute(stmt)
+        BATCH_SIZE = 100
+        for i in range(0, len(rows), BATCH_SIZE):
+            batch = rows[i:i + BATCH_SIZE]
+            stmt = pg_insert(Dv360RawPerformance).values(batch)
+            stmt = stmt.on_conflict_do_update(
+                constraint="uq_dv360_daily_ad",
+                set_={
+                    "campaign_id": stmt.excluded.campaign_id,
+                    "campaign_name": stmt.excluded.campaign_name,
+                    "insertion_order_name": stmt.excluded.insertion_order_name,
+                    "line_item_name": stmt.excluded.line_item_name,
+                    "line_item_type": stmt.excluded.line_item_type,
+                    "creative_name": stmt.excluded.creative_name,
+                    "creative_type": stmt.excluded.creative_type,
+                    "creative_source": stmt.excluded.creative_source,
+                    "thumbnail_url": stmt.excluded.thumbnail_url,
+                    "asset_format": stmt.excluded.asset_format,
+                    "ad_name": stmt.excluded.ad_name,
+                    "ad_type": stmt.excluded.ad_type,
+                    "spend": stmt.excluded.spend,
+                    "impressions": stmt.excluded.impressions,
+                    "clicks": stmt.excluded.clicks,
+                    "total_conversions": stmt.excluded.total_conversions,
+                    "roas": stmt.excluded.roas,
+                    "video_completions": stmt.excluded.video_completions,
+                    "is_processed": False,
+                }
+            )
+            await db.execute(stmt)
+            await db.flush()
+
         return len(rows)
 
 
