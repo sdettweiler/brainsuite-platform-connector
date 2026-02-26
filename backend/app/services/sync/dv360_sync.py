@@ -54,6 +54,7 @@ class EntityMaps(NamedTuple):
     insertion_orders: Dict[str, Dict[str, Any]]
     line_items: Dict[str, Dict[str, Any]]
     creatives: Dict[str, Dict[str, Any]]
+    line_item_videos: Dict[str, Dict[str, Any]] = {}
 
 
 class DV360SyncService:
@@ -117,9 +118,12 @@ class DV360SyncService:
             io_task = self._fetch_insertion_orders(client, headers, advertiser_id)
             li_task = self._fetch_line_items(client, headers, advertiser_id)
             creative_task = self._fetch_creatives(client, headers, advertiser_id)
+            ad_group_task = self._fetch_ad_groups(client, headers, advertiser_id)
+            ad_group_ads_task = self._fetch_ad_group_ads(client, headers, advertiser_id)
 
             results = await asyncio.gather(
                 campaign_task, io_task, li_task, creative_task,
+                ad_group_task, ad_group_ads_task,
                 return_exceptions=True,
             )
 
@@ -143,10 +147,41 @@ class DV360SyncService:
             else:
                 logger.warning(f"DV360 v4: Failed to fetch creatives: {results[3]}")
 
+            ad_groups = results[4] if isinstance(results[4], dict) else {}
+            ad_group_ads = results[5] if isinstance(results[5], list) else []
+
+        line_item_videos: Dict[str, Dict[str, Any]] = {}
+        ag_to_li: Dict[str, str] = {}
+        for ag_id, ag_info in ad_groups.items():
+            li_id = ag_info.get("line_item_id", "")
+            if li_id:
+                ag_to_li[ag_id] = li_id
+
+        for ad in ad_group_ads:
+            ag_id = ad.get("ad_group_id", "")
+            li_id = ag_to_li.get(ag_id, "")
+            video_id = ad.get("youtube_video_id", "")
+            if li_id and video_id:
+                if li_id in line_item_videos:
+                    existing_vid = line_item_videos[li_id]["youtube_video_id"]
+                    if existing_vid != video_id:
+                        logger.info(
+                            f"DV360: Line item {li_id} has multiple video IDs "
+                            f"({existing_vid}, {video_id}), keeping first"
+                        )
+                    continue
+                line_item_videos[li_id] = {
+                    "youtube_video_id": video_id,
+                    "ad_name": ad.get("name", ""),
+                    "display_url": ad.get("display_url", ""),
+                    "final_url": ad.get("final_url", ""),
+                }
+
         logger.info(
             f"DV360 v4 metadata for advertiser {advertiser_id}: "
             f"{len(campaigns)} campaigns, {len(insertion_orders)} IOs, "
-            f"{len(line_items)} line items, {len(creatives)} creatives"
+            f"{len(line_items)} line items, {len(creatives)} creatives, "
+            f"{len(line_item_videos)} line items with YouTube videos"
         )
 
         return EntityMaps(
@@ -154,6 +189,7 @@ class DV360SyncService:
             insertion_orders=insertion_orders,
             line_items=line_items,
             creatives=creatives,
+            line_item_videos=line_item_videos,
         )
 
     async def _fetch_campaigns(
@@ -350,6 +386,104 @@ class DV360SyncService:
                 break
 
         return creatives
+
+    async def _fetch_ad_groups(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict,
+        advertiser_id: str,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Fetch ad groups to map adGroupId → lineItemId."""
+        ad_groups: Dict[str, Dict[str, Any]] = {}
+        page_token = None
+
+        while True:
+            params: Dict[str, Any] = {"pageSize": 100}
+            if page_token:
+                params["pageToken"] = page_token
+
+            resp = await client.get(
+                f"{DV360_API_BASE}/advertisers/{advertiser_id}/adGroups",
+                headers=headers,
+                params=params,
+            )
+            if resp.status_code != 200:
+                logger.warning(f"DV360 v4: List ad groups failed ({resp.status_code}): {resp.text[:300]}")
+                break
+
+            data = resp.json()
+            for ag in data.get("adGroups", []):
+                ag_id = ag.get("adGroupId")
+                if ag_id:
+                    ad_groups[str(ag_id)] = {
+                        "name": ag.get("displayName", ""),
+                        "line_item_id": str(ag.get("lineItemId", "")),
+                        "format": ag.get("adGroupFormat", ""),
+                    }
+
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+
+        return ad_groups
+
+    async def _fetch_ad_group_ads(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict,
+        advertiser_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Fetch ad group ads to extract YouTube video IDs."""
+        ads: List[Dict[str, Any]] = []
+        page_token = None
+
+        while True:
+            params: Dict[str, Any] = {"pageSize": 100}
+            if page_token:
+                params["pageToken"] = page_token
+
+            resp = await client.get(
+                f"{DV360_API_BASE}/advertisers/{advertiser_id}/adGroupAds",
+                headers=headers,
+                params=params,
+            )
+            if resp.status_code != 200:
+                logger.warning(f"DV360 v4: List ad group ads failed ({resp.status_code}): {resp.text[:300]}")
+                break
+
+            data = resp.json()
+            for ad in data.get("adGroupAds", []):
+                video_id = ""
+                ad_name = ad.get("displayName", "")
+                display_url = ""
+                final_url = ""
+
+                for ad_type_key in ["inStreamAd", "bumperAd", "nonSkippableAd", "videoDiscoverAd", "videoPerformanceAd", "mastheadAd"]:
+                    ad_detail = ad.get(ad_type_key)
+                    if ad_detail:
+                        common = ad_detail.get("commonInStreamAttribute") or ad_detail.get("commonVideoResponsiveAdAttribute") or ad_detail
+                        if common:
+                            video_ref = common.get("video", {})
+                            if video_ref.get("id"):
+                                video_id = video_ref["id"]
+                            display_url = common.get("displayUrl", "")
+                            final_url = common.get("finalUrl", "")
+                        break
+
+                ads.append({
+                    "ad_group_id": str(ad.get("adGroupId", "")),
+                    "ad_group_ad_id": str(ad.get("adGroupAdId", "")),
+                    "name": ad_name,
+                    "youtube_video_id": video_id,
+                    "display_url": display_url,
+                    "final_url": final_url,
+                })
+
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+
+        return ads
 
     async def _run_report(
         self,
@@ -733,6 +867,7 @@ class DV360SyncService:
                 return default
 
         rows = []
+        asset_download_queue = {}
         for r in records:
             spend = safe_decimal(r.get("Revenue (Adv Currency)") or r.get("Total Media Cost (Advertiser Currency)"))
             impressions = safe_int(r.get("Impressions"))
@@ -753,6 +888,11 @@ class DV360SyncService:
             csv_creative_source = r.get("Creative Source") or ""
             csv_ad_type = r.get("Ad Type") or ""
             csv_yt_video_id = r.get("YouTube Ad Video ID", "")
+
+            if not csv_yt_video_id and entity_maps and csv_li_id:
+                li_video = entity_maps.line_item_videos.get(str(csv_li_id))
+                if li_video:
+                    csv_yt_video_id = li_video.get("youtube_video_id", "")
 
             parsed_date = r.get("_parsed_date")
             if csv_creative_id and csv_li_id:
@@ -801,33 +941,11 @@ class DV360SyncService:
             if not campaign_name and campaign_id:
                 campaign_name = f"Campaign {campaign_id}"
 
-            skip_downloads = len(records) > 500
-            if org_dir and org_id and csv_yt_video_id and not skip_downloads:
-                try:
-                    vid_path, vid_served = await self._download_video_asset(
-                        csv_yt_video_id, org_dir, org_id, ad_id
-                    )
-                    if vid_served:
-                        video_url = vid_served
-                        asset_url = vid_served
-                        video_duration = self._get_video_duration(vid_path)
-                    thumb_path, thumb_served = await self._download_youtube_thumbnail(
-                        csv_yt_video_id, org_dir, org_id, ad_id
-                    )
-                    if thumb_served:
-                        thumbnail_url = thumb_served
-                except Exception as e:
-                    logger.warning(f"  Asset download failed for DV360 ad {ad_id}: {e}")
-            elif org_dir and org_id and thumbnail_url and thumbnail_url.startswith("http") and not skip_downloads:
-                try:
-                    _, img_served = await self._download_image_asset(
-                        thumbnail_url, org_dir, org_id, ad_id
-                    )
-                    if img_served:
-                        asset_url = img_served
-                        thumbnail_url = img_served
-                except Exception as e:
-                    logger.warning(f"  Image download failed for DV360 ad {ad_id}: {e}")
+            if ad_id not in asset_download_queue:
+                asset_download_queue[ad_id] = {
+                    "youtube_video_id": csv_yt_video_id,
+                    "thumbnail_url": thumbnail_url,
+                }
 
             rows.append({
                 "platform_connection_id": connection.id,
@@ -910,6 +1028,74 @@ class DV360SyncService:
 
         if not rows:
             return 0
+
+        if org_dir and org_id and asset_download_queue:
+            logger.info(f"  Downloading assets for {len(asset_download_queue)} unique ads...")
+            asset_results = {}
+            downloaded_videos = set()
+            for ad_id, info in asset_download_queue.items():
+                yt_vid = info.get("youtube_video_id", "")
+                thumb = info.get("thumbnail_url", "")
+                result = {"video_url": "", "asset_url": "", "thumbnail_url": "", "video_duration_seconds": None}
+
+                if yt_vid:
+                    if yt_vid not in downloaded_videos:
+                        try:
+                            vid_path, vid_served = await self._download_video_asset(
+                                yt_vid, org_dir, org_id, ad_id
+                            )
+                            if vid_served:
+                                result["video_url"] = vid_served
+                                result["asset_url"] = vid_served
+                                result["video_duration_seconds"] = self._get_video_duration(vid_path)
+                                downloaded_videos.add(yt_vid)
+                        except Exception as e:
+                            logger.warning(f"  Video download failed for ad {ad_id}: {e}")
+                    else:
+                        safe_id = _sanitize_for_filename(ad_id)
+                        vid_file = f"vid_dv360_{safe_id}.mp4"
+                        vid_path = os.path.join(org_dir, vid_file)
+                        if os.path.exists(vid_path) and os.path.getsize(vid_path) > 0:
+                            result["video_url"] = f"/static/creatives/{org_id}/{vid_file}"
+                            result["asset_url"] = result["video_url"]
+                            result["video_duration_seconds"] = self._get_video_duration(vid_path)
+
+                    try:
+                        thumb_path, thumb_served = await self._download_youtube_thumbnail(
+                            yt_vid, org_dir, org_id, ad_id
+                        )
+                        if thumb_served:
+                            result["thumbnail_url"] = thumb_served
+                    except Exception as e:
+                        logger.warning(f"  Thumbnail download failed for ad {ad_id}: {e}")
+
+                elif thumb and thumb.startswith("http"):
+                    try:
+                        _, img_served = await self._download_image_asset(
+                            thumb, org_dir, org_id, ad_id
+                        )
+                        if img_served:
+                            result["asset_url"] = img_served
+                            result["thumbnail_url"] = img_served
+                    except Exception as e:
+                        logger.warning(f"  Image download failed for ad {ad_id}: {e}")
+
+                asset_results[ad_id] = result
+
+            for row in rows:
+                ad_id = row["ad_id"]
+                if ad_id in asset_results:
+                    r = asset_results[ad_id]
+                    if r["video_url"]:
+                        row["video_url"] = r["video_url"]
+                    if r["asset_url"]:
+                        row["asset_url"] = r["asset_url"]
+                    if r["thumbnail_url"]:
+                        row["thumbnail_url"] = r["thumbnail_url"]
+                    if r["video_duration_seconds"] is not None:
+                        row["video_duration_seconds"] = r["video_duration_seconds"]
+
+            logger.info(f"  Asset downloads complete: {len(downloaded_videos)} videos, {len(asset_results)} ads processed")
 
         BATCH_SIZE = 100
         for i in range(0, len(rows), BATCH_SIZE):
