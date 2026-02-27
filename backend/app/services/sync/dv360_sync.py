@@ -8,20 +8,36 @@ Dual-API architecture:
   Also provides dimension backfill (campaign names, IO goals, creative types)
   for fields not in the slimmed Bid Manager report.
 - Bid Manager API v2 (doubleclickbidmanager.googleapis.com/v2):
-  Reporting — slimmed query (7 groupBys: date, advertiser, advertiser_name,
-  advertiser_currency, insertion_order, line_item, line_item_type) compatible
-  with YouTube Video ID. All other dimensions backfilled from v4 API.
+  Two-report YOUTUBE architecture:
+  Report 1 (perf): 19 non-conversion metrics with type=YOUTUBE:
+    Core: IMPRESSIONS, CLICKS, CLICK_RATE
+    Spend: MEDIA_COST_ADVERTISER
+    Video: VIDEO_VIEWS, VIDEO_VIEWS_RATE, VIDEO_COMPLETE_IMPRESSIONS,
+           VIDEO_FIRST/MIDPOINT/THIRD_QUARTILE_IMPRESSIONS, VIDEO_SKIPS
+    Cost: COST_PER_VIDEO_VIEW
+    Active View: ACTIVE_VIEW_MEASURABLE/VIEWABLE/PERCENT_VIEWABLE_IMPRESSIONS
+    Companion: VIDEO_COMPANION_IMPRESSIONS, VIDEO_COMPANION_CLICKS
+    Other: BILLABLE_IMPRESSIONS, ENGAGEMENTS
+  Report 2 (conv): 4 conversion-only metrics with type=YOUTUBE:
+    TOTAL_CONVERSIONS, POST_VIEW_CONVERSIONS, POST_CLICK_CONVERSIONS,
+    REVENUE_CONVERSION_COST_ADVERTISER
+  Both use 8 groupBys (date, advertiser, advertiser_name,
+  advertiser_currency, insertion_order, line_item, line_item_type,
+  youtube_ad_video_id).
 
 The sync flow:
-1. Fetch entity metadata maps from DV360 API v4 (campaigns, IOs, line items,
-   creatives, ad groups, ad group ads, advertiser timezone)
+1. Fetch entity metadata maps from DV360 API v4
 2. Map line items to YouTube video IDs via adGroup→adGroupAd chain
-3. Fetch YouTube oEmbed metadata (title, thumbnail) for discovered video IDs
-4. Create + run a slimmed Bid Manager report query for the date range
-5. Parse CSV results and enrich with v4 metadata (campaigns, IO goals,
-   creative types, video titles, thumbnails)
-6. Download creative assets (thumbnails via YouTube CDN, videos via yt-dlp)
-7. Upsert enriched records into dv360_raw_performance
+3. Run Report 1 (performance) + Report 2 (conversion) via Bid Manager
+4. Fetch YouTube oEmbed metadata for video IDs from both reports
+5. Parse CSV results and enrich with v4 metadata
+6. Upsert Report 1 records (full row upsert)
+7. Merge Report 2 conversion data into existing rows (UPDATE only)
+8. Download creative assets (thumbnails via YouTube CDN, videos via yt-dlp)
+
+Note: YOUTUBE reports can take up to 2 hours to process on Google's backend.
+The poll loop uses adaptive intervals (30s→60s→120s) with a 2-hour max wait
+and automatic OAuth token refresh to handle long-running reports.
 """
 import httpx
 import csv
@@ -92,15 +108,30 @@ class DV360SyncService:
 
         entity_maps = await self._fetch_entity_metadata(access_token, advertiser_id)
 
-        records = await self._run_report(
-            access_token, advertiser_id, date_from, date_to
+        perf_records = await self._run_report(
+            access_token, advertiser_id, date_from, date_to,
+            db=db, connection=connection,
         )
 
         csv_video_ids = set()
-        for r in records:
+        for r in perf_records:
             vid = (r.get("YouTube Ad Video ID") or "").strip()
             if vid:
                 csv_video_ids.add(vid)
+
+        conv_records = []
+        try:
+            conv_records = await self._run_conversion_report(
+                access_token, advertiser_id, date_from, date_to,
+                db=db, connection=connection,
+            )
+            for r in conv_records:
+                vid = (r.get("YouTube Ad Video ID") or "").strip()
+                if vid:
+                    csv_video_ids.add(vid)
+        except Exception as e:
+            logger.warning(f"DV360: Conversion report failed (non-fatal, Floodlight may not be configured): {e}")
+
         known_ids = set(entity_maps.youtube_metadata.keys())
         new_ids = csv_video_ids - known_ids
         if new_ids:
@@ -116,9 +147,18 @@ class DV360SyncService:
                 video_metadata=merged_vid_meta,
             )
 
-        upserted = await self._upsert_records(db, connection, records, sync_job_id, entity_maps)
+        perf_upserted = await self._upsert_records(db, connection, perf_records, sync_job_id, entity_maps)
 
-        return {"fetched": len(records), "upserted": upserted}
+        conv_upserted = 0
+        if conv_records:
+            try:
+                conv_upserted = await self._upsert_conversion_records(
+                    db, connection, conv_records, sync_job_id, entity_maps
+                )
+            except Exception as e:
+                logger.warning(f"DV360: Conversion upsert failed (non-fatal): {e}")
+
+        return {"fetched": len(perf_records) + len(conv_records), "upserted": perf_upserted + conv_upserted}
 
     async def _get_valid_token(
         self, db: AsyncSession, connection: PlatformConnection
@@ -627,22 +667,176 @@ class DV360SyncService:
         logger.info(f"YouTube oEmbed: fetched metadata for {len(metadata)}/{len(video_ids)} videos")
         return metadata
 
-    async def _run_report(
+    async def _refresh_token_if_needed(
+        self,
+        db: AsyncSession,
+        connection: PlatformConnection,
+    ) -> str:
+        from datetime import timezone as tz
+        now = datetime.now(tz.utc)
+        if connection.token_expiry and connection.token_expiry > now + timedelta(minutes=5):
+            return decrypt_token(connection.access_token_encrypted)
+        refresh_token = decrypt_token(connection.refresh_token_encrypted)
+        new_tokens = await dv360_oauth.refresh_access_token(refresh_token)
+        new_access = new_tokens.get("access_token")
+        from app.core.security import encrypt_token
+        connection.access_token_encrypted = encrypt_token(new_access)
+        connection.token_expiry = now + timedelta(seconds=new_tokens.get("expires_in", 3600))
+        db.add(connection)
+        await db.flush()
+        logger.info("Bid Manager: OAuth token refreshed during long poll")
+        return new_access
+
+    async def _create_and_poll_report(
         self,
         access_token: str,
-        advertiser_id: str,
-        date_from: date,
-        date_to: date,
-    ) -> List[Dict[str, Any]]:
-        """Create and run a Bid Manager v2 report query, then download CSV results."""
+        query_body: Dict[str, Any],
+        label: str = "report",
+        db: AsyncSession = None,
+        connection: PlatformConnection = None,
+    ) -> Optional[List[Dict[str, Any]]]:
+        current_token = access_token
         headers = {
-            "Authorization": f"Bearer {access_token}",
+            "Authorization": f"Bearer {current_token}",
             "Content-Type": "application/json",
         }
 
-        query_body = {
+        async with httpx.AsyncClient(timeout=120) as client:
+            create_resp = await client.post(
+                f"{BID_MANAGER_API_BASE}/queries",
+                headers=headers,
+                json=query_body,
+            )
+            if create_resp.status_code != 200:
+                logger.error(f"Bid Manager v2 [{label}]: Create query failed ({create_resp.status_code}): {create_resp.text[:500]}")
+                return None
+
+            query_data = create_resp.json()
+            query_id = query_data.get("queryId")
+            if not query_id:
+                logger.error(f"Bid Manager v2 [{label}]: No queryId returned: {query_data}")
+                return []
+
+            run_resp = await client.post(
+                f"{BID_MANAGER_API_BASE}/queries/{query_id}:run",
+                headers=headers,
+                json={},
+            )
+            if run_resp.status_code != 200:
+                logger.error(f"Bid Manager v2 [{label}]: Run query failed ({run_resp.status_code}): {run_resp.text[:500]}")
+                return None
+
+            logger.info(f"Bid Manager v2 [{label}]: Query {query_id} created and running, polling for results (YouTube reports may take up to 2 hours)")
+
+            report_url = None
+            poll_interval = 30
+            max_wait_seconds = 7200
+            elapsed = 0
+            attempt = 0
+            last_token_refresh = 0
+            while elapsed < max_wait_seconds:
+                await asyncio.sleep(poll_interval)
+                elapsed += poll_interval
+                attempt += 1
+
+                if elapsed > 300 and poll_interval < 60:
+                    poll_interval = 60
+                elif elapsed > 1800 and poll_interval < 120:
+                    poll_interval = 120
+
+                if db and connection and (elapsed - last_token_refresh) > 2700:
+                    try:
+                        current_token = await self._refresh_token_if_needed(db, connection)
+                        headers["Authorization"] = f"Bearer {current_token}"
+                        last_token_refresh = elapsed
+                    except Exception as e:
+                        logger.warning(f"Bid Manager v2 [{label}]: Token refresh failed: {e}")
+
+                try:
+                    status_resp = await client.get(
+                        f"{BID_MANAGER_API_BASE}/queries/{query_id}/reports",
+                        headers=headers,
+                    )
+                except Exception as e:
+                    logger.warning(f"Bid Manager v2 [{label}]: Poll error: {e}")
+                    continue
+
+                if status_resp.status_code == 401 and db and connection:
+                    try:
+                        current_token = await self._refresh_token_if_needed(db, connection)
+                        headers["Authorization"] = f"Bearer {current_token}"
+                        last_token_refresh = elapsed
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Bid Manager v2 [{label}]: Token refresh on 401 failed: {e}")
+
+                if status_resp.status_code != 200:
+                    continue
+
+                resp_data = status_resp.json()
+                reports = resp_data.get("reports", [])
+                if reports:
+                    latest = reports[0]
+                    r_metadata = latest.get("metadata", {})
+                    r_status = r_metadata.get("status", {})
+                    state = r_status.get("state", "UNKNOWN")
+                    if attempt % 10 == 0 or attempt <= 3:
+                        elapsed_min = elapsed / 60
+                        logger.info(f"Bid Manager v2 [{label}]: Poll #{attempt} ({elapsed_min:.0f}m elapsed), state={state}")
+                    if state == "DONE":
+                        report_url = r_metadata.get("googleCloudStoragePath")
+                        logger.info(f"Bid Manager v2 [{label}]: Report ready after {elapsed/60:.1f} minutes")
+                        break
+                    elif state == "FAILED":
+                        logger.error(f"Bid Manager v2 [{label}]: Report failed: {r_status}")
+                        return None
+                else:
+                    if attempt % 10 == 0 or attempt <= 3:
+                        logger.info(f"Bid Manager v2 [{label}]: Poll #{attempt} ({elapsed/60:.0f}m elapsed), no reports yet")
+
+            if not report_url:
+                logger.error(f"Bid Manager v2 [{label}]: Report timed out after {max_wait_seconds/60:.0f} minutes")
+                try:
+                    await client.delete(
+                        f"{BID_MANAGER_API_BASE}/queries/{query_id}",
+                        headers=headers,
+                    )
+                except Exception:
+                    pass
+                return None
+
+            csv_resp = await client.get(
+                report_url,
+                headers={"Authorization": f"Bearer {current_token}"},
+            )
+            if csv_resp.status_code != 200:
+                logger.error(f"Bid Manager v2 [{label}]: CSV download failed ({csv_resp.status_code})")
+                return None
+
+            records = self._parse_csv(csv_resp.text)
+            logger.info(f"Bid Manager v2 [{label}]: Downloaded CSV with {len(records)} data rows")
+
+            try:
+                await client.delete(
+                    f"{BID_MANAGER_API_BASE}/queries/{query_id}",
+                    headers=headers,
+                )
+            except Exception:
+                pass
+
+        return records
+
+    def _build_query_body(
+        self,
+        advertiser_id: str,
+        date_from: date,
+        date_to: date,
+        metrics: List[str],
+        title_suffix: str = "",
+    ) -> Dict[str, Any]:
+        return {
             "metadata": {
-                "title": f"brainsuite_dv360_{advertiser_id}_{date_from}_{date_to}",
+                "title": f"brainsuite_dv360_{advertiser_id}_{date_from}_{date_to}{title_suffix}",
                 "dataRange": {
                     "range": "CUSTOM_DATES",
                     "customStartDate": {
@@ -659,7 +853,7 @@ class DV360SyncService:
                 "format": "CSV",
             },
             "params": {
-                "type": "STANDARD",
+                "type": "YOUTUBE",
                 "groupBys": [
                     "FILTER_DATE",
                     "FILTER_ADVERTISER",
@@ -670,19 +864,7 @@ class DV360SyncService:
                     "FILTER_LINE_ITEM_TYPE",
                     "FILTER_YOUTUBE_AD_VIDEO_ID",
                 ],
-                "metrics": [
-                    "METRIC_IMPRESSIONS",
-                    "METRIC_CLICKS",
-                    "METRIC_CTR",
-                    "METRIC_MEDIA_COST_ECPM_ADVERTISER",
-                    "METRIC_MEDIA_COST_ECPC_ADVERTISER",
-                    "METRIC_REVENUE_ADVERTISER",
-                    "METRIC_TRUEVIEW_VIEWS",
-                    "METRIC_VIDEO_COMPLETION_RATE",
-                    "METRIC_ENGAGEMENTS",
-                    "METRIC_ENGAGEMENT_RATE",
-                    "METRIC_TRUEVIEW_VIEW_RATE",
-                ],
+                "metrics": metrics,
                 "filters": [
                     {
                         "type": "FILTER_ADVERTISER",
@@ -692,78 +874,70 @@ class DV360SyncService:
             },
         }
 
-        records = []
+    _PERF_METRICS = [
+        "METRIC_IMPRESSIONS",
+        "METRIC_CLICKS",
+        "METRIC_CLICK_RATE",
+        "METRIC_MEDIA_COST_ADVERTISER",
+        "METRIC_VIDEO_VIEWS",
+        "METRIC_VIDEO_VIEWS_RATE",
+        "METRIC_VIDEO_COMPLETE_IMPRESSIONS",
+        "METRIC_VIDEO_FIRST_QUARTILE_IMPRESSIONS",
+        "METRIC_VIDEO_MIDPOINT_IMPRESSIONS",
+        "METRIC_VIDEO_THIRD_QUARTILE_IMPRESSIONS",
+        "METRIC_VIDEO_SKIPS",
+        "METRIC_COST_PER_VIDEO_VIEW",
+        "METRIC_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
+        "METRIC_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS",
+        "METRIC_ACTIVE_VIEW_PERCENT_VIEWABLE_IMPRESSIONS",
+        "METRIC_VIDEO_COMPANION_IMPRESSIONS",
+        "METRIC_VIDEO_COMPANION_CLICKS",
+        "METRIC_BILLABLE_IMPRESSIONS",
+        "METRIC_ENGAGEMENTS",
+    ]
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            create_resp = await client.post(
-                f"{BID_MANAGER_API_BASE}/queries",
-                headers=headers,
-                json=query_body,
-            )
-            if create_resp.status_code != 200:
-                logger.error(f"Bid Manager v2: Create query failed ({create_resp.status_code}): {create_resp.text[:500]}")
-                return []
+    _CONV_METRICS = [
+        "METRIC_TOTAL_CONVERSIONS",
+        "METRIC_POST_VIEW_CONVERSIONS",
+        "METRIC_POST_CLICK_CONVERSIONS",
+        "METRIC_REVENUE_CONVERSION_COST_ADVERTISER",
+    ]
 
-            query_data = create_resp.json()
-            query_id = query_data.get("queryId")
-            if not query_id:
-                logger.error(f"Bid Manager v2: No queryId returned: {query_data}")
-                return []
+    async def _run_report(
+        self,
+        access_token: str,
+        advertiser_id: str,
+        date_from: date,
+        date_to: date,
+        db: AsyncSession = None,
+        connection: PlatformConnection = None,
+    ) -> List[Dict[str, Any]]:
+        query_body = self._build_query_body(
+            advertiser_id, date_from, date_to,
+            self._PERF_METRICS, title_suffix="_perf",
+        )
+        result = await self._create_and_poll_report(
+            access_token, query_body, label="perf", db=db, connection=connection
+        )
+        return result if result is not None else []
 
-            run_resp = await client.post(
-                f"{BID_MANAGER_API_BASE}/queries/{query_id}:run",
-                headers=headers,
-                json={},
-            )
-            if run_resp.status_code != 200:
-                logger.error(f"Bid Manager v2: Run query failed ({run_resp.status_code}): {run_resp.text[:500]}")
-                return []
-
-            report_url = None
-            for attempt in range(30):
-                await asyncio.sleep(10)
-                status_resp = await client.get(
-                    f"{BID_MANAGER_API_BASE}/queries/{query_id}/reports",
-                    headers=headers,
-                )
-                if status_resp.status_code != 200:
-                    continue
-
-                reports = status_resp.json().get("reports", [])
-                if reports:
-                    latest = reports[0]
-                    metadata = latest.get("metadata", {})
-                    status = metadata.get("status", {})
-                    if status.get("state") == "DONE":
-                        report_url = metadata.get("googleCloudStoragePath")
-                        break
-                    elif status.get("state") == "FAILED":
-                        logger.error(f"Bid Manager v2: Report failed: {status}")
-                        return []
-
-            if not report_url:
-                logger.error(f"Bid Manager v2: Report timed out for advertiser {advertiser_id}")
-                return []
-
-            csv_resp = await client.get(
-                report_url,
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            if csv_resp.status_code != 200:
-                logger.error(f"Bid Manager v2: CSV download failed ({csv_resp.status_code})")
-                return []
-
-            records = self._parse_csv(csv_resp.text)
-
-            try:
-                await client.delete(
-                    f"{BID_MANAGER_API_BASE}/queries/{query_id}",
-                    headers=headers,
-                )
-            except Exception:
-                pass
-
-        return records
+    async def _run_conversion_report(
+        self,
+        access_token: str,
+        advertiser_id: str,
+        date_from: date,
+        date_to: date,
+        db: AsyncSession = None,
+        connection: PlatformConnection = None,
+    ) -> List[Dict[str, Any]]:
+        query_body = self._build_query_body(
+            advertiser_id, date_from, date_to,
+            self._CONV_METRICS, title_suffix="_conv",
+        )
+        result = await self._create_and_poll_report(
+            access_token, query_body, label="conv", db=db, connection=connection
+        )
+        return result if result is not None else []
 
     def _parse_csv(self, csv_text: str) -> List[Dict[str, Any]]:
         """Parse Bid Manager v2 CSV report output into records.
@@ -993,6 +1167,11 @@ class DV360SyncService:
         if not records:
             return 0
 
+        if records:
+            first_row = records[0]
+            csv_columns = list(first_row.keys())
+            logger.info(f"DV360 perf CSV columns ({len(csv_columns)}): {csv_columns}")
+
         org_id = str(connection.organization_id) if hasattr(connection, "organization_id") and connection.organization_id else None
         org_dir = None
         if org_id:
@@ -1020,11 +1199,72 @@ class DV360SyncService:
         rows = []
         asset_download_queue = {}
         for r in records:
-            spend = safe_decimal(r.get("Revenue (Adv Currency)"))
+            spend = safe_decimal(r.get("Media Cost (Advertiser Currency)"))
             impressions = safe_int(r.get("Impressions"))
             clicks = safe_int(r.get("Clicks"))
-            conversion_value = safe_decimal(r.get("Revenue (Adv Currency)"))
-            roas_val = float(conversion_value / spend) if spend and conversion_value and spend > 0 else None
+            video_views = safe_int(
+                r.get("Video Views") or r.get("TrueView Views")
+            )
+            video_completions = safe_int(
+                r.get("Video Completions") or r.get("Video Complete Impressions")
+                or r.get("Completion") or r.get("Complete Impressions (Video)")
+            )
+            video_first_quartile = safe_int(
+                r.get("First Quartile") or r.get("Video First Quartile Impressions")
+                or r.get("First Quartile Impressions")
+            )
+            video_midpoint = safe_int(
+                r.get("Midpoint") or r.get("Video Midpoint Impressions")
+                or r.get("Midpoint Impressions")
+            )
+            video_third_quartile = safe_int(
+                r.get("Third Quartile") or r.get("Video Third Quartile Impressions")
+                or r.get("Third Quartile Impressions")
+            )
+            video_skips = safe_int(
+                r.get("Skips") or r.get("Video Skips")
+            )
+            cost_per_view = safe_decimal(
+                r.get("CPV") or r.get("Cost Per Video View")
+                or r.get("Cost per Video View")
+            )
+            active_view_measurable = safe_int(
+                r.get("Active View: Measurable Impressions")
+                or r.get("Active View Measurable Impressions")
+            )
+            active_view_viewable = safe_int(
+                r.get("Active View: Viewable Impressions")
+                or r.get("Active View Viewable Impressions")
+            )
+            active_view_pct = safe_float(
+                r.get("Active View: % Viewable Impressions")
+                or r.get("Active View % Viewable Impressions")
+                or r.get("Active View: Percent Viewable Impressions")
+            )
+            billable_impressions = safe_int(r.get("Billable Impressions"))
+            companion_impressions = safe_int(
+                r.get("Companion Impressions") or r.get("Video Companion Impressions")
+            )
+            companion_clicks = safe_int(
+                r.get("Companion Clicks") or r.get("Video Companion Clicks")
+            )
+            engagements = safe_int(r.get("Engagements"))
+
+            s_f = float(spend) if spend else 0
+            ctr = safe_float(r.get("Click Rate (CTR)") or r.get("Click Rate"))
+            cpm = Decimal(str(s_f / impressions * 1000)) if spend and impressions else None
+            cpc = Decimal(str(s_f / clicks)) if spend and clicks else None
+            video_view_rate = safe_float(r.get("View Rate") or r.get("Video Views Rate"))
+
+            if video_completions and video_views and video_views > 0:
+                video_completion_rate = video_completions / video_views * 100
+            elif video_completions and video_skips is not None:
+                denom = video_completions + video_skips
+                video_completion_rate = (video_completions / denom * 100) if denom > 0 else None
+            else:
+                video_completion_rate = None
+
+            engagement_rate = (engagements / impressions * 100) if engagements and impressions else None
 
             csv_io_id = r.get("Insertion Order ID") or ""
             csv_li_id = r.get("Line Item ID") or ""
@@ -1142,33 +1382,35 @@ class DV360SyncService:
                 "spend": spend,
                 "impressions": impressions,
                 "clicks": clicks,
-                "ctr": safe_float(r.get("Click Rate (CTR)")),
-                "cpm": safe_decimal(r.get("Media Cost eCPM (Advertiser Currency)")),
-                "cpc": safe_decimal(r.get("Media Cost eCPC (Advertiser Currency)")),
+                "ctr": ctr,
+                "cpm": cpm,
+                "cpc": cpc,
+                "cost_per_view": cost_per_view,
                 "total_media_cost": None,
-                "billable_impressions": None,
+                "billable_impressions": billable_impressions,
                 "total_conversions": None,
                 "post_click_conversions": None,
                 "post_view_conversions": None,
-                "conversion_value": conversion_value,
-                "roas": roas_val,
+                "conversion_value": None,
+                "roas": None,
                 "cost_per_conversion": None,
-                "trueview_views": safe_int(r.get("TrueView: Views")),
-                "video_views": safe_int(r.get("TrueView: Views")),
-                "video_completions": None,
-                "video_first_quartile": None,
-                "video_midpoint": None,
-                "video_third_quartile": None,
-                "video_completion_rate": safe_float(r.get("Completion Rate (Video)")),
-                "video_view_rate": safe_float(r.get("TrueView: View Rate")),
+                "trueview_views": video_views,
+                "video_views": video_views,
+                "video_completions": video_completions,
+                "video_first_quartile": video_first_quartile,
+                "video_midpoint": video_midpoint,
+                "video_third_quartile": video_third_quartile,
+                "video_skips": video_skips,
+                "video_completion_rate": video_completion_rate,
+                "video_view_rate": video_view_rate,
                 "video_plays": None,
-                "companion_impressions": None,
-                "companion_clicks": None,
-                "active_view_viewable_impressions": None,
-                "active_view_measurable_impressions": None,
-                "active_view_viewability": None,
-                "engagements": safe_int(r.get("Engagements")),
-                "engagement_rate": safe_float(r.get("Engagement Rate")),
+                "companion_impressions": companion_impressions,
+                "companion_clicks": companion_clicks,
+                "active_view_viewable_impressions": active_view_viewable,
+                "active_view_measurable_impressions": active_view_measurable,
+                "active_view_viewability": active_view_pct,
+                "engagements": engagements,
+                "engagement_rate": engagement_rate,
                 "is_validated": True,
                 "is_processed": False,
             })
@@ -1177,8 +1419,13 @@ class DV360SyncService:
             return 0
 
         _ADDITIVE_FIELDS = [
-            "spend", "impressions", "clicks", "conversion_value",
-            "trueview_views", "video_views", "engagements",
+            "spend", "impressions", "clicks",
+            "trueview_views", "video_views",
+            "video_completions", "video_first_quartile", "video_midpoint",
+            "video_third_quartile", "video_skips",
+            "companion_impressions", "companion_clicks",
+            "active_view_viewable_impressions", "active_view_measurable_impressions",
+            "billable_impressions", "engagements",
         ]
 
         def _add_val(a, b):
@@ -1194,17 +1441,26 @@ class DV360SyncService:
             s = row.get("spend")
             imp = row.get("impressions")
             clk = row.get("clicks")
-            cv = row.get("conversion_value")
             tv = row.get("trueview_views")
+            vc = row.get("video_completions")
+            vs = row.get("video_skips")
             eng = row.get("engagements")
+            av_m = row.get("active_view_measurable_impressions")
+            av_v = row.get("active_view_viewable_impressions")
 
             s_f = float(s) if s else 0
             row["ctr"] = (clk / imp * 100) if imp and clk else None
             row["cpm"] = Decimal(str(s_f / imp * 1000)) if s and imp else None
             row["cpc"] = Decimal(str(s_f / clk)) if s and clk else None
-            row["roas"] = float(cv / s) if s and cv and s > 0 else None
             row["video_view_rate"] = (tv / imp * 100) if imp and tv else None
-            row["engagement_rate"] = (eng / imp * 100) if imp and eng else None
+            row["engagement_rate"] = (eng / imp * 100) if eng and imp else None
+            if vc and tv and tv > 0:
+                row["video_completion_rate"] = vc / tv * 100
+            elif vc is not None and vs is not None:
+                denom = vc + vs
+                row["video_completion_rate"] = (vc / denom * 100) if denom > 0 else None
+            if av_m and av_v is not None:
+                row["active_view_viewability"] = (av_v / av_m * 100) if av_m > 0 else None
 
         seen_keys: Dict[tuple, dict] = {}
         pre_agg = len(rows)
@@ -1333,15 +1589,26 @@ class DV360SyncService:
                     "ctr": stmt.excluded.ctr,
                     "cpm": stmt.excluded.cpm,
                     "cpc": stmt.excluded.cpc,
+                    "cost_per_view": stmt.excluded.cost_per_view,
                     "total_media_cost": stmt.excluded.total_media_cost,
                     "billable_impressions": stmt.excluded.billable_impressions,
-                    "total_conversions": stmt.excluded.total_conversions,
-                    "cost_per_conversion": stmt.excluded.cost_per_conversion,
-                    "roas": stmt.excluded.roas,
+                    "trueview_views": stmt.excluded.trueview_views,
+                    "video_views": stmt.excluded.video_views,
                     "video_completions": stmt.excluded.video_completions,
+                    "video_first_quartile": stmt.excluded.video_first_quartile,
+                    "video_midpoint": stmt.excluded.video_midpoint,
+                    "video_third_quartile": stmt.excluded.video_third_quartile,
+                    "video_skips": stmt.excluded.video_skips,
+                    "video_completion_rate": stmt.excluded.video_completion_rate,
                     "video_view_rate": stmt.excluded.video_view_rate,
+                    "video_plays": stmt.excluded.video_plays,
                     "companion_impressions": stmt.excluded.companion_impressions,
                     "companion_clicks": stmt.excluded.companion_clicks,
+                    "active_view_viewable_impressions": stmt.excluded.active_view_viewable_impressions,
+                    "active_view_measurable_impressions": stmt.excluded.active_view_measurable_impressions,
+                    "active_view_viewability": stmt.excluded.active_view_viewability,
+                    "engagements": stmt.excluded.engagements,
+                    "engagement_rate": stmt.excluded.engagement_rate,
                     "is_processed": False,
                 }
             )
@@ -1349,6 +1616,119 @@ class DV360SyncService:
             await db.flush()
 
         return len(rows)
+
+    async def _upsert_conversion_records(
+        self,
+        db: AsyncSession,
+        connection: PlatformConnection,
+        records: List[Dict[str, Any]],
+        sync_job_id: Optional[str],
+        entity_maps: Optional[EntityMaps] = None,
+    ) -> int:
+        if not records:
+            return 0
+
+        if records:
+            first_row = records[0]
+            csv_columns = list(first_row.keys())
+            logger.info(f"DV360 conv CSV columns ({len(csv_columns)}): {csv_columns}")
+
+        def safe_float(val, default=None):
+            try:
+                return float(val) if val else default
+            except Exception:
+                return default
+
+        def _add_val(a, b):
+            if a is None and b is None:
+                return None
+            if a is None:
+                return b
+            if b is None:
+                return a
+            return a + b
+
+        seen_keys: Dict[tuple, dict] = {}
+        for r in records:
+            csv_io_id = r.get("Insertion Order ID") or ""
+            csv_li_id = r.get("Line Item ID") or ""
+            csv_advertiser_id = r.get("Advertiser ID") or ""
+            csv_yt_video_id = r.get("YouTube Ad Video ID", "").strip()
+
+            if not csv_yt_video_id and entity_maps:
+                li_videos = entity_maps.line_item_videos.get(str(csv_li_id))
+                if li_videos and len(li_videos) > 0:
+                    csv_yt_video_id = li_videos[0].get("youtube_video_id", "")
+
+            parsed_date = r.get("_parsed_date")
+            ad_id = csv_yt_video_id if csv_yt_video_id else csv_li_id
+
+            total_conv = safe_float(
+                r.get("Total Conversions") or r.get("Conversions")
+            )
+            post_click = safe_float(
+                r.get("Post-Click Conversions") or r.get("Click Conversions")
+            )
+            post_view = safe_float(
+                r.get("Post-View Conversions") or r.get("View Conversions")
+                or r.get("Post-Impression Conversions")
+            )
+            cost_per_conv = safe_float(
+                r.get("Revenue eCPA (Advertiser Currency)")
+                or r.get("Cost Per Conversion")
+                or r.get("Conversion Cost (Advertiser Currency)")
+                or r.get("Revenue Conversion Cost (Advertiser Currency)")
+            )
+
+            key = (str(connection.id), str(parsed_date), ad_id, connection.ad_account_id)
+            if key in seen_keys:
+                existing = seen_keys[key]
+                existing["total_conversions"] = _add_val(existing["total_conversions"], total_conv)
+                existing["post_click_conversions"] = _add_val(existing["post_click_conversions"], post_click)
+                existing["post_view_conversions"] = _add_val(existing["post_view_conversions"], post_view)
+            else:
+                seen_keys[key] = {
+                    "platform_connection_id": connection.id,
+                    "report_date": parsed_date,
+                    "ad_id": ad_id,
+                    "ad_account_id": connection.ad_account_id,
+                    "total_conversions": total_conv,
+                    "post_click_conversions": post_click,
+                    "post_view_conversions": post_view,
+                    "cost_per_conversion": cost_per_conv,
+                }
+
+        if not seen_keys:
+            return 0
+
+        conv_rows = list(seen_keys.values())
+        logger.info(f"DV360 conv upsert: {len(records)} CSV rows aggregated to {len(conv_rows)} unique keys")
+
+        updated = 0
+        from sqlalchemy import update as sa_update
+        for cr in conv_rows:
+            stmt = (
+                sa_update(Dv360RawPerformance)
+                .where(
+                    Dv360RawPerformance.platform_connection_id == cr["platform_connection_id"],
+                    Dv360RawPerformance.report_date == cr["report_date"],
+                    Dv360RawPerformance.ad_id == cr["ad_id"],
+                    Dv360RawPerformance.ad_account_id == cr["ad_account_id"],
+                )
+                .values(
+                    total_conversions=cr["total_conversions"],
+                    post_click_conversions=cr["post_click_conversions"],
+                    post_view_conversions=cr["post_view_conversions"],
+                    cost_per_conversion=cr["cost_per_conversion"],
+                    is_processed=False,
+                )
+            )
+            result = await db.execute(stmt)
+            updated += result.rowcount
+
+        await db.flush()
+        logger.info(f"DV360 conv upsert: updated {updated} existing rows with conversion data")
+        return updated
 
 
 dv360_sync = DV360SyncService()

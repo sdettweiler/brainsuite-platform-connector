@@ -141,7 +141,10 @@ async def run_full_resync(connection_id: str) -> None:
             logger.warning(f"Connection {connection_id} not found for full resync")
             return
 
-        date_from = date.today() - timedelta(days=730)
+        if connection.platform == "DV360":
+            date_from = date.today() - timedelta(days=180)
+        else:
+            date_from = date.today() - timedelta(days=730)
         date_to = date.today() - timedelta(days=1)
 
         job = SyncJob(

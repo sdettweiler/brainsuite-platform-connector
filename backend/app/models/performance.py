@@ -469,6 +469,7 @@ class Dv360RawPerformance(Base):
     video_first_quartile: Mapped[int] = mapped_column(Integer, nullable=True)
     video_midpoint: Mapped[int] = mapped_column(Integer, nullable=True)
     video_third_quartile: Mapped[int] = mapped_column(Integer, nullable=True)
+    video_skips: Mapped[int] = mapped_column(Integer, nullable=True)
     video_completion_rate: Mapped[float] = mapped_column(Float, nullable=True)
     video_view_rate: Mapped[float] = mapped_column(Float, nullable=True)
     trueview_views: Mapped[int] = mapped_column(Integer, nullable=True)
@@ -482,6 +483,7 @@ class Dv360RawPerformance(Base):
     roas: Mapped[float] = mapped_column(Float, nullable=True)
     cost_per_conversion: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
 
+    cost_per_view: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)
     engagements: Mapped[int] = mapped_column(Integer, nullable=True)
     engagement_rate: Mapped[float] = mapped_column(Float, nullable=True)
 
