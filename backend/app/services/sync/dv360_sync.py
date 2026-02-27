@@ -3,18 +3,25 @@ DV360 data sync service.
 
 Dual-API architecture:
 - Display & Video 360 API v4 (displayvideo.googleapis.com/v4):
-  Entity metadata — campaigns, insertion orders, line items, creatives.
-  Provides names, types, statuses, and creative asset details.
+  Entity metadata — campaigns, insertion orders, line items, creatives,
+  ad groups, ad group ads (YouTube video IDs), advertiser timezone.
+  Also provides dimension backfill (campaign names, IO goals, creative types)
+  for fields not in the slimmed Bid Manager report.
 - Bid Manager API v2 (doubleclickbidmanager.googleapis.com/v2):
-  Reporting — create query, run, poll for completion, download CSV results.
-  Provides performance metrics (impressions, clicks, spend, conversions, video).
+  Reporting — slimmed query (7 groupBys: date, advertiser, advertiser_name,
+  advertiser_currency, insertion_order, line_item, line_item_type) compatible
+  with YouTube Video ID. All other dimensions backfilled from v4 API.
 
 The sync flow:
-1. Fetch entity metadata maps from DV360 API v4 (campaigns, IOs, line items, creatives)
-2. Create + run a Bid Manager report query for the date range
-3. Parse CSV results and enrich records with v4 metadata (creative thumbnails/assets)
-4. Download creative assets (images via httpx, videos via yt-dlp)
-5. Upsert enriched records into dv360_raw_performance
+1. Fetch entity metadata maps from DV360 API v4 (campaigns, IOs, line items,
+   creatives, ad groups, ad group ads, advertiser timezone)
+2. Map line items to YouTube video IDs via adGroup→adGroupAd chain
+3. Fetch YouTube oEmbed metadata (title, thumbnail) for discovered video IDs
+4. Create + run a slimmed Bid Manager report query for the date range
+5. Parse CSV results and enrich with v4 metadata (campaigns, IO goals,
+   creative types, video titles, thumbnails)
+6. Download creative assets (thumbnails via YouTube CDN, videos via yt-dlp)
+7. Upsert enriched records into dv360_raw_performance
 """
 import httpx
 import csv
@@ -49,12 +56,24 @@ BID_MANAGER_API_BASE = "https://doubleclickbidmanager.googleapis.com/v2"
 DV360_API_BASE = "https://displayvideo.googleapis.com/v4"
 
 
+_AD_TYPE_MAP = {
+    "inStreamAd": "In-Stream",
+    "bumperAd": "Bumper",
+    "nonSkippableAd": "Non-Skippable In-Stream",
+    "videoDiscoverAd": "Video Discovery",
+    "videoPerformanceAd": "Video Performance",
+    "mastheadAd": "Masthead",
+}
+
+
 class EntityMaps(NamedTuple):
     campaigns: Dict[str, Dict[str, Any]]
     insertion_orders: Dict[str, Dict[str, Any]]
     line_items: Dict[str, Dict[str, Any]]
     creatives: Dict[str, Dict[str, Any]]
     line_item_videos: Dict[str, Dict[str, Any]] = {}
+    advertiser_timezone: str = ""
+    youtube_metadata: Dict[str, Dict[str, Any]] = {}
 
 
 class DV360SyncService:
@@ -112,6 +131,7 @@ class DV360SyncService:
         insertion_orders: Dict[str, Dict[str, Any]] = {}
         line_items: Dict[str, Dict[str, Any]] = {}
         creatives: Dict[str, Dict[str, Any]] = {}
+        advertiser_timezone = ""
 
         async with httpx.AsyncClient(timeout=60) as client:
             campaign_task = self._fetch_campaigns(client, headers, advertiser_id)
@@ -120,10 +140,11 @@ class DV360SyncService:
             creative_task = self._fetch_creatives(client, headers, advertiser_id)
             ad_group_task = self._fetch_ad_groups(client, headers, advertiser_id)
             ad_group_ads_task = self._fetch_ad_group_ads(client, headers, advertiser_id)
+            tz_task = self._fetch_advertiser_timezone(client, headers, advertiser_id)
 
             results = await asyncio.gather(
                 campaign_task, io_task, li_task, creative_task,
-                ad_group_task, ad_group_ads_task,
+                ad_group_task, ad_group_ads_task, tz_task,
                 return_exceptions=True,
             )
 
@@ -149,6 +170,8 @@ class DV360SyncService:
 
             ad_groups = results[4] if isinstance(results[4], dict) else {}
             ad_group_ads = results[5] if isinstance(results[5], list) else []
+            if isinstance(results[6], str):
+                advertiser_timezone = results[6]
 
         line_item_videos: Dict[str, Dict[str, Any]] = {}
         ag_to_li: Dict[str, str] = {}
@@ -160,29 +183,51 @@ class DV360SyncService:
         for ad in ad_group_ads:
             ag_id = ad.get("ad_group_id", "")
             li_id = ag_to_li.get(ag_id, "")
-            video_id = ad.get("youtube_video_id", "")
-            if li_id and video_id:
-                if li_id in line_item_videos:
+            video_ids = ad.get("youtube_video_ids", [])
+            ad_type_label = ad.get("ad_type_label", "")
+            if not video_ids:
+                vid = ad.get("youtube_video_id", "")
+                if vid:
+                    video_ids = [vid]
+            if li_id and video_ids:
+                primary_video_id = video_ids[0]
+                if li_id not in line_item_videos:
+                    line_item_videos[li_id] = {
+                        "youtube_video_id": primary_video_id,
+                        "youtube_video_ids": video_ids,
+                        "ad_name": ad.get("name", ""),
+                        "display_url": ad.get("display_url", ""),
+                        "final_url": ad.get("final_url", ""),
+                        "ad_type_label": ad_type_label,
+                    }
+                else:
                     existing_vid = line_item_videos[li_id]["youtube_video_id"]
-                    if existing_vid != video_id:
+                    if existing_vid != primary_video_id:
                         logger.info(
                             f"DV360: Line item {li_id} has multiple video IDs "
-                            f"({existing_vid}, {video_id}), keeping first"
+                            f"({existing_vid}, {primary_video_id}), keeping first"
                         )
-                    continue
-                line_item_videos[li_id] = {
-                    "youtube_video_id": video_id,
-                    "ad_name": ad.get("name", ""),
-                    "display_url": ad.get("display_url", ""),
-                    "final_url": ad.get("final_url", ""),
-                }
+
+        total_li = len(line_items)
+        mapped_li = len(line_item_videos)
+        unmapped_li = total_li - mapped_li
+        all_video_ids = set()
+        for v in line_item_videos.values():
+            all_video_ids.update(v.get("youtube_video_ids", []))
+            vid = v.get("youtube_video_id", "")
+            if vid:
+                all_video_ids.add(vid)
 
         logger.info(
             f"DV360 v4 metadata for advertiser {advertiser_id}: "
             f"{len(campaigns)} campaigns, {len(insertion_orders)} IOs, "
-            f"{len(line_items)} line items, {len(creatives)} creatives, "
-            f"{len(line_item_videos)} line items with YouTube videos"
+            f"{total_li} line items, {len(creatives)} creatives, "
+            f"{mapped_li}/{total_li} line items mapped to YouTube videos "
+            f"({unmapped_li} unmapped), {len(all_video_ids)} unique video IDs, "
+            f"timezone={advertiser_timezone}"
         )
+
+        youtube_metadata = await self._fetch_youtube_metadata(list(all_video_ids))
 
         return EntityMaps(
             campaigns=campaigns,
@@ -190,6 +235,8 @@ class DV360SyncService:
             line_items=line_items,
             creatives=creatives,
             line_item_videos=line_item_videos,
+            advertiser_timezone=advertiser_timezone,
+            youtube_metadata=youtube_metadata,
         )
 
     async def _fetch_campaigns(
@@ -260,10 +307,12 @@ class DV360SyncService:
             for io_item in data.get("insertionOrders", []):
                 io_id = io_item.get("insertionOrderId")
                 if io_id:
+                    perf_goal = io_item.get("performanceGoal", {})
                     ios[str(io_id)] = {
                         "name": io_item.get("displayName", ""),
                         "status": io_item.get("entityStatus", ""),
                         "campaign_id": str(io_item.get("campaignId", "")),
+                        "goal_type": perf_goal.get("performanceGoalType", ""),
                     }
 
             page_token = data.get("nextPageToken")
@@ -453,19 +502,35 @@ class DV360SyncService:
 
             data = resp.json()
             for ad in data.get("adGroupAds", []):
-                video_id = ""
+                video_ids: List[str] = []
                 ad_name = ad.get("displayName", "")
                 display_url = ""
                 final_url = ""
+                ad_type_label = ""
 
                 for ad_type_key in ["inStreamAd", "bumperAd", "nonSkippableAd", "videoDiscoverAd", "videoPerformanceAd", "mastheadAd"]:
                     ad_detail = ad.get(ad_type_key)
                     if ad_detail:
-                        common = ad_detail.get("commonInStreamAttribute") or ad_detail.get("commonVideoResponsiveAdAttribute") or ad_detail
-                        if common:
+                        ad_type_label = _AD_TYPE_MAP.get(ad_type_key, ad_type_key)
+
+                        if ad_type_key == "videoPerformanceAd":
+                            for v in ad_detail.get("videos", []):
+                                vid = v.get("id", "")
+                                if vid:
+                                    video_ids.append(vid)
+                            display_url = ad_detail.get("displayUrl", "")
+                            final_urls = ad_detail.get("finalUrls", [])
+                            if final_urls:
+                                final_url = final_urls[0]
+                        else:
+                            common = (
+                                ad_detail.get("commonInStreamAttribute")
+                                or ad_detail.get("commonVideoResponsiveAdAttribute")
+                                or ad_detail
+                            )
                             video_ref = common.get("video", {})
                             if video_ref.get("id"):
-                                video_id = video_ref["id"]
+                                video_ids.append(video_ref["id"])
                             display_url = common.get("displayUrl", "")
                             final_url = common.get("finalUrl", "")
                         break
@@ -474,7 +539,9 @@ class DV360SyncService:
                     "ad_group_id": str(ad.get("adGroupId", "")),
                     "ad_group_ad_id": str(ad.get("adGroupAdId", "")),
                     "name": ad_name,
-                    "youtube_video_id": video_id,
+                    "youtube_video_id": video_ids[0] if video_ids else "",
+                    "youtube_video_ids": video_ids,
+                    "ad_type_label": ad_type_label,
                     "display_url": display_url,
                     "final_url": final_url,
                 })
@@ -484,6 +551,59 @@ class DV360SyncService:
                 break
 
         return ads
+
+    async def _fetch_advertiser_timezone(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict,
+        advertiser_id: str,
+    ) -> str:
+        """Fetch advertiser timezone from DV360 API v4."""
+        try:
+            resp = await client.get(
+                f"{DV360_API_BASE}/advertisers/{advertiser_id}",
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                tz = data.get("generalConfig", {}).get("timeZone", "")
+                if tz:
+                    logger.info(f"DV360 v4: Advertiser {advertiser_id} timezone: {tz}")
+                    return tz
+        except Exception as e:
+            logger.warning(f"DV360 v4: Failed to fetch advertiser timezone: {e}")
+        return ""
+
+    async def _fetch_youtube_metadata(
+        self,
+        video_ids: List[str],
+    ) -> Dict[str, Dict[str, Any]]:
+        """Fetch video title and thumbnail via YouTube oEmbed (no auth required)."""
+        metadata: Dict[str, Dict[str, Any]] = {}
+        if not video_ids:
+            return metadata
+
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            for vid in video_ids:
+                try:
+                    resp = await client.get(
+                        "https://www.youtube.com/oembed",
+                        params={"url": f"https://www.youtube.com/watch?v={vid}", "format": "json"},
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        metadata[vid] = {
+                            "title": data.get("title", ""),
+                            "author_name": data.get("author_name", ""),
+                            "thumbnail_url": f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg",
+                        }
+                    else:
+                        logger.debug(f"oEmbed failed for video {vid}: HTTP {resp.status_code}")
+                except Exception as e:
+                    logger.debug(f"oEmbed failed for video {vid}: {e}")
+
+        logger.info(f"YouTube oEmbed: fetched metadata for {len(metadata)}/{len(video_ids)} videos")
+        return metadata
 
     async def _run_report(
         self,
@@ -523,19 +643,9 @@ class DV360SyncService:
                     "FILTER_ADVERTISER",
                     "FILTER_ADVERTISER_NAME",
                     "FILTER_ADVERTISER_CURRENCY",
-                    "FILTER_ADVERTISER_TIMEZONE",
-                    "FILTER_AD_POSITION",
-                    "FILTER_AD_TYPE",
                     "FILTER_INSERTION_ORDER",
-                    "FILTER_INSERTION_ORDER_GOAL_TYPE",
                     "FILTER_LINE_ITEM",
                     "FILTER_LINE_ITEM_TYPE",
-                    "FILTER_CREATIVE_ID",
-                    "FILTER_CREATIVE_TYPE",
-                    "FILTER_CREATIVE_SOURCE",
-                    "FILTER_MEDIA_PLAN",
-                    "FILTER_MEDIA_PLAN_NAME",
-                    "FILTER_MEDIA_TYPE",
                 ],
                 "metrics": [
                     "METRIC_IMPRESSIONS",
@@ -714,6 +824,34 @@ class DV360SyncService:
             logger.warning(f"  Failed to download DV360 image for ad {ad_id}: {e}")
             return None, None
 
+    def _check_youtube_cookies(self) -> str:
+        """Check YouTube cookie status. Returns 'valid', 'expired', or 'missing'."""
+        cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
+        if not cookies_data:
+            return "missing"
+
+        now_ts = datetime.now().timestamp()
+        has_any_expiry = False
+        has_valid = False
+        for line in cookies_data.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 7:
+                try:
+                    expiry = int(parts[4])
+                    if expiry > 0:
+                        has_any_expiry = True
+                        if expiry > now_ts:
+                            has_valid = True
+                except (ValueError, IndexError):
+                    pass
+
+        if not has_any_expiry:
+            return "valid"
+        return "valid" if has_valid else "expired"
+
     async def _download_video_asset(
         self,
         youtube_video_id: str,
@@ -728,6 +866,14 @@ class DV360SyncService:
         if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
             served_url = f"/static/creatives/{org_id}/{filename}"
             return local_path, served_url
+
+        cookie_status = self._check_youtube_cookies()
+        if cookie_status == "missing":
+            logger.warning(f"  Skipping video download for {youtube_video_id}: YOUTUBE_COOKIES not set")
+            return None, None
+        if cookie_status == "expired":
+            logger.warning(f"  Skipping video download for {youtube_video_id}: YOUTUBE_COOKIES expired — please refresh")
+            return None, None
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
@@ -872,76 +1018,81 @@ class DV360SyncService:
             conversion_value = safe_decimal(r.get("Revenue (Adv Currency)"))
             roas_val = float(conversion_value / spend) if spend and conversion_value and spend > 0 else None
 
-            csv_creative_id = r.get("Creative ID") or ""
             csv_io_id = r.get("Insertion Order ID") or ""
             csv_li_id = r.get("Line Item ID") or ""
             csv_advertiser_id = r.get("Advertiser ID") or ""
-
-            csv_campaign_id = r.get("Campaign ID") or ""
-            csv_campaign_name = r.get("Campaign") or ""
             csv_li_type = r.get("Line Item Type") or ""
-            csv_creative_type = r.get("Creative Type") or ""
-            csv_creative_source = r.get("Creative Source") or ""
-            csv_ad_type = r.get("Ad Type") or ""
-            csv_yt_video_id = r.get("YouTube Ad Video ID", "")
 
-            if not csv_yt_video_id and entity_maps and csv_li_id:
-                li_video = entity_maps.line_item_videos.get(str(csv_li_id))
-                if li_video:
-                    csv_yt_video_id = li_video.get("youtube_video_id", "")
-
-            parsed_date = r.get("_parsed_date")
-            if csv_creative_id and csv_li_id:
-                ad_id = f"{csv_li_id}_{csv_creative_id}"
-            elif csv_creative_id:
-                ad_id = csv_creative_id
-            else:
-                ad_id = f"{csv_li_id}_{parsed_date.isoformat() if parsed_date else ''}"
-
-            campaign_id = csv_campaign_id
-            campaign_name = csv_campaign_name
-            io_name = r.get("Insertion Order") or ""
-            li_name = r.get("Line Item") or ""
-            li_type = csv_li_type
-            creative_name = r.get("Creative") or ""
-            creative_type = csv_creative_type
-            creative_source = csv_creative_source
+            csv_yt_video_id = ""
+            ad_type_label = ""
+            creative_type = ""
+            io_goal_type = ""
+            campaign_id = ""
+            campaign_name = ""
+            io_name = ""
+            li_name = ""
+            creative_name = ""
             thumbnail_url = ""
             asset_url = ""
             video_url = ""
             video_duration = None
             asset_format = ""
+            advertiser_tz = ""
 
             if entity_maps:
-                if not campaign_id:
-                    io_meta = entity_maps.insertion_orders.get(str(csv_io_id))
-                    if io_meta:
-                        campaign_id = io_meta.get("campaign_id", "")
-                    if not campaign_id:
-                        li_meta = entity_maps.line_items.get(str(csv_li_id))
-                        if li_meta and li_meta.get("campaign_id"):
-                            campaign_id = li_meta.get("campaign_id", "")
+                li_video = entity_maps.line_item_videos.get(str(csv_li_id))
+                if li_video:
+                    csv_yt_video_id = li_video.get("youtube_video_id", "")
+                    ad_type_label = li_video.get("ad_type_label", "")
 
-                if campaign_id and not campaign_name:
+                io_meta = entity_maps.insertion_orders.get(str(csv_io_id))
+                if io_meta:
+                    campaign_id = io_meta.get("campaign_id", "")
+                    io_name = io_meta.get("name", "")
+                    io_goal_type = io_meta.get("goal_type", "")
+                if not campaign_id:
+                    li_meta = entity_maps.line_items.get(str(csv_li_id))
+                    if li_meta:
+                        campaign_id = li_meta.get("campaign_id", "")
+                        if not li_name:
+                            li_name = li_meta.get("name", "")
+
+                if campaign_id:
                     c_meta = entity_maps.campaigns.get(campaign_id)
                     if c_meta:
                         campaign_name = c_meta.get("name", "")
 
-                cr_meta = entity_maps.creatives.get(str(csv_creative_id))
-                if cr_meta:
-                    if not creative_name:
-                        creative_name = cr_meta.get("name", "")
-                    thumbnail_url = cr_meta.get("thumbnail_url", "")
-                    asset_format = cr_meta.get("asset_format", "")
+                if csv_yt_video_id and entity_maps.youtube_metadata:
+                    yt_meta = entity_maps.youtube_metadata.get(csv_yt_video_id)
+                    if yt_meta:
+                        creative_name = yt_meta.get("title", "")
+                        if not thumbnail_url:
+                            thumbnail_url = yt_meta.get("thumbnail_url", "")
+
+                advertiser_tz = entity_maps.advertiser_timezone
+
+                if ad_type_label:
+                    creative_type = ad_type_label
 
             if not campaign_name and campaign_id:
                 campaign_name = f"Campaign {campaign_id}"
+
+            parsed_date = r.get("_parsed_date")
+            ad_id = f"{csv_li_id}_{parsed_date.isoformat() if parsed_date else ''}"
 
             if ad_id not in asset_download_queue:
                 asset_download_queue[ad_id] = {
                     "youtube_video_id": csv_yt_video_id,
                     "thumbnail_url": thumbnail_url,
                 }
+
+            ad_name = creative_name or li_name or ""
+            if not ad_name and csv_yt_video_id and entity_maps and entity_maps.youtube_metadata:
+                yt_meta = entity_maps.youtube_metadata.get(csv_yt_video_id)
+                if yt_meta:
+                    ad_name = yt_meta.get("title", "")
+
+            media_type = "Video" if csv_li_type and "YOUTUBE" in csv_li_type.upper() else ""
 
             rows.append({
                 "platform_connection_id": connection.id,
@@ -956,19 +1107,19 @@ class DV360SyncService:
                 "insertion_order_name": io_name,
                 "line_item_id": csv_li_id,
                 "line_item_name": li_name,
-                "line_item_type": li_type,
-                "creative_id": csv_creative_id,
+                "line_item_type": csv_li_type,
+                "creative_id": "",
                 "creative_name": creative_name,
                 "creative_type": creative_type,
-                "creative_source": creative_source,
+                "creative_source": "YouTube" if csv_yt_video_id else "",
                 "ad_id": ad_id,
-                "ad_name": creative_name or li_name,
-                "ad_type": csv_ad_type,
-                "ad_position": r.get("Ad Position") or "",
-                "advertiser_timezone": r.get("Advertiser Time Zone") or "",
-                "io_goal_type": r.get("Insertion Order Goal Type") or "",
+                "ad_name": ad_name,
+                "ad_type": ad_type_label,
+                "ad_position": "",
+                "advertiser_timezone": advertiser_tz,
+                "io_goal_type": io_goal_type,
                 "youtube_ad_video_id": csv_yt_video_id,
-                "media_type": r.get("Media Type") or "",
+                "media_type": media_type,
                 "thumbnail_url": thumbnail_url,
                 "asset_url": asset_url,
                 "video_url": video_url,
@@ -1023,7 +1174,11 @@ class DV360SyncService:
             return 0
 
         if org_dir and org_id and asset_download_queue:
-            logger.info(f"  Downloading assets for {len(asset_download_queue)} unique ads...")
+            cookie_status = self._check_youtube_cookies()
+            logger.info(
+                f"  Downloading assets for {len(asset_download_queue)} unique ads... "
+                f"(YouTube cookies: {cookie_status})"
+            )
             asset_results = {}
             downloaded_videos = set()
             for ad_id, info in asset_download_queue.items():
