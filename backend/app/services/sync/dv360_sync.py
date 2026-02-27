@@ -674,28 +674,14 @@ class DV360SyncService:
                     "METRIC_IMPRESSIONS",
                     "METRIC_CLICKS",
                     "METRIC_CTR",
-                    "METRIC_TOTAL_MEDIA_COST_ADVERTISER",
                     "METRIC_MEDIA_COST_ECPM_ADVERTISER",
                     "METRIC_MEDIA_COST_ECPC_ADVERTISER",
-                    "METRIC_TOTAL_CONVERSIONS",
-                    "METRIC_LAST_CLICKS",
-                    "METRIC_LAST_IMPRESSIONS",
                     "METRIC_REVENUE_ADVERTISER",
                     "METRIC_TRUEVIEW_VIEWS",
-                    "METRIC_RICH_MEDIA_VIDEO_COMPLETIONS",
-                    "METRIC_RICH_MEDIA_VIDEO_FIRST_QUARTILE_COMPLETES",
-                    "METRIC_RICH_MEDIA_VIDEO_MIDPOINTS",
-                    "METRIC_RICH_MEDIA_VIDEO_THIRD_QUARTILE_COMPLETES",
                     "METRIC_VIDEO_COMPLETION_RATE",
-                    "METRIC_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS",
-                    "METRIC_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
-                    "METRIC_ACTIVE_VIEW_PCT_VIEWABLE_IMPRESSIONS",
                     "METRIC_ENGAGEMENTS",
                     "METRIC_ENGAGEMENT_RATE",
-                    "METRIC_RICH_MEDIA_VIDEO_PLAYS",
-                    "METRIC_BILLABLE_IMPRESSIONS",
                     "METRIC_TRUEVIEW_VIEW_RATE",
-                    "METRIC_MEDIA_COST_ECPA_ADVERTISER",
                 ],
                 "filters": [
                     {
@@ -1034,10 +1020,9 @@ class DV360SyncService:
         rows = []
         asset_download_queue = {}
         for r in records:
-            spend = safe_decimal(r.get("Revenue (Adv Currency)") or r.get("Total Media Cost (Advertiser Currency)"))
+            spend = safe_decimal(r.get("Revenue (Adv Currency)"))
             impressions = safe_int(r.get("Impressions"))
             clicks = safe_int(r.get("Clicks"))
-            total_conversions = safe_float(r.get("Total Conversions"))
             conversion_value = safe_decimal(r.get("Revenue (Adv Currency)"))
             roas_val = float(conversion_value / spend) if spend and conversion_value and spend > 0 else None
 
@@ -1160,28 +1145,28 @@ class DV360SyncService:
                 "ctr": safe_float(r.get("Click Rate (CTR)")),
                 "cpm": safe_decimal(r.get("Media Cost eCPM (Advertiser Currency)")),
                 "cpc": safe_decimal(r.get("Media Cost eCPC (Advertiser Currency)")),
-                "total_media_cost": safe_decimal(r.get("Total Media Cost (Advertiser Currency)")),
-                "billable_impressions": safe_int(r.get("Billable Impressions")),
-                "total_conversions": total_conversions,
-                "post_click_conversions": safe_float(r.get("Post-Click Conversions")),
-                "post_view_conversions": safe_float(r.get("Post-View Conversions")),
+                "total_media_cost": None,
+                "billable_impressions": None,
+                "total_conversions": None,
+                "post_click_conversions": None,
+                "post_view_conversions": None,
                 "conversion_value": conversion_value,
                 "roas": roas_val,
-                "cost_per_conversion": safe_decimal(r.get("Media Cost eCPA (Advertiser Currency)")),
+                "cost_per_conversion": None,
                 "trueview_views": safe_int(r.get("TrueView: Views")),
                 "video_views": safe_int(r.get("TrueView: Views")),
-                "video_completions": safe_int(r.get("Complete Views (Video)")),
-                "video_first_quartile": safe_int(r.get("First-Quartile Views (Video)")),
-                "video_midpoint": safe_int(r.get("Midpoint Views (Video)")),
-                "video_third_quartile": safe_int(r.get("Third-Quartile Views (Video)")),
+                "video_completions": None,
+                "video_first_quartile": None,
+                "video_midpoint": None,
+                "video_third_quartile": None,
                 "video_completion_rate": safe_float(r.get("Completion Rate (Video)")),
                 "video_view_rate": safe_float(r.get("TrueView: View Rate")),
-                "video_plays": safe_int(r.get("Starts (Video)")),
-                "companion_impressions": safe_int(r.get("Companion Impressions")),
-                "companion_clicks": safe_int(r.get("Companion Clicks")),
-                "active_view_viewable_impressions": safe_int(r.get("Active View: Viewable Impressions")),
-                "active_view_measurable_impressions": safe_int(r.get("Active View: Measurable Impressions")),
-                "active_view_viewability": safe_float(r.get("Active View: % Viewable Impressions")),
+                "video_plays": None,
+                "companion_impressions": None,
+                "companion_clicks": None,
+                "active_view_viewable_impressions": None,
+                "active_view_measurable_impressions": None,
+                "active_view_viewability": None,
                 "engagements": safe_int(r.get("Engagements")),
                 "engagement_rate": safe_float(r.get("Engagement Rate")),
                 "is_validated": True,
@@ -1192,14 +1177,8 @@ class DV360SyncService:
             return 0
 
         _ADDITIVE_FIELDS = [
-            "spend", "impressions", "clicks", "total_media_cost",
-            "billable_impressions", "total_conversions", "post_click_conversions",
-            "post_view_conversions", "conversion_value", "trueview_views",
-            "video_views", "video_completions", "video_first_quartile",
-            "video_midpoint", "video_third_quartile", "video_plays",
-            "companion_impressions", "companion_clicks",
-            "active_view_viewable_impressions", "active_view_measurable_impressions",
-            "engagements",
+            "spend", "impressions", "clicks", "conversion_value",
+            "trueview_views", "video_views", "engagements",
         ]
 
         def _add_val(a, b):
@@ -1215,13 +1194,8 @@ class DV360SyncService:
             s = row.get("spend")
             imp = row.get("impressions")
             clk = row.get("clicks")
-            conv = row.get("total_conversions")
             cv = row.get("conversion_value")
-            vc = row.get("video_completions")
-            vp = row.get("video_plays")
             tv = row.get("trueview_views")
-            av_v = row.get("active_view_viewable_impressions")
-            av_m = row.get("active_view_measurable_impressions")
             eng = row.get("engagements")
 
             s_f = float(s) if s else 0
@@ -1229,10 +1203,7 @@ class DV360SyncService:
             row["cpm"] = Decimal(str(s_f / imp * 1000)) if s and imp else None
             row["cpc"] = Decimal(str(s_f / clk)) if s and clk else None
             row["roas"] = float(cv / s) if s and cv and s > 0 else None
-            row["cost_per_conversion"] = Decimal(str(s_f / conv)) if s and conv and conv > 0 else None
-            row["video_completion_rate"] = (vc / vp * 100) if vp and vc else None
             row["video_view_rate"] = (tv / imp * 100) if imp and tv else None
-            row["active_view_viewability"] = (av_v / av_m * 100) if av_m and av_v else None
             row["engagement_rate"] = (eng / imp * 100) if imp and eng else None
 
         seen_keys: Dict[tuple, dict] = {}
