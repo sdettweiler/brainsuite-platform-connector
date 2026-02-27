@@ -71,9 +71,10 @@ class EntityMaps(NamedTuple):
     insertion_orders: Dict[str, Dict[str, Any]]
     line_items: Dict[str, Dict[str, Any]]
     creatives: Dict[str, Dict[str, Any]]
-    line_item_videos: Dict[str, Dict[str, Any]] = {}
+    line_item_videos: Dict[str, List[Dict[str, Any]]] = {}
     advertiser_timezone: str = ""
     youtube_metadata: Dict[str, Dict[str, Any]] = {}
+    video_metadata: Dict[str, Dict[str, Any]] = {}
 
 
 class DV360SyncService:
@@ -94,6 +95,27 @@ class DV360SyncService:
         records = await self._run_report(
             access_token, advertiser_id, date_from, date_to
         )
+
+        csv_video_ids = set()
+        for r in records:
+            vid = (r.get("YouTube Ad Video ID") or "").strip()
+            if vid:
+                csv_video_ids.add(vid)
+        known_ids = set(entity_maps.youtube_metadata.keys())
+        new_ids = csv_video_ids - known_ids
+        if new_ids:
+            logger.info(f"DV360: {len(new_ids)} video IDs from CSV not in adGroupAds, fetching metadata")
+            extra_meta = await self._fetch_youtube_metadata(list(new_ids))
+            merged_yt_meta = {**entity_maps.youtube_metadata, **extra_meta}
+            merged_vid_meta = dict(entity_maps.video_metadata)
+            for vid in new_ids:
+                if vid not in merged_vid_meta:
+                    merged_vid_meta[vid] = {"ad_type_label": "", "ad_name": "", "line_item_id": ""}
+            entity_maps = entity_maps._replace(
+                youtube_metadata=merged_yt_meta,
+                video_metadata=merged_vid_meta,
+            )
+
         upserted = await self._upsert_records(db, connection, records, sync_job_id, entity_maps)
 
         return {"fetched": len(records), "upserted": upserted}
@@ -173,13 +195,14 @@ class DV360SyncService:
             if isinstance(results[6], str):
                 advertiser_timezone = results[6]
 
-        line_item_videos: Dict[str, Dict[str, Any]] = {}
+        line_item_videos: Dict[str, List[Dict[str, Any]]] = {}
         ag_to_li: Dict[str, str] = {}
         for ag_id, ag_info in ad_groups.items():
             li_id = ag_info.get("line_item_id", "")
             if li_id:
                 ag_to_li[ag_id] = li_id
 
+        video_metadata: Dict[str, Dict[str, Any]] = {}
         for ad in ad_group_ads:
             ag_id = ad.get("ad_group_id", "")
             li_id = ag_to_li.get(ag_id, "")
@@ -190,33 +213,31 @@ class DV360SyncService:
                 if vid:
                     video_ids = [vid]
             if li_id and video_ids:
-                primary_video_id = video_ids[0]
                 if li_id not in line_item_videos:
-                    line_item_videos[li_id] = {
-                        "youtube_video_id": primary_video_id,
-                        "youtube_video_ids": video_ids,
-                        "ad_name": ad.get("name", ""),
-                        "display_url": ad.get("display_url", ""),
-                        "final_url": ad.get("final_url", ""),
-                        "ad_type_label": ad_type_label,
-                    }
-                else:
-                    existing_vid = line_item_videos[li_id]["youtube_video_id"]
-                    if existing_vid != primary_video_id:
-                        logger.info(
-                            f"DV360: Line item {li_id} has multiple video IDs "
-                            f"({existing_vid}, {primary_video_id}), keeping first"
-                        )
+                    line_item_videos[li_id] = []
+                for vid in video_ids:
+                    if vid not in video_metadata:
+                        video_metadata[vid] = {
+                            "ad_type_label": ad_type_label,
+                            "ad_name": ad.get("name", ""),
+                            "display_url": ad.get("display_url", ""),
+                            "final_url": ad.get("final_url", ""),
+                            "line_item_id": li_id,
+                        }
+                    already_in_li = any(
+                        e["youtube_video_id"] == vid
+                        for e in line_item_videos[li_id]
+                    )
+                    if not already_in_li:
+                        line_item_videos[li_id].append({
+                            "youtube_video_id": vid,
+                            "ad_type_label": ad_type_label,
+                        })
 
         total_li = len(line_items)
-        mapped_li = len(line_item_videos)
+        mapped_li = sum(1 for v in line_item_videos.values() if v)
         unmapped_li = total_li - mapped_li
-        all_video_ids = set()
-        for v in line_item_videos.values():
-            all_video_ids.update(v.get("youtube_video_ids", []))
-            vid = v.get("youtube_video_id", "")
-            if vid:
-                all_video_ids.add(vid)
+        all_video_ids = set(video_metadata.keys())
 
         logger.info(
             f"DV360 v4 metadata for advertiser {advertiser_id}: "
@@ -237,6 +258,7 @@ class DV360SyncService:
             line_item_videos=line_item_videos,
             advertiser_timezone=advertiser_timezone,
             youtube_metadata=youtube_metadata,
+            video_metadata=video_metadata,
         )
 
     async def _fetch_campaigns(
@@ -646,6 +668,7 @@ class DV360SyncService:
                     "FILTER_INSERTION_ORDER",
                     "FILTER_LINE_ITEM",
                     "FILTER_LINE_ITEM_TYPE",
+                    "FILTER_YOUTUBE_AD_VIDEO_ID",
                 ],
                 "metrics": [
                     "METRIC_IMPRESSIONS",
@@ -1023,7 +1046,7 @@ class DV360SyncService:
             csv_advertiser_id = r.get("Advertiser ID") or ""
             csv_li_type = r.get("Line Item Type") or ""
 
-            csv_yt_video_id = ""
+            csv_yt_video_id = r.get("YouTube Ad Video ID", "").strip()
             ad_type_label = ""
             creative_type = ""
             io_goal_type = ""
@@ -1040,10 +1063,15 @@ class DV360SyncService:
             advertiser_tz = ""
 
             if entity_maps:
-                li_video = entity_maps.line_item_videos.get(str(csv_li_id))
-                if li_video:
-                    csv_yt_video_id = li_video.get("youtube_video_id", "")
-                    ad_type_label = li_video.get("ad_type_label", "")
+                if not csv_yt_video_id:
+                    li_videos = entity_maps.line_item_videos.get(str(csv_li_id))
+                    if li_videos and len(li_videos) > 0:
+                        csv_yt_video_id = li_videos[0].get("youtube_video_id", "")
+
+                if csv_yt_video_id and entity_maps.video_metadata:
+                    vm = entity_maps.video_metadata.get(csv_yt_video_id)
+                    if vm:
+                        ad_type_label = vm.get("ad_type_label", "")
 
                 io_meta = entity_maps.insertion_orders.get(str(csv_io_id))
                 if io_meta:
