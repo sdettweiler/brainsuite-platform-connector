@@ -1078,7 +1078,7 @@ class DV360SyncService:
                 campaign_name = f"Campaign {campaign_id}"
 
             parsed_date = r.get("_parsed_date")
-            ad_id = f"{csv_li_id}_{parsed_date.isoformat() if parsed_date else ''}"
+            ad_id = csv_yt_video_id if csv_yt_video_id else csv_li_id
 
             if ad_id not in asset_download_queue:
                 asset_download_queue[ad_id] = {
@@ -1163,12 +1163,68 @@ class DV360SyncService:
         if not rows:
             return 0
 
-        seen_keys = {}
+        _ADDITIVE_FIELDS = [
+            "spend", "impressions", "clicks", "total_media_cost",
+            "billable_impressions", "total_conversions", "post_click_conversions",
+            "post_view_conversions", "conversion_value", "trueview_views",
+            "video_views", "video_completions", "video_first_quartile",
+            "video_midpoint", "video_third_quartile", "video_plays",
+            "companion_impressions", "companion_clicks",
+            "active_view_viewable_impressions", "active_view_measurable_impressions",
+            "engagements",
+        ]
+
+        def _add_val(a, b):
+            if a is None and b is None:
+                return None
+            if a is None:
+                return b
+            if b is None:
+                return a
+            return a + b
+
+        def _recalc_derived(row):
+            s = row.get("spend")
+            imp = row.get("impressions")
+            clk = row.get("clicks")
+            conv = row.get("total_conversions")
+            cv = row.get("conversion_value")
+            vc = row.get("video_completions")
+            vp = row.get("video_plays")
+            tv = row.get("trueview_views")
+            av_v = row.get("active_view_viewable_impressions")
+            av_m = row.get("active_view_measurable_impressions")
+            eng = row.get("engagements")
+
+            s_f = float(s) if s else 0
+            row["ctr"] = (clk / imp * 100) if imp and clk else None
+            row["cpm"] = Decimal(str(s_f / imp * 1000)) if s and imp else None
+            row["cpc"] = Decimal(str(s_f / clk)) if s and clk else None
+            row["roas"] = float(cv / s) if s and cv and s > 0 else None
+            row["cost_per_conversion"] = Decimal(str(s_f / conv)) if s and conv and conv > 0 else None
+            row["video_completion_rate"] = (vc / vp * 100) if vp and vc else None
+            row["video_view_rate"] = (tv / imp * 100) if imp and tv else None
+            row["active_view_viewability"] = (av_v / av_m * 100) if av_m and av_v else None
+            row["engagement_rate"] = (eng / imp * 100) if imp and eng else None
+
+        seen_keys: Dict[tuple, dict] = {}
+        pre_agg = len(rows)
         for row in rows:
             key = (str(row["platform_connection_id"]), str(row["report_date"]), row["ad_id"], row["ad_account_id"])
-            seen_keys[key] = row
+            if key in seen_keys:
+                existing = seen_keys[key]
+                for field in _ADDITIVE_FIELDS:
+                    existing[field] = _add_val(existing.get(field), row.get(field))
+                _recalc_derived(existing)
+                existing["line_item_id"] = ""
+                existing["line_item_name"] = ""
+                existing["line_item_type"] = ""
+                existing["insertion_order_id"] = ""
+                existing["insertion_order_name"] = ""
+            else:
+                seen_keys[key] = row
         rows = list(seen_keys.values())
-        logger.info(f"DV360 upsert: {len(rows)} unique rows after dedup")
+        logger.info(f"DV360 upsert: {pre_agg} rows aggregated to {len(rows)} unique ad_id+date rows")
 
         if not rows:
             return 0
