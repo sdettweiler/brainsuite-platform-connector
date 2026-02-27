@@ -1,0 +1,588 @@
+# DV360 Bid Manager API: YouTube Campaigns - Comprehensive Research
+
+**Date:** February 27, 2026  
+**API Version:** Bid Manager API v2 (Required)  
+**Current Status:** Active with ongoing instant reporting migration
+
+---
+
+## 1. OVERVIEW & ARCHITECTURE
+
+### API Endpoints & Structure
+- **Primary Service:** Bid Manager API v2 (`https://bidmanager.googleapis.com/v2`)
+- **Authentication:** OAuth 2.0 via Google Cloud Project credentials
+- **Operations:** Query creation, execution, report retrieval (not resource management)
+- **Report Types:** STANDARD, YOUTUBE, REACH_AND_FREQUENCY, URA
+
+### Key Limitation - YouTube & Partners Resources
+⚠️ **CRITICAL:** While you can *retrieve* YouTube & Partners resources via the API, you cannot *create* or *update* them programmatically. YouTube campaigns are managed exclusively through:
+- Display & Video 360 UI (interactive editing)
+- Structured Data Files (bulk upload/manual management)
+
+This differs from standard DV360 line items which can be fully managed via API.
+
+---
+
+## 2. YOUTUBE REPORT TYPES & TEMPLATES
+
+### Available YouTube Report Templates
+When `type: "YOUTUBE"` is specified in a query, you can choose templates that determine available metrics:
+
+1. **YouTube Standard Template**
+   - Default template for non-conversion metrics
+   - Comprehensive performance metrics (impressions, views, VTR, CPV, etc.)
+   - Active View measurability metrics
+   - Engagement metrics (clicks, CTR)
+
+2. **YouTube Conversion Template**
+   - Specialized for conversion measurement
+   - Floodlight conversion data integration
+   - Post-click and post-view conversions
+   - Revenue and ROAS metrics
+
+### Critical Constraint - Conversion vs Non-Conversion Metrics
+⚠️ **Cannot query both simultaneously in YouTube reports:**
+- You cannot include both conversion metrics and non-conversion metrics in a single YouTube report query
+- Conversion metrics will be automatically dropped if you include non-conversion metrics
+- Solution: Create separate queries for each metric type
+
+---
+
+## 3. SUPPORTED METRICS FOR YOUTUBE CAMPAIGNS
+
+### Video Engagement Metrics (Core YouTube KPIs)
+
+| Metric API Code | Report Builder Name | Description | Unit |
+|---|---|---|---|
+| `METRIC_VIDEO_VIEWS` | Video Views | Total views of video ads | Count |
+| `METRIC_VIDEO_VIEWS_RATE` | View Rate | % of impressions that resulted in views | % |
+| `METRIC_VIDEO_CLICKS` | Video Clicks | Clicks on video ads | Count |
+| `METRIC_VIDEO_CLICK_RATE` | Click Rate (CTR) | % of impressions resulting in clicks | % |
+| `METRIC_VIDEO_FIRST_QUARTILE_IMPRESSIONS` | First Quartile | Video played to 25% | Count |
+| `METRIC_VIDEO_MIDPOINT_IMPRESSIONS` | Midpoint | Video played to 50% | Count |
+| `METRIC_VIDEO_THIRD_QUARTILE_IMPRESSIONS` | Third Quartile | Video played to 75% | Count |
+| `METRIC_VIDEO_COMPLETE_IMPRESSIONS` | Completion | Video played to 100% | Count |
+| `METRIC_VIDEO_SKIPS` | Skips | Times video was skipped (if skippable) | Count |
+| `METRIC_VIDEO_COMPANION_CLICKS` | Companion Clicks | Clicks on companion ads | Count |
+| `METRIC_VIDEO_COMPANION_IMPRESSIONS` | Companion Impressions | Companion creative impressions | Count |
+
+### Cost Metrics
+
+| Metric API Code | Report Builder Name | Description | Multiple Currencies |
+|---|---|---|---|
+| `METRIC_MEDIA_COST_ADVERTISER` | Media Cost (Advertiser Currency) | Spending in advertiser currency | Yes (3 variants) |
+| `METRIC_COST_PER_VIDEO_VIEW` | CPV | Cost per view | Advertiser/USD/Partner |
+| `METRIC_REVENUE_ECPM` | Revenue eCPM | Effective CPM based on revenue | Advertiser/USD/Partner |
+| `METRIC_REVENUE_ECPC` | Revenue eCPC | Effective CPC based on revenue | Advertiser/USD/Partner |
+
+⚠️ **Incompatible with YouTube Reports (as of Oct 1, 2024):**
+- `METRIC_TOTAL_MEDIA_COST_*` (all variants)
+- `METRIC_FEE32_*` (DST/ROC fees)
+- Queries including these will return HTTP 400 errors
+
+### Active View & Viewability Metrics
+
+| Metric API Code | Report Builder Name | Description |
+|---|---|---|
+| `METRIC_ACTIVE_VIEW_ELIGIBLE_IMPRESSIONS` | Active View: Eligible Impressions | Total eligible for measurement |
+| `METRIC_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS` | Active View: Measurable Impressions | Successfully measured impressions |
+| `METRIC_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS` | Active View: Viewable Impressions | Viewable impression count (50%+ for 2+ sec) |
+| `METRIC_ACTIVE_VIEW_PERCENT_VIEWABLE_IMPRESSIONS` | Active View: % Viewable Impressions | % of measurable impressions viewable |
+| `METRIC_ACTIVE_VIEW_PERCENT_MEASURABLE_IMPRESSIONS` | Active View: % Measurable Impressions | % of eligible that were measurable |
+| `METRIC_ACTIVE_VIEW_AUDIBLE_FULLY_ON_SCREEN_HALF_OF_DURATION_IMPRESSIONS` | Active View: Audible & Fully On-Screen for Half Duration (15 sec cap) Impressions | Premium viewability metric for video |
+
+### Conversion Metrics (Floodlight Integration)
+
+| Metric API Code | Report Builder Name | Description | When to Use |
+|---|---|---|---|
+| `METRIC_TOTAL_CONVERSIONS` | Total Conversions | Post-view + post-click combined | Aggregate conversion view |
+| `METRIC_POST_VIEW_CONVERSIONS` | Post-View Conversions | View-through conversions | Brand awareness campaigns |
+| `METRIC_POST_CLICK_CONVERSIONS` | Post-Click Conversions | Click-through conversions | Direct response campaigns |
+| `METRIC_REVENUE_CONVERSION_COST_ADVERTISER` | Revenue eCPA | Cost per conversion | Performance optimization |
+| `METRIC_REVENUE_CONVERSION_COST_PC_ADVERTISER` | Revenue eCPA (PC) | Cost per post-click conversion | |
+| `METRIC_REVENUE_CONVERSION_COST_PV_ADVERTISER` | Revenue eCPA (PV) | Cost per post-view conversion | |
+| `METRIC_CM360_POST_CLICK_REVENUE` | CM360 Post-Click Revenue | Revenue attributed to clicks | E-commerce tracking |
+| `METRIC_CM360_POST_VIEW_REVENUE` | CM360 Post-View Revenue | Revenue attributed to views | E-commerce tracking |
+
+⚠️ **Constraint:** Cannot combine with non-conversion metrics in YouTube reports
+
+### Impression & Engagement Metrics
+
+| Metric API Code | Report Builder Name | Description |
+|---|---|---|
+| `METRIC_IMPRESSIONS` | Impressions | Total ad impressions served |
+| `METRIC_BILLABLE_IMPRESSIONS` | Billable Impressions | Impressions reaching guaranteed audience |
+| `METRIC_CLICKS` | Clicks | Total clicks on ads |
+| `METRIC_CLICK_RATE` | Click Rate (CTR) | % of impressions clicked |
+
+### Invalid Traffic Metrics
+
+| Metric API Code | Report Builder Name | Description |
+|---|---|---|
+| `METRIC_INVALID_IMPRESSIONS` | Invalid Impressions | Impressions filtered as invalid traffic |
+| `METRIC_INVALID_CLICKS` | Invalid Clicks | Clicks filtered as invalid |
+| `METRIC_INVALID_ACTIVE_VIEW_ELIGIBLE_IMPRESSIONS` | Invalid Active View Eligible Impressions | Impressions invalid but AV-eligible |
+
+---
+
+## 4. SUPPORTED FILTERS FOR YOUTUBE CAMPAIGNS
+
+### YouTube-Specific Targeting Filters
+
+| Filter API Code | Report Builder Name | Dimension Type | Typical Values |
+|---|---|---|---|
+| `FILTER_TRUEVIEW_AD` | YouTube Ad | Ad-level | Auto-populated from line items |
+| `FILTER_TRUEVIEW_AD_GROUP` | YouTube Ad Group | Grouping | Ad group IDs |
+| `FILTER_TRUEVIEW_AD_GROUP_ID` | YouTube Ad Group ID | ID field | Numeric ID |
+| `FILTER_TRUEVIEW_AD_GROUP_AD_ID` | YouTube Ad ID | ID field | Numeric ID |
+| `FILTER_TRUEVIEW_AD_TYPE_NAME` | YouTube Ad Type | Format | Skippable In-Stream, Non-Skippable, Bumper, Outstream, Masthead |
+| `FILTER_TRUEVIEW_PLACEMENT` | Placement (Managed) | Managed placement | Specific YouTube channels/videos |
+| `FILTER_TRUEVIEW_PLACEMENT_ID` | Placement ID (Managed) | ID field | Numeric placement ID |
+| `FILTER_TRUEVIEW_URL` | Placement (All) | URL-based | YouTube URLs, YouTube channel URLs |
+| `FILTER_PLACEMENT_ALL_YOUTUBE_CHANNELS` | Placement (All YouTube Channels) | Bulk placement | All YouTube channels |
+| `FILTER_PLACEMENT_NAME_ALL_YOUTUBE_CHANNELS` | Placement Name (All YouTube Channels) | Bulk placement name | "All YouTube Channels" |
+
+### YouTube Audience & Targeting Filters
+
+| Filter API Code | Report Builder Name | Description |
+|---|---|---|
+| `FILTER_TRUEVIEW_AGE` | Age (YouTube) | Age demographic (13-17, 18-24, 25-34, 35-44, 45-54, 55-64, 65+) |
+| `FILTER_TRUEVIEW_GENDER` | Gender (YouTube) | Gender targeting (Male, Female, Unknown) |
+| `FILTER_TRUEVIEW_CATEGORY` | Category (YouTube) | Content category (Pets, Sports, Entertainment, etc.) |
+| `FILTER_TRUEVIEW_INTEREST` | Interest | Interest-based targeting |
+| `FILTER_TRUEVIEW_CUSTOM_AFFINITY` | Custom Affinity | Custom affinity audiences |
+| `FILTER_TRUEVIEW_DETAILED_DEMOGRAPHICS` | Detailed Demographics | Household income, parental status |
+| `FILTER_TRUEVIEW_HOUSEHOLD_INCOME` | Household Income | Income bracket targeting |
+| `FILTER_TRUEVIEW_PARENTAL_STATUS` | Parental Status | Has children / no children |
+| `FILTER_TRUEVIEW_REMARKETING_LIST` | Remarketing List | Custom remarketing audiences |
+| `FILTER_TRUEVIEW_REMARKETING_LIST_NAME` | Remarketing List (by name) | Remarketing list name |
+| `FILTER_TRUEVIEW_AUDIENCE_SEGMENT` | Audience Segment | Audience segment ID |
+| `FILTER_TRUEVIEW_AUDIENCE_SEGMENT_TYPE` | Audience Segment Type | Segment type classification |
+
+### Geographic & Location Filters (YouTube)
+
+| Filter API Code | Report Builder Name | Description |
+|---|---|---|
+| `FILTER_TRUEVIEW_COUNTRY` | Country (YouTube) | Country-level targeting (ISO codes) |
+| `FILTER_TRUEVIEW_REGION` | Region (YouTube) | State/region-level filtering |
+| `FILTER_TRUEVIEW_REGION_NAME` | Region Name (YouTube) | Region display name |
+| `FILTER_TRUEVIEW_DMA` | DMA Code (YouTube) | US Designated Market Area |
+| `FILTER_TRUEVIEW_DMA_NAME` | DMA (YouTube) | DMA display name |
+| `FILTER_TRUEVIEW_CITY` | City (YouTube) | City-level targeting |
+| `FILTER_TRUEVIEW_ZIPCODE` | Zip Code (YouTube) | Postal code targeting |
+
+### Content & Placement Suitability Filters
+
+| Filter API Code | Report Builder Name | Description |
+|---|---|---|
+| `FILTER_TRUEVIEW_CONTENT_SUITABILITY_GROUP_NAME` | Content Suitability (Group) | Suitability category (Drugs, Violence, etc.) |
+| `FILTER_TRUEVIEW_CONTENT_SUITABILITY_DETAIL_NAME` | Content Suitability (Details) | Detailed content classification |
+| `FILTER_TRUEVIEW_CONTENT_SUITABILITY_DETAIL_TYPE_NAME` | Content Suitability Type | Type of content issue |
+| `FILTER_DIGITAL_CONTENT_LABEL` | Digital Content Label | Brand safety labels (Sensitive, Under review, etc.) |
+
+### Video & Playback Filters
+
+| Filter API Code | Report Builder Name | Description |
+|---|---|---|
+| `FILTER_VIDEO_SKIPPABLE_SUPPORT` | Video Skippable Support | Skippable vs non-skippable |
+| `FILTER_VIDEO_CREATIVE_DURATION` | Video Creative Duration | Ad duration in seconds |
+| `FILTER_VIDEO_CREATIVE_DURATION_SKIPPABLE` | Video Creative Duration (Skippable) | Duration for skippable formats |
+| `FILTER_VIDEO_PLAYER_SIZE` | Video Player Size | Large, medium, small, unmeasurable |
+| `FILTER_TRUEVIEW_CLICK_TYPE_NAME` | Click Type | Type of interaction (Direct, Companion) |
+| `FILTER_PLAYBACK_METHOD` | Playback Method | Auto-play, click-to-play |
+| `FILTER_POSITION_IN_CONTENT` | Position in Content | Pre-roll, mid-roll, post-roll |
+| `FILTER_VIDEO_AD_POSITION_IN_STREAM` | Video Ad Position In Stream | Position within video content |
+
+### Universal Filters (All Report Types)
+
+| Filter API Code | Report Builder Name | Use Case |
+|---|---|---|
+| `FILTER_MEDIA_PLAN_NAME` | Campaign | Filter by campaign/insertion order |
+| `FILTER_MEDIA_PLAN` | Campaign ID | Filter by campaign ID |
+| `FILTER_ADVERTISER_NAME` | Advertiser | Filter by advertiser |
+| `FILTER_ADVERTISER` | Advertiser ID | Filter by advertiser ID |
+| `FILTER_LINE_ITEM_NAME` | Line Item | Filter by line item name |
+| `FILTER_LINE_ITEM` | Line Item ID | Filter by line item ID |
+| `FILTER_DATE` | Date | Date range filtering |
+| `FILTER_TRUEVIEW_CONVERSION_TYPE` | Conversion Type | Conversion classification |
+| `FILTER_CONVERSION_DELAY` | Time to Conversion | Delay between ad exposure and conversion |
+| `FILTER_CONVERSION_SOURCE` | Conversion Source | Where conversion originated |
+
+### Deprecated/Unavailable Filters
+- `FILTER_ANONYMOUS_INVENTORY_MODELING` - Sunset (will cause 400 error if used)
+- YouTube Trueview Inventory Availability dimensions - Sunset as of March 1, 2025
+
+---
+
+## 5. METRIC & FILTER COMPATIBILITY MATRIX
+
+### Report Type Constraints
+
+| Aspect | STANDARD | YOUTUBE | REACH_AND_FREQUENCY |
+|---|---|---|---|
+| Video Metrics | Limited | Full | Limited |
+| YouTube-Specific Filters | No | Yes | No |
+| Conversion Metrics | Yes (mixed) | Only if no non-conversion metrics | Yes |
+| Active View | Yes | Yes (TrueView specific) | Limited |
+| Audience Filters | Standard set | Extended YouTube set | Standard set |
+
+### Critical Metric Combinations to Avoid
+
+**❌ DO NOT USE:**
+1. `METRIC_TOTAL_MEDIA_COST_*` + YOUTUBE report type → 400 error
+2. `METRIC_FEE32_*` + YOUTUBE report type → 400 error
+3. Conversion metrics + non-conversion metrics in YOUTUBE reports → Conversion metrics silently dropped
+4. `FILTER_ANONYMOUS_INVENTORY_MODELING` in any query → 400 error
+
+**✅ RECOMMENDED PATTERNS:**
+
+**Pattern 1: Video Performance (Non-conversion)**
+```json
+{
+  "type": "YOUTUBE",
+  "groupBys": [
+    "FILTER_DATE",
+    "FILTER_TRUEVIEW_AD_GROUP",
+    "FILTER_TRUEVIEW_AD_TYPE_NAME"
+  ],
+  "metrics": [
+    "METRIC_IMPRESSIONS",
+    "METRIC_VIDEO_VIEWS",
+    "METRIC_VIDEO_VIEWS_RATE",
+    "METRIC_VIDEO_CLICKS",
+    "METRIC_COST_PER_VIDEO_VIEW",
+    "METRIC_VIDEO_FIRST_QUARTILE_IMPRESSIONS",
+    "METRIC_VIDEO_COMPLETE_IMPRESSIONS",
+    "METRIC_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
+    "METRIC_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS"
+  ],
+  "filters": [
+    {"type": "FILTER_MEDIA_PLAN", "value": "insertion_order_id"},
+    {"type": "FILTER_TRUEVIEW_AGE", "value": "25-34"}
+  ]
+}
+```
+
+**Pattern 2: Conversion Performance (Floodlight Enabled)**
+```json
+{
+  "type": "YOUTUBE",
+  "groupBys": [
+    "FILTER_DATE",
+    "FILTER_LINE_ITEM_NAME",
+    "FILTER_TRUEVIEW_CONVERSION_TYPE"
+  ],
+  "metrics": [
+    "METRIC_TOTAL_CONVERSIONS",
+    "METRIC_POST_VIEW_CONVERSIONS",
+    "METRIC_POST_CLICK_CONVERSIONS",
+    "METRIC_MEDIA_COST_ADVERTISER",
+    "METRIC_REVENUE_CONVERSION_COST_ADVERTISER"
+  ],
+  "filters": [
+    {"type": "FILTER_MEDIA_PLAN", "value": "insertion_order_id"},
+    {"type": "FILTER_FLOODLIGHT_ACTIVITY", "value": "activity_id"}
+  ]
+}
+```
+
+**Pattern 3: Audience Analysis**
+```json
+{
+  "type": "YOUTUBE",
+  "groupBys": [
+    "FILTER_DATE",
+    "FILTER_TRUEVIEW_AGE",
+    "FILTER_TRUEVIEW_GENDER",
+    "FILTER_TRUEVIEW_COUNTRY"
+  ],
+  "metrics": [
+    "METRIC_IMPRESSIONS",
+    "METRIC_VIDEO_VIEWS",
+    "METRIC_VIDEO_VIEWS_RATE",
+    "METRIC_MEDIA_COST_ADVERTISER"
+  ],
+  "filters": [
+    {"type": "FILTER_MEDIA_PLAN", "value": "insertion_order_id"}
+  ]
+}
+```
+
+---
+
+## 6. MAJOR IMPLEMENTATION CONSTRAINTS & GOTCHAS
+
+### A. Reporting Architecture Limitations
+
+1. **No YouTube Resource Management**
+   - Cannot create/update YouTube & Partners line items via API
+   - Must use UI or Structured Data Files
+   - Can only READ YouTube campaign data
+
+2. **Instant Reporting Migration (Ongoing)**
+   - Google is migrating from offline to instant reporting
+   - Migration happens by partner in batches
+   - Check DV360 partner status; YouTube reports now appear in Instant Reporting tab only
+   - API access same (`queries.list` endpoint) but source may differ
+
+3. **Real-time vs Batch Data**
+   - YouTube reports may have processing delays
+   - Not all YouTube metrics available with 1-hour latency
+   - Some YouTube-specific dimensions require download reports
+
+### B. Metric Specificity Issues
+
+1. **YouTube vs Display Metrics Not Comparable**
+   - Video view rates across platforms differ fundamentally
+   - Meta 15-second ThruPlay ≠ TikTok 6-second Focused View ≠ YouTube view
+   - Cannot use Meta API's `video_15_sec_watched_actions` directly in YouTube reports
+   - Need separate normalization logic in Platform Connector MVP
+
+2. **Viewability Measurement Differences**
+   - YouTube uses TrueView-specific viewability (50%+ 2+ seconds for video)
+   - Active View metrics available but computed differently than display
+   - `METRIC_ACTIVE_VIEW_AUDIBLE_FULLY_ON_SCREEN_HALF_OF_DURATION_IMPRESSIONS` is YouTube-specific
+
+3. **Conversion Attribution Model Limitations**
+   - Cannot specify attribution model in API (unlike UI)
+   - Floodlight required for conversion tracking
+   - Default is last-touch for post-click; post-view attribution is 1-day lookback
+   - Cannot customize conversion window in API queries
+
+### C. Rate Limiting & Quota
+
+- **Default quota:** 100 requests per day per partner
+- **Report execution:** Synchronous via `queries.run()`
+- **Large datasets:** Use exponential backoff for polling report status
+- **YouTube reports take longer** than standard reports to process
+
+### D. Deprecated Elements (Important for 2025+)
+
+- **October 1, 2024 changes (already implemented):**
+  - `FILTER_ANONYMOUS_INVENTORY_MODELING` sunset
+  - Total Media Cost metrics incompatible with YouTube
+  - DST/ROC fees incompatible with YouTube
+
+- **March 1, 2025 (upcoming):**
+  - YouTube TrueView Inventory Availability report deprecated
+  - Related dimensions being removed
+  - Use planning/forecasting features in UI instead
+
+---
+
+## 7. REQUIRED SETUP & AUTHENTICATION
+
+### OAuth 2.0 Flow for Bid Manager API
+
+```python
+# Minimal setup required:
+# 1. Google Cloud Project with Bid Manager API enabled
+# 2. Service Account OR OAuth client credentials
+# 3. Advertiser ID (not Partner ID - YouTube requires advertiser-level access)
+```
+
+### Key Authentication Details
+
+- **User Account Requirements:**
+  - Must be Admin/Standard/Read-Only in DV360 account
+  - For YouTube line items specifically, needs advertiser-level access
+  - Partner-level token will NOT work for YouTube-specific fields
+
+- **API Endpoint:** `https://bidmanager.googleapis.com/v2`
+
+- **Request Format:**
+  ```json
+  POST /v2/queries
+  {
+    "params": {
+      "type": "YOUTUBE",
+      "groupBys": ["FILTER_DATE"],
+      "metrics": ["METRIC_VIDEO_VIEWS"],
+      "filters": [{"type": "FILTER_ADVERTISER", "value": "advertiser_id"}]
+    }
+  }
+  ```
+
+---
+
+## 8. IMPLEMENTATION RECOMMENDATIONS FOR BRAINSUITE PLATFORM CONNECTOR MVP
+
+### A. Data Integration Strategy
+
+**For YouTube Campaign Data:**
+1. Use Bid Manager API v2 for reporting (read-only)
+2. Use Display & Video 360 API v4 (or Structured Data Files) for resource metadata
+3. **Separate query execution for:**
+   - Video performance metrics (non-conversion)
+   - Conversion metrics (if Floodlight enabled)
+
+**Metric Normalization Challenges:**
+- YouTube views ≠ Meta video watches ≠ TikTok focused views
+- Create unified "Video Performance Score" with weights:
+  - Weight video views, first quartile, mid-point, and complete
+  - Normalize across platforms using platform-specific baseline
+  - Document these transformations in integration spec
+
+### B. Field Mapping for Platform Connector
+
+| YouTube Metric | Brainsuite Unified Field | Normalization |
+|---|---|---|
+| METRIC_VIDEO_VIEWS | video_views | Platform-specific |
+| METRIC_VIDEO_VIEWS_RATE | video_view_rate | Meta: 3-second rule, YouTube: end-of-ad |
+| METRIC_COST_PER_VIDEO_VIEW | cost_per_view | Direct (currency conversion only) |
+| METRIC_VIDEO_COMPLETE_IMPRESSIONS | video_completes | Normalized against total impressions |
+| METRIC_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS | viewable_impressions | MRC accredited (comparable with display) |
+| METRIC_POST_VIEW_CONVERSIONS | post_view_conversions | Floodlight data, 1-day window |
+
+### C. Batch Query Optimization
+
+**Recommended approach for efficient data ingestion:**
+
+```python
+# Query 1: Daily performance by ad type
+{
+  "type": "YOUTUBE",
+  "groupBys": [
+    "FILTER_DATE",
+    "FILTER_TRUEVIEW_AD_TYPE_NAME"
+  ],
+  "metrics": [
+    "METRIC_VIDEO_VIEWS",
+    "METRIC_VIDEO_VIEWS_RATE",
+    "METRIC_COST_PER_VIDEO_VIEW",
+    "METRIC_MEDIA_COST_ADVERTISER"
+  ],
+  "filters": [
+    {"type": "FILTER_ADVERTISER", "value": "{advertiser_id}"}
+  ]
+}
+
+# Query 2: Audience demographics
+{
+  "type": "YOUTUBE",
+  "groupBys": [
+    "FILTER_DATE",
+    "FILTER_TRUEVIEW_AGE",
+    "FILTER_TRUEVIEW_GENDER"
+  ],
+  "metrics": [
+    "METRIC_IMPRESSIONS",
+    "METRIC_VIDEO_VIEWS",
+    "METRIC_MEDIA_COST_ADVERTISER"
+  ],
+  "filters": [
+    {"type": "FILTER_ADVERTISER", "value": "{advertiser_id}"}
+  ]
+}
+
+# Query 3: Conversion performance (if Floodlight enabled)
+{
+  "type": "YOUTUBE",
+  "groupBys": [
+    "FILTER_DATE",
+    "FILTER_TRUEVIEW_CONVERSION_TYPE"
+  ],
+  "metrics": [
+    "METRIC_TOTAL_CONVERSIONS",
+    "METRIC_POST_VIEW_CONVERSIONS",
+    "METRIC_REVENUE_CONVERSION_COST_ADVERTISER"
+  ],
+  "filters": [
+    {"type": "FILTER_ADVERTISER", "value": "{advertiser_id}"}
+  ]
+}
+```
+
+### D. Error Handling Strategy
+
+**Expected error scenarios:**
+
+1. **400 Bad Request** - Check for:
+   - Incompatible metric/filter combinations
+   - Deprecated filter values
+   - Mixing conversion + non-conversion metrics
+   - Total Media Cost or Fee32 metrics with YOUTUBE type
+
+2. **403 Forbidden** - Verify:
+   - OAuth token has correct advertiser scope
+   - User has YouTube line item access
+   - Not using partner-level credentials for YouTube data
+
+3. **Report Processing Timeout** - Implement:
+   - Exponential backoff polling (start 30s, max 5min intervals)
+   - Query timeout after 24 hours
+   - Fall back to instant reporting if available
+
+---
+
+## 9. COMPARING YOUTUBE API DATA SOURCES
+
+### Bid Manager API vs Display & Video 360 API vs YouTube API
+
+| Aspect | Bid Manager API | DV360 API | YouTube Analytics |
+|---|---|---|---|
+| **Real-time Data** | Instant reports (newer) | Batch (24h+) | Near real-time |
+| **Video Views** | Accurate (TrueView) | Limited | More granular |
+| **Targeting Data** | Yes (demographics, placements) | Limited | No targeting data |
+| **Conversions** | Via Floodlight | Via Floodlight | No conversion tracking |
+| **Cost Data** | Yes (CPV, media cost) | Yes | No |
+| **Use Case** | Campaign performance, optimization | Campaign setup, resource management | Video analytics only |
+
+**Recommendation:** Use Bid Manager API for Brainsuite MVP (unified reporting) + DV360 API for line item metadata
+
+---
+
+## 10. TESTING CHECKLIST FOR PLATFORM CONNECTOR
+
+- [ ] Test YouTube standard report with non-conversion metrics only
+- [ ] Test YouTube conversion report without performance metrics
+- [ ] Verify CPV calculations match DV360 UI for same date range
+- [ ] Validate demographic breakdowns (age, gender, country)
+- [ ] Test with managed placements (FILTER_TRUEVIEW_PLACEMENT_ID)
+- [ ] Verify Active View measurability metrics populate correctly
+- [ ] Test error handling for incompatible metric combinations
+- [ ] Validate OAuth token scope includes advertiser access
+- [ ] Test instant reporting vs batch reporting availability
+- [ ] Document platform-specific metric transformations for data model
+
+---
+
+## 11. KEY REFERENCES & DOCUMENTATION
+
+- **Official Bid Manager API v2:** https://developers.google.com/bid-manager/reference/rest/v2
+- **Filters & Metrics Complete List:** https://developers.google.com/bid-manager/reference/rest/v2/filters-metrics
+- **DV360 Help - Metrics:** https://support.google.com/displayvideo/table/3187025
+- **DV360 Help - YouTube Reporting:** https://support.google.com/displayvideo/answer/6274610
+- **Release Notes (Oct 2024 changes):** https://developers.google.com/bid-manager/release-notes
+- **Best Practices Guide:** https://developers.google.com/bid-manager/guides/scheduled-reports/best-practices
+
+---
+
+## 12. SUMMARY OF CRITICAL FINDINGS
+
+### ✅ What Works Well for YouTube Integration
+- Comprehensive video performance metrics (views, view rate, CPV)
+- Extensive demographic targeting dimensions
+- Active View viewability data (MRC-accredited)
+- Conversion tracking via Floodlight
+- Instant reporting (newly available)
+
+### ⚠️ Key Challenges for Multi-Platform Harmonization
+1. **Metric Definitions Differ Significantly**
+   - YouTube view ≠ Meta video watch ≠ TikTok view
+   - Requires custom normalization in Platform Connector
+
+2. **API Limitations**
+   - Cannot create/update YouTube resources programmatically
+   - Conversion + non-conversion metrics cannot coexist in one query
+   - Some metrics incompatible with YOUTUBE report type
+
+3. **Data Latency**
+   - YouTube reports process slower than standard display reports
+   - Instant reporting still migrating (batch availability varies by partner)
+
+### 🎯 Recommended MVP Implementation Scope
+- **Phase 1:** Video performance metrics (views, CTR, CPV) for non-conversion focused line items
+- **Phase 2:** Audience demographic breakdowns (age, gender, geography)
+- **Phase 3:** Conversion tracking (requires Floodlight configuration)
+- **Future:** YouTube Analytics API integration for video-specific insights beyond campaign metrics
