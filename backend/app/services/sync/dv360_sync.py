@@ -1180,28 +1180,41 @@ class DV360SyncService:
             spend = safe_decimal(r.get("Media Cost (Advertiser Currency)"))
             impressions = safe_int(r.get("Impressions"))
             clicks = safe_int(r.get("Clicks"))
-            trueview_views = safe_int(r.get("TrueView Views"))
+            trueview_views = safe_int(
+                r.get("TrueView: Views") or r.get("TrueView Views")
+            )
             total_media_cost = safe_decimal(r.get("Revenue (Adv Currency)"))
             cost_per_view = safe_decimal(
-                r.get("TrueView CPV (Advertiser Currency)")
+                r.get("YouTube: Revenue eCPV (Adv Currency)")
                 or r.get("TrueView CPV (Adv Currency)")
-                or r.get("CPV (Advertiser Currency)")
+                or r.get("TrueView CPV (Advertiser Currency)")
                 or r.get("CPV")
             )
 
             s_f = float(spend) if spend else 0
             ctr = safe_float(r.get("Click Rate (CTR)"))
-            cpm = Decimal(str(s_f / impressions * 1000)) if spend and impressions else None
-            cpc = Decimal(str(s_f / clicks)) if spend and clicks else None
-            video_view_rate = safe_float(r.get("TrueView VR"))
-            video_completion_rate = safe_float(r.get("Complete Rate (Video)"))
+            cpm = safe_decimal(
+                r.get("Media Cost eCPM (Adv Currency)")
+            ) or (Decimal(str(s_f / impressions * 1000)) if spend and impressions else None)
+            cpc = safe_decimal(
+                r.get("Media Cost eCPC (Adv Currency)")
+            ) or (Decimal(str(s_f / clicks)) if spend and clicks else None)
+            video_view_rate = safe_float(
+                r.get("TrueView: View Rate") or r.get("TrueView VR")
+            )
+            video_completion_rate = safe_float(
+                r.get("Completion Rate (Video)") or r.get("Complete Rate (Video)")
+            )
 
             csv_io_id = r.get("Insertion Order ID") or ""
             csv_li_id = r.get("Line Item ID") or ""
             csv_advertiser_id = r.get("Advertiser ID") or ""
             csv_li_type = r.get("Line Item Type") or ""
 
-            csv_yt_video_id = r.get("YouTube Ad Video ID", "").strip()
+            csv_yt_video_id = (
+                r.get("Video ID", "").strip()
+                or r.get("YouTube Ad Video ID", "").strip()
+            )
             ad_type_label = ""
             creative_type = ""
             io_goal_type = ""
@@ -1566,7 +1579,10 @@ class DV360SyncService:
             csv_io_id = r.get("Insertion Order ID") or ""
             csv_li_id = r.get("Line Item ID") or ""
             csv_advertiser_id = r.get("Advertiser ID") or ""
-            csv_yt_video_id = r.get("YouTube Ad Video ID", "").strip()
+            csv_yt_video_id = (
+                r.get("Video ID", "").strip()
+                or r.get("YouTube Ad Video ID", "").strip()
+            )
 
             if not csv_yt_video_id and entity_maps:
                 li_videos = entity_maps.line_item_videos.get(str(csv_li_id))
