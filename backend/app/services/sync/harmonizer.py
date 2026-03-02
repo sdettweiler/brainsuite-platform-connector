@@ -685,7 +685,7 @@ class HarmonizationService:
                         thumbnail_url=row.thumbnail_url,
                         asset_url=row.asset_url,
                         video_duration=row.video_duration_seconds,
-                        asset_format=row.asset_format or "DISPLAY",
+                        asset_format=row.asset_format or ("VIDEO" if row.youtube_ad_video_id else "DISPLAY"),
                         first_seen_at=row.report_date,
                     )
 
@@ -724,7 +724,7 @@ class HarmonizationService:
                         "ad_set_name": row.line_item_name,
                         "ad_id": row.ad_id,
                         "ad_name": row.ad_name or row.creative_name,
-                        "asset_format": row.asset_format or "DISPLAY",
+                        "asset_format": row.asset_format or ("VIDEO" if row.youtube_ad_video_id else "DISPLAY"),
                         "publisher_platform": publisher_platform,
                         "platform_position": platform_position,
                         "org_currency": org_currency,
