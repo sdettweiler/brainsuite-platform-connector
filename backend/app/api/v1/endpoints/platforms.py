@@ -619,6 +619,7 @@ async def delete_connection(
     return {"detail": "Connection deactivated"}
 
 
+
 @router.post("/connections/{connection_id}/resync")
 async def manual_resync(
     connection_id: uuid.UUID,

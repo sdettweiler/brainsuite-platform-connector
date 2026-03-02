@@ -111,7 +111,7 @@ class DV360SyncService:
 
         csv_video_ids = set()
         for r in perf_records:
-            vid = (r.get("YouTube Ad Video ID") or "").strip()
+            vid = (r.get("Video ID") or r.get("YouTube Ad Video ID") or "").strip()
             if vid:
                 csv_video_ids.add(vid)
 
@@ -122,7 +122,7 @@ class DV360SyncService:
                 db=db, connection=connection,
             )
             for r in conv_records:
-                vid = (r.get("YouTube Ad Video ID") or "").strip()
+                vid = (r.get("Video ID") or r.get("YouTube Ad Video ID") or "").strip()
                 if vid:
                     csv_video_ids.add(vid)
         except Exception as e:
