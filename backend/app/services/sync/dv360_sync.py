@@ -8,22 +8,18 @@ Dual-API architecture:
   Also provides dimension backfill (campaign names, IO goals, creative types)
   for fields not in the slimmed Bid Manager report.
 - Bid Manager API v2 (doubleclickbidmanager.googleapis.com/v2):
-  Two-report YOUTUBE architecture:
-  Report 1 (perf): 19 non-conversion metrics with type=YOUTUBE:
-    Core: IMPRESSIONS, CLICKS, CLICK_RATE
-    Spend: MEDIA_COST_ADVERTISER
-    Video: VIDEO_VIEWS, VIDEO_VIEWS_RATE, VIDEO_COMPLETE_IMPRESSIONS,
-           VIDEO_FIRST/MIDPOINT/THIRD_QUARTILE_IMPRESSIONS, VIDEO_SKIPS
-    Cost: COST_PER_VIDEO_VIEW
-    Active View: ACTIVE_VIEW_MEASURABLE/VIEWABLE/PERCENT_VIEWABLE_IMPRESSIONS
-    Companion: VIDEO_COMPANION_IMPRESSIONS, VIDEO_COMPANION_CLICKS
-    Other: BILLABLE_IMPRESSIONS, ENGAGEMENTS
-  Report 2 (conv): 4 conversion-only metrics with type=YOUTUBE:
-    TOTAL_CONVERSIONS, POST_VIEW_CONVERSIONS, POST_CLICK_CONVERSIONS,
-    REVENUE_CONVERSION_COST_ADVERTISER
-  Both use 8 groupBys (date, advertiser, advertiser_name,
+  Single YOUTUBE-type report with 11 API-verified metrics:
+    Core: IMPRESSIONS, CLICKS, CTR
+    Spend: MEDIA_COST_ADVERTISER, MEDIA_COST_ECPM_ADVERTISER,
+           MEDIA_COST_ECPC_ADVERTISER, REVENUE_ADVERTISER
+    Video: TRUEVIEW_VIEWS, TRUEVIEW_VIEW_RATE, VIDEO_COMPLETION_RATE,
+           TRUEVIEW_CPV_ADVERTISER
+  Uses 8 groupBys (date, advertiser, advertiser_name,
   advertiser_currency, insertion_order, line_item, line_item_type,
   youtube_ad_video_id).
+  Note: VIDEO_*, ACTIVE_VIEW_*, COMPANION_*, ENGAGEMENTS, BILLABLE_*,
+  and all conversion metrics are incompatible with YOUTUBE type +
+  FILTER_YOUTUBE_AD_VIDEO_ID groupBy.
 
 The sync flow:
 1. Fetch entity metadata maps from DV360 API v4
@@ -877,30 +873,15 @@ class DV360SyncService:
     _PERF_METRICS = [
         "METRIC_IMPRESSIONS",
         "METRIC_CLICKS",
-        "METRIC_CLICK_RATE",
+        "METRIC_CTR",
         "METRIC_MEDIA_COST_ADVERTISER",
-        "METRIC_VIDEO_VIEWS",
-        "METRIC_VIDEO_VIEWS_RATE",
-        "METRIC_VIDEO_COMPLETE_IMPRESSIONS",
-        "METRIC_VIDEO_FIRST_QUARTILE_IMPRESSIONS",
-        "METRIC_VIDEO_MIDPOINT_IMPRESSIONS",
-        "METRIC_VIDEO_THIRD_QUARTILE_IMPRESSIONS",
-        "METRIC_VIDEO_SKIPS",
-        "METRIC_COST_PER_VIDEO_VIEW",
-        "METRIC_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
-        "METRIC_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS",
-        "METRIC_ACTIVE_VIEW_PERCENT_VIEWABLE_IMPRESSIONS",
-        "METRIC_VIDEO_COMPANION_IMPRESSIONS",
-        "METRIC_VIDEO_COMPANION_CLICKS",
-        "METRIC_BILLABLE_IMPRESSIONS",
-        "METRIC_ENGAGEMENTS",
-    ]
-
-    _CONV_METRICS = [
-        "METRIC_TOTAL_CONVERSIONS",
-        "METRIC_POST_VIEW_CONVERSIONS",
-        "METRIC_POST_CLICK_CONVERSIONS",
-        "METRIC_REVENUE_CONVERSION_COST_ADVERTISER",
+        "METRIC_TRUEVIEW_VIEWS",
+        "METRIC_TRUEVIEW_VIEW_RATE",
+        "METRIC_VIDEO_COMPLETION_RATE",
+        "METRIC_MEDIA_COST_ECPM_ADVERTISER",
+        "METRIC_MEDIA_COST_ECPC_ADVERTISER",
+        "METRIC_REVENUE_ADVERTISER",
+        "METRIC_TRUEVIEW_CPV_ADVERTISER",
     ]
 
     async def _run_report(
@@ -930,14 +911,11 @@ class DV360SyncService:
         db: AsyncSession = None,
         connection: PlatformConnection = None,
     ) -> List[Dict[str, Any]]:
-        query_body = self._build_query_body(
-            advertiser_id, date_from, date_to,
-            self._CONV_METRICS, title_suffix="_conv",
+        logger.info(
+            "DV360: Conversion metrics (TOTAL_CONVERSIONS, etc.) incompatible "
+            "with YOUTUBE + FILTER_YOUTUBE_AD_VIDEO_ID — skipping conversion report"
         )
-        result = await self._create_and_poll_report(
-            access_token, query_body, label="conv", db=db, connection=connection
-        )
-        return result if result is not None else []
+        return []
 
     def _parse_csv(self, csv_text: str) -> List[Dict[str, Any]]:
         """Parse Bid Manager v2 CSV report output into records.
@@ -1202,69 +1180,21 @@ class DV360SyncService:
             spend = safe_decimal(r.get("Media Cost (Advertiser Currency)"))
             impressions = safe_int(r.get("Impressions"))
             clicks = safe_int(r.get("Clicks"))
-            video_views = safe_int(
-                r.get("Video Views") or r.get("TrueView Views")
-            )
-            video_completions = safe_int(
-                r.get("Video Completions") or r.get("Video Complete Impressions")
-                or r.get("Completion") or r.get("Complete Impressions (Video)")
-            )
-            video_first_quartile = safe_int(
-                r.get("First Quartile") or r.get("Video First Quartile Impressions")
-                or r.get("First Quartile Impressions")
-            )
-            video_midpoint = safe_int(
-                r.get("Midpoint") or r.get("Video Midpoint Impressions")
-                or r.get("Midpoint Impressions")
-            )
-            video_third_quartile = safe_int(
-                r.get("Third Quartile") or r.get("Video Third Quartile Impressions")
-                or r.get("Third Quartile Impressions")
-            )
-            video_skips = safe_int(
-                r.get("Skips") or r.get("Video Skips")
-            )
+            trueview_views = safe_int(r.get("TrueView Views"))
+            total_media_cost = safe_decimal(r.get("Revenue (Adv Currency)"))
             cost_per_view = safe_decimal(
-                r.get("CPV") or r.get("Cost Per Video View")
-                or r.get("Cost per Video View")
+                r.get("TrueView CPV (Advertiser Currency)")
+                or r.get("TrueView CPV (Adv Currency)")
+                or r.get("CPV (Advertiser Currency)")
+                or r.get("CPV")
             )
-            active_view_measurable = safe_int(
-                r.get("Active View: Measurable Impressions")
-                or r.get("Active View Measurable Impressions")
-            )
-            active_view_viewable = safe_int(
-                r.get("Active View: Viewable Impressions")
-                or r.get("Active View Viewable Impressions")
-            )
-            active_view_pct = safe_float(
-                r.get("Active View: % Viewable Impressions")
-                or r.get("Active View % Viewable Impressions")
-                or r.get("Active View: Percent Viewable Impressions")
-            )
-            billable_impressions = safe_int(r.get("Billable Impressions"))
-            companion_impressions = safe_int(
-                r.get("Companion Impressions") or r.get("Video Companion Impressions")
-            )
-            companion_clicks = safe_int(
-                r.get("Companion Clicks") or r.get("Video Companion Clicks")
-            )
-            engagements = safe_int(r.get("Engagements"))
 
             s_f = float(spend) if spend else 0
-            ctr = safe_float(r.get("Click Rate (CTR)") or r.get("Click Rate"))
+            ctr = safe_float(r.get("Click Rate (CTR)"))
             cpm = Decimal(str(s_f / impressions * 1000)) if spend and impressions else None
             cpc = Decimal(str(s_f / clicks)) if spend and clicks else None
-            video_view_rate = safe_float(r.get("View Rate") or r.get("Video Views Rate"))
-
-            if video_completions and video_views and video_views > 0:
-                video_completion_rate = video_completions / video_views * 100
-            elif video_completions and video_skips is not None:
-                denom = video_completions + video_skips
-                video_completion_rate = (video_completions / denom * 100) if denom > 0 else None
-            else:
-                video_completion_rate = None
-
-            engagement_rate = (engagements / impressions * 100) if engagements and impressions else None
+            video_view_rate = safe_float(r.get("TrueView VR"))
+            video_completion_rate = safe_float(r.get("Complete Rate (Video)"))
 
             csv_io_id = r.get("Insertion Order ID") or ""
             csv_li_id = r.get("Line Item ID") or ""
@@ -1386,31 +1316,31 @@ class DV360SyncService:
                 "cpm": cpm,
                 "cpc": cpc,
                 "cost_per_view": cost_per_view,
-                "total_media_cost": None,
-                "billable_impressions": billable_impressions,
+                "total_media_cost": total_media_cost,
+                "billable_impressions": None,
                 "total_conversions": None,
                 "post_click_conversions": None,
                 "post_view_conversions": None,
                 "conversion_value": None,
                 "roas": None,
                 "cost_per_conversion": None,
-                "trueview_views": video_views,
-                "video_views": video_views,
-                "video_completions": video_completions,
-                "video_first_quartile": video_first_quartile,
-                "video_midpoint": video_midpoint,
-                "video_third_quartile": video_third_quartile,
-                "video_skips": video_skips,
+                "trueview_views": trueview_views,
+                "video_views": trueview_views,
+                "video_completions": None,
+                "video_first_quartile": None,
+                "video_midpoint": None,
+                "video_third_quartile": None,
+                "video_skips": None,
                 "video_completion_rate": video_completion_rate,
                 "video_view_rate": video_view_rate,
                 "video_plays": None,
-                "companion_impressions": companion_impressions,
-                "companion_clicks": companion_clicks,
-                "active_view_viewable_impressions": active_view_viewable,
-                "active_view_measurable_impressions": active_view_measurable,
-                "active_view_viewability": active_view_pct,
-                "engagements": engagements,
-                "engagement_rate": engagement_rate,
+                "companion_impressions": None,
+                "companion_clicks": None,
+                "active_view_viewable_impressions": None,
+                "active_view_measurable_impressions": None,
+                "active_view_viewability": None,
+                "engagements": None,
+                "engagement_rate": None,
                 "is_validated": True,
                 "is_processed": False,
             })
@@ -1421,11 +1351,7 @@ class DV360SyncService:
         _ADDITIVE_FIELDS = [
             "spend", "impressions", "clicks",
             "trueview_views", "video_views",
-            "video_completions", "video_first_quartile", "video_midpoint",
-            "video_third_quartile", "video_skips",
-            "companion_impressions", "companion_clicks",
-            "active_view_viewable_impressions", "active_view_measurable_impressions",
-            "billable_impressions", "engagements",
+            "total_media_cost",
         ]
 
         def _add_val(a, b):
@@ -1442,25 +1368,12 @@ class DV360SyncService:
             imp = row.get("impressions")
             clk = row.get("clicks")
             tv = row.get("trueview_views")
-            vc = row.get("video_completions")
-            vs = row.get("video_skips")
-            eng = row.get("engagements")
-            av_m = row.get("active_view_measurable_impressions")
-            av_v = row.get("active_view_viewable_impressions")
 
             s_f = float(s) if s else 0
             row["ctr"] = (clk / imp * 100) if imp and clk else None
             row["cpm"] = Decimal(str(s_f / imp * 1000)) if s and imp else None
             row["cpc"] = Decimal(str(s_f / clk)) if s and clk else None
             row["video_view_rate"] = (tv / imp * 100) if imp and tv else None
-            row["engagement_rate"] = (eng / imp * 100) if eng and imp else None
-            if vc and tv and tv > 0:
-                row["video_completion_rate"] = vc / tv * 100
-            elif vc is not None and vs is not None:
-                denom = vc + vs
-                row["video_completion_rate"] = (vc / denom * 100) if denom > 0 else None
-            if av_m and av_v is not None:
-                row["active_view_viewability"] = (av_v / av_m * 100) if av_m > 0 else None
 
         seen_keys: Dict[tuple, dict] = {}
         pre_agg = len(rows)
