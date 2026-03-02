@@ -333,6 +333,11 @@ async def run_historical_sync(connection_id: str) -> None:
         date_to = date.today() - timedelta(days=31)  # Avoid overlap with initial sync
         date_from = date_to - timedelta(days=720)    # ~24 months
 
+        if connection.platform == "DV360":
+            max_lookback = date.today() - timedelta(days=700)
+            if date_from < max_lookback:
+                date_from = max_lookback
+
         job = SyncJob(
             platform_connection_id=connection.id,
             job_type="HISTORICAL",
