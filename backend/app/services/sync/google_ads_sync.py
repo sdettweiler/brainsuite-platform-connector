@@ -232,12 +232,15 @@ class GoogleAdsSyncService:
         org_id: str,
         ad_id: str,
     ) -> Tuple[Optional[str], Optional[str]]:
+        from app.services.object_storage import get_object_storage
+        obj_storage = get_object_storage()
+
         filename = f"thumb_yt_{ad_id}.jpg"
+        relative_path = f"creatives/{org_id}/{filename}"
         local_path = os.path.join(org_dir, filename)
 
-        if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
-            served_url = f"/static/creatives/{org_id}/{filename}"
-            return local_path, served_url
+        if obj_storage.file_exists(relative_path):
+            return None, obj_storage.served_url(relative_path)
 
         thumb_candidates = [
             f"https://img.youtube.com/vi/{youtube_video_id}/maxresdefault.jpg",
@@ -254,9 +257,13 @@ class GoogleAdsSyncService:
                 resp.raise_for_status()
                 with open(local_path, "wb") as f:
                     f.write(resp.content)
-            served_url = f"/static/creatives/{org_id}/{filename}"
+            served_url = obj_storage.upload_file(local_path, relative_path, content_type="image/jpeg")
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
             logger.info(f"  Downloaded YouTube thumbnail: {filename} ({len(resp.content)} bytes)")
-            return local_path, served_url
+            return None, served_url
         except Exception as e:
             logger.warning(f"  Failed to download YouTube thumbnail for ad {ad_id} (video {youtube_video_id}): {e}")
             return None, None
@@ -268,12 +275,15 @@ class GoogleAdsSyncService:
         org_id: str,
         ad_id: str,
     ) -> Tuple[Optional[str], Optional[str]]:
+        from app.services.object_storage import get_object_storage
+        obj_storage = get_object_storage()
+
         filename = f"vid_yt_{ad_id}.mp4"
+        relative_path = f"creatives/{org_id}/{filename}"
         local_path = os.path.join(org_dir, filename)
 
-        if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
-            served_url = f"/static/creatives/{org_id}/{filename}"
-            return local_path, served_url
+        if obj_storage.file_exists(relative_path):
+            return local_path if os.path.exists(local_path) else None, obj_storage.served_url(relative_path)
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
@@ -316,7 +326,7 @@ class GoogleAdsSyncService:
 
             if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
                 size_mb = os.path.getsize(local_path) / (1024 * 1024)
-                served_url = f"/static/creatives/{org_id}/{filename}"
+                served_url = obj_storage.upload_file(local_path, relative_path, content_type="video/mp4")
                 logger.info(f"  Downloaded YouTube video: {filename} ({size_mb:.1f} MB)")
                 return local_path, served_url
             else:

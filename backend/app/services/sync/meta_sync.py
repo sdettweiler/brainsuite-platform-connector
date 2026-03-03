@@ -969,8 +969,11 @@ class MetaSyncService:
         ad_id: str,
         prefix: str,
     ) -> tuple:
-        """Download a file from URL and save locally. Returns (local_path, served_url)."""
+        """Download a file from URL, upload to object storage. Returns (local_path, served_url)."""
         try:
+            from app.services.object_storage import get_object_storage
+            obj_storage = get_object_storage()
+
             ext = ".jpg"
             if ".png" in url.lower():
                 ext = ".png"
@@ -980,11 +983,12 @@ class MetaSyncService:
                 ext = ".webp"
 
             filename = f"{prefix}_{ad_id}{ext}"
-            local_path = os.path.join(org_dir, filename)
+            relative_path = f"creatives/{org_id}/{filename}"
 
-            if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
-                served_url = f"/static/creatives/{org_id}/{filename}"
-                return local_path, served_url
+            if obj_storage.file_exists(relative_path):
+                return None, obj_storage.served_url(relative_path)
+
+            local_path = os.path.join(org_dir, filename)
 
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 resp = await client.get(url)
@@ -999,14 +1003,19 @@ class MetaSyncService:
                     ext = ".webp"
 
                 filename = f"{prefix}_{ad_id}{ext}"
+                relative_path = f"creatives/{org_id}/{filename}"
                 local_path = os.path.join(org_dir, filename)
 
                 with open(local_path, "wb") as f:
                     f.write(resp.content)
 
-            served_url = f"/static/creatives/{org_id}/{filename}"
+            served_url = obj_storage.upload_file(local_path, relative_path)
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
             logger.info(f"  Downloaded asset: {filename} ({len(resp.content)} bytes)")
-            return local_path, served_url
+            return None, served_url
 
         except Exception as e:
             logger.warning(f"  Failed to download asset for ad {ad_id}: {e}")
