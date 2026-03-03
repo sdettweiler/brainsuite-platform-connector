@@ -1054,11 +1054,14 @@ class DV360SyncService:
             import tempfile
             ydl_opts = {
                 "outtmpl": local_path,
-                "format": "b",
+                "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b",
+                "merge_output_format": "mp4",
                 "quiet": True,
                 "no_warnings": False,
                 "socket_timeout": 15,
                 "extractor_args": {"youtube": {"player_client": ["ios", "web"]}},
+                "compat_opts": set(),
+                "remote_components": {"ejs:github"},
             }
             cookies_data = os.environ.get(env_var_name, "")
             cookie_file = None
