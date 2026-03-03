@@ -998,6 +998,9 @@ class DV360SyncService:
         prefix: str = "img",
     ) -> Tuple[Optional[str], Optional[str]]:
         try:
+            from app.services.object_storage import get_object_storage
+            obj_storage = get_object_storage()
+
             safe_id = _sanitize_for_filename(ad_id)
             ext = ".jpg"
             if ".png" in url.lower():
@@ -1006,11 +1009,12 @@ class DV360SyncService:
                 ext = ".webp"
 
             filename = f"{prefix}_dv360_{safe_id}{ext}"
-            local_path = os.path.join(org_dir, filename)
+            relative_path = f"creatives/{org_id}/{filename}"
 
-            if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
-                served_url = f"/static/creatives/{org_id}/{filename}"
-                return local_path, served_url
+            if obj_storage.file_exists(relative_path):
+                return None, obj_storage.served_url(relative_path)
+
+            local_path = os.path.join(org_dir, filename)
 
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 resp = await client.get(url)
@@ -1023,14 +1027,19 @@ class DV360SyncService:
                     ext = ".webp"
 
                 filename = f"{prefix}_dv360_{safe_id}{ext}"
+                relative_path = f"creatives/{org_id}/{filename}"
                 local_path = os.path.join(org_dir, filename)
 
                 with open(local_path, "wb") as f:
                     f.write(resp.content)
 
-            served_url = f"/static/creatives/{org_id}/{filename}"
+            served_url = obj_storage.upload_file(local_path, relative_path)
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
             logger.info(f"  Downloaded DV360 asset: {filename} ({len(resp.content)} bytes)")
-            return local_path, served_url
+            return None, served_url
         except Exception as e:
             logger.warning(f"  Failed to download DV360 image for ad {ad_id}: {type(e).__name__}: {e}")
             return None, None
@@ -1081,13 +1090,16 @@ class DV360SyncService:
         org_id: str,
         ad_id: str,
     ) -> Tuple[Optional[str], Optional[str]]:
+        from app.services.object_storage import get_object_storage
+        obj_storage = get_object_storage()
+
         safe_id = _sanitize_for_filename(ad_id)
         filename = f"vid_dv360_{safe_id}.mp4"
+        relative_path = f"creatives/{org_id}/{filename}"
         local_path = os.path.join(org_dir, filename)
 
-        if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
-            served_url = f"/static/creatives/{org_id}/{filename}"
-            return local_path, served_url
+        if obj_storage.file_exists(relative_path):
+            return local_path if os.path.exists(local_path) else None, obj_storage.served_url(relative_path)
 
         cookie_vars = self._get_cookie_env_vars_to_try()
         if not cookie_vars:
@@ -1143,8 +1155,8 @@ class DV360SyncService:
 
                 if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
                     size_mb = os.path.getsize(local_path) / (1024 * 1024)
-                    served_url = f"/static/creatives/{org_id}/{filename}"
                     label = "primary" if i == 0 else "backup"
+                    served_url = obj_storage.upload_file(local_path, relative_path, content_type="video/mp4")
                     logger.info(f"  Downloaded DV360 YouTube video: {filename} ({size_mb:.1f} MB) [{label} cookies]")
                     return local_path, served_url
                 else:
@@ -1172,13 +1184,16 @@ class DV360SyncService:
         org_id: str,
         ad_id: str,
     ) -> Tuple[Optional[str], Optional[str]]:
+        from app.services.object_storage import get_object_storage
+        obj_storage = get_object_storage()
+
         safe_id = _sanitize_for_filename(ad_id)
         filename = f"thumb_dv360_{safe_id}.jpg"
+        relative_path = f"creatives/{org_id}/{filename}"
         local_path = os.path.join(org_dir, filename)
 
-        if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
-            served_url = f"/static/creatives/{org_id}/{filename}"
-            return local_path, served_url
+        if obj_storage.file_exists(relative_path):
+            return None, obj_storage.served_url(relative_path)
 
         candidates = [
             f"https://img.youtube.com/vi/{youtube_video_id}/maxresdefault.jpg",
@@ -1192,8 +1207,12 @@ class DV360SyncService:
                     if resp.status_code == 200 and len(resp.content) > 1000:
                         with open(local_path, "wb") as f:
                             f.write(resp.content)
-                        served_url = f"/static/creatives/{org_id}/{filename}"
-                        return local_path, served_url
+                        served_url = obj_storage.upload_file(local_path, relative_path, content_type="image/jpeg")
+                        try:
+                            os.remove(local_path)
+                        except OSError:
+                            pass
+                        return None, served_url
         except Exception as e:
             logger.warning(f"  Failed to download YouTube thumbnail for ad {ad_id}: {type(e).__name__}: {e}")
         return None, None

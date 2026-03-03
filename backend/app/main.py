@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response, RedirectResponse
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
 
@@ -34,9 +34,48 @@ def _run_migrations():
         logger.warning(f"Migration failed (non-fatal): {type(e).__name__}: {e}")
 
 
+def _migrate_static_urls_to_objects():
+    logger = logging.getLogger(__name__)
+    sync_url = os.environ.get("SYNC_DATABASE_URL", "")
+    if not sync_url:
+        return
+    try:
+        from sqlalchemy import create_engine, text
+        engine = create_engine(sync_url)
+        tables_columns = [
+            ("dv360_raw_performance", ["thumbnail_url", "asset_url", "video_url"]),
+            ("creative_assets", ["thumbnail_url", "asset_url"]),
+            ("meta_raw_performance", ["thumbnail_url", "asset_url"]),
+            ("tiktok_raw_performance", ["thumbnail_url", "asset_url"]),
+            ("google_ads_raw_performance", ["thumbnail_url", "video_url"]),
+        ]
+        total = 0
+        with engine.begin() as conn:
+            for table, columns in tables_columns:
+                for col in columns:
+                    try:
+                        result = conn.execute(text(
+                            f"UPDATE {table} SET {col} = REPLACE({col}, '/static/creatives/', '/objects/creatives/') "
+                            f"WHERE {col} LIKE '/static/creatives/%'"
+                        ))
+                        if result.rowcount > 0:
+                            total += result.rowcount
+                            logger.info(f"  Migrated {result.rowcount} URLs in {table}.{col}")
+                    except Exception:
+                        pass
+        if total > 0:
+            logger.info(f"URL migration complete: {total} total URLs updated from /static/creatives/ to /objects/creatives/")
+        else:
+            logger.info("URL migration: no /static/creatives/ URLs found (already migrated or empty)")
+        engine.dispose()
+    except Exception as e:
+        logger.warning(f"URL migration failed (non-fatal): {type(e).__name__}: {e}")
+
+
 async def _background_startup():
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _run_migrations)
+    await loop.run_in_executor(None, _migrate_static_urls_to_objects)
     try:
         from app.services.sync.scheduler import startup_scheduler
         await startup_scheduler()
@@ -82,6 +121,26 @@ app.mount("/static/creatives", StaticFiles(directory=_CREATIVES_DIR), name="crea
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": settings.APP_VERSION}
+
+
+@app.get("/objects/{object_path:path}", include_in_schema=False)
+async def serve_object(object_path: str):
+    from app.services.object_storage import get_object_storage
+    obj_storage = get_object_storage()
+    relative = f"creatives/{object_path}" if not object_path.startswith("creatives/") else object_path
+    is_video = relative.lower().endswith((".mp4", ".webm", ".mov", ".avi"))
+    if is_video:
+        signed_url = obj_storage.generate_signed_url(relative, ttl_sec=3600)
+        if signed_url:
+            return RedirectResponse(url=signed_url, status_code=302)
+    data, content_type = obj_storage.download_blob(relative)
+    if data is None:
+        return Response(status_code=404, content="Not found")
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 if os.path.isdir(_FRONTEND_DIST):
