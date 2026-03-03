@@ -98,7 +98,30 @@ else
   echo "✓ Frontend ready"
 fi
 
-# ── 6. Launch server (exec replaces shell — clean signal handling) ───────────
+# ── 6. Start temp health server, then launch uvicorn ─────────────────────────
+HEALTH_PID_FILE="/tmp/brainsuite_health.pid"
+
+python3 -c "
+import http.server, socketserver, os, json
+
+socketserver.TCPServer.allow_reuse_address = True
+
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps({'status': 'ok', 'version': 'starting'}).encode())
+    def log_message(self, *args):
+        pass
+
+s = socketserver.TCPServer(('0.0.0.0', $BACKEND_PORT), H)
+with open('$HEALTH_PID_FILE', 'w') as f:
+    f.write(str(os.getpid()))
+s.serve_forever()
+" &
+sleep 0.3
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  App running on port $BACKEND_PORT"
@@ -106,9 +129,5 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 cd "$BACKEND_DIR"
-exec python -m uvicorn app.main:app \
-  --host 0.0.0.0 \
-  --port "$BACKEND_PORT" \
-  --workers 1 \
-  --log-level info \
-  --timeout-keep-alive 120
+export BACKEND_PORT
+exec python start_server.py

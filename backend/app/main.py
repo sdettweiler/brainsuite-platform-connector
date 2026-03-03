@@ -73,14 +73,19 @@ def _migrate_static_urls_to_objects():
 
 
 async def _background_startup():
+    logger = logging.getLogger(__name__)
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _run_migrations)
     await loop.run_in_executor(None, _migrate_static_urls_to_objects)
+    is_deployment = os.environ.get("REPLIT_DEPLOYMENT", "")
+    if is_deployment:
+        logger.info("Production detected — waiting 15s for network readiness before starting scheduler...")
+        await asyncio.sleep(15)
     try:
         from app.services.sync.scheduler import startup_scheduler
         await startup_scheduler()
     except Exception as e:
-        logging.getLogger(__name__).warning(f"Scheduler startup failed (non-fatal): {e}")
+        logger.warning(f"Scheduler startup failed (non-fatal): {e}")
 
 
 @asynccontextmanager
