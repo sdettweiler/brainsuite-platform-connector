@@ -1054,12 +1054,11 @@ class DV360SyncService:
             import tempfile
             ydl_opts = {
                 "outtmpl": local_path,
-                "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b",
+                "format": "b",
                 "quiet": True,
                 "no_warnings": False,
-                "socket_timeout": 30,
-                "merge_output_format": "mp4",
-                "compat_opts": set(),
+                "socket_timeout": 15,
+                "extractor_args": {"youtube": {"player_client": ["ios", "web"]}},
             }
             cookies_data = os.environ.get(env_var_name, "")
             cookie_file = None
@@ -1096,6 +1095,11 @@ class DV360SyncService:
             except Exception as e:
                 if os.path.exists(local_path):
                     os.remove(local_path)
+                err_str = str(e)
+                is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
+                if is_format_error:
+                    logger.warning(f"  No video formats available for {youtube_video_id} (n challenge / format issue) — skipping retries")
+                    break
                 if i < len(cookie_vars) - 1:
                     label = "primary" if i == 0 else f"cookie set {i}"
                     logger.info(f"  {label} cookies failed for {youtube_video_id}, trying next set... ({e})")
@@ -1533,74 +1537,80 @@ class DV360SyncService:
         if not can_download_video:
             logger.warning("  Both cookie sets expired/missing — skipping video downloads, thumbnails only")
 
-        asset_results = {}
-        downloaded_videos = set()
+        from sqlalchemy import update as sa_update
+
+        thumb_results = {}
         for ad_id, info in queue.items():
             yt_vid = info.get("youtube_video_id", "")
             thumb = info.get("thumbnail_url", "")
-            result = {"video_url": "", "asset_url": "", "thumbnail_url": "", "video_duration_seconds": None}
 
             if yt_vid:
-                if can_download_video and yt_vid not in downloaded_videos:
-                    try:
-                        vid_path, vid_served = await self._download_video_asset(
-                            yt_vid, org_dir, org_id, ad_id
-                        )
-                        if vid_served:
-                            result["video_url"] = vid_served
-                            result["asset_url"] = vid_served
-                            result["video_duration_seconds"] = self._get_video_duration(vid_path)
-                            downloaded_videos.add(yt_vid)
-                    except Exception as e:
-                        logger.warning(f"  Video download failed for ad {ad_id}: {e}")
-                elif yt_vid in downloaded_videos:
-                    safe_id = _sanitize_for_filename(ad_id)
-                    vid_file = f"vid_dv360_{safe_id}.mp4"
-                    vid_path = os.path.join(org_dir, vid_file)
-                    if os.path.exists(vid_path) and os.path.getsize(vid_path) > 0:
-                        result["video_url"] = f"/static/creatives/{org_id}/{vid_file}"
-                        result["asset_url"] = result["video_url"]
-                        result["video_duration_seconds"] = self._get_video_duration(vid_path)
-
                 try:
-                    thumb_path, thumb_served = await self._download_youtube_thumbnail(
+                    _, thumb_served = await self._download_youtube_thumbnail(
                         yt_vid, org_dir, org_id, ad_id
                     )
                     if thumb_served:
-                        result["thumbnail_url"] = thumb_served
+                        thumb_results[ad_id] = thumb_served
                 except Exception as e:
                     logger.warning(f"  Thumbnail download failed for ad {ad_id}: {e}")
-
             elif thumb and thumb.startswith("http"):
                 try:
                     _, img_served = await self._download_image_asset(
                         thumb, org_dir, org_id, ad_id
                     )
                     if img_served:
-                        result["asset_url"] = img_served
-                        result["thumbnail_url"] = img_served
+                        thumb_results[ad_id] = img_served
                 except Exception as e:
                     logger.warning(f"  Image download failed for ad {ad_id}: {e}")
 
-            asset_results[ad_id] = result
+        if thumb_results:
+            for ad_id, served_url in thumb_results.items():
+                set_vals = {"thumbnail_url": served_url, "asset_url": served_url}
+                stmt = (
+                    sa_update(Dv360RawPerformance)
+                    .where(
+                        Dv360RawPerformance.platform_connection_id == connection.id,
+                        Dv360RawPerformance.ad_id == ad_id,
+                    )
+                    .values(**set_vals)
+                )
+                await db.execute(stmt)
+            await db.commit()
+            logger.info(f"  Thumbnails committed: {len(thumb_results)} ads updated")
 
-        logger.info(f"  Asset downloads complete: {len(downloaded_videos)} videos, {len(asset_results)} ads processed")
+        if not can_download_video:
+            logger.info(f"  Asset downloads complete: 0 videos, {len(thumb_results)} thumbnails")
+            return
 
-        updates = []
-        for ad_id, r in asset_results.items():
-            if r["video_url"] or r["asset_url"] or r["thumbnail_url"] or r["video_duration_seconds"] is not None:
-                updates.append((ad_id, r))
+        downloaded_videos = set()
+        video_results = {}
+        for ad_id, info in queue.items():
+            yt_vid = info.get("youtube_video_id", "")
+            if not yt_vid:
+                continue
 
-        if updates:
-            from sqlalchemy import update as sa_update
-            for ad_id, r in updates:
+            if yt_vid not in downloaded_videos:
+                try:
+                    vid_path, vid_served = await self._download_video_asset(
+                        yt_vid, org_dir, org_id, ad_id
+                    )
+                    if vid_served:
+                        video_results[ad_id] = {
+                            "video_url": vid_served,
+                            "asset_url": vid_served,
+                            "video_duration_seconds": self._get_video_duration(vid_path),
+                        }
+                        downloaded_videos.add(yt_vid)
+                except Exception as e:
+                    logger.warning(f"  Video download failed for ad {ad_id}: {e}")
+
+        if video_results:
+            for ad_id, r in video_results.items():
                 set_vals = {}
                 if r["video_url"]:
                     set_vals["video_url"] = r["video_url"]
                 if r["asset_url"]:
                     set_vals["asset_url"] = r["asset_url"]
-                if r["thumbnail_url"]:
-                    set_vals["thumbnail_url"] = r["thumbnail_url"]
                 if r["video_duration_seconds"] is not None:
                     set_vals["video_duration_seconds"] = r["video_duration_seconds"]
                 if set_vals:
@@ -1613,8 +1623,10 @@ class DV360SyncService:
                         .values(**set_vals)
                     )
                     await db.execute(stmt)
-            await db.flush()
-            logger.info(f"  Updated {len(updates)} ads with asset URLs in DB")
+            await db.commit()
+            logger.info(f"  Videos committed: {len(video_results)} ads updated")
+
+        logger.info(f"  Asset downloads complete: {len(downloaded_videos)} videos, {len(thumb_results)} thumbnails")
 
     async def _upsert_conversion_records(
         self,

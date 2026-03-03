@@ -136,7 +136,6 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
             if not connection:
                 return
             await dv360_sync.download_assets_post_commit(db, connection, asset_queue)
-            await db.commit()
     except Exception as e:
         logger.warning(f"DV360 asset download failed (non-fatal): {e}")
 
