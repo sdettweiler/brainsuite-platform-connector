@@ -76,9 +76,12 @@ REQUIREMENTS="$BACKEND_DIR/requirements.txt"
 if [ ! -f "$DEPS_MARKER" ] || [ "$REQUIREMENTS" -nt "$DEPS_MARKER" ]; then
   echo "► Installing Python dependencies..."
   cd "$BACKEND_DIR"
-  pip install -q --no-cache-dir -r requirements.txt 2>&1 || true
-  touch "$DEPS_MARKER"
-  echo "✓ Python dependencies ready"
+  if pip install -q --no-cache-dir -r requirements.txt 2>&1; then
+    touch "$DEPS_MARKER"
+    echo "✓ Python dependencies ready"
+  else
+    echo "⚠ pip install had errors (continuing anyway)"
+  fi
 else
   echo "✓ Python dependencies ready (cached)"
 fi

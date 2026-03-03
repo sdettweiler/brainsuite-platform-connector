@@ -10,8 +10,14 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google-cloud/storage": "^7.19.0",
+    "@uppy/aws-s3": "^5.1.0",
+    "@uppy/core": "^5.2.0",
+    "@uppy/dashboard": "^5.1.1",
+    "@uppy/react": "^5.2.0",
     "bootstrap-icons": "^1.13.1",
     "echarts": "^6.0.0",
+    "google-auth-library": "^10.6.1",
     "ngx-echarts": "^21.0.0"
   }
 }

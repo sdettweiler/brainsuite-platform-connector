@@ -39,6 +39,7 @@ outputType = "webview"
 
 [agent]
 expertMode = true
+integrations = ["javascript_object_storage:2.0.0"]
 
 [userenv]
 
@@ -105,3 +106,6 @@ YOUTUBE_COOKIES_BACKUP = """
 .youtube.com\tTRUE\t/\tTRUE\t1788012040\t__Secure-YNID\t16.YT=ZL8GBVa9x5Exr0bw4Fp1sr_sPUA3LCBb4RLjiSY5K73Gi0OyxCNYPZOHL08gvQOID9UmY1m7UldsLpOh7NEBwzV0Yq0Lg3UIRTS8FSCJnz_f0lMNc8AHtggzf76HAgf2zh8QuAKEyQY4v5u-AOVHEe0LJYQUCHXZEYuqa6bIucfvQGaO4vBeu9WtZkgcoYFjE5vqGoC7PpgmKgwOTWg8AZ0_wK4OBMpiiRzEDN4pv6W-T76yKZrOab-z3o3TdigPCDYhSLL8cohsfpbRb2S-17FocS7m11tpv6cnQJpWS6E0SmiVX9vtNDfoRPm7bj2qOYUffAZZe7GPRo4kdSkmPg
 .youtube.com\tTRUE\t/\tTRUE\t1788012040\t__Secure-ROLLOUT_TOKEN\tCLrTqPbil_Oi_QEQ5Mib09fskQMYx_eemLCBkwM%3D
 """
+
+[objectStorage]
+defaultBucketID = "replit-objstore-ba563867-0f3c-4dea-9b8d-4df84e335dfe"
