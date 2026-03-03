@@ -22,3 +22,4 @@ cryptography==42.0.4
 email-validator==2.1.0
 aiofiles==23.2.1
 yt-dlp
+imageio-ffmpeg>=0.5.1
