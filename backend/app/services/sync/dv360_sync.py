@@ -1054,11 +1054,12 @@ class DV360SyncService:
             import tempfile
             ydl_opts = {
                 "outtmpl": local_path,
-                "format": "bv*+ba/b",
+                "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b",
                 "quiet": True,
                 "no_warnings": False,
                 "socket_timeout": 30,
                 "merge_output_format": "mp4",
+                "compat_opts": set(),
             }
             cookies_data = os.environ.get(env_var_name, "")
             cookie_file = None
@@ -1447,7 +1448,7 @@ class DV360SyncService:
         if not rows:
             return 0, {}
 
-        BATCH_SIZE = 100
+        BATCH_SIZE = 25
         for i in range(0, len(rows), BATCH_SIZE):
             batch = rows[i:i + BATCH_SIZE]
             stmt = pg_insert(Dv360RawPerformance).values(batch)

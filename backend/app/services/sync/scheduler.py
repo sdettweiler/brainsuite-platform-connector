@@ -87,13 +87,8 @@ async def run_daily_sync(connection_id: str) -> None:
             await db.commit()
             return
 
-        if connection.platform == "DV360" and result.get("_asset_queue"):
-            try:
-                await dv360_sync.download_assets_post_commit(db, connection, result["_asset_queue"])
-                await db.commit()
-            except Exception as e:
-                logger.warning(f"DV360 asset download failed (non-fatal): {e}")
-                await db.rollback()
+        dv360_asset_queue = result.get("_asset_queue") if connection.platform == "DV360" else None
+        conn_id_for_assets = connection.id if dv360_asset_queue else None
 
         try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
@@ -120,6 +115,30 @@ async def run_daily_sync(connection_id: str) -> None:
             connection.sync_status = "ERROR"
             db.add(connection)
             await db.commit()
+
+    if dv360_asset_queue and conn_id_for_assets:
+        await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
+
+
+async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
+    from app.services.sync.dv360_sync import dv360_sync
+    from sqlalchemy import select
+    from app.models.platform import PlatformConnection
+    import uuid
+    try:
+        async with get_session_factory()() as db:
+            result = await db.execute(
+                select(PlatformConnection).where(
+                    PlatformConnection.id == (connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id)))
+                )
+            )
+            connection = result.scalar_one_or_none()
+            if not connection:
+                return
+            await dv360_sync.download_assets_post_commit(db, connection, asset_queue)
+            await db.commit()
+    except Exception as e:
+        logger.warning(f"DV360 asset download failed (non-fatal): {e}")
 
 
 async def run_full_resync(connection_id: str) -> None:
@@ -198,13 +217,8 @@ async def run_full_resync(connection_id: str) -> None:
             await db.commit()
             return
 
-        if connection.platform == "DV360" and sync_result.get("_asset_queue"):
-            try:
-                await dv360_sync.download_assets_post_commit(db, connection, sync_result["_asset_queue"])
-                await db.commit()
-            except Exception as e:
-                logger.warning(f"DV360 asset download failed (non-fatal): {e}")
-                await db.rollback()
+        dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
+        conn_id_for_assets = connection.id if dv360_asset_queue else None
 
         try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
@@ -233,6 +247,9 @@ async def run_full_resync(connection_id: str) -> None:
             connection.sync_status = "ERROR"
             db.add(connection)
             await db.commit()
+
+    if dv360_asset_queue and conn_id_for_assets:
+        await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
 
 
 async def run_initial_sync(connection_id: str) -> None:
@@ -300,13 +317,8 @@ async def run_initial_sync(connection_id: str) -> None:
             await db.commit()
             return
 
-        if connection.platform == "DV360" and sync_result.get("_asset_queue"):
-            try:
-                await dv360_sync.download_assets_post_commit(db, connection, sync_result["_asset_queue"])
-                await db.commit()
-            except Exception as e:
-                logger.warning(f"DV360 asset download failed (non-fatal): {e}")
-                await db.rollback()
+        dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
+        conn_id_for_assets = connection.id if dv360_asset_queue else None
 
         try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
@@ -331,6 +343,9 @@ async def run_initial_sync(connection_id: str) -> None:
             job.error_message = f"Harmonization: {str(e)[:3980]}"
             db.add(job)
             await db.commit()
+
+    if dv360_asset_queue and conn_id_for_assets:
+        await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
 
 
 async def run_historical_sync(connection_id: str) -> None:
@@ -403,13 +418,8 @@ async def run_historical_sync(connection_id: str) -> None:
             await db.commit()
             return
 
-        if connection.platform == "DV360" and sync_result.get("_asset_queue"):
-            try:
-                await dv360_sync.download_assets_post_commit(db, connection, sync_result["_asset_queue"])
-                await db.commit()
-            except Exception as e:
-                logger.warning(f"DV360 asset download failed (non-fatal): {e}")
-                await db.rollback()
+        dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
+        conn_id_for_assets = connection.id if dv360_asset_queue else None
 
         try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
@@ -431,6 +441,9 @@ async def run_historical_sync(connection_id: str) -> None:
             job.error_message = f"Harmonization: {str(e)[:3980]}"
             db.add(job)
             await db.commit()
+
+    if dv360_asset_queue and conn_id_for_assets:
+        await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
 
 
 def schedule_connection(connection_id: str, timezone: str = "UTC") -> None:

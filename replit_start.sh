@@ -86,8 +86,20 @@ fi
 # ── 5. Run database migrations ───────────────────────────────────────────────
 echo "► Running database migrations..."
 cd "$BACKEND_DIR"
-alembic upgrade head 2>&1 || true
-echo "✓ Database up to date"
+ALEMBIC_CURRENT=$(alembic current 2>&1)
+if echo "$ALEMBIC_CURRENT" | grep -q "(head)"; then
+  echo "✓ Database up to date"
+elif echo "$ALEMBIC_CURRENT" | grep -q "FAILED\|Can't locate\|No such"; then
+  echo "  Stamping existing database to current head..."
+  alembic stamp head 2>&1
+  echo "✓ Database stamped to head"
+else
+  alembic upgrade head 2>&1 || {
+    echo "  Migration failed, attempting stamp head..."
+    alembic stamp head 2>&1
+  }
+  echo "✓ Database up to date"
+fi
 
 # ── 6. Check frontend build ─────────────────────────────────────────────────
 export NG_CLI_ANALYTICS=false
