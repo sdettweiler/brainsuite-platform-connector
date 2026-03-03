@@ -143,7 +143,7 @@ class DV360SyncService:
                 video_metadata=merged_vid_meta,
             )
 
-        perf_upserted = await self._upsert_records(db, connection, perf_records, sync_job_id, entity_maps)
+        perf_upserted, asset_queue = await self._upsert_records(db, connection, perf_records, sync_job_id, entity_maps)
 
         conv_upserted = 0
         if conv_records:
@@ -154,7 +154,11 @@ class DV360SyncService:
             except Exception as e:
                 logger.warning(f"DV360: Conversion upsert failed (non-fatal): {e}")
 
-        return {"fetched": len(perf_records) + len(conv_records), "upserted": perf_upserted + conv_upserted}
+        return {
+            "fetched": len(perf_records) + len(conv_records),
+            "upserted": perf_upserted + conv_upserted,
+            "_asset_queue": asset_queue,
+        }
 
     async def _get_valid_token(
         self, db: AsyncSession, connection: PlatformConnection
@@ -985,9 +989,9 @@ class DV360SyncService:
             logger.warning(f"  Failed to download DV360 image for ad {ad_id}: {e}")
             return None, None
 
-    def _check_youtube_cookies(self) -> str:
+    def _check_youtube_cookies(self, env_var: str = "YOUTUBE_COOKIES") -> str:
         """Check YouTube cookie status. Returns 'valid', 'expired', or 'missing'."""
-        cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
+        cookies_data = os.environ.get(env_var, "")
         if not cookies_data:
             return "missing"
 
@@ -1013,6 +1017,17 @@ class DV360SyncService:
             return "valid"
         return "valid" if has_valid else "expired"
 
+    def _get_cookie_env_vars_to_try(self) -> List[str]:
+        """Return list of cookie env var names to try, in priority order."""
+        to_try = []
+        primary = self._check_youtube_cookies("YOUTUBE_COOKIES")
+        backup = self._check_youtube_cookies("YOUTUBE_COOKIES_BACKUP")
+        if primary == "valid":
+            to_try.append("YOUTUBE_COOKIES")
+        if backup == "valid":
+            to_try.append("YOUTUBE_COOKIES_BACKUP")
+        return to_try
+
     async def _download_video_asset(
         self,
         youtube_video_id: str,
@@ -1028,17 +1043,13 @@ class DV360SyncService:
             served_url = f"/static/creatives/{org_id}/{filename}"
             return local_path, served_url
 
-        cookie_status = self._check_youtube_cookies()
-        if cookie_status == "missing":
-            logger.warning(f"  Skipping video download for {youtube_video_id}: YOUTUBE_COOKIES not set")
-            return None, None
-        if cookie_status == "expired":
-            logger.warning(f"  Skipping video download for {youtube_video_id}: YOUTUBE_COOKIES expired — please refresh")
+        cookie_vars = self._get_cookie_env_vars_to_try()
+        if not cookie_vars:
             return None, None
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
-        def _do_download():
+        def _do_download_with_cookies(env_var_name: str):
             import yt_dlp
             import tempfile
             ydl_opts = {
@@ -1049,7 +1060,7 @@ class DV360SyncService:
                 "socket_timeout": 30,
                 "merge_output_format": "mp4",
             }
-            cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
+            cookies_data = os.environ.get(env_var_name, "")
             cookie_file = None
             if cookies_data:
                 cleaned = "\n".join(
@@ -1068,23 +1079,29 @@ class DV360SyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
-        try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _do_download)
+        loop = asyncio.get_event_loop()
+        for i, env_var in enumerate(cookie_vars):
+            try:
+                await loop.run_in_executor(None, lambda ev=env_var: _do_download_with_cookies(ev))
 
-            if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
-                size_mb = os.path.getsize(local_path) / (1024 * 1024)
-                served_url = f"/static/creatives/{org_id}/{filename}"
-                logger.info(f"  Downloaded DV360 YouTube video: {filename} ({size_mb:.1f} MB)")
-                return local_path, served_url
-            else:
-                logger.warning(f"  yt-dlp finished but file not found: {local_path}")
-                return None, None
-        except Exception as e:
-            logger.warning(f"  Failed to download DV360 YouTube video for ad {ad_id} (video {youtube_video_id}): {e}")
-            if os.path.exists(local_path):
-                os.remove(local_path)
-            return None, None
+                if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+                    size_mb = os.path.getsize(local_path) / (1024 * 1024)
+                    served_url = f"/static/creatives/{org_id}/{filename}"
+                    label = "primary" if i == 0 else "backup"
+                    logger.info(f"  Downloaded DV360 YouTube video: {filename} ({size_mb:.1f} MB) [{label} cookies]")
+                    return local_path, served_url
+                else:
+                    logger.warning(f"  yt-dlp finished but file not found: {local_path}")
+            except Exception as e:
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+                if i < len(cookie_vars) - 1:
+                    label = "primary" if i == 0 else f"cookie set {i}"
+                    logger.info(f"  {label} cookies failed for {youtube_video_id}, trying next set... ({e})")
+                    continue
+                logger.warning(f"  Failed to download DV360 YouTube video for ad {ad_id} (video {youtube_video_id}): {e}")
+
+        return None, None
 
     async def _download_youtube_thumbnail(
         self,
@@ -1141,9 +1158,9 @@ class DV360SyncService:
         records: List[Dict[str, Any]],
         sync_job_id: Optional[str],
         entity_maps: Optional[EntityMaps] = None,
-    ) -> int:
+    ) -> Tuple[int, Dict[str, Any]]:
         if not records:
-            return 0
+            return 0, {}
 
         if records:
             first_row = records[0]
@@ -1428,79 +1445,7 @@ class DV360SyncService:
         logger.info(f"DV360 upsert: {pre_agg} rows aggregated to {len(rows)} unique ad_id+date rows")
 
         if not rows:
-            return 0
-
-        if org_dir and org_id and asset_download_queue:
-            cookie_status = self._check_youtube_cookies()
-            logger.info(
-                f"  Downloading assets for {len(asset_download_queue)} unique ads... "
-                f"(YouTube cookies: {cookie_status})"
-            )
-            asset_results = {}
-            downloaded_videos = set()
-            for ad_id, info in asset_download_queue.items():
-                yt_vid = info.get("youtube_video_id", "")
-                thumb = info.get("thumbnail_url", "")
-                result = {"video_url": "", "asset_url": "", "thumbnail_url": "", "video_duration_seconds": None}
-
-                if yt_vid:
-                    if yt_vid not in downloaded_videos:
-                        try:
-                            vid_path, vid_served = await self._download_video_asset(
-                                yt_vid, org_dir, org_id, ad_id
-                            )
-                            if vid_served:
-                                result["video_url"] = vid_served
-                                result["asset_url"] = vid_served
-                                result["video_duration_seconds"] = self._get_video_duration(vid_path)
-                                downloaded_videos.add(yt_vid)
-                        except Exception as e:
-                            logger.warning(f"  Video download failed for ad {ad_id}: {e}")
-                    else:
-                        safe_id = _sanitize_for_filename(ad_id)
-                        vid_file = f"vid_dv360_{safe_id}.mp4"
-                        vid_path = os.path.join(org_dir, vid_file)
-                        if os.path.exists(vid_path) and os.path.getsize(vid_path) > 0:
-                            result["video_url"] = f"/static/creatives/{org_id}/{vid_file}"
-                            result["asset_url"] = result["video_url"]
-                            result["video_duration_seconds"] = self._get_video_duration(vid_path)
-
-                    try:
-                        thumb_path, thumb_served = await self._download_youtube_thumbnail(
-                            yt_vid, org_dir, org_id, ad_id
-                        )
-                        if thumb_served:
-                            result["thumbnail_url"] = thumb_served
-                    except Exception as e:
-                        logger.warning(f"  Thumbnail download failed for ad {ad_id}: {e}")
-
-                elif thumb and thumb.startswith("http"):
-                    try:
-                        _, img_served = await self._download_image_asset(
-                            thumb, org_dir, org_id, ad_id
-                        )
-                        if img_served:
-                            result["asset_url"] = img_served
-                            result["thumbnail_url"] = img_served
-                    except Exception as e:
-                        logger.warning(f"  Image download failed for ad {ad_id}: {e}")
-
-                asset_results[ad_id] = result
-
-            for row in rows:
-                ad_id = row["ad_id"]
-                if ad_id in asset_results:
-                    r = asset_results[ad_id]
-                    if r["video_url"]:
-                        row["video_url"] = r["video_url"]
-                    if r["asset_url"]:
-                        row["asset_url"] = r["asset_url"]
-                    if r["thumbnail_url"]:
-                        row["thumbnail_url"] = r["thumbnail_url"]
-                    if r["video_duration_seconds"] is not None:
-                        row["video_duration_seconds"] = r["video_duration_seconds"]
-
-            logger.info(f"  Asset downloads complete: {len(downloaded_videos)} videos, {len(asset_results)} ads processed")
+            return 0, {}
 
         BATCH_SIZE = 100
         for i in range(0, len(rows), BATCH_SIZE):
@@ -1561,7 +1506,114 @@ class DV360SyncService:
             await db.execute(stmt)
             await db.flush()
 
-        return len(rows)
+        return len(rows), {"org_dir": org_dir, "org_id": org_id, "queue": asset_download_queue}
+
+    async def download_assets_post_commit(
+        self,
+        db: AsyncSession,
+        connection: PlatformConnection,
+        asset_info: Dict[str, Any],
+    ) -> None:
+        org_dir = asset_info.get("org_dir")
+        org_id = asset_info.get("org_id")
+        queue = asset_info.get("queue", {})
+
+        if not org_dir or not org_id or not queue:
+            return
+
+        primary_status = self._check_youtube_cookies("YOUTUBE_COOKIES")
+        backup_status = self._check_youtube_cookies("YOUTUBE_COOKIES_BACKUP")
+        can_download_video = primary_status == "valid" or backup_status == "valid"
+
+        logger.info(
+            f"  Downloading assets for {len(queue)} unique ads... "
+            f"(cookies: primary={primary_status}, backup={backup_status})"
+        )
+        if not can_download_video:
+            logger.warning("  Both cookie sets expired/missing — skipping video downloads, thumbnails only")
+
+        asset_results = {}
+        downloaded_videos = set()
+        for ad_id, info in queue.items():
+            yt_vid = info.get("youtube_video_id", "")
+            thumb = info.get("thumbnail_url", "")
+            result = {"video_url": "", "asset_url": "", "thumbnail_url": "", "video_duration_seconds": None}
+
+            if yt_vid:
+                if can_download_video and yt_vid not in downloaded_videos:
+                    try:
+                        vid_path, vid_served = await self._download_video_asset(
+                            yt_vid, org_dir, org_id, ad_id
+                        )
+                        if vid_served:
+                            result["video_url"] = vid_served
+                            result["asset_url"] = vid_served
+                            result["video_duration_seconds"] = self._get_video_duration(vid_path)
+                            downloaded_videos.add(yt_vid)
+                    except Exception as e:
+                        logger.warning(f"  Video download failed for ad {ad_id}: {e}")
+                elif yt_vid in downloaded_videos:
+                    safe_id = _sanitize_for_filename(ad_id)
+                    vid_file = f"vid_dv360_{safe_id}.mp4"
+                    vid_path = os.path.join(org_dir, vid_file)
+                    if os.path.exists(vid_path) and os.path.getsize(vid_path) > 0:
+                        result["video_url"] = f"/static/creatives/{org_id}/{vid_file}"
+                        result["asset_url"] = result["video_url"]
+                        result["video_duration_seconds"] = self._get_video_duration(vid_path)
+
+                try:
+                    thumb_path, thumb_served = await self._download_youtube_thumbnail(
+                        yt_vid, org_dir, org_id, ad_id
+                    )
+                    if thumb_served:
+                        result["thumbnail_url"] = thumb_served
+                except Exception as e:
+                    logger.warning(f"  Thumbnail download failed for ad {ad_id}: {e}")
+
+            elif thumb and thumb.startswith("http"):
+                try:
+                    _, img_served = await self._download_image_asset(
+                        thumb, org_dir, org_id, ad_id
+                    )
+                    if img_served:
+                        result["asset_url"] = img_served
+                        result["thumbnail_url"] = img_served
+                except Exception as e:
+                    logger.warning(f"  Image download failed for ad {ad_id}: {e}")
+
+            asset_results[ad_id] = result
+
+        logger.info(f"  Asset downloads complete: {len(downloaded_videos)} videos, {len(asset_results)} ads processed")
+
+        updates = []
+        for ad_id, r in asset_results.items():
+            if r["video_url"] or r["asset_url"] or r["thumbnail_url"] or r["video_duration_seconds"] is not None:
+                updates.append((ad_id, r))
+
+        if updates:
+            from sqlalchemy import update as sa_update
+            for ad_id, r in updates:
+                set_vals = {}
+                if r["video_url"]:
+                    set_vals["video_url"] = r["video_url"]
+                if r["asset_url"]:
+                    set_vals["asset_url"] = r["asset_url"]
+                if r["thumbnail_url"]:
+                    set_vals["thumbnail_url"] = r["thumbnail_url"]
+                if r["video_duration_seconds"] is not None:
+                    set_vals["video_duration_seconds"] = r["video_duration_seconds"]
+                if set_vals:
+                    stmt = (
+                        sa_update(Dv360RawPerformance)
+                        .where(
+                            Dv360RawPerformance.platform_connection_id == connection.id,
+                            Dv360RawPerformance.ad_id == ad_id,
+                        )
+                        .values(**set_vals)
+                    )
+                    await db.execute(stmt)
+            await db.flush()
+            logger.info(f"  Updated {len(updates)} ads with asset URLs in DB")
 
     async def _upsert_conversion_records(
         self,

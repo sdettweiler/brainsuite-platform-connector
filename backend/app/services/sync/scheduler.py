@@ -87,6 +87,14 @@ async def run_daily_sync(connection_id: str) -> None:
             await db.commit()
             return
 
+        if connection.platform == "DV360" and result.get("_asset_queue"):
+            try:
+                await dv360_sync.download_assets_post_commit(db, connection, result["_asset_queue"])
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"DV360 asset download failed (non-fatal): {e}")
+                await db.rollback()
+
         try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
 
@@ -190,6 +198,14 @@ async def run_full_resync(connection_id: str) -> None:
             await db.commit()
             return
 
+        if connection.platform == "DV360" and sync_result.get("_asset_queue"):
+            try:
+                await dv360_sync.download_assets_post_commit(db, connection, sync_result["_asset_queue"])
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"DV360 asset download failed (non-fatal): {e}")
+                await db.rollback()
+
         try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
 
@@ -283,6 +299,14 @@ async def run_initial_sync(connection_id: str) -> None:
             db.add(job)
             await db.commit()
             return
+
+        if connection.platform == "DV360" and sync_result.get("_asset_queue"):
+            try:
+                await dv360_sync.download_assets_post_commit(db, connection, sync_result["_asset_queue"])
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"DV360 asset download failed (non-fatal): {e}")
+                await db.rollback()
 
         try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
@@ -378,6 +402,14 @@ async def run_historical_sync(connection_id: str) -> None:
             db.add(job)
             await db.commit()
             return
+
+        if connection.platform == "DV360" and sync_result.get("_asset_queue"):
+            try:
+                await dv360_sync.download_assets_post_commit(db, connection, sync_result["_asset_queue"])
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"DV360 asset download failed (non-fatal): {e}")
+                await db.rollback()
 
         try:
             harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
