@@ -1,7 +1,7 @@
 import os
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -65,16 +65,24 @@ os.makedirs(_CREATIVES_DIR, exist_ok=True)
 app.mount("/static/creatives", StaticFiles(directory=_CREATIVES_DIR), name="creatives")
 
 
+@app.get("/", include_in_schema=False)
+async def root(request: Request):
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and os.path.isdir(_FRONTEND_DIST):
+        index = os.path.join(_FRONTEND_DIST, "index.html")
+        if os.path.isfile(index):
+            return FileResponse(index)
+    return {"status": "ok", "version": settings.APP_VERSION}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": settings.APP_VERSION}
 
 
-# ── Serve Angular SPA (used in Replit / single-process deployments) ──────────
 if os.path.isdir(_FRONTEND_DIST):
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        """Serve static files if they exist, otherwise serve index.html for SPA routing."""
         file_path = os.path.join(_FRONTEND_DIST, full_path)
         no_cache_headers = {
             "Cache-Control": "no-cache, no-store, must-revalidate",
