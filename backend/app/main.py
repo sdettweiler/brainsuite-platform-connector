@@ -18,17 +18,22 @@ _FRONTEND_DIST = os.path.abspath(
 )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
+async def _deferred_scheduler_startup():
+    import asyncio
+    await asyncio.sleep(2)
     try:
         from app.services.sync.scheduler import startup_scheduler
         await startup_scheduler()
     except Exception as e:
-        import logging
         logging.getLogger(__name__).warning(f"Scheduler startup failed (non-fatal): {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import asyncio
+    task = asyncio.create_task(_deferred_scheduler_startup())
     yield
-    # Shutdown
+    task.cancel()
     try:
         from app.services.sync.scheduler import scheduler
         if scheduler.running:
