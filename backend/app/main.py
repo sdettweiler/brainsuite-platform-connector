@@ -1,7 +1,7 @@
 import os
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -12,28 +12,20 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(messag
 from app.core.config import settings
 from app.api.v1 import api_router
 
-# Path to the Angular production build (works in both Docker and Replit)
 _FRONTEND_DIST = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist", "brainsuite")
 )
 
 
-async def _deferred_scheduler_startup():
-    import asyncio
-    await asyncio.sleep(2)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     try:
         from app.services.sync.scheduler import startup_scheduler
         await startup_scheduler()
     except Exception as e:
+        import logging
         logging.getLogger(__name__).warning(f"Scheduler startup failed (non-fatal): {e}")
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    import asyncio
-    task = asyncio.create_task(_deferred_scheduler_startup())
     yield
-    task.cancel()
     try:
         from app.services.sync.scheduler import scheduler
         if scheduler.running:
@@ -49,7 +41,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -65,16 +56,6 @@ os.makedirs(_CREATIVES_DIR, exist_ok=True)
 app.mount("/static/creatives", StaticFiles(directory=_CREATIVES_DIR), name="creatives")
 
 
-@app.get("/", include_in_schema=False)
-async def root(request: Request):
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept and os.path.isdir(_FRONTEND_DIST):
-        index = os.path.join(_FRONTEND_DIST, "index.html")
-        if os.path.isfile(index):
-            return FileResponse(index)
-    return {"status": "ok", "version": settings.APP_VERSION}
-
-
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": settings.APP_VERSION}
@@ -83,6 +64,7 @@ async def health():
 if os.path.isdir(_FRONTEND_DIST):
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
+        """Serve static files if they exist, otherwise serve index.html for SPA routing."""
         file_path = os.path.join(_FRONTEND_DIST, full_path)
         no_cache_headers = {
             "Cache-Control": "no-cache, no-store, must-revalidate",

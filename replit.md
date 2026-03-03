@@ -35,6 +35,8 @@ replit_start.sh      # Startup script (installs deps, runs migrations, starts se
 - FastAPI serves both the API (`/api/v1/`) and the Angular SPA (static files)
 - Database URL is auto-configured from Replit's `DATABASE_URL` environment variable
 - CORS is auto-configured for the Replit domain
+- **Deployment**: `deploymentTarget = "autoscale"`, `build.sh` builds frontend only, `replit_start.sh` handles everything at runtime. Do NOT change to `vm` or move runtime setup into `build.sh` — the original config works and has been tested.
+- **bcrypt**: Must stay pinned to 4.0.1
 
 ## Design System
 - **Typography**: Nunito Sans (web fallback for Avenir Next) — Headlines: Demi Bold, Sub Headlines: Medium, Body: Regular

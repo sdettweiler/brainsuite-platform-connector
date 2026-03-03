@@ -10,7 +10,7 @@ externalPort = 80
 
 [deployment]
 run = ["bash", "replit_start.sh"]
-deploymentTarget = "vm"
+deploymentTarget = "autoscale"
 build = ["bash", "build.sh"]
 
 [workflows]
