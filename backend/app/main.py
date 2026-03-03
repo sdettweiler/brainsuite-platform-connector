@@ -18,8 +18,25 @@ _FRONTEND_DIST = os.path.abspath(
 )
 
 
-async def _deferred_scheduler_startup():
-    await asyncio.sleep(2)
+def _run_migrations():
+    logger = logging.getLogger(__name__)
+    try:
+        from alembic.config import Config
+        from alembic import command
+        alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
+        alembic_cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "..", "alembic"))
+        sync_url = os.environ.get("SYNC_DATABASE_URL", "")
+        if sync_url:
+            alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Database migrations complete")
+    except Exception as e:
+        logger.warning(f"Migration failed (non-fatal): {type(e).__name__}: {e}")
+
+
+async def _background_startup():
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _run_migrations)
     try:
         from app.services.sync.scheduler import startup_scheduler
         await startup_scheduler()
@@ -29,7 +46,7 @@ async def _deferred_scheduler_startup():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(_deferred_scheduler_startup())
+    task = asyncio.create_task(_background_startup())
     yield
     task.cancel()
     try:

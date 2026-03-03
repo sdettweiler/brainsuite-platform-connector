@@ -83,25 +83,7 @@ else
   echo "✓ Python dependencies ready (cached)"
 fi
 
-# ── 5. Run database migrations ───────────────────────────────────────────────
-echo "► Running database migrations..."
-cd "$BACKEND_DIR"
-ALEMBIC_CURRENT=$(alembic current 2>&1)
-if echo "$ALEMBIC_CURRENT" | grep -q "(head)"; then
-  echo "✓ Database up to date"
-elif echo "$ALEMBIC_CURRENT" | grep -q "FAILED\|Can't locate\|No such"; then
-  echo "  Stamping existing database to current head..."
-  alembic stamp head 2>&1
-  echo "✓ Database stamped to head"
-else
-  alembic upgrade head 2>&1 || {
-    echo "  Migration failed, attempting stamp head..."
-    alembic stamp head 2>&1
-  }
-  echo "✓ Database up to date"
-fi
-
-# ── 6. Check frontend build ─────────────────────────────────────────────────
+# ── 5. Check frontend build ──────────────────────────────────────────────────
 export NG_CLI_ANALYTICS=false
 if [ ! -f "$FRONTEND_DIST/index.html" ]; then
   echo "► Building Angular frontend..."
@@ -113,7 +95,7 @@ else
   echo "✓ Frontend ready"
 fi
 
-# ── 7. Launch server (exec replaces shell — clean signal handling) ───────────
+# ── 6. Launch server (exec replaces shell — clean signal handling) ───────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  App running on port $BACKEND_PORT"

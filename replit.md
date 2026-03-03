@@ -85,7 +85,8 @@ The DV360 integration uses two separate Google APIs with a **two-report YOUTUBE 
 - Key files: `dv360_oauth.py` (OAuth + advertiser listing via v4), `dv360_sync.py` (entity metadata via v4 + reporting via Bid Manager v2 + oEmbed + asset downloading).
 
 ## Production Resilience
-- **Deferred scheduler startup**: `startup_scheduler()` runs via `asyncio.create_task()` with 2s delay so health checks pass immediately (main.py)
+- **Non-blocking startup**: Migrations + scheduler run as a background `asyncio.create_task()` in the lifespan. Uvicorn starts and responds to health checks immediately. Migrations run via `run_in_executor` (sync Alembic in thread), then scheduler starts after migrations complete.
+- **Build-time pip install**: `build.sh` installs Python dependencies during the build phase so they're baked into the deployment artifact. `replit_start.sh` skips pip install at runtime via marker file.
 - **Deadlock retry**: All harmonization calls wrapped in `_harmonize_with_deadlock_retry()` — retries up to 3x with exponential backoff on `DeadlockDetectedError` (scheduler.py)
 - **YouTube download throttling**: 4s delay between consecutive yt-dlp downloads to avoid bot detection / cookie invalidation from datacenter IPs (dv360_sync.py)
 - **Error message format**: All exception logs use `{type(e).__name__}: {e}` pattern (not bare `{e}`) to avoid empty messages from httpx/asyncpg exceptions. Full tracebacks logged in sync error handlers.
