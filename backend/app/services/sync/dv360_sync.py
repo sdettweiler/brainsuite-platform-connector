@@ -1379,7 +1379,7 @@ class DV360SyncService:
             })
 
         if not rows:
-            return 0
+            return 0, {}
 
         _ADDITIVE_FIELDS = [
             "spend", "impressions", "clicks",
