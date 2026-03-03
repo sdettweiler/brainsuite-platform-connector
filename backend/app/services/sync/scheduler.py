@@ -29,6 +29,15 @@ async def run_daily_sync(connection_id: str) -> None:
     from app.services.sync.harmonizer import harmonizer
     import uuid
 
+    date_from = date.today() - timedelta(days=2)
+    date_to = date.today() - timedelta(days=1)
+    dv360_asset_queue = None
+    conn_id_for_assets = None
+    platform = None
+    is_dv360 = False
+    dv360_report_data = None
+    dv360_info = None
+
     async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(
@@ -42,38 +51,55 @@ async def run_daily_sync(connection_id: str) -> None:
             logger.warning(f"Connection {connection_id} not found for daily sync")
             return
 
-        # Create sync job record
+        platform = connection.platform
+        is_dv360 = platform == "DV360"
+
         job = SyncJob(
             platform_connection_id=connection.id,
             job_type="DAILY",
             status="RUNNING",
             started_at=datetime.utcnow(),
-            date_from=date.today() - timedelta(days=2),  # 2-day lookback for late data
-            date_to=date.today() - timedelta(days=1),
+            date_from=date_from,
+            date_to=date_to,
         )
         db.add(job)
         await db.flush()
         job_id = str(job.id)
 
         try:
-            date_from = date.today() - timedelta(days=2)
-            date_to = date.today() - timedelta(days=1)
-
-            if connection.platform == "META":
+            if is_dv360:
+                from app.core.security import decrypt_token
+                access_token = await dv360_sync._get_valid_token(db, connection)
+                _dv360_pending = {
+                    "access_token": access_token,
+                    "connection_id": connection.id,
+                    "refresh_token_encrypted": connection.refresh_token_encrypted,
+                    "advertiser_id": connection.ad_account_id,
+                    "job_id": job_id,
+                }
+                await db.commit()
+                dv360_info = _dv360_pending
+            elif connection.platform == "META":
                 result = await meta_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Daily sync raw data committed for {connection.platform}: {result}")
             elif connection.platform == "TIKTOK":
                 result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Daily sync raw data committed for {connection.platform}: {result}")
             elif connection.platform == "GOOGLE_ADS":
                 result = await google_ads_sync.sync_date_range(db, connection, date_from, date_to, job_id)
-            elif connection.platform == "DV360":
-                result = await dv360_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Daily sync raw data committed for {connection.platform}: {result}")
             else:
                 result = {"fetched": 0, "upserted": 0}
-
-            job.records_fetched = result.get("fetched", 0)
-            db.add(job)
-            await db.commit()
-            logger.info(f"Daily sync raw data committed for {connection.platform}: {result}")
+                await db.commit()
 
         except Exception as e:
             logger.error(f"Daily sync fetch failed for connection {connection_id}: {e}")
@@ -87,34 +113,116 @@ async def run_daily_sync(connection_id: str) -> None:
             await db.commit()
             return
 
-        dv360_asset_queue = result.get("_asset_queue") if connection.platform == "DV360" else None
-        conn_id_for_assets = connection.id if dv360_asset_queue else None
+        if not is_dv360:
+            dv360_asset_queue = result.get("_asset_queue") if platform == "DV360" else None
+            conn_id_for_assets = connection.id if dv360_asset_queue else None
 
+            try:
+                harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+
+                connection.last_synced_at = datetime.utcnow()
+                connection.sync_status = "ACTIVE"
+                db.add(connection)
+
+                job.status = "COMPLETED"
+                job.completed_at = datetime.utcnow()
+                job.records_processed = harmonized
+                db.add(job)
+
+                await db.commit()
+                logger.info(f"Daily sync completed for {connection.platform} {connection.ad_account_id}: {result}")
+
+            except Exception as e:
+                logger.error(f"Daily sync harmonization failed for connection {connection_id}: {e}")
+                await db.rollback()
+                job.status = "FAILED"
+                job.error_message = f"Harmonization: {str(e)[:3980]}"
+                job.completed_at = datetime.utcnow()
+                db.add(job)
+                connection.sync_status = "ERROR"
+                db.add(connection)
+                await db.commit()
+
+    if is_dv360 and dv360_info:
         try:
-            harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
-
-            connection.last_synced_at = datetime.utcnow()
-            connection.sync_status = "ACTIVE"
-            db.add(connection)
-
-            job.status = "COMPLETED"
-            job.completed_at = datetime.utcnow()
-            job.records_processed = harmonized
-            db.add(job)
-
-            await db.commit()
-            logger.info(f"Daily sync completed for {connection.platform} {connection.ad_account_id}: {result}")
-
+            logger.info(f"DV360 daily sync: polling reports with no DB session held")
+            dv360_report_data = await dv360_sync.fetch_report_data(
+                dv360_info["access_token"], dv360_info["connection_id"],
+                dv360_info["refresh_token_encrypted"],
+                dv360_info["advertiser_id"], date_from, date_to,
+            )
         except Exception as e:
-            logger.error(f"Daily sync harmonization failed for connection {connection_id}: {e}")
-            await db.rollback()
-            job.status = "FAILED"
-            job.error_message = f"Harmonization: {str(e)[:3980]}"
-            job.completed_at = datetime.utcnow()
-            db.add(job)
-            connection.sync_status = "ERROR"
-            db.add(connection)
-            await db.commit()
+            logger.error(f"DV360 daily sync report fetch failed: {e}")
+            async with get_session_factory()() as db:
+                from sqlalchemy import select as sel
+                from app.models.performance import SyncJob as SJ
+                sj = (await db.execute(sel(SJ).where(SJ.id == uuid.UUID(dv360_info["job_id"])))).scalar_one_or_none()
+                conn = (await db.execute(sel(PlatformConnection).where(PlatformConnection.id == dv360_info["connection_id"]))).scalar_one_or_none()
+                if sj:
+                    sj.status = "FAILED"
+                    sj.error_message = str(e)[:4000]
+                    sj.completed_at = datetime.utcnow()
+                    db.add(sj)
+                if conn:
+                    conn.sync_status = "ERROR"
+                    db.add(conn)
+                await db.commit()
+            return
+
+        async with get_session_factory()() as db:
+            conn = (await db.execute(
+                select(PlatformConnection).where(PlatformConnection.id == dv360_info["connection_id"])
+            )).scalar_one_or_none()
+            sj = (await db.execute(
+                select(SyncJob).where(SyncJob.id == uuid.UUID(dv360_info["job_id"]))
+            )).scalar_one_or_none()
+
+            if not conn or not sj:
+                logger.error(f"DV360 daily sync: connection or job disappeared")
+                return
+
+            try:
+                sync_result = await dv360_sync.store_report_data(db, conn, dv360_report_data, dv360_info["job_id"])
+                sj.records_fetched = sync_result.get("fetched", 0)
+                db.add(sj)
+                await db.commit()
+                logger.info(f"DV360 daily sync raw data committed: {sync_result}")
+            except Exception as e:
+                logger.error(f"DV360 daily sync upsert failed: {e}")
+                await db.rollback()
+                sj.status = "FAILED"
+                sj.error_message = str(e)[:4000]
+                sj.completed_at = datetime.utcnow()
+                db.add(sj)
+                conn.sync_status = "ERROR"
+                db.add(conn)
+                await db.commit()
+                return
+
+            dv360_asset_queue = sync_result.get("_asset_queue")
+            conn_id_for_assets = conn.id if dv360_asset_queue else None
+
+            try:
+                harmonized = await harmonizer.harmonize_connection(db, conn, date_from, date_to)
+                conn.last_synced_at = datetime.utcnow()
+                conn.sync_status = "ACTIVE"
+                db.add(conn)
+                sj.status = "COMPLETED"
+                sj.completed_at = datetime.utcnow()
+                sj.records_processed = harmonized
+                db.add(sj)
+                await db.commit()
+                logger.info(f"DV360 daily sync completed: {sync_result}")
+            except Exception as e:
+                logger.error(f"DV360 daily sync harmonization failed: {e}")
+                await db.rollback()
+                sj.status = "FAILED"
+                sj.error_message = f"Harmonization: {str(e)[:3980]}"
+                sj.completed_at = datetime.utcnow()
+                db.add(sj)
+                conn.sync_status = "ERROR"
+                db.add(conn)
+                await db.commit()
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
@@ -154,6 +262,11 @@ async def run_full_resync(connection_id: str) -> None:
 
     logger.info(f"=== Starting full resync for connection {connection_id} ===")
 
+    is_dv360 = False
+    dv360_info = None
+    dv360_asset_queue = None
+    conn_id_for_assets = None
+
     async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(
@@ -167,7 +280,8 @@ async def run_full_resync(connection_id: str) -> None:
             logger.warning(f"Connection {connection_id} not found for full resync")
             return
 
-        if connection.platform == "DV360":
+        is_dv360 = connection.platform == "DV360"
+        if is_dv360:
             date_from = date.today() - timedelta(days=180)
         else:
             date_from = date.today() - timedelta(days=730)
@@ -186,21 +300,40 @@ async def run_full_resync(connection_id: str) -> None:
         job_id = str(job.id)
 
         try:
-            if connection.platform == "META":
+            if is_dv360:
+                access_token = await dv360_sync._get_valid_token(db, connection)
+                _dv360_pending = {
+                    "access_token": access_token,
+                    "connection_id": connection.id,
+                    "refresh_token_encrypted": connection.refresh_token_encrypted,
+                    "advertiser_id": connection.ad_account_id,
+                    "job_id": job_id,
+                    "date_from": date_from,
+                    "date_to": date_to,
+                }
+                await db.commit()
+                dv360_info = _dv360_pending
+            elif connection.platform == "META":
                 sync_result = await meta_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = sync_result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Full resync raw data committed for {connection.platform}: {sync_result}")
             elif connection.platform == "TIKTOK":
                 sync_result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = sync_result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Full resync raw data committed for {connection.platform}: {sync_result}")
             elif connection.platform == "GOOGLE_ADS":
                 sync_result = await google_ads_sync.sync_date_range(db, connection, date_from, date_to, job_id)
-            elif connection.platform == "DV360":
-                sync_result = await dv360_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = sync_result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Full resync raw data committed for {connection.platform}: {sync_result}")
             else:
                 sync_result = {"fetched": 0}
-
-            job.records_fetched = sync_result.get("fetched", 0)
-            db.add(job)
-            await db.commit()
-            logger.info(f"Full resync raw data committed for {connection.platform}: {sync_result}")
+                await db.commit()
 
         except Exception as e:
             logger.error(f"Full resync fetch failed for connection {connection_id}: {e}")
@@ -216,36 +349,117 @@ async def run_full_resync(connection_id: str) -> None:
             await db.commit()
             return
 
-        dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
-        conn_id_for_assets = connection.id if dv360_asset_queue else None
+        if not is_dv360:
+            dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
+            conn_id_for_assets = connection.id if dv360_asset_queue else None
 
+            try:
+                harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+                connection.last_synced_at = datetime.utcnow()
+                connection.sync_status = "ACTIVE"
+                db.add(connection)
+                job.status = "COMPLETED"
+                job.completed_at = datetime.utcnow()
+                job.records_processed = harmonized
+                db.add(job)
+                await db.commit()
+                logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
+            except Exception as e:
+                logger.error(f"Full resync harmonization failed for connection {connection_id}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                await db.rollback()
+                job.status = "FAILED"
+                job.error_message = f"Harmonization: {str(e)[:3980]}"
+                job.completed_at = datetime.utcnow()
+                db.add(job)
+                connection.sync_status = "ERROR"
+                db.add(connection)
+                await db.commit()
+
+    if is_dv360 and dv360_info:
         try:
-            harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
-
-            connection.last_synced_at = datetime.utcnow()
-            connection.sync_status = "ACTIVE"
-            db.add(connection)
-
-            job.status = "COMPLETED"
-            job.completed_at = datetime.utcnow()
-            job.records_processed = harmonized
-            db.add(job)
-
-            await db.commit()
-            logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
-
+            logger.info(f"DV360 full resync: polling reports with no DB session held")
+            dv360_report_data = await dv360_sync.fetch_report_data(
+                dv360_info["access_token"], dv360_info["connection_id"],
+                dv360_info["refresh_token_encrypted"],
+                dv360_info["advertiser_id"],
+                dv360_info["date_from"], dv360_info["date_to"],
+            )
         except Exception as e:
-            logger.error(f"Full resync harmonization failed for connection {connection_id}: {e}")
+            logger.error(f"DV360 full resync report fetch failed: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            await db.rollback()
-            job.status = "FAILED"
-            job.error_message = f"Harmonization: {str(e)[:3980]}"
-            job.completed_at = datetime.utcnow()
-            db.add(job)
-            connection.sync_status = "ERROR"
-            db.add(connection)
-            await db.commit()
+            async with get_session_factory()() as db:
+                sj = (await db.execute(select(SyncJob).where(SyncJob.id == uuid.UUID(dv360_info["job_id"])))).scalar_one_or_none()
+                conn = (await db.execute(select(PlatformConnection).where(PlatformConnection.id == dv360_info["connection_id"]))).scalar_one_or_none()
+                if sj:
+                    sj.status = "FAILED"
+                    sj.error_message = str(e)[:4000]
+                    sj.completed_at = datetime.utcnow()
+                    db.add(sj)
+                if conn:
+                    conn.sync_status = "ERROR"
+                    db.add(conn)
+                await db.commit()
+            return
+
+        async with get_session_factory()() as db:
+            conn = (await db.execute(
+                select(PlatformConnection).where(PlatformConnection.id == dv360_info["connection_id"])
+            )).scalar_one_or_none()
+            sj = (await db.execute(
+                select(SyncJob).where(SyncJob.id == uuid.UUID(dv360_info["job_id"]))
+            )).scalar_one_or_none()
+
+            if not conn or not sj:
+                logger.error(f"DV360 full resync: connection or job disappeared")
+                return
+
+            try:
+                sync_result = await dv360_sync.store_report_data(db, conn, dv360_report_data, dv360_info["job_id"])
+                sj.records_fetched = sync_result.get("fetched", 0)
+                db.add(sj)
+                await db.commit()
+                logger.info(f"DV360 full resync raw data committed: {sync_result}")
+            except Exception as e:
+                logger.error(f"DV360 full resync upsert failed: {e}")
+                await db.rollback()
+                sj.status = "FAILED"
+                sj.error_message = str(e)[:4000]
+                sj.completed_at = datetime.utcnow()
+                db.add(sj)
+                conn.sync_status = "ERROR"
+                db.add(conn)
+                await db.commit()
+                return
+
+            dv360_asset_queue = sync_result.get("_asset_queue")
+            conn_id_for_assets = conn.id if dv360_asset_queue else None
+
+            try:
+                harmonized = await harmonizer.harmonize_connection(db, conn, dv360_info["date_from"], dv360_info["date_to"])
+                conn.last_synced_at = datetime.utcnow()
+                conn.sync_status = "ACTIVE"
+                db.add(conn)
+                sj.status = "COMPLETED"
+                sj.completed_at = datetime.utcnow()
+                sj.records_processed = harmonized
+                db.add(sj)
+                await db.commit()
+                logger.info(f"DV360 full resync completed: {sync_result}")
+            except Exception as e:
+                logger.error(f"DV360 full resync harmonization failed: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                await db.rollback()
+                sj.status = "FAILED"
+                sj.error_message = f"Harmonization: {str(e)[:3980]}"
+                sj.completed_at = datetime.utcnow()
+                db.add(sj)
+                conn.sync_status = "ERROR"
+                db.add(conn)
+                await db.commit()
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
@@ -265,6 +479,14 @@ async def run_initial_sync(connection_id: str) -> None:
 
     logger.info(f"=== Starting initial sync for connection {connection_id} ===")
 
+    date_from = date.today() - timedelta(days=30)
+    date_to = date.today() - timedelta(days=1)
+    is_dv360 = False
+    dv360_info = None
+    dv360_asset_queue = None
+    conn_id_for_assets = None
+    trigger_historical = False
+
     async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id))
@@ -275,37 +497,53 @@ async def run_initial_sync(connection_id: str) -> None:
             return
 
         logger.info(f"Connection found: platform={connection.platform}, account={connection.ad_account_id}, name={connection.ad_account_name}")
+        is_dv360 = connection.platform == "DV360"
 
         job = SyncJob(
             platform_connection_id=connection.id,
             job_type="INITIAL_30D",
             status="RUNNING",
             started_at=datetime.utcnow(),
-            date_from=date.today() - timedelta(days=30),
-            date_to=date.today() - timedelta(days=1),
+            date_from=date_from,
+            date_to=date_to,
         )
         db.add(job)
         await db.flush()
+        job_id = str(job.id)
 
         try:
-            date_from = date.today() - timedelta(days=30)
-            date_to = date.today() - timedelta(days=1)
-
-            if connection.platform == "META":
-                sync_result = await meta_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
+            if is_dv360:
+                access_token = await dv360_sync._get_valid_token(db, connection)
+                _dv360_pending = {
+                    "access_token": access_token,
+                    "connection_id": connection.id,
+                    "refresh_token_encrypted": connection.refresh_token_encrypted,
+                    "advertiser_id": connection.ad_account_id,
+                    "job_id": job_id,
+                }
+                await db.commit()
+                dv360_info = _dv360_pending
+            elif connection.platform == "META":
+                sync_result = await meta_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = sync_result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Initial sync raw data committed for {connection.platform}: {sync_result}")
             elif connection.platform == "TIKTOK":
-                sync_result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
+                sync_result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = sync_result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Initial sync raw data committed for {connection.platform}: {sync_result}")
             elif connection.platform == "GOOGLE_ADS":
-                sync_result = await google_ads_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
-            elif connection.platform == "DV360":
-                sync_result = await dv360_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
+                sync_result = await google_ads_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = sync_result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Initial sync raw data committed for {connection.platform}: {sync_result}")
             else:
                 sync_result = {"fetched": 0}
-
-            job.records_fetched = sync_result.get("fetched", 0)
-            db.add(job)
-            await db.commit()
-            logger.info(f"Initial sync raw data committed for {connection.platform}: {sync_result}")
+                await db.commit()
 
         except Exception as e:
             logger.error(f"Initial sync fetch failed for {connection_id}: {e}")
@@ -316,32 +554,103 @@ async def run_initial_sync(connection_id: str) -> None:
             await db.commit()
             return
 
-        dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
-        conn_id_for_assets = connection.id if dv360_asset_queue else None
+        if not is_dv360:
+            dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
+            conn_id_for_assets = connection.id if dv360_asset_queue else None
 
+            try:
+                harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+                connection.initial_sync_completed = True
+                connection.last_synced_at = datetime.utcnow()
+                db.add(connection)
+                job.status = "COMPLETED"
+                job.completed_at = datetime.utcnow()
+                job.records_processed = harmonized
+                db.add(job)
+                await db.commit()
+                trigger_historical = True
+            except Exception as e:
+                logger.error(f"Initial sync harmonization failed for {connection_id}: {e}")
+                await db.rollback()
+                job.status = "FAILED"
+                job.error_message = f"Harmonization: {str(e)[:3980]}"
+                db.add(job)
+                await db.commit()
+
+    if is_dv360 and dv360_info:
         try:
-            harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
-
-            connection.initial_sync_completed = True
-            connection.last_synced_at = datetime.utcnow()
-            db.add(connection)
-
-            job.status = "COMPLETED"
-            job.completed_at = datetime.utcnow()
-            job.records_processed = harmonized
-            db.add(job)
-
-            await db.commit()
-
-            asyncio.create_task(run_historical_sync(connection_id))
-
+            logger.info(f"DV360 initial sync: polling reports with no DB session held")
+            dv360_report_data = await dv360_sync.fetch_report_data(
+                dv360_info["access_token"], dv360_info["connection_id"],
+                dv360_info["refresh_token_encrypted"],
+                dv360_info["advertiser_id"], date_from, date_to,
+            )
         except Exception as e:
-            logger.error(f"Initial sync harmonization failed for {connection_id}: {e}")
-            await db.rollback()
-            job.status = "FAILED"
-            job.error_message = f"Harmonization: {str(e)[:3980]}"
-            db.add(job)
-            await db.commit()
+            logger.error(f"DV360 initial sync report fetch failed: {e}")
+            async with get_session_factory()() as db:
+                sj = (await db.execute(select(SyncJob).where(SyncJob.id == uuid.UUID(dv360_info["job_id"])))).scalar_one_or_none()
+                if sj:
+                    sj.status = "FAILED"
+                    sj.error_message = str(e)[:4000]
+                    sj.completed_at = datetime.utcnow()
+                    db.add(sj)
+                await db.commit()
+            return
+
+        async with get_session_factory()() as db:
+            conn = (await db.execute(
+                select(PlatformConnection).where(PlatformConnection.id == dv360_info["connection_id"])
+            )).scalar_one_or_none()
+            sj = (await db.execute(
+                select(SyncJob).where(SyncJob.id == uuid.UUID(dv360_info["job_id"]))
+            )).scalar_one_or_none()
+
+            if not conn or not sj:
+                logger.error(f"DV360 initial sync: connection or job disappeared")
+                return
+
+            try:
+                sync_result = await dv360_sync.store_report_data(db, conn, dv360_report_data, dv360_info["job_id"])
+                sj.records_fetched = sync_result.get("fetched", 0)
+                db.add(sj)
+                await db.commit()
+                logger.info(f"DV360 initial sync raw data committed: {sync_result}")
+            except Exception as e:
+                logger.error(f"DV360 initial sync upsert failed: {e}")
+                await db.rollback()
+                sj.status = "FAILED"
+                sj.error_message = str(e)[:4000]
+                sj.completed_at = datetime.utcnow()
+                db.add(sj)
+                await db.commit()
+                return
+
+            dv360_asset_queue = sync_result.get("_asset_queue")
+            conn_id_for_assets = conn.id if dv360_asset_queue else None
+
+            try:
+                harmonized = await harmonizer.harmonize_connection(db, conn, date_from, date_to)
+                conn.initial_sync_completed = True
+                conn.last_synced_at = datetime.utcnow()
+                db.add(conn)
+                sj.status = "COMPLETED"
+                sj.completed_at = datetime.utcnow()
+                sj.records_processed = harmonized
+                db.add(sj)
+                await db.commit()
+                trigger_historical = True
+                logger.info(f"DV360 initial sync completed: {sync_result}")
+            except Exception as e:
+                logger.error(f"DV360 initial sync harmonization failed: {e}")
+                await db.rollback()
+                sj.status = "FAILED"
+                sj.error_message = f"Harmonization: {str(e)[:3980]}"
+                sj.completed_at = datetime.utcnow()
+                db.add(sj)
+                await db.commit()
+
+    if trigger_historical:
+        asyncio.create_task(run_historical_sync(connection_id))
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
@@ -359,6 +668,11 @@ async def run_historical_sync(connection_id: str) -> None:
     from app.services.sync.harmonizer import harmonizer
     import uuid
 
+    is_dv360 = False
+    dv360_info = None
+    dv360_asset_queue = None
+    conn_id_for_assets = None
+
     async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id))
@@ -367,11 +681,11 @@ async def run_historical_sync(connection_id: str) -> None:
         if not connection:
             return
 
-        # Fetch 24 months historical (don't go beyond API limits)
-        date_to = date.today() - timedelta(days=31)  # Avoid overlap with initial sync
-        date_from = date_to - timedelta(days=720)    # ~24 months
+        is_dv360 = connection.platform == "DV360"
+        date_to = date.today() - timedelta(days=31)
+        date_from = date_to - timedelta(days=720)
 
-        if connection.platform == "DV360":
+        if is_dv360:
             max_lookback = date.today() - timedelta(days=700)
             if date_from < max_lookback:
                 date_from = max_lookback
@@ -386,27 +700,47 @@ async def run_historical_sync(connection_id: str) -> None:
         )
         db.add(job)
         await db.flush()
+        job_id = str(job.id)
 
         connection.historical_sync_started_at = datetime.utcnow()
         db.add(connection)
         await db.flush()
 
         try:
-            if connection.platform == "META":
-                sync_result = await meta_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
+            if is_dv360:
+                access_token = await dv360_sync._get_valid_token(db, connection)
+                _dv360_pending = {
+                    "access_token": access_token,
+                    "connection_id": connection.id,
+                    "refresh_token_encrypted": connection.refresh_token_encrypted,
+                    "advertiser_id": connection.ad_account_id,
+                    "job_id": job_id,
+                    "date_from": date_from,
+                    "date_to": date_to,
+                }
+                await db.commit()
+                dv360_info = _dv360_pending
+            elif connection.platform == "META":
+                sync_result = await meta_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = sync_result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Historical sync raw data committed for {connection.platform}: {sync_result}")
             elif connection.platform == "TIKTOK":
-                sync_result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
+                sync_result = await tiktok_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = sync_result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Historical sync raw data committed for {connection.platform}: {sync_result}")
             elif connection.platform == "GOOGLE_ADS":
-                sync_result = await google_ads_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
-            elif connection.platform == "DV360":
-                sync_result = await dv360_sync.sync_date_range(db, connection, date_from, date_to, str(job.id))
+                sync_result = await google_ads_sync.sync_date_range(db, connection, date_from, date_to, job_id)
+                job.records_fetched = sync_result.get("fetched", 0)
+                db.add(job)
+                await db.commit()
+                logger.info(f"Historical sync raw data committed for {connection.platform}: {sync_result}")
             else:
                 sync_result = {"fetched": 0}
-
-            job.records_fetched = sync_result.get("fetched", 0)
-            db.add(job)
-            await db.commit()
-            logger.info(f"Historical sync raw data committed for {connection.platform}: {sync_result}")
+                await db.commit()
 
         except Exception as e:
             logger.error(f"Historical sync fetch failed for {connection_id}: {e}")
@@ -417,29 +751,96 @@ async def run_historical_sync(connection_id: str) -> None:
             await db.commit()
             return
 
-        dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
-        conn_id_for_assets = connection.id if dv360_asset_queue else None
+        if not is_dv360:
+            dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
+            conn_id_for_assets = connection.id if dv360_asset_queue else None
 
+            try:
+                harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+                connection.historical_sync_completed = True
+                db.add(connection)
+                job.status = "COMPLETED"
+                job.completed_at = datetime.utcnow()
+                job.records_processed = harmonized
+                db.add(job)
+                await db.commit()
+            except Exception as e:
+                logger.error(f"Historical sync harmonization failed for {connection_id}: {e}")
+                await db.rollback()
+                job.status = "FAILED"
+                job.error_message = f"Harmonization: {str(e)[:3980]}"
+                db.add(job)
+                await db.commit()
+
+    if is_dv360 and dv360_info:
         try:
-            harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
-
-            connection.historical_sync_completed = True
-            db.add(connection)
-
-            job.status = "COMPLETED"
-            job.completed_at = datetime.utcnow()
-            job.records_processed = harmonized
-            db.add(job)
-
-            await db.commit()
-
+            logger.info(f"DV360 historical sync: polling reports with no DB session held")
+            dv360_report_data = await dv360_sync.fetch_report_data(
+                dv360_info["access_token"], dv360_info["connection_id"],
+                dv360_info["refresh_token_encrypted"],
+                dv360_info["advertiser_id"],
+                dv360_info["date_from"], dv360_info["date_to"],
+            )
         except Exception as e:
-            logger.error(f"Historical sync harmonization failed for {connection_id}: {e}")
-            await db.rollback()
-            job.status = "FAILED"
-            job.error_message = f"Harmonization: {str(e)[:3980]}"
-            db.add(job)
-            await db.commit()
+            logger.error(f"DV360 historical sync report fetch failed: {e}")
+            async with get_session_factory()() as db:
+                sj = (await db.execute(select(SyncJob).where(SyncJob.id == uuid.UUID(dv360_info["job_id"])))).scalar_one_or_none()
+                if sj:
+                    sj.status = "FAILED"
+                    sj.error_message = str(e)[:4000]
+                    sj.completed_at = datetime.utcnow()
+                    db.add(sj)
+                await db.commit()
+            return
+
+        async with get_session_factory()() as db:
+            conn = (await db.execute(
+                select(PlatformConnection).where(PlatformConnection.id == dv360_info["connection_id"])
+            )).scalar_one_or_none()
+            sj = (await db.execute(
+                select(SyncJob).where(SyncJob.id == uuid.UUID(dv360_info["job_id"]))
+            )).scalar_one_or_none()
+
+            if not conn or not sj:
+                logger.error(f"DV360 historical sync: connection or job disappeared")
+                return
+
+            try:
+                sync_result = await dv360_sync.store_report_data(db, conn, dv360_report_data, dv360_info["job_id"])
+                sj.records_fetched = sync_result.get("fetched", 0)
+                db.add(sj)
+                await db.commit()
+                logger.info(f"DV360 historical sync raw data committed: {sync_result}")
+            except Exception as e:
+                logger.error(f"DV360 historical sync upsert failed: {e}")
+                await db.rollback()
+                sj.status = "FAILED"
+                sj.error_message = str(e)[:4000]
+                sj.completed_at = datetime.utcnow()
+                db.add(sj)
+                await db.commit()
+                return
+
+            dv360_asset_queue = sync_result.get("_asset_queue")
+            conn_id_for_assets = conn.id if dv360_asset_queue else None
+
+            try:
+                harmonized = await harmonizer.harmonize_connection(db, conn, dv360_info["date_from"], dv360_info["date_to"])
+                conn.historical_sync_completed = True
+                db.add(conn)
+                sj.status = "COMPLETED"
+                sj.completed_at = datetime.utcnow()
+                sj.records_processed = harmonized
+                db.add(sj)
+                await db.commit()
+            except Exception as e:
+                logger.error(f"DV360 historical sync harmonization failed: {e}")
+                await db.rollback()
+                sj.status = "FAILED"
+                sj.error_message = f"Harmonization: {str(e)[:3980]}"
+                sj.completed_at = datetime.utcnow()
+                db.add(sj)
+                await db.commit()
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)

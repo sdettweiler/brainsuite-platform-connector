@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # Currency
     EXCHANGERATE_API_KEY: Optional[str] = None
     EXCHANGERATE_API_URL: str = "https://v6.exchangerate-api.com/v6"
-    FRANKFURTER_API_URL: str = "https://api.frankfurter.app"
+    FRANKFURTER_API_URL: str = "https://api.frankfurter.dev/v1"
 
     # Token encryption
     TOKEN_ENCRYPTION_KEY: Optional[str] = None

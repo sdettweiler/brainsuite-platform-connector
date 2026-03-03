@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import logging
 from datetime import date, datetime
@@ -12,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class CurrencyConverterService:
-    """Fetches and caches daily exchange rates. Primary: exchangerate-api.com, Fallback: frankfurter.app"""
+    """Fetches and caches daily exchange rates. Primary: frankfurter.dev, Fallback: exchangerate-api.com"""
+
+    _exchangerate_api_disabled = False
 
     def __init__(self):
         self._mem_cache: dict[tuple, float] = {}
@@ -100,14 +103,18 @@ class CurrencyConverterService:
     async def _fetch_rate(
         self, from_currency: str, to_currency: str, rate_date: date
     ) -> Optional[float]:
-        # Try primary API
-        if settings.EXCHANGERATE_API_KEY:
+        rate = await self._fetch_from_frankfurter(from_currency, to_currency, rate_date)
+        if rate:
+            return rate
+
+        await asyncio.sleep(0.3)
+
+        if settings.EXCHANGERATE_API_KEY and not CurrencyConverterService._exchangerate_api_disabled:
             rate = await self._fetch_from_exchangerate_api(from_currency, to_currency, rate_date)
             if rate:
                 return rate
 
-        # Fallback to frankfurter.app
-        return await self._fetch_from_frankfurter(from_currency, to_currency, rate_date)
+        return None
 
     async def _fetch_from_exchangerate_api(
         self, from_currency: str, to_currency: str, rate_date: date
@@ -116,6 +123,10 @@ class CurrencyConverterService:
             url = f"{settings.EXCHANGERATE_API_URL}/{settings.EXCHANGERATE_API_KEY}/latest/{from_currency.upper()}"
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(url)
+                if resp.status_code == 429:
+                    logger.warning("exchangerate-api.com: 429 Too Many Requests — disabling for remainder of process lifetime")
+                    CurrencyConverterService._exchangerate_api_disabled = True
+                    return None
                 resp.raise_for_status()
                 data = resp.json()
                 if data.get("result") == "success":
@@ -132,17 +143,16 @@ class CurrencyConverterService:
             date_str = rate_date.strftime("%Y-%m-%d")
             url = f"{settings.FRANKFURTER_API_URL}/{date_str}"
             params = {"from": from_currency.upper(), "to": to_currency.upper()}
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.get(url, params=params)
                 if resp.status_code == 404:
-                    # Try latest if historical date not available
                     resp = await client.get(f"{settings.FRANKFURTER_API_URL}/latest", params=params)
                 resp.raise_for_status()
                 data = resp.json()
                 rates = data.get("rates", {})
                 return rates.get(to_currency.upper())
         except Exception as e:
-            logger.warning(f"frankfurter.app failed: {e}")
+            logger.warning(f"frankfurter.dev failed: {e}")
         return None
 
 

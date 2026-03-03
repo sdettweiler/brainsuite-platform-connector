@@ -91,22 +91,21 @@ class EntityMaps(NamedTuple):
 
 class DV360SyncService:
 
-    async def sync_date_range(
+    async def fetch_report_data(
         self,
-        db: AsyncSession,
-        connection: PlatformConnection,
+        access_token: str,
+        connection_id,
+        refresh_token_encrypted: str,
+        advertiser_id: str,
         date_from: date,
         date_to: date,
-        sync_job_id: Optional[str] = None,
-    ) -> Dict[str, int]:
-        access_token = await self._get_valid_token(db, connection)
-        advertiser_id = connection.ad_account_id
-
+    ) -> Dict[str, Any]:
         entity_maps = await self._fetch_entity_metadata(access_token, advertiser_id)
 
         perf_records = await self._run_report(
             access_token, advertiser_id, date_from, date_to,
-            db=db, connection=connection,
+            connection_id=connection_id,
+            refresh_token_encrypted=refresh_token_encrypted,
         )
 
         csv_video_ids = set()
@@ -119,7 +118,8 @@ class DV360SyncService:
         try:
             conv_records = await self._run_conversion_report(
                 access_token, advertiser_id, date_from, date_to,
-                db=db, connection=connection,
+                connection_id=connection_id,
+                refresh_token_encrypted=refresh_token_encrypted,
             )
             for r in conv_records:
                 vid = (r.get("Video ID") or r.get("YouTube Ad Video ID") or "").strip()
@@ -143,6 +143,23 @@ class DV360SyncService:
                 video_metadata=merged_vid_meta,
             )
 
+        return {
+            "perf_records": perf_records,
+            "conv_records": conv_records,
+            "entity_maps": entity_maps,
+        }
+
+    async def store_report_data(
+        self,
+        db: AsyncSession,
+        connection: PlatformConnection,
+        report_data: Dict[str, Any],
+        sync_job_id: Optional[str] = None,
+    ) -> Dict[str, int]:
+        perf_records = report_data["perf_records"]
+        conv_records = report_data["conv_records"]
+        entity_maps = report_data["entity_maps"]
+
         perf_upserted, asset_queue = await self._upsert_records(db, connection, perf_records, sync_job_id, entity_maps)
 
         conv_upserted = 0
@@ -159,6 +176,22 @@ class DV360SyncService:
             "upserted": perf_upserted + conv_upserted,
             "_asset_queue": asset_queue,
         }
+
+    async def sync_date_range(
+        self,
+        db: AsyncSession,
+        connection: PlatformConnection,
+        date_from: date,
+        date_to: date,
+        sync_job_id: Optional[str] = None,
+    ) -> Dict[str, int]:
+        access_token = await self._get_valid_token(db, connection)
+        report_data = await self.fetch_report_data(
+            access_token, connection.id,
+            connection.refresh_token_encrypted,
+            connection.ad_account_id, date_from, date_to,
+        )
+        return await self.store_report_data(db, connection, report_data, sync_job_id)
 
     async def _get_valid_token(
         self, db: AsyncSession, connection: PlatformConnection
@@ -667,24 +700,35 @@ class DV360SyncService:
         logger.info(f"YouTube oEmbed: fetched metadata for {len(metadata)}/{len(video_ids)} videos")
         return metadata
 
-    async def _refresh_token_if_needed(
+    async def _refresh_token_standalone(
         self,
-        db: AsyncSession,
-        connection: PlatformConnection,
+        connection_id,
+        refresh_token_encrypted: str,
     ) -> str:
-        from datetime import timezone as tz
-        now = datetime.now(tz.utc)
-        if connection.token_expiry and connection.token_expiry > now + timedelta(minutes=5):
-            return decrypt_token(connection.access_token_encrypted)
-        refresh_token = decrypt_token(connection.refresh_token_encrypted)
+        from app.db.base import get_session_factory
+        from app.core.security import encrypt_token
+        from sqlalchemy import select
+        import uuid
+
+        refresh_token = decrypt_token(refresh_token_encrypted)
         new_tokens = await dv360_oauth.refresh_access_token(refresh_token)
         new_access = new_tokens.get("access_token")
-        from app.core.security import encrypt_token
-        connection.access_token_encrypted = encrypt_token(new_access)
-        connection.token_expiry = now + timedelta(seconds=new_tokens.get("expires_in", 3600))
-        db.add(connection)
-        await db.flush()
-        logger.info("Bid Manager: OAuth token refreshed during long poll")
+
+        async with get_session_factory()() as db:
+            result = await db.execute(
+                select(PlatformConnection).where(
+                    PlatformConnection.id == (uuid.UUID(str(connection_id)) if isinstance(connection_id, str) else connection_id)
+                )
+            )
+            conn = result.scalar_one_or_none()
+            if conn:
+                from datetime import timezone as tz
+                conn.access_token_encrypted = encrypt_token(new_access)
+                conn.token_expiry = datetime.now(tz.utc) + timedelta(seconds=new_tokens.get("expires_in", 3600))
+                db.add(conn)
+                await db.commit()
+
+        logger.info("Bid Manager: OAuth token refreshed via standalone session")
         return new_access
 
     async def _create_and_poll_report(
@@ -692,8 +736,8 @@ class DV360SyncService:
         access_token: str,
         query_body: Dict[str, Any],
         label: str = "report",
-        db: AsyncSession = None,
-        connection: PlatformConnection = None,
+        connection_id=None,
+        refresh_token_encrypted: str = None,
     ) -> Optional[List[Dict[str, Any]]]:
         current_token = access_token
         headers = {
@@ -744,9 +788,9 @@ class DV360SyncService:
                 elif elapsed > 1800 and poll_interval < 120:
                     poll_interval = 120
 
-                if db and connection and (elapsed - last_token_refresh) > 2700:
+                if connection_id and refresh_token_encrypted and (elapsed - last_token_refresh) > 2700:
                     try:
-                        current_token = await self._refresh_token_if_needed(db, connection)
+                        current_token = await self._refresh_token_standalone(connection_id, refresh_token_encrypted)
                         headers["Authorization"] = f"Bearer {current_token}"
                         last_token_refresh = elapsed
                     except Exception as e:
@@ -761,9 +805,9 @@ class DV360SyncService:
                     logger.warning(f"Bid Manager v2 [{label}]: Poll error: {e}")
                     continue
 
-                if status_resp.status_code == 401 and db and connection:
+                if status_resp.status_code == 401 and connection_id and refresh_token_encrypted:
                     try:
-                        current_token = await self._refresh_token_if_needed(db, connection)
+                        current_token = await self._refresh_token_standalone(connection_id, refresh_token_encrypted)
                         headers["Authorization"] = f"Bearer {current_token}"
                         last_token_refresh = elapsed
                         continue
@@ -894,15 +938,17 @@ class DV360SyncService:
         advertiser_id: str,
         date_from: date,
         date_to: date,
-        db: AsyncSession = None,
-        connection: PlatformConnection = None,
+        connection_id=None,
+        refresh_token_encrypted: str = None,
     ) -> List[Dict[str, Any]]:
         query_body = self._build_query_body(
             advertiser_id, date_from, date_to,
             self._PERF_METRICS, title_suffix="_perf",
         )
         result = await self._create_and_poll_report(
-            access_token, query_body, label="perf", db=db, connection=connection
+            access_token, query_body, label="perf",
+            connection_id=connection_id,
+            refresh_token_encrypted=refresh_token_encrypted,
         )
         return result if result is not None else []
 
@@ -912,8 +958,8 @@ class DV360SyncService:
         advertiser_id: str,
         date_from: date,
         date_to: date,
-        db: AsyncSession = None,
-        connection: PlatformConnection = None,
+        connection_id=None,
+        refresh_token_encrypted: str = None,
     ) -> List[Dict[str, Any]]:
         logger.info(
             "DV360: All conversion metrics incompatible with "
@@ -1065,7 +1111,7 @@ class DV360SyncService:
                 "quiet": True,
                 "no_warnings": False,
                 "socket_timeout": 15,
-                "extractor_args": {"youtube": {"player_client": ["ios", "web"]}},
+                "extractor_args": {"youtube": {"player_client": ["web"]}},
                 "compat_opts": set(),
                 "remote_components": {"ejs:github"},
             }
