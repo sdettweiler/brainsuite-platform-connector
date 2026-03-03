@@ -16,6 +16,24 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
+MAX_DEADLOCK_RETRIES = 3
+DEADLOCK_BACKOFF_BASE = 2
+
+
+async def _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to):
+    for attempt in range(1, MAX_DEADLOCK_RETRIES + 1):
+        try:
+            return await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+        except Exception as exc:
+            exc_name = type(exc).__name__
+            is_deadlock = "deadlock" in str(exc).lower() or "DeadlockDetected" in exc_name
+            if not is_deadlock or attempt == MAX_DEADLOCK_RETRIES:
+                raise
+            wait = DEADLOCK_BACKOFF_BASE * attempt
+            logger.warning(f"Deadlock detected during harmonization (attempt {attempt}/{MAX_DEADLOCK_RETRIES}), retrying in {wait}s: {exc_name}: {exc}")
+            await db.rollback()
+            await asyncio.sleep(wait)
+
 
 async def run_daily_sync(connection_id: str) -> None:
     """Execute daily sync for a single platform connection."""
@@ -102,10 +120,10 @@ async def run_daily_sync(connection_id: str) -> None:
                 await db.commit()
 
         except Exception as e:
-            logger.error(f"Daily sync fetch failed for connection {connection_id}: {e}")
+            logger.error(f"Daily sync fetch failed for connection {connection_id}: {type(e).__name__}: {e}")
             await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)[:4000]
+            job.error_message = f"{type(e).__name__}: {e}"[:4000]
             job.completed_at = datetime.utcnow()
             db.add(job)
             connection.sync_status = "ERROR"
@@ -118,7 +136,7 @@ async def run_daily_sync(connection_id: str) -> None:
             conn_id_for_assets = connection.id if dv360_asset_queue else None
 
             try:
-                harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
 
                 connection.last_synced_at = datetime.utcnow()
                 connection.sync_status = "ACTIVE"
@@ -133,10 +151,10 @@ async def run_daily_sync(connection_id: str) -> None:
                 logger.info(f"Daily sync completed for {connection.platform} {connection.ad_account_id}: {result}")
 
             except Exception as e:
-                logger.error(f"Daily sync harmonization failed for connection {connection_id}: {e}")
+                logger.error(f"Daily sync harmonization failed for connection {connection_id}: {type(e).__name__}: {e}")
                 await db.rollback()
                 job.status = "FAILED"
-                job.error_message = f"Harmonization: {str(e)[:3980]}"
+                job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 job.completed_at = datetime.utcnow()
                 db.add(job)
                 connection.sync_status = "ERROR"
@@ -152,7 +170,9 @@ async def run_daily_sync(connection_id: str) -> None:
                 dv360_info["advertiser_id"], date_from, date_to,
             )
         except Exception as e:
-            logger.error(f"DV360 daily sync report fetch failed: {e}")
+            logger.error(f"DV360 daily sync report fetch failed: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             async with get_session_factory()() as db:
                 from sqlalchemy import select as sel
                 from app.models.performance import SyncJob as SJ
@@ -160,7 +180,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 conn = (await db.execute(sel(PlatformConnection).where(PlatformConnection.id == dv360_info["connection_id"]))).scalar_one_or_none()
                 if sj:
                     sj.status = "FAILED"
-                    sj.error_message = str(e)[:4000]
+                    sj.error_message = f"{type(e).__name__}: {e}"[:4000]
                     sj.completed_at = datetime.utcnow()
                     db.add(sj)
                 if conn:
@@ -188,10 +208,10 @@ async def run_daily_sync(connection_id: str) -> None:
                 await db.commit()
                 logger.info(f"DV360 daily sync raw data committed: {sync_result}")
             except Exception as e:
-                logger.error(f"DV360 daily sync upsert failed: {e}")
+                logger.error(f"DV360 daily sync upsert failed: {type(e).__name__}: {e}")
                 await db.rollback()
                 sj.status = "FAILED"
-                sj.error_message = str(e)[:4000]
+                sj.error_message = f"{type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 conn.sync_status = "ERROR"
@@ -203,7 +223,7 @@ async def run_daily_sync(connection_id: str) -> None:
             conn_id_for_assets = conn.id if dv360_asset_queue else None
 
             try:
-                harmonized = await harmonizer.harmonize_connection(db, conn, date_from, date_to)
+                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, date_from, date_to)
                 conn.last_synced_at = datetime.utcnow()
                 conn.sync_status = "ACTIVE"
                 db.add(conn)
@@ -214,10 +234,12 @@ async def run_daily_sync(connection_id: str) -> None:
                 await db.commit()
                 logger.info(f"DV360 daily sync completed: {sync_result}")
             except Exception as e:
-                logger.error(f"DV360 daily sync harmonization failed: {e}")
+                logger.error(f"DV360 daily sync harmonization failed: {type(e).__name__}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 await db.rollback()
                 sj.status = "FAILED"
-                sj.error_message = f"Harmonization: {str(e)[:3980]}"
+                sj.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 conn.sync_status = "ERROR"
@@ -336,12 +358,12 @@ async def run_full_resync(connection_id: str) -> None:
                 await db.commit()
 
         except Exception as e:
-            logger.error(f"Full resync fetch failed for connection {connection_id}: {e}")
+            logger.error(f"Full resync fetch failed for connection {connection_id}: {type(e).__name__}: {e}")
             import traceback
             logger.error(traceback.format_exc())
             await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)[:4000]
+            job.error_message = f"{type(e).__name__}: {e}"[:4000]
             job.completed_at = datetime.utcnow()
             db.add(job)
             connection.sync_status = "ERROR"
@@ -354,7 +376,7 @@ async def run_full_resync(connection_id: str) -> None:
             conn_id_for_assets = connection.id if dv360_asset_queue else None
 
             try:
-                harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.last_synced_at = datetime.utcnow()
                 connection.sync_status = "ACTIVE"
                 db.add(connection)
@@ -365,12 +387,12 @@ async def run_full_resync(connection_id: str) -> None:
                 await db.commit()
                 logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
             except Exception as e:
-                logger.error(f"Full resync harmonization failed for connection {connection_id}: {e}")
+                logger.error(f"Full resync harmonization failed for connection {connection_id}: {type(e).__name__}: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
                 await db.rollback()
                 job.status = "FAILED"
-                job.error_message = f"Harmonization: {str(e)[:3980]}"
+                job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 job.completed_at = datetime.utcnow()
                 db.add(job)
                 connection.sync_status = "ERROR"
@@ -387,7 +409,7 @@ async def run_full_resync(connection_id: str) -> None:
                 dv360_info["date_from"], dv360_info["date_to"],
             )
         except Exception as e:
-            logger.error(f"DV360 full resync report fetch failed: {e}")
+            logger.error(f"DV360 full resync report fetch failed: {type(e).__name__}: {e}")
             import traceback
             logger.error(traceback.format_exc())
             async with get_session_factory()() as db:
@@ -395,7 +417,7 @@ async def run_full_resync(connection_id: str) -> None:
                 conn = (await db.execute(select(PlatformConnection).where(PlatformConnection.id == dv360_info["connection_id"]))).scalar_one_or_none()
                 if sj:
                     sj.status = "FAILED"
-                    sj.error_message = str(e)[:4000]
+                    sj.error_message = f"{type(e).__name__}: {e}"[:4000]
                     sj.completed_at = datetime.utcnow()
                     db.add(sj)
                 if conn:
@@ -423,10 +445,10 @@ async def run_full_resync(connection_id: str) -> None:
                 await db.commit()
                 logger.info(f"DV360 full resync raw data committed: {sync_result}")
             except Exception as e:
-                logger.error(f"DV360 full resync upsert failed: {e}")
+                logger.error(f"DV360 full resync upsert failed: {type(e).__name__}: {e}")
                 await db.rollback()
                 sj.status = "FAILED"
-                sj.error_message = str(e)[:4000]
+                sj.error_message = f"{type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 conn.sync_status = "ERROR"
@@ -438,7 +460,7 @@ async def run_full_resync(connection_id: str) -> None:
             conn_id_for_assets = conn.id if dv360_asset_queue else None
 
             try:
-                harmonized = await harmonizer.harmonize_connection(db, conn, dv360_info["date_from"], dv360_info["date_to"])
+                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, dv360_info["date_from"], dv360_info["date_to"])
                 conn.last_synced_at = datetime.utcnow()
                 conn.sync_status = "ACTIVE"
                 db.add(conn)
@@ -449,12 +471,12 @@ async def run_full_resync(connection_id: str) -> None:
                 await db.commit()
                 logger.info(f"DV360 full resync completed: {sync_result}")
             except Exception as e:
-                logger.error(f"DV360 full resync harmonization failed: {e}")
+                logger.error(f"DV360 full resync harmonization failed: {type(e).__name__}: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
                 await db.rollback()
                 sj.status = "FAILED"
-                sj.error_message = f"Harmonization: {str(e)[:3980]}"
+                sj.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 conn.sync_status = "ERROR"
@@ -546,10 +568,10 @@ async def run_initial_sync(connection_id: str) -> None:
                 await db.commit()
 
         except Exception as e:
-            logger.error(f"Initial sync fetch failed for {connection_id}: {e}")
+            logger.error(f"Initial sync fetch failed for {connection_id}: {type(e).__name__}: {e}")
             await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)[:4000]
+            job.error_message = f"{type(e).__name__}: {e}"[:4000]
             db.add(job)
             await db.commit()
             return
@@ -559,7 +581,7 @@ async def run_initial_sync(connection_id: str) -> None:
             conn_id_for_assets = connection.id if dv360_asset_queue else None
 
             try:
-                harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.initial_sync_completed = True
                 connection.last_synced_at = datetime.utcnow()
                 db.add(connection)
@@ -570,10 +592,10 @@ async def run_initial_sync(connection_id: str) -> None:
                 await db.commit()
                 trigger_historical = True
             except Exception as e:
-                logger.error(f"Initial sync harmonization failed for {connection_id}: {e}")
+                logger.error(f"Initial sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
                 await db.rollback()
                 job.status = "FAILED"
-                job.error_message = f"Harmonization: {str(e)[:3980]}"
+                job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 db.add(job)
                 await db.commit()
 
@@ -586,12 +608,14 @@ async def run_initial_sync(connection_id: str) -> None:
                 dv360_info["advertiser_id"], date_from, date_to,
             )
         except Exception as e:
-            logger.error(f"DV360 initial sync report fetch failed: {e}")
+            logger.error(f"DV360 initial sync report fetch failed: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             async with get_session_factory()() as db:
                 sj = (await db.execute(select(SyncJob).where(SyncJob.id == uuid.UUID(dv360_info["job_id"])))).scalar_one_or_none()
                 if sj:
                     sj.status = "FAILED"
-                    sj.error_message = str(e)[:4000]
+                    sj.error_message = f"{type(e).__name__}: {e}"[:4000]
                     sj.completed_at = datetime.utcnow()
                     db.add(sj)
                 await db.commit()
@@ -616,10 +640,10 @@ async def run_initial_sync(connection_id: str) -> None:
                 await db.commit()
                 logger.info(f"DV360 initial sync raw data committed: {sync_result}")
             except Exception as e:
-                logger.error(f"DV360 initial sync upsert failed: {e}")
+                logger.error(f"DV360 initial sync upsert failed: {type(e).__name__}: {e}")
                 await db.rollback()
                 sj.status = "FAILED"
-                sj.error_message = str(e)[:4000]
+                sj.error_message = f"{type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
@@ -629,7 +653,7 @@ async def run_initial_sync(connection_id: str) -> None:
             conn_id_for_assets = conn.id if dv360_asset_queue else None
 
             try:
-                harmonized = await harmonizer.harmonize_connection(db, conn, date_from, date_to)
+                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, date_from, date_to)
                 conn.initial_sync_completed = True
                 conn.last_synced_at = datetime.utcnow()
                 db.add(conn)
@@ -641,10 +665,12 @@ async def run_initial_sync(connection_id: str) -> None:
                 trigger_historical = True
                 logger.info(f"DV360 initial sync completed: {sync_result}")
             except Exception as e:
-                logger.error(f"DV360 initial sync harmonization failed: {e}")
+                logger.error(f"DV360 initial sync harmonization failed: {type(e).__name__}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 await db.rollback()
                 sj.status = "FAILED"
-                sj.error_message = f"Harmonization: {str(e)[:3980]}"
+                sj.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
@@ -743,10 +769,10 @@ async def run_historical_sync(connection_id: str) -> None:
                 await db.commit()
 
         except Exception as e:
-            logger.error(f"Historical sync fetch failed for {connection_id}: {e}")
+            logger.error(f"Historical sync fetch failed for {connection_id}: {type(e).__name__}: {e}")
             await db.rollback()
             job.status = "FAILED"
-            job.error_message = str(e)[:4000]
+            job.error_message = f"{type(e).__name__}: {e}"[:4000]
             db.add(job)
             await db.commit()
             return
@@ -756,7 +782,7 @@ async def run_historical_sync(connection_id: str) -> None:
             conn_id_for_assets = connection.id if dv360_asset_queue else None
 
             try:
-                harmonized = await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.historical_sync_completed = True
                 db.add(connection)
                 job.status = "COMPLETED"
@@ -765,10 +791,10 @@ async def run_historical_sync(connection_id: str) -> None:
                 db.add(job)
                 await db.commit()
             except Exception as e:
-                logger.error(f"Historical sync harmonization failed for {connection_id}: {e}")
+                logger.error(f"Historical sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
                 await db.rollback()
                 job.status = "FAILED"
-                job.error_message = f"Harmonization: {str(e)[:3980]}"
+                job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 db.add(job)
                 await db.commit()
 
@@ -782,12 +808,14 @@ async def run_historical_sync(connection_id: str) -> None:
                 dv360_info["date_from"], dv360_info["date_to"],
             )
         except Exception as e:
-            logger.error(f"DV360 historical sync report fetch failed: {e}")
+            logger.error(f"DV360 historical sync report fetch failed: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             async with get_session_factory()() as db:
                 sj = (await db.execute(select(SyncJob).where(SyncJob.id == uuid.UUID(dv360_info["job_id"])))).scalar_one_or_none()
                 if sj:
                     sj.status = "FAILED"
-                    sj.error_message = str(e)[:4000]
+                    sj.error_message = f"{type(e).__name__}: {e}"[:4000]
                     sj.completed_at = datetime.utcnow()
                     db.add(sj)
                 await db.commit()
@@ -812,10 +840,10 @@ async def run_historical_sync(connection_id: str) -> None:
                 await db.commit()
                 logger.info(f"DV360 historical sync raw data committed: {sync_result}")
             except Exception as e:
-                logger.error(f"DV360 historical sync upsert failed: {e}")
+                logger.error(f"DV360 historical sync upsert failed: {type(e).__name__}: {e}")
                 await db.rollback()
                 sj.status = "FAILED"
-                sj.error_message = str(e)[:4000]
+                sj.error_message = f"{type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
@@ -825,7 +853,7 @@ async def run_historical_sync(connection_id: str) -> None:
             conn_id_for_assets = conn.id if dv360_asset_queue else None
 
             try:
-                harmonized = await harmonizer.harmonize_connection(db, conn, dv360_info["date_from"], dv360_info["date_to"])
+                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, dv360_info["date_from"], dv360_info["date_to"])
                 conn.historical_sync_completed = True
                 db.add(conn)
                 sj.status = "COMPLETED"
@@ -834,10 +862,12 @@ async def run_historical_sync(connection_id: str) -> None:
                 db.add(sj)
                 await db.commit()
             except Exception as e:
-                logger.error(f"DV360 historical sync harmonization failed: {e}")
+                logger.error(f"DV360 historical sync harmonization failed: {type(e).__name__}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 await db.rollback()
                 sj.status = "FAILED"
-                sj.error_message = f"Harmonization: {str(e)[:3980]}"
+                sj.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()

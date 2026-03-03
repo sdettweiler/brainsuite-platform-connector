@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,15 +18,20 @@ _FRONTEND_DIST = os.path.abspath(
 )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _deferred_scheduler_startup():
+    await asyncio.sleep(2)
     try:
         from app.services.sync.scheduler import startup_scheduler
         await startup_scheduler()
     except Exception as e:
-        import logging
         logging.getLogger(__name__).warning(f"Scheduler startup failed (non-fatal): {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_deferred_scheduler_startup())
     yield
+    task.cancel()
     try:
         from app.services.sync.scheduler import scheduler
         if scheduler.running:

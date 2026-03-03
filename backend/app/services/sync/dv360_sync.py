@@ -126,7 +126,7 @@ class DV360SyncService:
                 if vid:
                     csv_video_ids.add(vid)
         except Exception as e:
-            logger.warning(f"DV360: Conversion report failed (non-fatal, Floodlight may not be configured): {e}")
+            logger.warning(f"DV360: Conversion report failed (non-fatal, Floodlight may not be configured): {type(e).__name__}: {e}")
 
         known_ids = set(entity_maps.youtube_metadata.keys())
         new_ids = csv_video_ids - known_ids
@@ -169,7 +169,7 @@ class DV360SyncService:
                     db, connection, conv_records, sync_job_id, entity_maps
                 )
             except Exception as e:
-                logger.warning(f"DV360: Conversion upsert failed (non-fatal): {e}")
+                logger.warning(f"DV360: Conversion upsert failed (non-fatal): {type(e).__name__}: {e}")
 
         return {
             "fetched": len(perf_records) + len(conv_records),
@@ -246,22 +246,22 @@ class DV360SyncService:
             if isinstance(results[0], dict):
                 campaigns = results[0]
             else:
-                logger.warning(f"DV360 v4: Failed to fetch campaigns: {results[0]}")
+                logger.warning(f"DV360 v4: Failed to fetch campaigns: {type(results[0]).__name__}: {results[0]}")
 
             if isinstance(results[1], dict):
                 insertion_orders = results[1]
             else:
-                logger.warning(f"DV360 v4: Failed to fetch insertion orders: {results[1]}")
+                logger.warning(f"DV360 v4: Failed to fetch insertion orders: {type(results[1]).__name__}: {results[1]}")
 
             if isinstance(results[2], dict):
                 line_items = results[2]
             else:
-                logger.warning(f"DV360 v4: Failed to fetch line items: {results[2]}")
+                logger.warning(f"DV360 v4: Failed to fetch line items: {type(results[2]).__name__}: {results[2]}")
 
             if isinstance(results[3], dict):
                 creatives = results[3]
             else:
-                logger.warning(f"DV360 v4: Failed to fetch creatives: {results[3]}")
+                logger.warning(f"DV360 v4: Failed to fetch creatives: {type(results[3]).__name__}: {results[3]}")
 
             ad_groups = results[4] if isinstance(results[4], dict) else {}
             ad_group_ads = results[5] if isinstance(results[5], list) else []
@@ -666,7 +666,7 @@ class DV360SyncService:
                     logger.info(f"DV360 v4: Advertiser {advertiser_id} timezone: {tz}")
                     return tz
         except Exception as e:
-            logger.warning(f"DV360 v4: Failed to fetch advertiser timezone: {e}")
+            logger.warning(f"DV360 v4: Failed to fetch advertiser timezone: {type(e).__name__}: {e}")
         return ""
 
     async def _fetch_youtube_metadata(
@@ -794,7 +794,7 @@ class DV360SyncService:
                         headers["Authorization"] = f"Bearer {current_token}"
                         last_token_refresh = elapsed
                     except Exception as e:
-                        logger.warning(f"Bid Manager v2 [{label}]: Token refresh failed: {e}")
+                        logger.warning(f"Bid Manager v2 [{label}]: Token refresh failed: {type(e).__name__}: {e}")
 
                 try:
                     status_resp = await client.get(
@@ -802,7 +802,7 @@ class DV360SyncService:
                         headers=headers,
                     )
                 except Exception as e:
-                    logger.warning(f"Bid Manager v2 [{label}]: Poll error: {e}")
+                    logger.warning(f"Bid Manager v2 [{label}]: Poll error: {type(e).__name__}: {e}")
                     continue
 
                 if status_resp.status_code == 401 and connection_id and refresh_token_encrypted:
@@ -812,7 +812,7 @@ class DV360SyncService:
                         last_token_refresh = elapsed
                         continue
                     except Exception as e:
-                        logger.warning(f"Bid Manager v2 [{label}]: Token refresh on 401 failed: {e}")
+                        logger.warning(f"Bid Manager v2 [{label}]: Token refresh on 401 failed: {type(e).__name__}: {e}")
 
                 if status_resp.status_code != 200:
                     continue
@@ -1032,7 +1032,7 @@ class DV360SyncService:
             logger.info(f"  Downloaded DV360 asset: {filename} ({len(resp.content)} bytes)")
             return local_path, served_url
         except Exception as e:
-            logger.warning(f"  Failed to download DV360 image for ad {ad_id}: {e}")
+            logger.warning(f"  Failed to download DV360 image for ad {ad_id}: {type(e).__name__}: {e}")
             return None, None
 
     def _check_youtube_cookies(self, env_var: str = "YOUTUBE_COOKIES") -> str:
@@ -1161,7 +1161,7 @@ class DV360SyncService:
                     label = "primary" if i == 0 else f"cookie set {i}"
                     logger.info(f"  {label} cookies failed for {youtube_video_id}, trying next set... ({e})")
                     continue
-                logger.warning(f"  Failed to download DV360 YouTube video for ad {ad_id} (video {youtube_video_id}): {e}")
+                logger.warning(f"  Failed to download DV360 YouTube video for ad {ad_id} (video {youtube_video_id}): {type(e).__name__}: {e}")
 
         return None, None
 
@@ -1195,7 +1195,7 @@ class DV360SyncService:
                         served_url = f"/static/creatives/{org_id}/{filename}"
                         return local_path, served_url
         except Exception as e:
-            logger.warning(f"  Failed to download YouTube thumbnail for ad {ad_id}: {e}")
+            logger.warning(f"  Failed to download YouTube thumbnail for ad {ad_id}: {type(e).__name__}: {e}")
         return None, None
 
     def _get_video_duration(self, file_path: str) -> Optional[float]:
@@ -1609,7 +1609,7 @@ class DV360SyncService:
                     if thumb_served:
                         thumb_results[ad_id] = thumb_served
                 except Exception as e:
-                    logger.warning(f"  Thumbnail download failed for ad {ad_id}: {e}")
+                    logger.warning(f"  Thumbnail download failed for ad {ad_id}: {type(e).__name__}: {e}")
             elif thumb and thumb.startswith("http"):
                 try:
                     _, img_served = await self._download_image_asset(
@@ -1618,7 +1618,7 @@ class DV360SyncService:
                     if img_served:
                         thumb_results[ad_id] = img_served
                 except Exception as e:
-                    logger.warning(f"  Image download failed for ad {ad_id}: {e}")
+                    logger.warning(f"  Image download failed for ad {ad_id}: {type(e).__name__}: {e}")
 
         if thumb_results:
             for ad_id, served_url in thumb_results.items():
@@ -1641,16 +1641,20 @@ class DV360SyncService:
 
         downloaded_videos = set()
         video_results = {}
+        video_download_count = 0
         for ad_id, info in queue.items():
             yt_vid = info.get("youtube_video_id", "")
             if not yt_vid:
                 continue
 
             if yt_vid not in downloaded_videos:
+                if video_download_count > 0:
+                    await asyncio.sleep(4)
                 try:
                     vid_path, vid_served = await self._download_video_asset(
                         yt_vid, org_dir, org_id, ad_id
                     )
+                    video_download_count += 1
                     if vid_served:
                         video_results[ad_id] = {
                             "video_url": vid_served,
@@ -1659,7 +1663,8 @@ class DV360SyncService:
                         }
                         downloaded_videos.add(yt_vid)
                 except Exception as e:
-                    logger.warning(f"  Video download failed for ad {ad_id}: {e}")
+                    video_download_count += 1
+                    logger.warning(f"  Video download failed for ad {ad_id}: {type(e).__name__}: {e}")
 
         if video_results:
             for ad_id, r in video_results.items():
