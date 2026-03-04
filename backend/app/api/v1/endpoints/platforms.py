@@ -602,12 +602,18 @@ async def update_connection(
 @router.delete("/connections/{connection_id}")
 async def delete_connection(
     connection_id: uuid.UUID,
+    purge: bool = False,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     conn = await db.get(PlatformConnection, connection_id)
     if not conn or conn.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    if purge:
+        from app.services.connection_purge import purge_connection_data
+        summary = await purge_connection_data(db, str(connection_id), str(conn.organization_id))
+        return {"detail": "Connection and all data permanently deleted", "summary": summary}
 
     conn.is_active = False
     db.add(conn)
@@ -688,6 +694,11 @@ async def bulk_action(
             db.add(conn)
             remove_connection_schedule(str(conn.id))
         await db.commit()
+
+    elif action == "disconnect_purge":
+        from app.services.connection_purge import purge_connection_data
+        for conn in conns:
+            await purge_connection_data(db, str(conn.id), str(conn.organization_id))
 
     elif action in ("assign_image_app", "assign_video_app"):
         app_id = extra.get("app_id")

@@ -11,8 +11,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '../../../core/services/api.service';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
+import { DisconnectDialogComponent, DisconnectDialogResult } from '../components/disconnect-dialog.component';
 
 interface PlatformConnection {
   id: string;
@@ -78,6 +80,7 @@ const PLATFORMS: PlatformDef[] = [
     CommonModule, FormsModule, MatButtonModule, MatMenuModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatSelectModule, MatCheckboxModule,
     MatFormFieldModule, MatInputModule, MatTooltipModule, MatDividerModule,
+    MatDialogModule,
   ],
   template: `
     <div class="page-container">
@@ -588,6 +591,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   constructor(
     private api: ApiService,
     private snackBar: MatSnackBar,
+    private dialog: MatDialog,
   ) {}
 
   ngOnInit(): void {
@@ -708,16 +712,26 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   bulkDisconnect(): void {
     if (this.selectedIds.size === 0) return;
-    if (!confirm(`Disconnect ${this.selectedIds.size} connection(s)? All synced data will be retained.`)) return;
-    this.api.post('/platforms/connections/bulk-action', {
-      action: 'disconnect',
-      connection_ids: Array.from(this.selectedIds),
-    }).subscribe({
-      next: (res: any) => {
-        this.snackBar.open(res.detail, '', { duration: 3000 });
-        this.selectedIds.clear();
-        this.loadConnections();
-      },
+    const ref = this.dialog.open(DisconnectDialogComponent, {
+      data: { accountName: '', count: this.selectedIds.size },
+      width: '500px',
+    });
+    ref.afterClosed().subscribe((result: DisconnectDialogResult | null) => {
+      if (!result) return;
+      const action = result.mode === 'purge' ? 'disconnect_purge' : 'disconnect';
+      this.api.post('/platforms/connections/bulk-action', {
+        action,
+        connection_ids: Array.from(this.selectedIds),
+      }).subscribe({
+        next: (res: any) => {
+          const msg = result.mode === 'purge'
+            ? `${this.selectedIds.size} connection(s) and all data permanently deleted`
+            : res.detail;
+          this.snackBar.open(msg, '', { duration: 3000 });
+          this.selectedIds.clear();
+          this.loadConnections();
+        },
+      });
     });
   }
 
@@ -977,12 +991,22 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   }
 
   deleteConnection(conn: PlatformConnection): void {
-    if (!confirm(`Disconnect "${conn.ad_account_name}"? All synced data will be retained.`)) return;
-    this.api.delete(`/platforms/connections/${conn.id}`).subscribe({
-      next: () => {
-        this.loadConnections();
-        this.snackBar.open('Account disconnected', '', { duration: 2000 });
-      },
+    const ref = this.dialog.open(DisconnectDialogComponent, {
+      data: { accountName: conn.ad_account_name },
+      width: '500px',
+    });
+    ref.afterClosed().subscribe((result: DisconnectDialogResult | null) => {
+      if (!result) return;
+      const purgeParam = result.mode === 'purge' ? '?purge=true' : '';
+      this.api.delete(`/platforms/connections/${conn.id}${purgeParam}`).subscribe({
+        next: () => {
+          this.loadConnections();
+          const msg = result.mode === 'purge'
+            ? 'Account and all data permanently deleted'
+            : 'Account disconnected';
+          this.snackBar.open(msg, '', { duration: 3000 });
+        },
+      });
     });
   }
 

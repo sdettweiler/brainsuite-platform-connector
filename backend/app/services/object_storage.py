@@ -161,6 +161,42 @@ class ObjectStorageService:
         return None
 
 
+    def delete_blob(self, relative_path: str) -> bool:
+        try:
+            client = self._ensure_client()
+            bucket = client.bucket(self.bucket_name)
+            object_name = self._object_name(relative_path)
+            blob = bucket.blob(object_name)
+            if blob.exists():
+                blob.delete()
+                logger.info(f"Deleted from object storage: {relative_path}")
+                return True
+            return False
+        except Exception as e:
+            logger.warning(f"Failed to delete blob {relative_path}: {type(e).__name__}: {e}")
+            return False
+
+    def list_blobs(self, prefix: str) -> list[str]:
+        try:
+            client = self._ensure_client()
+            bucket = client.bucket(self.bucket_name)
+            full_prefix = self._object_name(prefix)
+            blobs = bucket.list_blobs(prefix=full_prefix)
+            prefix_len = len(self.public_prefix) + 1
+            return [b.name[prefix_len:] for b in blobs if len(b.name) > prefix_len]
+        except Exception as e:
+            logger.warning(f"Failed to list blobs with prefix {prefix}: {type(e).__name__}: {e}")
+            return []
+
+    def delete_blobs_by_prefix(self, prefix: str) -> int:
+        paths = self.list_blobs(prefix)
+        deleted = 0
+        for path in paths:
+            if self.delete_blob(path):
+                deleted += 1
+        return deleted
+
+
 _instance: Optional[ObjectStorageService] = None
 
 
