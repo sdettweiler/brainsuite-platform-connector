@@ -12,7 +12,7 @@ BACKEND_PORT=5000
 
 export TZ="${TZ:-UTC}"
 
-# ── 0. Ensure port 5000 is free ──────────────────────────────────────────────
+# ── 0. Ensure port 5000 is free, then start health placeholder immediately ──
 cleanup_port() {
   local pids
   pids=$(lsof -ti :"$BACKEND_PORT" 2>/dev/null || true)
@@ -32,6 +32,28 @@ cleanup_port() {
   fi
 }
 cleanup_port
+
+HEALTH_PID_FILE="/tmp/brainsuite_health.pid"
+python3 -c "
+import http.server, socketserver, os, json
+
+socketserver.TCPServer.allow_reuse_address = True
+
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps({'status': 'ok', 'version': 'starting'}).encode())
+    def log_message(self, *args):
+        pass
+
+s = socketserver.TCPServer(('0.0.0.0', $BACKEND_PORT), H)
+with open('$HEALTH_PID_FILE', 'w') as f:
+    f.write(str(os.getpid()))
+s.serve_forever()
+" &
+sleep 0.2
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
@@ -100,30 +122,7 @@ else
   echo "✓ Frontend ready"
 fi
 
-# ── 6. Start temp health server, then launch uvicorn ─────────────────────────
-HEALTH_PID_FILE="/tmp/brainsuite_health.pid"
-
-python3 -c "
-import http.server, socketserver, os, json
-
-socketserver.TCPServer.allow_reuse_address = True
-
-class H(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps({'status': 'ok', 'version': 'starting'}).encode())
-    def log_message(self, *args):
-        pass
-
-s = socketserver.TCPServer(('0.0.0.0', $BACKEND_PORT), H)
-with open('$HEALTH_PID_FILE', 'w') as f:
-    f.write(str(os.getpid()))
-s.serve_forever()
-" &
-sleep 0.3
-
+# ── 6. Launch uvicorn (health server killed by start_server.py after import) ─
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  App running on port $BACKEND_PORT"
