@@ -10,6 +10,8 @@ FRONTEND_DIR="$REPO_ROOT/frontend"
 FRONTEND_DIST="$FRONTEND_DIR/dist/brainsuite"
 BACKEND_PORT=5000
 
+export TZ="${TZ:-UTC}"
+
 # ── 0. Ensure port 5000 is free ──────────────────────────────────────────────
 cleanup_port() {
   local pids
