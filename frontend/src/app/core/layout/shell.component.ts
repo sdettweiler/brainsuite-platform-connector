@@ -20,6 +20,11 @@ import { AuthService } from '../services/auth.service';
         <main class="shell-content">
           <router-outlet />
         </main>
+        <footer class="shell-footer">
+          <a href="https://app.brainsuite.ai/privacy" target="_blank" rel="noopener">Privacy Policy</a>
+          <span class="footer-sep">·</span>
+          <a href="https://app.brainsuite.ai/imprint" target="_blank" rel="noopener">Imprint</a>
+        </footer>
       </div>
     </div>
   `,
@@ -48,6 +53,33 @@ import { AuthService } from '../services/auth.service';
       overflow-y: auto;
       padding: 24px;
       background: var(--bg-primary);
+    }
+
+    .shell-footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 24px;
+      font-size: 12px;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .shell-footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .shell-footer a:hover {
+      color: var(--text-secondary);
+      text-decoration: underline;
+    }
+
+    .footer-sep {
+      margin: 0 6px;
     }
   `],
 })

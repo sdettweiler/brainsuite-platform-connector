@@ -69,6 +69,12 @@ import { AuthService } from '../../../core/services/auth.service';
         <p class="auth-footer">
           Don't have an account? <a routerLink="/auth/register">Create one</a>
         </p>
+
+        <div class="auth-legal">
+          <a href="https://app.brainsuite.ai/privacy" target="_blank" rel="noopener">Privacy Policy</a>
+          <span class="legal-sep">·</span>
+          <a href="https://app.brainsuite.ai/imprint" target="_blank" rel="noopener">Imprint</a>
+        </div>
       </div>
     </div>
   `,
@@ -215,6 +221,30 @@ import { AuthService } from '../../../core/services/auth.service';
     }
 
     .auth-footer a:hover { text-decoration: underline; }
+
+    .auth-legal {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .auth-legal a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .auth-legal a:hover {
+      color: var(--text-secondary);
+      text-decoration: underline;
+    }
+
+    .legal-sep {
+      margin: 0 6px;
+    }
   `],
 })
 export class LoginComponent {
