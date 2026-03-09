@@ -71,6 +71,8 @@ import { AuthService } from '../../../core/services/auth.service';
         </p>
 
         <div class="auth-legal">
+          <a href="https://brainsuite.ai" target="_blank" rel="noopener">Homepage</a>
+          <span class="legal-sep">·</span>
           <a href="https://app.brainsuite.ai/privacy" target="_blank" rel="noopener">Privacy Policy</a>
           <span class="legal-sep">·</span>
           <a href="https://app.brainsuite.ai/imprint" target="_blank" rel="noopener">Imprint</a>

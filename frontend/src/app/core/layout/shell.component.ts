@@ -21,6 +21,8 @@ import { AuthService } from '../services/auth.service';
           <router-outlet />
         </main>
         <footer class="shell-footer">
+          <a href="https://brainsuite.ai" target="_blank" rel="noopener">Homepage</a>
+          <span class="footer-sep">·</span>
           <a href="https://app.brainsuite.ai/privacy" target="_blank" rel="noopener">Privacy Policy</a>
           <span class="footer-sep">·</span>
           <a href="https://app.brainsuite.ai/imprint" target="_blank" rel="noopener">Imprint</a>
