@@ -4,10 +4,12 @@ Schedules daily data syncs at 00:10 in each ad account's local timezone.
 """
 import logging
 import asyncio
+import os
 from datetime import date, timedelta, datetime
 from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 import pytz
 
 from app.db.base import get_session_factory
@@ -906,6 +908,21 @@ def remove_connection_schedule(connection_id: str) -> None:
         scheduler.remove_job(job_id)
 
 
+async def _keep_alive_ping() -> None:
+    """Ping own public health endpoint to prevent autoscaler from scaling down."""
+    import aiohttp
+    domain = os.environ.get("REPLIT_DOMAINS", "").split(",")[0]
+    if not domain:
+        return
+    url = f"https://{domain}/health"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                logger.debug(f"Keep-alive ping: {resp.status}")
+    except Exception as e:
+        logger.warning(f"Keep-alive ping failed: {type(e).__name__}: {e}")
+
+
 async def startup_scheduler(db_session=None) -> None:
     """Load all active connections and schedule their daily syncs.
     Also triggers initial sync for any connections that missed it."""
@@ -928,6 +945,15 @@ async def startup_scheduler(db_session=None) -> None:
 
     scheduler.start()
     logger.info(f"Scheduler started with {len(connections)} active connections")
+
+    if os.environ.get("REPLIT_DEPLOYMENT") == "1":
+        scheduler.add_job(
+            _keep_alive_ping,
+            trigger=IntervalTrigger(minutes=2),
+            id="keep_alive",
+            replace_existing=True,
+        )
+        logger.info("Keep-alive ping scheduled (every 2 minutes)")
 
     if pending_initial:
         logger.info(f"Found {len(pending_initial)} connections needing initial sync, triggering now...")
