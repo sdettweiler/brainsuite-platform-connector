@@ -7,13 +7,13 @@
 
 ### Infrastructure & Portability
 
-- [ ] **INFRA-01**: Application runs locally via Docker Compose with no Replit dependencies
-- [ ] **INFRA-02**: Application deploys on any cloud provider via standard container stack
-- [ ] **INFRA-03**: All Replit-specific build scripts (build.sh, replit_start.sh) replaced with portable equivalents
+- [x] **INFRA-01**: Application runs locally via Docker Compose with no Replit dependencies
+- [x] **INFRA-02**: Application deploys on any cloud provider via standard container stack
+- [x] **INFRA-03**: All Replit-specific build scripts (build.sh, replit_start.sh) replaced with portable equivalents
 - [ ] **INFRA-04**: Replit object storage sidecar removed; replaced with S3-compatible storage (local filesystem for dev, MinIO/S3 for production)
-- [ ] **INFRA-05**: Replit credential exchange sidecar (http://127.0.0.1:1106) removed; replaced with standard service account / env var auth
-- [ ] **INFRA-06**: Redis runs as a standard Docker Compose service (no Replit sidecar dependency)
-- [ ] **INFRA-07**: All environment variables documented in a portable .env.example; no Replit-specific env vars required
+- [x] **INFRA-05**: Replit credential exchange sidecar (http://127.0.0.1:1106) removed; replaced with standard service account / env var auth
+- [x] **INFRA-06**: Redis runs as a standard Docker Compose service (no Replit sidecar dependency)
+- [x] **INFRA-07**: All environment variables documented in a portable .env.example; no Replit-specific env vars required
 - [ ] **INFRA-08**: Interactive setup script (or guided documentation) that prompts for all required secrets (DB credentials, JWT secret, Fernet key, OAuth app credentials, BrainSuite API key, storage config) and generates a valid .env file
 
 ### Security & Code Quality
@@ -89,13 +89,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 1 | Pending |
-| INFRA-02 | Phase 1 | Pending |
-| INFRA-03 | Phase 1 | Pending |
+| INFRA-01 | Phase 1 | Complete |
+| INFRA-02 | Phase 1 | Complete |
+| INFRA-03 | Phase 1 | Complete |
 | INFRA-04 | Phase 1 | Pending |
-| INFRA-05 | Phase 1 | Pending |
-| INFRA-06 | Phase 1 | Pending |
-| INFRA-07 | Phase 1 | Pending |
+| INFRA-05 | Phase 1 | Complete |
+| INFRA-06 | Phase 1 | Complete |
+| INFRA-07 | Phase 1 | Complete |
 | INFRA-08 | Phase 1 | Pending |
 | SEC-01 | Phase 2 | Pending |
 | SEC-02 | Phase 2 | Pending |
