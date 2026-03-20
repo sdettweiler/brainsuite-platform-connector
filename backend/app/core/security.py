@@ -3,27 +3,18 @@ from typing import Optional, Union
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
-import base64
-import os
 from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-
-def get_fernet() -> Fernet:
-    key = settings.TOKEN_ENCRYPTION_KEY
-    if not key:
-        # Generate a key if not provided (only use in dev)
-        key = base64.urlsafe_b64encode(os.urandom(32)).decode()
-    # Ensure proper padding/format for Fernet
-    try:
-        return Fernet(key.encode() if isinstance(key, str) else key)
-    except Exception:
-        # Fallback: generate new key
-        return Fernet(Fernet.generate_key())
-
-
-fernet = get_fernet()
+# TOKEN_ENCRYPTION_KEY is validated at Settings load time (SEC-03).
+# If this line raises, the process should not start — that is the intended
+# fail-fast behaviour.
+fernet = Fernet(
+    settings.TOKEN_ENCRYPTION_KEY.encode()
+    if isinstance(settings.TOKEN_ENCRYPTION_KEY, str)
+    else settings.TOKEN_ENCRYPTION_KEY
+)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

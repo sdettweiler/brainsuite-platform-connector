@@ -1,26 +1,47 @@
 """
-Test stubs for SEC-03: Fernet key startup validation.
+Tests for SEC-03: Fernet key startup validation.
 
-Implementation target: plan 02-01 Task 2 (unskip and implement).
+Settings must raise a ValidationError when TOKEN_ENCRYPTION_KEY is missing
+or malformed, and must succeed with a valid Fernet key.
 
-All tests are skipped until implementation is complete.
+Strategy: We test Settings() directly by instantiating it with keyword args
+rather than reloading the module (which also runs `settings = Settings()` at
+module level and would raise outside of our pytest.raises context).
 """
 import pytest
+from pydantic import ValidationError
+from cryptography.fernet import Fernet
 
 
-@pytest.mark.skip(reason="stub - implementation in plan 02-01 Task 2")
 def test_missing_fernet_key_raises():
-    """Creating Settings with TOKEN_ENCRYPTION_KEY empty or missing raises ValidationError."""
-    pass
+    """Creating Settings with TOKEN_ENCRYPTION_KEY='' raises ValidationError."""
+    import importlib
+    import app.core.config as config_mod
+    importlib.reload(config_mod)
+
+    # Directly instantiate with an empty key — the field_validator must reject it.
+    with pytest.raises((ValidationError, ValueError)):
+        config_mod.Settings(TOKEN_ENCRYPTION_KEY="")
 
 
-@pytest.mark.skip(reason="stub - implementation in plan 02-01 Task 2")
 def test_malformed_fernet_key_raises():
     """Creating Settings with TOKEN_ENCRYPTION_KEY='not-a-valid-key' raises ValidationError."""
-    pass
+    import importlib
+    import app.core.config as config_mod
+    importlib.reload(config_mod)
+
+    with pytest.raises((ValidationError, ValueError)):
+        config_mod.Settings(TOKEN_ENCRYPTION_KEY="not-a-valid-fernet-key")
 
 
-@pytest.mark.skip(reason="stub - implementation in plan 02-01 Task 2")
 def test_valid_fernet_key_passes():
     """Creating Settings with a properly encoded Fernet key succeeds without error."""
-    pass
+    import importlib
+    import app.core.config as config_mod
+    importlib.reload(config_mod)
+
+    valid_key = Fernet.generate_key().decode()
+
+    # Settings reads from env vars; supply the required key via kwargs.
+    instance = config_mod.Settings(TOKEN_ENCRYPTION_KEY=valid_key)
+    assert instance.TOKEN_ENCRYPTION_KEY == valid_key

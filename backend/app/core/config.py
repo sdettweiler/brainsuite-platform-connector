@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import AnyHttpUrl, validator
+from pydantic import AnyHttpUrl, field_validator
 from typing import List, Optional
 import secrets
 
@@ -56,8 +56,23 @@ class Settings(BaseSettings):
     EXCHANGERATE_API_URL: str = "https://v6.exchangerate-api.com/v6"
     FRANKFURTER_API_URL: str = "https://api.frankfurter.dev/v1"
 
-    # Token encryption
-    TOKEN_ENCRYPTION_KEY: Optional[str] = None
+    # Token encryption — required; must be a valid 32-byte url-safe base64 Fernet key.
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    TOKEN_ENCRYPTION_KEY: str
+
+    @field_validator("TOKEN_ENCRYPTION_KEY")
+    @classmethod
+    def validate_fernet_key(cls, v: str) -> str:
+        if not v:
+            raise ValueError("TOKEN_ENCRYPTION_KEY is required")
+        try:
+            from cryptography.fernet import Fernet
+            Fernet(v.encode() if isinstance(v, str) else v)
+        except Exception as exc:
+            raise ValueError(
+                f"TOKEN_ENCRYPTION_KEY is invalid (must be 32 url-safe base64 bytes): {exc}"
+            ) from exc
+        return v
 
     def get_base_url(self) -> str:
         return self.BASE_URL
@@ -74,6 +89,13 @@ class Settings(BaseSettings):
 
     @staticmethod
     def get_redirect_uri_from_request(request, platform: str) -> str:
+        """Return the OAuth callback URI using settings.BASE_URL only.
+
+        The ``request`` parameter is intentionally unused — it exists for
+        interface compatibility.  Trusting request headers such as
+        x-forwarded-host would allow header-injection attacks that redirect
+        OAuth tokens to an attacker-controlled host (SEC-05).
+        """
         platform_keys = {
             "META": "meta",
             "TIKTOK": "tiktok",
@@ -81,13 +103,10 @@ class Settings(BaseSettings):
             "DV360": "dv360",
         }
         key = platform_keys.get(platform, platform.lower())
-        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
-        scheme = request.headers.get("x-forwarded-proto", "https")
-        if host:
-            base = f"{scheme}://{host}"
-        else:
-            base = str(request.base_url).rstrip("/")
-        return f"{base}/api/v1/platforms/oauth/callback/{key}"
+        from urllib.parse import urlparse
+        parsed = urlparse(settings.BASE_URL)
+        safe_base = f"{parsed.scheme}://{parsed.netloc}"
+        return f"{safe_base}/api/v1/platforms/oauth/callback/{key}"
 
     class Config:
         env_file = ".env"

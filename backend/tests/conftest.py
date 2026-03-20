@@ -6,17 +6,25 @@ Provides:
     - async_client: httpx.AsyncClient for async test requests
     - mock_redis: AsyncMock mimicking redis.asyncio.Redis
     - mock_settings: patched Settings with test-safe defaults
+
+IMPORTANT: TOKEN_ENCRYPTION_KEY must be set before any app module is imported.
+This is done here at conftest import time so pytest collection does not fail.
 """
+import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from cryptography.fernet import Fernet
 
 
 # ---------------------------------------------------------------------------
-# Generate a stable valid Fernet key for all tests
+# Generate a stable valid Fernet key and inject it into the environment
+# BEFORE any app module is imported during test collection.
 # ---------------------------------------------------------------------------
 
 _TEST_FERNET_KEY = Fernet.generate_key().decode()
+
+# Only set if not already provided (allows CI to override via env).
+os.environ.setdefault("TOKEN_ENCRYPTION_KEY", _TEST_FERNET_KEY)
 
 
 # ---------------------------------------------------------------------------
@@ -81,28 +89,22 @@ def mock_redis():
 @pytest.fixture
 def app():
     """
-    Return the FastAPI application with TOKEN_ENCRYPTION_KEY mocked to a
-    valid Fernet key so startup validation does not fail during test collection.
+    Return the FastAPI application.
+
+    TOKEN_ENCRYPTION_KEY was already injected into os.environ at conftest
+    import time, so the app modules load cleanly.
     """
-    import os
-    os.environ.setdefault("TOKEN_ENCRYPTION_KEY", _TEST_FERNET_KEY)
+    import importlib
+    import app.core.config as config_mod
+    import app.core.security as security_mod
+    import app.main as main_mod
 
-    # Patch settings before importing app.main so the module-level
-    # settings instantiation sees the valid key.
-    with patch.dict("os.environ", {"TOKEN_ENCRYPTION_KEY": _TEST_FERNET_KEY}):
-        # Import after env is set
-        import importlib
-        import app.core.config as config_mod
-        import app.core.security as security_mod
+    # Reload so any test-specific env changes are picked up.
+    importlib.reload(config_mod)
+    importlib.reload(security_mod)
+    importlib.reload(main_mod)
 
-        # Reload modules so they pick up the patched env
-        importlib.reload(config_mod)
-        importlib.reload(security_mod)
-
-        import app.main as main_mod
-        importlib.reload(main_mod)
-
-        yield main_mod.app
+    yield main_mod.app
 
 
 # ---------------------------------------------------------------------------
@@ -115,8 +117,7 @@ def async_client(app):
     Return a synchronous TestClient wrapping the FastAPI app.
 
     Uses fastapi.testclient.TestClient (synchronous) so no pytest-asyncio
-    dependency is required.  For async-specific tests, httpx.AsyncClient with
-    anyio can be used directly.
+    dependency is required.
     """
     from fastapi.testclient import TestClient
     with TestClient(app, raise_server_exceptions=False) as client:

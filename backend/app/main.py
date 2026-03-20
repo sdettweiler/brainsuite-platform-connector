@@ -2,11 +2,13 @@ import os
 import logging
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response, RedirectResponse
+from pathlib import PurePosixPath
+from urllib.parse import unquote
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
 
@@ -130,6 +132,13 @@ async def health():
 
 @app.get("/objects/{object_path:path}", include_in_schema=False)
 async def serve_object(object_path: str):
+    # SEC-04: Reject path traversal attempts (raw and URL-encoded variants).
+    if ".." in PurePosixPath(object_path).parts:
+        raise HTTPException(status_code=400, detail="Invalid asset path")
+    decoded = unquote(object_path)
+    if ".." in PurePosixPath(decoded).parts:
+        raise HTTPException(status_code=400, detail="Invalid asset path")
+
     from app.services.object_storage import get_object_storage
     obj_storage = get_object_storage()
     relative = f"creatives/{object_path}" if not object_path.startswith("creatives/") else object_path
