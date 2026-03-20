@@ -125,10 +125,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REL-03 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 32 total
-- Mapped to phases: 31
-- Unmapped: 0 ✓
+- v1 requirements: 34 total
+- Mapped to phases: 34/34 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-20*
-*Last updated: 2026-03-20 after initial definition*
+*Last updated: 2026-03-20 after roadmap creation — coverage count corrected to 34*
