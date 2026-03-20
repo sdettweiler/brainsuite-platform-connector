@@ -19,7 +19,7 @@
 ### Security & Code Quality
 
 - [ ] **SEC-01**: OAuth session state stored in Redis with TTL (replace in-memory `_oauth_sessions` dict)
-- [ ] **SEC-02**: JWT access token stored in Angular service memory only; refresh token in httpOnly + Secure + SameSite=Lax cookie (remove all localStorage JWT storage)
+- [x] **SEC-02**: JWT access token stored in Angular service memory only; refresh token in httpOnly + Secure + SameSite=Lax cookie (remove all localStorage JWT storage)
 - [ ] **SEC-03**: Fernet key validated at startup — app fails fast if TOKEN_ENCRYPTION_KEY is missing or invalid format
 - [ ] **SEC-04**: Asset endpoint path traversal vulnerability fixed (pathlib validation on object_path in main.py)
 - [ ] **SEC-05**: OAuth redirect URI hardened — not constructable from untrusted request headers (x-forwarded-host validation)
@@ -98,7 +98,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-07 | Phase 1 | Complete |
 | INFRA-08 | Phase 1 | Complete |
 | SEC-01 | Phase 2 | Pending |
-| SEC-02 | Phase 2 | Pending |
+| SEC-02 | Phase 2 | Complete |
 | SEC-03 | Phase 2 | Pending |
 | SEC-04 | Phase 2 | Pending |
 | SEC-05 | Phase 2 | Pending |
