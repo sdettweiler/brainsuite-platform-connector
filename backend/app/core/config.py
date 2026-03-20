@@ -1,18 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import AnyHttpUrl, validator
 from typing import List, Optional
-import os
 import secrets
-
-
-def _get_base_url() -> str:
-    if os.environ.get("REPLIT_DEPLOYMENT") == "1":
-        domain = os.environ.get("REPLIT_DOMAINS", "").split(",")[0]
-    else:
-        domain = os.environ.get("REPLIT_DEV_DOMAIN") or os.environ.get("REPLIT_DOMAINS", "").split(",")[0]
-    if domain:
-        return f"https://{domain}"
-    return "http://localhost:5000"
 
 
 class Settings(BaseSettings):
@@ -31,8 +20,19 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    FRONTEND_URL: str = _get_base_url()
+    BASE_URL: str = "http://localhost:8000"
+    FRONTEND_URL: str = "http://localhost:8000"
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:4200", "http://localhost:3000"]
+
+    # S3 / MinIO
+    S3_ENDPOINT_URL: Optional[str] = None
+    S3_BUCKET_NAME: str = "brainsuite-assets"
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_REGION: str = "us-east-1"
+
+    # Scheduler
+    SCHEDULER_STARTUP_DELAY_SECONDS: int = 0
 
     # Meta
     META_APP_ID: Optional[str] = None
@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     TOKEN_ENCRYPTION_KEY: Optional[str] = None
 
     def get_base_url(self) -> str:
-        return _get_base_url()
+        return self.BASE_URL
 
     def get_redirect_uri(self, platform: str) -> str:
         platform_keys = {

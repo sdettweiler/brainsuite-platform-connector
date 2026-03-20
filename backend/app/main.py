@@ -77,10 +77,10 @@ async def _background_startup():
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _run_migrations)
     await loop.run_in_executor(None, _migrate_static_urls_to_objects)
-    is_deployment = os.environ.get("REPLIT_DEPLOYMENT", "")
-    if is_deployment:
-        logger.info("Production detected — waiting 15s for network readiness before starting scheduler...")
-        await asyncio.sleep(15)
+    startup_delay = int(os.environ.get("SCHEDULER_STARTUP_DELAY_SECONDS", "0"))
+    if startup_delay > 0:
+        logger.info(f"Waiting {startup_delay}s for network readiness before starting scheduler...")
+        await asyncio.sleep(startup_delay)
     try:
         from app.services.sync.scheduler import startup_scheduler
         await startup_scheduler()
