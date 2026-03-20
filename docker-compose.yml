@@ -20,6 +20,39 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: brainsuite_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── MinIO (S3-compatible object storage) ────────────────────────────────────
+  minio:
+    image: minio/minio:RELEASE.2025-10-15T17-29-55Z
+    container_name: brainsuite_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-minioadmin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   # ─── Backend ─────────────────────────────────────────────────────────────────
   backend:
     build:
@@ -30,12 +63,30 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-brainsuite}:${POSTGRES_PASSWORD:-brainsuite_dev}@db:5432/${POSTGRES_DB:-brainsuite}
       SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-brainsuite}:${POSTGRES_PASSWORD:-brainsuite_dev}@db:5432/${POSTGRES_DB:-brainsuite}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-32-char-random-string}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
       BACKEND_CORS_ORIGINS: '["http://localhost:4200","http://localhost:80","http://frontend"]'
+
+      # Application URL
+      BASE_URL: ${BASE_URL:-http://localhost:8000}
+      SCHEDULER_STARTUP_DELAY_SECONDS: ${SCHEDULER_STARTUP_DELAY_SECONDS:-0}
+
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+
+      # Object Storage (S3/MinIO)
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-brainsuite-assets}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin123}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
 
       # Meta Platform
       META_APP_ID: ${META_APP_ID:-}
@@ -80,3 +131,5 @@ services:
 volumes:
   postgres_data:
     name: brainsuite_postgres_data
+  minio_data:
+    name: brainsuite_minio_data
