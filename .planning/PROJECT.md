@@ -18,7 +18,7 @@ A user can connect all their ad accounts, see every creative's performance metri
 - ✓ TikTok OAuth connection and background sync — existing
 - ✓ Google Ads OAuth connection and background sync — existing
 - ✓ DV360 OAuth connection and background sync — existing
-- ✓ Creative asset storage (images, videos) via Google Cloud Storage — existing
+- ✓ Creative asset storage (images, videos) via Google Cloud Storage — existing (migrated to boto3/S3-compatible in Phase 01)
 - ✓ Data harmonization layer (normalized metrics across platforms) — existing
 - ✓ Unified dashboard with performance metrics — existing (mostly working)
 - ✓ Currency conversion across platforms — existing
@@ -53,7 +53,7 @@ Key technical notes:
 
 ## Constraints
 
-- **Deployment**: Replit Autoscale — must remain compatible with Replit's container environment and object storage integration
+- **Deployment**: Docker Compose on any host — Phase 01 complete, fully portable (Redis, MinIO, Postgres, backend, frontend)
 - **Auth**: BrainSuite API accepts asset URL + metadata (exact schema TBD from BrainSuite docs)
 - **Storage**: Assets already in Google Cloud Storage — BrainSuite integration should reference stored URLs, not re-upload
 - **Audience**: Internal-first, then client-facing — production hardening must happen before external users onboard
@@ -69,4 +69,4 @@ Key technical notes:
 | Production-ready as v1 goal | Real users onboarding — no shortcuts on security | — Pending |
 
 ---
-*Last updated: 2026-03-20 after initialization*
+*Last updated: 2026-03-20 after Phase 01 (infrastructure-portability) complete*
