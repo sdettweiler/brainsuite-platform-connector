@@ -2,6 +2,7 @@
 Platform connection management endpoints.
 Handles OAuth flows, account listing, connection CRUD, and manual re-fetch.
 """
+import json
 import secrets
 import asyncio
 from datetime import datetime, timedelta
@@ -22,11 +23,12 @@ from app.schemas.platform import (
 from app.api.v1.deps import get_current_user, get_current_admin
 from app.core.security import encrypt_token, decrypt_token
 from app.core.config import settings
+from app.core.redis import get_redis
 
 router = APIRouter()
 
-# In-memory OAuth session store (replace with Redis in production)
-_oauth_sessions: dict = {}
+# OAuth session TTL: 15 minutes
+OAUTH_SESSION_TTL = 900
 
 
 # ─── Brainsuite Apps ───────────────────────────────────────────────────────────
@@ -185,13 +187,19 @@ async def init_oauth(
 
     redirect_uri = settings.get_redirect_uri_from_request(request, payload.platform)
 
-    _oauth_sessions[session_id] = {
+    session_data = {
         "platform": payload.platform,
         "user_id": str(current_user.id),
         "org_id": str(current_user.organization_id),
         "created_at": datetime.utcnow().isoformat(),
         "redirect_uri": redirect_uri,
     }
+    redis = get_redis()
+    await redis.setex(
+        f"oauth_session:{session_id}",
+        OAUTH_SESSION_TTL,
+        json.dumps(session_data),
+    )
 
     if payload.platform == "META":
         auth_url = meta_oauth.generate_auth_url(session_id, redirect_uri)
@@ -219,9 +227,11 @@ async def oauth_callback(
     from app.services.platform.dv360_oauth import dv360_oauth
 
     session_id = payload.state  # state doubles as session_id
-    session = _oauth_sessions.get(session_id)
-    if not session:
+    redis = get_redis()
+    raw = await redis.get(f"oauth_session:{session_id}")
+    if raw is None:
         raise HTTPException(status_code=400, detail="Invalid OAuth session")
+    session = json.loads(raw)
 
     if session.get("platform") != payload.platform:
         raise HTTPException(status_code=400, detail="Platform mismatch")
@@ -244,9 +254,10 @@ async def oauth_callback(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"OAuth failed: {str(e)}")
 
-    # Store tokens temporarily in session
-    _oauth_sessions[session_id]["tokens"] = tokens
-    _oauth_sessions[session_id]["accounts"] = accounts
+    # Update session with tokens and accounts
+    session["tokens"] = tokens
+    session["accounts"] = accounts
+    await redis.setex(f"oauth_session:{session_id}", OAUTH_SESSION_TTL, json.dumps(session))
 
     return {
         "session_id": session_id,
@@ -261,9 +272,11 @@ async def get_oauth_session(
     current_user: User = Depends(get_current_user),
 ):
     """Poll for OAuth session status after popup completes."""
-    session = _oauth_sessions.get(session_id)
-    if not session:
+    redis = get_redis()
+    raw = await redis.get(f"oauth_session:{session_id}")
+    if raw is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
+    session = json.loads(raw)
     if session.get("user_id") != str(current_user.id):
         raise HTTPException(status_code=403, detail="Forbidden")
     return {
@@ -289,9 +302,11 @@ async def dv360_lookup_advertiser(
     if not session_id or not advertiser_id:
         raise HTTPException(status_code=400, detail="session_id and advertiser_id required")
 
-    session = _oauth_sessions.get(session_id)
-    if not session:
+    redis = get_redis()
+    raw = await redis.get(f"oauth_session:{session_id}")
+    if raw is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
+    session = json.loads(raw)
     if session.get("user_id") != str(current_user.id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -310,6 +325,9 @@ async def dv360_lookup_advertiser(
     if advertiser["id"] not in existing_ids:
         session["accounts"].append(advertiser)
 
+    # Persist the updated session back to Redis
+    await redis.setex(f"oauth_session:{session_id}", OAUTH_SESSION_TTL, json.dumps(session))
+
     return {"advertiser": advertiser, "accounts": session["accounts"]}
 
 
@@ -327,9 +345,11 @@ async def connect_accounts(
     from app.services.sync.scheduler import run_initial_sync, schedule_connection
 
     session_id = payload.get("session_id")
-    session = _oauth_sessions.get(session_id)
-    if not session:
+    redis = get_redis()
+    raw = await redis.get(f"oauth_session:{session_id}")
+    if raw is None:
         raise HTTPException(status_code=400, detail="OAuth session expired")
+    session = json.loads(raw)
 
     platform = session["platform"]
     tokens = session.get("tokens", {})
@@ -410,8 +430,8 @@ async def connect_accounts(
 
     await db.commit()
 
-    # Clean up session
-    del _oauth_sessions[session_id]
+    # Clean up session from Redis (QUAL-04: prevent stale session accumulation)
+    await redis.delete(f"oauth_session:{session_id}")
 
     return {
         "connected": connected,
@@ -457,9 +477,11 @@ async def platform_oauth_callback(
         return HTMLResponse(_make_callback_html("", False, error or "Invalid request"))
 
     session_id = state
-    session = _oauth_sessions.get(session_id)
-    if not session:
+    redis = get_redis()
+    raw = await redis.get(f"oauth_session:{session_id}")
+    if raw is None:
         return HTMLResponse(_make_callback_html(session_id, False, "Session expired"))
+    session = json.loads(raw)
 
     if error:
         return HTMLResponse(_make_callback_html(session_id, False, error))
@@ -483,8 +505,9 @@ async def platform_oauth_callback(
         else:
             return HTMLResponse(_make_callback_html(session_id, False, "Unknown platform"))
 
-        _oauth_sessions[session_id]["tokens"] = tokens
-        _oauth_sessions[session_id]["accounts"] = accounts
+        session["tokens"] = tokens
+        session["accounts"] = accounts
+        await redis.setex(f"oauth_session:{session_id}", OAUTH_SESSION_TTL, json.dumps(session))
         return HTMLResponse(_make_callback_html(session_id, True))
 
     except Exception as e:
