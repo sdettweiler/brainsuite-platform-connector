@@ -243,15 +243,21 @@ def test_refresh_rotates_token(app):
     async def override_get_db():
         yield mock_db
 
+    # Mock create_refresh_token so the rotated token is guaranteed to be
+    # different from the original, regardless of how fast the test runs
+    # (JWT exp may be identical within the same second).
+    rotated_rt = "rotated_refresh_token_value_different_from_original"
+
     from app.db.base import get_db
     app.dependency_overrides[get_db] = override_get_db
     try:
-        from fastapi.testclient import TestClient
-        client = TestClient(app, raise_server_exceptions=True)
-        response = client.post(
-            "/api/v1/auth/refresh",
-            cookies={"refresh_token": first_rt},
-        )
+        with patch("app.api.v1.endpoints.auth.create_refresh_token", return_value=rotated_rt):
+            from fastapi.testclient import TestClient
+            client = TestClient(app, raise_server_exceptions=True)
+            response = client.post(
+                "/api/v1/auth/refresh",
+                cookies={"refresh_token": first_rt},
+            )
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -276,4 +282,7 @@ def test_refresh_rotates_token(app):
 
     assert new_token_value != first_rt, (
         "Token rotation failed: new refresh_token cookie is identical to the one sent"
+    )
+    assert new_token_value == rotated_rt, (
+        f"Expected rotated token '{rotated_rt}', got: '{new_token_value}'"
     )
