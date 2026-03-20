@@ -14,7 +14,7 @@
 - [x] **INFRA-05**: Replit credential exchange sidecar (http://127.0.0.1:1106) removed; replaced with standard service account / env var auth
 - [x] **INFRA-06**: Redis runs as a standard Docker Compose service (no Replit sidecar dependency)
 - [x] **INFRA-07**: All environment variables documented in a portable .env.example; no Replit-specific env vars required
-- [ ] **INFRA-08**: Interactive setup script (or guided documentation) that prompts for all required secrets (DB credentials, JWT secret, Fernet key, OAuth app credentials, BrainSuite API key, storage config) and generates a valid .env file
+- [x] **INFRA-08**: Interactive setup script (or guided documentation) that prompts for all required secrets (DB credentials, JWT secret, Fernet key, OAuth app credentials, BrainSuite API key, storage config) and generates a valid .env file
 
 ### Security & Code Quality
 
@@ -96,7 +96,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-05 | Phase 1 | Complete |
 | INFRA-06 | Phase 1 | Complete |
 | INFRA-07 | Phase 1 | Complete |
-| INFRA-08 | Phase 1 | Pending |
+| INFRA-08 | Phase 1 | Complete |
 | SEC-01 | Phase 2 | Pending |
 | SEC-02 | Phase 2 | Pending |
 | SEC-03 | Phase 2 | Pending |

@@ -12,7 +12,7 @@ Starting from a brownfield Angular 17 + FastAPI application already syncing crea
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Infrastructure Portability** - Decouple from Replit; run locally and deploy on any cloud via Docker Compose
+- [x] **Phase 1: Infrastructure Portability** - Decouple from Replit; run locally and deploy on any cloud via Docker Compose (completed 2026-03-20)
 - [ ] **Phase 2: Security Hardening** - Fix production security blockers and code quality issues before external users onboard
 - [ ] **Phase 3: BrainSuite Scoring Pipeline** - Wire the BrainSuite API into an async scoring pipeline and surface scores in the dashboard
 - [ ] **Phase 4: Dashboard Polish + Reliability** - Complete the creative performance UI and surface sync health to agencies
@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. All Replit-specific sidecars (object storage, credential exchange) are replaced — removing Replit environment variables causes no runtime dependency failures
   4. A new developer can generate a valid `.env` from `.env.example` and the setup script without reading source code
   5. Redis runs as a peer Docker Compose service, not a Replit sidecar
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [ ] 01-01-PLAN.md — Docker Compose services (Redis + MinIO), Replit code removal, .env.example update
 - [ ] 01-02-PLAN.md — Replace ObjectStorageService with boto3 S3 implementation
@@ -78,7 +78,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Infrastructure Portability | 2/3 | In Progress|  |
+| 1. Infrastructure Portability | 3/3 | Complete   | 2026-03-20 |
 | 2. Security Hardening | 0/TBD | Not started | - |
 | 3. BrainSuite Scoring Pipeline | 0/TBD | Not started | - |
 | 4. Dashboard Polish + Reliability | 0/TBD | Not started | - |
