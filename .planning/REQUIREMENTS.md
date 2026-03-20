@@ -20,14 +20,14 @@
 
 - [ ] **SEC-01**: OAuth session state stored in Redis with TTL (replace in-memory `_oauth_sessions` dict)
 - [x] **SEC-02**: JWT access token stored in Angular service memory only; refresh token in httpOnly + Secure + SameSite=Lax cookie (remove all localStorage JWT storage)
-- [ ] **SEC-03**: Fernet key validated at startup — app fails fast if TOKEN_ENCRYPTION_KEY is missing or invalid format
-- [ ] **SEC-04**: Asset endpoint path traversal vulnerability fixed (pathlib validation on object_path in main.py)
-- [ ] **SEC-05**: OAuth redirect URI hardened — not constructable from untrusted request headers (x-forwarded-host validation)
-- [ ] **SEC-06**: CORS origins locked to explicit allowlist (no wildcard in production)
+- [x] **SEC-03**: Fernet key validated at startup — app fails fast if TOKEN_ENCRYPTION_KEY is missing or invalid format
+- [x] **SEC-04**: Asset endpoint path traversal vulnerability fixed (pathlib validation on object_path in main.py)
+- [x] **SEC-05**: OAuth redirect URI hardened — not constructable from untrusted request headers (x-forwarded-host validation)
+- [x] **SEC-06**: CORS origins locked to explicit allowlist (no wildcard in production)
 - [ ] **QUAL-01**: All broad `except Exception` blocks replaced with specific exception types and structured logging
 - [ ] **QUAL-02**: Frontend `any` types eliminated — typed interfaces defined for all API response DTOs
 - [ ] **QUAL-03**: Backend error responses follow a consistent structure across all endpoints
-- [ ] **QUAL-04**: All identified bugs from codebase audit fixed (Fernet silent fallback, OAuth session cleanup, token refresh failure handling)
+- [x] **QUAL-04**: All identified bugs from codebase audit fixed (Fernet silent fallback, OAuth session cleanup, token refresh failure handling)
 
 ### BrainSuite Scoring
 
@@ -99,14 +99,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-08 | Phase 1 | Complete |
 | SEC-01 | Phase 2 | Pending |
 | SEC-02 | Phase 2 | Complete |
-| SEC-03 | Phase 2 | Pending |
-| SEC-04 | Phase 2 | Pending |
-| SEC-05 | Phase 2 | Pending |
-| SEC-06 | Phase 2 | Pending |
+| SEC-03 | Phase 2 | Complete |
+| SEC-04 | Phase 2 | Complete |
+| SEC-05 | Phase 2 | Complete |
+| SEC-06 | Phase 2 | Complete |
 | QUAL-01 | Phase 2 | Pending |
 | QUAL-02 | Phase 2 | Pending |
 | QUAL-03 | Phase 2 | Pending |
-| QUAL-04 | Phase 2 | Pending |
+| QUAL-04 | Phase 2 | Complete |
 | SCORE-01 | Phase 3 | Pending |
 | SCORE-02 | Phase 3 | Pending |
 | SCORE-03 | Phase 3 | Pending |

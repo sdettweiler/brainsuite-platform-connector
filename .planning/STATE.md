@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-03-20T18:14:59.910Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-03-20T18:16:11.483Z"
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 9
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-20)
 ## Current Position
 
 Phase: 02 (security-hardening) — EXECUTING
-Plan: 1 of 6
+Plan: 2 of 6
 
 ## Performance Metrics
 
@@ -50,6 +50,8 @@ Plan: 1 of 6
 | Phase 01 P02 | 6 | 1 tasks | 4 files |
 | Phase 01 P03 | 2 | 2 tasks | 2 files |
 | Phase 02 P03 | 18 | 1 tasks | 3 files |
+| Phase 02 P01 | 9 | 2 tasks | 15 files |
+| Phase 02 P01 | 9 | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -67,6 +69,8 @@ Recent decisions affecting current work:
 - [Phase 01]: setup.py uses sys.stdin.isatty() guard so --dry-run < /dev/null works without prompts
 - [Phase 01]: Platform OAuth credentials optional in setup.py — only DB/storage/auto-generated keys required for local dev
 - [Phase 02]: Refresh token removed from TokenResponse body — delivered only via httpOnly cookie (path=/api/v1/auth, secure=not DEBUG, samesite=lax)
+- [Phase 02 P01]: Use PurePosixPath for path traversal detection — avoids filesystem access, httpx normalizes bare ../../ so encoded %2e%2e forms are the real attack surface
+- [Phase 02 P01]: TOKEN_ENCRYPTION_KEY validated at Settings load time via field_validator; security.py direct Fernet init with no silent fallback
 
 ### Pending Todos
 
@@ -80,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T18:14:59.908Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-03-20T18:16:11.481Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None
