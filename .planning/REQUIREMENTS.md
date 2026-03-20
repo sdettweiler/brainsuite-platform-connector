@@ -10,7 +10,7 @@
 - [x] **INFRA-01**: Application runs locally via Docker Compose with no Replit dependencies
 - [x] **INFRA-02**: Application deploys on any cloud provider via standard container stack
 - [x] **INFRA-03**: All Replit-specific build scripts (build.sh, replit_start.sh) replaced with portable equivalents
-- [ ] **INFRA-04**: Replit object storage sidecar removed; replaced with S3-compatible storage (local filesystem for dev, MinIO/S3 for production)
+- [x] **INFRA-04**: Replit object storage sidecar removed; replaced with S3-compatible storage (local filesystem for dev, MinIO/S3 for production)
 - [x] **INFRA-05**: Replit credential exchange sidecar (http://127.0.0.1:1106) removed; replaced with standard service account / env var auth
 - [x] **INFRA-06**: Redis runs as a standard Docker Compose service (no Replit sidecar dependency)
 - [x] **INFRA-07**: All environment variables documented in a portable .env.example; no Replit-specific env vars required
@@ -92,7 +92,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
-| INFRA-04 | Phase 1 | Pending |
+| INFRA-04 | Phase 1 | Complete |
 | INFRA-05 | Phase 1 | Complete |
 | INFRA-06 | Phase 1 | Complete |
 | INFRA-07 | Phase 1 | Complete |
