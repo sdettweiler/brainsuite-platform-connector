@@ -45,7 +45,7 @@ Plans:
   3. App refuses to start and logs a clear error if TOKEN_ENCRYPTION_KEY is missing or malformed
   4. Requesting a crafted asset path (e.g., `../../etc/passwd`) returns 400, not a file or 500
   5. All API endpoints return errors in a consistent JSON shape; frontend TypeScript has no `any` types for API response DTOs
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 Plans:
 - [ ] 02-01-PLAN.md — Wave 0 test scaffolds + SEC-03/SEC-04/SEC-05/SEC-06 quick security fixes
 - [ ] 02-02-PLAN.md — SEC-01 Redis OAuth session migration
@@ -86,6 +86,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Infrastructure Portability | 3/3 | Complete   | 2026-03-20 |
-| 2. Security Hardening | 2/6 | In Progress|  |
+| 2. Security Hardening | 3/6 | In Progress|  |
 | 3. BrainSuite Scoring Pipeline | 0/TBD | Not started | - |
 | 4. Dashboard Polish + Reliability | 0/TBD | Not started | - |
