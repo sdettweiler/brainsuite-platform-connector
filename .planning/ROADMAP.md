@@ -45,7 +45,14 @@ Plans:
   3. App refuses to start and logs a clear error if TOKEN_ENCRYPTION_KEY is missing or malformed
   4. Requesting a crafted asset path (e.g., `../../etc/passwd`) returns 400, not a file or 500
   5. All API endpoints return errors in a consistent JSON shape; frontend TypeScript has no `any` types for API response DTOs
-**Plans**: TBD
+**Plans:** 6 plans
+Plans:
+- [ ] 02-01-PLAN.md — Wave 0 test scaffolds + SEC-03/SEC-04/SEC-05/SEC-06 quick security fixes
+- [ ] 02-02-PLAN.md — SEC-01 Redis OAuth session migration
+- [ ] 02-03-PLAN.md — SEC-02 backend: httpOnly cookie refresh token migration
+- [ ] 02-04-PLAN.md — SEC-02 frontend: Angular auth migration to in-memory token + cookie refresh
+- [ ] 02-05-PLAN.md — QUAL-01 exception handling sweep (75 broad catches across 12 files)
+- [ ] 02-06-PLAN.md — QUAL-02 frontend DTO typing + QUAL-03 error response consistency
 
 ### Phase 3: BrainSuite Scoring Pipeline
 **Goal**: Every synced creative is automatically scored by the BrainSuite API and the score plus dimension breakdown is visible in the dashboard
@@ -79,6 +86,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Infrastructure Portability | 3/3 | Complete   | 2026-03-20 |
-| 2. Security Hardening | 0/TBD | Not started | - |
+| 2. Security Hardening | 0/6 | Not started | - |
 | 3. BrainSuite Scoring Pipeline | 0/TBD | Not started | - |
 | 4. Dashboard Polish + Reliability | 0/TBD | Not started | - |
