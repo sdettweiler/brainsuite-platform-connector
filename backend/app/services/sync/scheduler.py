@@ -888,7 +888,7 @@ def schedule_connection(connection_id: str, timezone: str = "UTC") -> None:
 
     try:
         tz = pytz.timezone(timezone)
-    except Exception:
+    except pytz.exceptions.UnknownTimeZoneError:
         tz = pytz.UTC
 
     scheduler.add_job(

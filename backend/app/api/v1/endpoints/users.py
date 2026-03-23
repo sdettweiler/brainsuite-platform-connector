@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 import uuid
@@ -125,8 +126,8 @@ async def _reharmonize_all_connections(organization_id: str):
                 count = await harmonizer.harmonize_connection(db, conn)
                 total += count
                 logger.info(f"Re-harmonized {count} rows for connection {conn.id} ({conn.platform})")
-            except Exception as e:
-                logger.error(f"Failed to re-harmonize connection {conn.id}: {e}")
+            except (SQLAlchemyError, ValueError, ArithmeticError) as e:
+                logger.error("Failed to re-harmonize connection %s: %s", conn.id, e, exc_info=True)
         await db.commit()
         logger.info(f"Currency re-harmonization complete: {total} total rows across {len(connections)} connections")
 

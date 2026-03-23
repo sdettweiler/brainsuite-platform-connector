@@ -3,14 +3,18 @@ Platform connection management endpoints.
 Handles OAuth flows, account listing, connection CRUD, and manual re-fetch.
 """
 import json
+import logging
 import secrets
 import asyncio
+import httpx
 from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 import uuid
+
+logger = logging.getLogger(__name__)
 
 from app.db.base import get_db
 from app.models.user import User
@@ -251,8 +255,9 @@ async def oauth_callback(
             accounts = await dv360_oauth.fetch_accessible_advertisers(tokens["access_token"])
         else:
             raise HTTPException(status_code=400, detail="Unknown platform")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"OAuth failed: {str(e)}")
+    except (httpx.HTTPStatusError, httpx.RequestError) as e:
+        logger.error("OAuth token exchange failed for %s: %s", payload.platform, e, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"Platform OAuth error: {str(e)}")
 
     # Update session with tokens and accounts
     session["tokens"] = tokens
@@ -510,7 +515,8 @@ async def platform_oauth_callback(
         await redis.setex(f"oauth_session:{session_id}", OAUTH_SESSION_TTL, json.dumps(session))
         return HTMLResponse(_make_callback_html(session_id, True))
 
-    except Exception as e:
+    except (httpx.HTTPStatusError, httpx.RequestError) as e:
+        logger.error("OAuth callback failed for platform %s session %s: %s", platform, session_id, e, exc_info=True)
         return HTMLResponse(_make_callback_html(session_id, False, str(e)))
 
 
