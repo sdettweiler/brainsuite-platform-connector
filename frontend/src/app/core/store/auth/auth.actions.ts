@@ -13,7 +13,7 @@ export interface UserProfile {
 
 export const loginSuccess = createAction(
   '[Auth] Login Success',
-  props<{ accessToken: string; refreshToken: string }>(),
+  props<{ accessToken: string }>(),
 );
 
 export const loginFailure = createAction(
@@ -35,5 +35,5 @@ export const loadUserFailure = createAction(
 
 export const tokenRefreshed = createAction(
   '[Auth] Token Refreshed',
-  props<{ accessToken: string; refreshToken: string }>(),
+  props<{ accessToken: string }>(),
 );

@@ -4,7 +4,6 @@ import { loginSuccess, loginFailure, logout, loadUserSuccess, loadUserFailure, t
 export interface AuthState {
   user: UserProfile | null;
   accessToken: string | null;
-  refreshToken: string | null;
   isAuthenticated: boolean;
   loading: boolean;
   error: string | null;
@@ -12,9 +11,8 @@ export interface AuthState {
 
 const initialState: AuthState = {
   user: null,
-  accessToken: localStorage.getItem('bs_access'),
-  refreshToken: localStorage.getItem('bs_refresh'),
-  isAuthenticated: !!localStorage.getItem('bs_access'),
+  accessToken: null,
+  isAuthenticated: false,
   loading: false,
   error: null,
 };
@@ -22,11 +20,10 @@ const initialState: AuthState = {
 export const authReducer = createReducer(
   initialState,
 
-  on(loginSuccess, (state, { accessToken, refreshToken }) => ({
+  on(loginSuccess, (state, { accessToken }) => ({
     ...state,
     accessToken,
-    refreshToken,
-    isAuthenticated: true,
+    isAuthenticated: !!accessToken,
     error: null,
   })),
 
@@ -35,13 +32,11 @@ export const authReducer = createReducer(
     error,
     isAuthenticated: false,
     accessToken: null,
-    refreshToken: null,
   })),
 
   on(logout, () => ({
     user: null,
     accessToken: null,
-    refreshToken: null,
     isAuthenticated: false,
     loading: false,
     error: null,
@@ -59,9 +54,9 @@ export const authReducer = createReducer(
     loading: false,
   })),
 
-  on(tokenRefreshed, (state, { accessToken, refreshToken }) => ({
+  on(tokenRefreshed, (state, { accessToken }) => ({
     ...state,
     accessToken,
-    refreshToken,
+    isAuthenticated: !!accessToken,
   })),
 );
