@@ -1,8 +1,9 @@
 """Async Redis client singleton for session and cache storage."""
+from typing import Optional
 import redis.asyncio as aioredis
 from app.core.config import settings
 
-_redis_client: aioredis.Redis | None = None
+_redis_client: Optional[aioredis.Redis] = None
 
 
 def get_redis() -> aioredis.Redis:
