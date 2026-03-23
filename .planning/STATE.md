@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 02-06-PLAN.md
-last_updated: "2026-03-23T08:42:44.669Z"
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-03-23T08:45:38.520Z"
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -55,6 +55,7 @@ Plan: 2 of 6
 | Phase 02 P02 | 15 | 2 tasks | 5 files |
 | Phase 02 P04 | 15 | 2 tasks | 6 files |
 | Phase 02 P06 | 25 | 2 tasks | 6 files |
+| Phase 02 P05 | 10 | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,8 @@ Recent decisions affecting current work:
 - [Phase 02]: auth.effects.ts logout$ kept for router navigation only — AuthService.logout() clears BehaviorSubject and calls backend endpoint, effect handles redirect
 - [Phase 02]: snake_case field names in TypeScript interfaces match JSON wire format from FastAPI
 - [Phase 02]: Both /apps/{id} and /brainsuite-apps/{id} DELETE alias routes fixed to return 204 consistently
+- [Phase 02]: Function-name allowlist in AST test for scheduler.py — allows APScheduler job wrapper functions to keep broad catches for job isolation
+- [Phase 02]: OAuth endpoint catches changed to 502 status — upstream platform auth failures are gateway errors, not bad requests
 
 ### Pending Todos
 
@@ -94,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T08:42:44.667Z
-Stopped at: Completed 02-06-PLAN.md
+Last session: 2026-03-23T08:45:38.518Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None
