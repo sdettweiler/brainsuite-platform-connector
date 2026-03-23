@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     EXCHANGERATE_API_URL: str = "https://v6.exchangerate-api.com/v6"
     FRANKFURTER_API_URL: str = "https://api.frankfurter.dev/v1"
 
+    # BrainSuite
+    BRAINSUITE_CLIENT_ID: Optional[str] = None
+    BRAINSUITE_CLIENT_SECRET: Optional[str] = None
+    BRAINSUITE_BASE_URL: str = "https://api.brainsuite.ai"
+    BRAINSUITE_AUTH_URL: str = "https://auth.brainsuite.ai/oauth2/token"
+
     # Token encryption
     TOKEN_ENCRYPTION_KEY: Optional[str] = None
 
