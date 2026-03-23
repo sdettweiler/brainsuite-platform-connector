@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import String, Boolean, ForeignKey, DateTime, Text, Integer, Float, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -53,11 +54,6 @@ class CreativeAsset(Base):
     # Platform-specific extra metadata
     platform_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
 
-    # Brainsuite dummy score fields
-    ace_score: Mapped[float] = mapped_column(Float, nullable=True)
-    ace_score_confidence: Mapped[str] = mapped_column(String(50), nullable=True)
-    brainsuite_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
-
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -68,6 +64,9 @@ class CreativeAsset(Base):
     project_mappings: Mapped[list["AssetProjectMapping"]] = relationship("AssetProjectMapping", back_populates="asset")
     metadata_values: Mapped[list["AssetMetadataValue"]] = relationship("AssetMetadataValue", back_populates="asset", cascade="all, delete-orphan")
     harmonized_performance: Mapped[list["HarmonizedPerformance"]] = relationship("HarmonizedPerformance", back_populates="asset")
+    score_result: Mapped[Optional["CreativeScoreResult"]] = relationship(
+        "CreativeScoreResult", back_populates="creative_asset", uselist=False
+    )
 
     __table_args__ = (
         UniqueConstraint("organization_id", "platform", "ad_id", "ad_account_id", name="uq_creative_asset"),
