@@ -16,6 +16,7 @@ from app.models.user import User
 from app.models.creative import CreativeAsset, AssetMetadataValue, AssetProjectMapping
 from app.models.performance import HarmonizedPerformance
 from app.models.platform import PlatformConnection
+from app.models.scoring import CreativeScoreResult
 from app.schemas.creative import (
     DashboardFilterParams, DashboardStats, CreativeAssetResponse,
     AssetDetailResponse, ComparisonRequest,
@@ -177,8 +178,15 @@ async def get_dashboard_assets(
 
     # Main asset query
     query = (
-        select(CreativeAsset, perf_subq)
+        select(
+            CreativeAsset,
+            perf_subq,
+            CreativeScoreResult.scoring_status,
+            CreativeScoreResult.total_score,
+            CreativeScoreResult.total_rating,
+        )
         .outerjoin(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
+        .outerjoin(CreativeScoreResult, CreativeScoreResult.creative_asset_id == CreativeAsset.id)
         .where(CreativeAsset.organization_id == current_user.organization_id)
     )
 
@@ -210,7 +218,7 @@ async def get_dashboard_assets(
         "vtr": perf_subq.c.avg_vtr,
         "platform": CreativeAsset.platform,
         "format": CreativeAsset.asset_format,
-        "ace_score": CreativeAsset.ace_score,
+        "score": CreativeScoreResult.total_score,
     }
     sort_col = sort_col_map.get(sort_by, perf_subq.c.total_spend)
     if sort_order.lower() == "desc":
@@ -245,7 +253,7 @@ async def get_dashboard_assets(
             "vtr": float(row.avg_vtr) if row.avg_vtr else None,
         }
         performer_tag = _get_performer_tag(
-            None,
+            row.total_score,
             float(perf["spend"] or 0),
             perf["roas"],
         )
@@ -259,8 +267,9 @@ async def get_dashboard_assets(
             "asset_format": asset.asset_format,
             "thumbnail_url": asset.thumbnail_url,
             "asset_url": asset.asset_url,
-            "scoring_status": None,
-            "total_score": None,
+            "scoring_status": row.scoring_status or "UNSCORED",
+            "total_score": row.total_score,
+            "total_rating": row.total_rating,
             "is_active": asset.is_active,
             "performance": perf,
             "performer_tag": performer_tag,
@@ -466,9 +475,9 @@ async def get_asset_detail(
         "thumbnail_url": asset.thumbnail_url,
         "asset_url": asset.asset_url,
         "video_duration": asset.video_duration,
-        "ace_score": asset.ace_score,
-        "ace_score_confidence": asset.ace_score_confidence,
-        "brainsuite_metadata": asset.brainsuite_metadata,
+        "scoring_status": None,
+        "total_score": None,
+        "total_rating": None,
         "metadata_values": meta_values,
         "projects": project_ids,
         "campaigns_count": int(perf.campaigns_count or 0),
@@ -578,7 +587,7 @@ async def get_homepage_widgets(
                 "ad_name": row[0].ad_name,
                 "thumbnail_url": row[0].thumbnail_url,
                 "asset_url": row[0].asset_url,
-                "ace_score": row[0].ace_score,
+                "total_score": None,
                 "spend_l7d": float(row.total_spend or 0),
                 "ctr": float(row.avg_ctr or 0),
                 "asset_format": row[0].asset_format,
@@ -716,7 +725,7 @@ async def compare_assets(
             "asset_format": asset.asset_format,
             "thumbnail_url": asset.thumbnail_url,
             "asset_url": asset.asset_url,
-            "ace_score": asset.ace_score,
+            "total_score": None,
             "performance": {
                 "spend": float(perf.spend or 0),
                 "impressions": int(perf.impressions or 0),

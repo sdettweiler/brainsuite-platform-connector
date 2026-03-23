@@ -62,8 +62,9 @@ class CreativeAssetSummary(BaseModel):
     campaign_objective: Optional[str]
     asset_format: Optional[str]
     thumbnail_url: Optional[str]
-    ace_score: Optional[float]
-    ace_score_confidence: Optional[str]
+    scoring_status: Optional[str] = None
+    total_score: Optional[float] = None
+    total_rating: Optional[str] = None
     is_active: bool
 
     class Config:
@@ -121,8 +122,8 @@ class DashboardFilterParams(BaseModel):
     cvr_max: Optional[float] = None
     roas_min: Optional[float] = None
     roas_max: Optional[float] = None
-    ace_score_min: Optional[float] = None
-    ace_score_max: Optional[float] = None
+    score_min: Optional[float] = None
+    score_max: Optional[float] = None
     sort_by: str = "spend"
     sort_order: str = "desc"
     page: int = 1
