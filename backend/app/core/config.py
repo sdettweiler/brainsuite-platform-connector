@@ -68,7 +68,7 @@ class Settings(BaseSettings):
         try:
             from cryptography.fernet import Fernet
             Fernet(v.encode() if isinstance(v, str) else v)
-        except Exception as exc:
+        except (ValueError, TypeError) as exc:
             raise ValueError(
                 f"TOKEN_ENCRYPTION_KEY is invalid (must be 32 url-safe base64 bytes): {exc}"
             ) from exc

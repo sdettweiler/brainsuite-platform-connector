@@ -10,7 +10,7 @@ import logging
 import os
 import uuid as uuid_mod
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -230,9 +230,9 @@ class MetaSyncService:
                             error_body = e.response.json()
                             error_msg = str(error_body.get("error", {}).get("message", error_body))
                             logger.error(f"Meta API error {e.response.status_code}: {error_body}")
-                        except Exception:
+                        except (ValueError, KeyError):
                             error_msg = e.response.text[:500]
-                            logger.error(f"Meta HTTP error {e.response.status_code}: {error_msg}")
+                            logger.error("Meta HTTP error %s: %s", e.response.status_code, error_msg)
                         raise MetaAPIError(f"HTTP {e.response.status_code}: {error_msg}")
 
         return records
@@ -293,7 +293,7 @@ class MetaSyncService:
             return None
         try:
             return Decimal(str(val))
-        except Exception:
+        except (ValueError, InvalidOperation):
             return None
 
     @staticmethod
@@ -322,7 +322,7 @@ class MetaSyncService:
         if isinstance(cpo, list) and len(cpo) > 0:
             try:
                 return Decimal(str(cpo[0].get("value", 0)))
-            except Exception:
+            except (ValueError, InvalidOperation):
                 pass
         return None
 
@@ -652,8 +652,8 @@ class MetaSyncService:
                         if vid:
                             video_ids_to_fetch[vid] = video_ids_to_fetch.get(vid, [])
                             video_ids_to_fetch[vid].append(ad_id)
-            except Exception as e:
-                logger.warning(f"  Failed to fetch ad dimensions batch: {e}")
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                logger.warning("Failed to fetch ad dimensions batch: %s", e, exc_info=True)
                 continue
 
         if video_ids_to_fetch:
@@ -710,8 +710,8 @@ class MetaSyncService:
                                 result[vid] = float(length)
                             except (ValueError, TypeError):
                                 pass
-            except Exception as e:
-                logger.warning(f"  Failed to fetch video lengths batch: {e}")
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                logger.warning("Failed to fetch video lengths batch: %s", e, exc_info=True)
                 continue
         return result
 
@@ -732,8 +732,8 @@ class MetaSyncService:
             batch = ad_ids[i:i + batch_size]
             try:
                 creatives = await self._batch_fetch_ad_creatives(access_token, account_id, batch)
-            except Exception as e:
-                logger.error(f"  Failed to fetch creative batch: {e}")
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                logger.error("Failed to fetch creative batch: %s", e, exc_info=True)
                 continue
 
             for ad_id, creative_info in creatives.items():
@@ -886,8 +886,8 @@ class MetaSyncService:
                     else:
                         url = None
 
-                except Exception as e:
-                    logger.error(f"Failed to fetch ad creatives: {e}")
+                except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                    logger.error("Failed to fetch ad creatives: %s", e, exc_info=True)
                     break
 
         return result
@@ -908,8 +908,8 @@ class MetaSyncService:
                     logger.info(f"  Video {video_id}: source={'yes' if data.get('source') else 'no'}, "
                                 f"length={data.get('length', 'unknown')}s")
                     return data
-        except Exception as e:
-            logger.warning(f"Failed to get video info for {video_id}: {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            logger.warning("Failed to get video info for %s: %s", video_id, e, exc_info=True)
         return None
 
     async def _get_full_image_url(self, access_token: str, account_id: str, image_hash: str) -> Optional[str]:
@@ -938,8 +938,8 @@ class MetaSyncService:
                             if full_url:
                                 logger.info(f"  Image hash {image_hash}: {img_data.get('width')}x{img_data.get('height')}")
                                 return full_url
-        except Exception as e:
-            logger.warning(f"Failed to get image from hash {image_hash}: {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            logger.warning("Failed to get image from hash %s: %s", image_hash, e, exc_info=True)
         return None
 
     def _extract_image_url_from_story_spec(self, story_spec: Dict[str, Any]) -> Optional[str]:
@@ -1017,8 +1017,8 @@ class MetaSyncService:
             logger.info(f"  Downloaded asset: {filename} ({len(resp.content)} bytes)")
             return None, served_url
 
-        except Exception as e:
-            logger.warning(f"  Failed to download asset for ad {ad_id}: {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+            logger.warning("Failed to download asset for ad %s: %s", ad_id, e, exc_info=True)
             return None, None
 
 

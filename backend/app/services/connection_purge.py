@@ -1,5 +1,6 @@
 import logging
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ async def purge_connection_data(db: AsyncSession, connection_id: str, org_id: st
                     if url and url.startswith("/objects/creatives/"):
                         relative = url.replace("/objects/", "", 1)
                         asset_urls.add(relative)
-            except Exception:
+            except SQLAlchemyError:
                 pass
 
     creative_asset_ids = []
@@ -45,7 +46,7 @@ async def purge_connection_data(db: AsyncSession, connection_id: str, org_id: st
             "SELECT id FROM creative_assets WHERE platform_connection_id = :cid"
         ), {"cid": conn_uuid})
         creative_asset_ids = [str(row[0]) for row in result]
-    except Exception:
+    except SQLAlchemyError:
         pass
 
     delete_steps = []
@@ -68,9 +69,9 @@ async def purge_connection_data(db: AsyncSession, connection_id: str, org_id: st
         try:
             r = await db.execute(text(sql), {"cid": conn_uuid})
             summary[step_name] = r.rowcount
-        except Exception as e:
+        except SQLAlchemyError as e:
             err_msg = f"{step_name}: {type(e).__name__}: {e}"
-            logger.error(f"Purge step failed — {err_msg}")
+            logger.error("Purge step failed — %s", err_msg, exc_info=True)
             errors.append(err_msg)
             summary[step_name] = 0
             await db.rollback()
@@ -82,7 +83,7 @@ async def purge_connection_data(db: AsyncSession, connection_id: str, org_id: st
     try:
         from app.services.sync.scheduler import remove_connection_schedule
         remove_connection_schedule(conn_uuid)
-    except Exception:
+    except (KeyError, RuntimeError):
         pass
 
     deleted_assets = 0
@@ -93,8 +94,8 @@ async def purge_connection_data(db: AsyncSession, connection_id: str, org_id: st
             for url in asset_urls:
                 if obj.delete_blob(url):
                     deleted_assets += 1
-        except Exception as e:
-            logger.warning(f"Object storage cleanup failed: {type(e).__name__}: {e}")
+        except (OSError, IOError) as e:
+            logger.warning("Object storage cleanup failed: %s", e, exc_info=True)
     summary["object_storage_blobs"] = deleted_assets
 
     total_rows = sum(v for k, v in summary.items() if k != "object_storage_blobs")

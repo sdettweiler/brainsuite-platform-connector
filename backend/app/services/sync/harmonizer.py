@@ -2,6 +2,7 @@ import logging
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -313,10 +314,8 @@ class HarmonizationService:
                 db.add(raw)
                 count += 1
 
-            except Exception as e:
-                logger.error(f"Harmonization error for Meta ad {raw.ad_id} on {raw.report_date}: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
+            except (SQLAlchemyError, ValueError, ArithmeticError) as e:
+                logger.error("Harmonization error for Meta ad %s on %s: %s", raw.ad_id, raw.report_date, e, exc_info=True)
 
         await db.flush()
         return count
@@ -476,8 +475,8 @@ class HarmonizationService:
                 db.add(raw)
                 count += 1
 
-            except Exception as e:
-                logger.error(f"Harmonization error for TikTok record {raw.id}: {e}")
+            except (SQLAlchemyError, ValueError, ArithmeticError) as e:
+                logger.error("Harmonization error for TikTok record %s: %s", raw.id, e, exc_info=True)
 
         await db.flush()
         return count
@@ -640,8 +639,8 @@ class HarmonizationService:
                 db.add(raw)
                 count += 1
 
-            except Exception as e:
-                logger.error(f"Harmonization error for Google Ads record {raw.id}: {e}")
+            except (SQLAlchemyError, ValueError, ArithmeticError) as e:
+                logger.error("Harmonization error for Google Ads record %s: %s", raw.id, e, exc_info=True)
 
         await db.flush()
         return count
@@ -819,12 +818,10 @@ class HarmonizationService:
                     db.add(row)
                     harmonized_count += 1
 
-            except Exception as e:
+            except (SQLAlchemyError, ValueError, ArithmeticError) as e:
                 error_count += 1
                 if error_count <= 5:
-                    logger.error(f"Harmonization error for DV360 record {row.id} (ad={row.ad_id}): {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
+                    logger.error("Harmonization error for DV360 record %s (ad=%s): %s", row.id, row.ad_id, e, exc_info=True)
                 continue
 
         if harmonized_count > 0:
@@ -856,7 +853,7 @@ class HarmonizationService:
             if isinstance(first_seen, str):
                 try:
                     first_seen = datetime.strptime(first_seen, "%Y-%m-%d").date()
-                except Exception:
+                except ValueError:
                     first_seen = None
 
             asset = CreativeAsset(
@@ -899,7 +896,7 @@ class HarmonizationService:
                 if isinstance(first_seen, str):
                     try:
                         first_seen = datetime.strptime(first_seen, "%Y-%m-%d").date()
-                    except Exception:
+                    except ValueError:
                         first_seen = None
                 if first_seen:
                     existing_first = asset.first_seen_at

@@ -45,8 +45,9 @@ import asyncio
 import subprocess
 import json
 from datetime import date, timedelta, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Dict, Any, NamedTuple, Tuple
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -125,8 +126,8 @@ class DV360SyncService:
                 vid = (r.get("Video ID") or r.get("YouTube Ad Video ID") or "").strip()
                 if vid:
                     csv_video_ids.add(vid)
-        except Exception as e:
-            logger.warning(f"DV360: Conversion report failed (non-fatal, Floodlight may not be configured): {type(e).__name__}: {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as e:
+            logger.warning("DV360: Conversion report failed (non-fatal, Floodlight may not be configured): %s: %s", type(e).__name__, e, exc_info=True)
 
         known_ids = set(entity_maps.youtube_metadata.keys())
         new_ids = csv_video_ids - known_ids
@@ -168,8 +169,8 @@ class DV360SyncService:
                 conv_upserted = await self._upsert_conversion_records(
                     db, connection, conv_records, sync_job_id, entity_maps
                 )
-            except Exception as e:
-                logger.warning(f"DV360: Conversion upsert failed (non-fatal): {type(e).__name__}: {e}")
+            except (SQLAlchemyError, ValueError) as e:
+                logger.warning("DV360: Conversion upsert failed (non-fatal): %s: %s", type(e).__name__, e, exc_info=True)
 
         return {
             "fetched": len(perf_records) + len(conv_records),
@@ -665,8 +666,8 @@ class DV360SyncService:
                 if tz:
                     logger.info(f"DV360 v4: Advertiser {advertiser_id} timezone: {tz}")
                     return tz
-        except Exception as e:
-            logger.warning(f"DV360 v4: Failed to fetch advertiser timezone: {type(e).__name__}: {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            logger.warning("DV360 v4: Failed to fetch advertiser timezone: %s: %s", type(e).__name__, e, exc_info=True)
         return ""
 
     async def _fetch_youtube_metadata(
@@ -694,8 +695,8 @@ class DV360SyncService:
                         }
                     else:
                         logger.debug(f"oEmbed failed for video {vid}: HTTP {resp.status_code}")
-                except Exception as e:
-                    logger.debug(f"oEmbed failed for video {vid}: {e}")
+                except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                    logger.debug("oEmbed failed for video %s: %s", vid, e)
 
         logger.info(f"YouTube oEmbed: fetched metadata for {len(metadata)}/{len(video_ids)} videos")
         return metadata
@@ -793,16 +794,16 @@ class DV360SyncService:
                         current_token = await self._refresh_token_standalone(connection_id, refresh_token_encrypted)
                         headers["Authorization"] = f"Bearer {current_token}"
                         last_token_refresh = elapsed
-                    except Exception as e:
-                        logger.warning(f"Bid Manager v2 [{label}]: Token refresh failed: {type(e).__name__}: {e}")
+                    except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                        logger.warning("Bid Manager v2 [%s]: Token refresh failed: %s: %s", label, type(e).__name__, e, exc_info=True)
 
                 try:
                     status_resp = await client.get(
                         f"{BID_MANAGER_API_BASE}/queries/{query_id}/reports",
                         headers=headers,
                     )
-                except Exception as e:
-                    logger.warning(f"Bid Manager v2 [{label}]: Poll error: {type(e).__name__}: {e}")
+                except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                    logger.warning("Bid Manager v2 [%s]: Poll error: %s: %s", label, type(e).__name__, e, exc_info=True)
                     continue
 
                 if status_resp.status_code == 401 and connection_id and refresh_token_encrypted:
@@ -811,8 +812,8 @@ class DV360SyncService:
                         headers["Authorization"] = f"Bearer {current_token}"
                         last_token_refresh = elapsed
                         continue
-                    except Exception as e:
-                        logger.warning(f"Bid Manager v2 [{label}]: Token refresh on 401 failed: {type(e).__name__}: {e}")
+                    except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                        logger.warning("Bid Manager v2 [%s]: Token refresh on 401 failed: %s: %s", label, type(e).__name__, e, exc_info=True)
 
                 if status_resp.status_code != 200:
                     continue
@@ -845,7 +846,7 @@ class DV360SyncService:
                         f"{BID_MANAGER_API_BASE}/queries/{query_id}",
                         headers=headers,
                     )
-                except Exception:
+                except (httpx.RequestError, httpx.HTTPStatusError):
                     pass
                 return None
 
@@ -865,7 +866,7 @@ class DV360SyncService:
                     f"{BID_MANAGER_API_BASE}/queries/{query_id}",
                     headers=headers,
                 )
-            except Exception:
+            except (httpx.RequestError, httpx.HTTPStatusError):
                 pass
 
         return records
@@ -1040,8 +1041,8 @@ class DV360SyncService:
                 pass
             logger.info(f"  Downloaded DV360 asset: {filename} ({len(resp.content)} bytes)")
             return None, served_url
-        except Exception as e:
-            logger.warning(f"  Failed to download DV360 image for ad {ad_id}: {type(e).__name__}: {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+            logger.warning("Failed to download DV360 image for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
             return None, None
 
     def _check_youtube_cookies(self, env_var: str = "YOUTUBE_COOKIES") -> str:
@@ -1114,7 +1115,7 @@ class DV360SyncService:
             try:
                 import imageio_ffmpeg
                 ffmpeg_path = os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
-            except Exception:
+            except (ImportError, OSError):
                 pass
             ydl_opts = {
                 "outtmpl": local_path,
@@ -1161,19 +1162,19 @@ class DV360SyncService:
                     return local_path, served_url
                 else:
                     logger.warning(f"  yt-dlp finished but file not found: {local_path}")
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 if os.path.exists(local_path):
                     os.remove(local_path)
                 err_str = str(e)
                 is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
                 if is_format_error:
-                    logger.warning(f"  No video formats available for {youtube_video_id} (n challenge / format issue) — skipping retries")
+                    logger.warning("No video formats available for %s (format issue) — skipping retries", youtube_video_id)
                     break
                 if i < len(cookie_vars) - 1:
                     label = "primary" if i == 0 else f"cookie set {i}"
-                    logger.info(f"  {label} cookies failed for {youtube_video_id}, trying next set... ({e})")
+                    logger.info("%s cookies failed for %s, trying next set... (%s)", label, youtube_video_id, e)
                     continue
-                logger.warning(f"  Failed to download DV360 YouTube video for ad {ad_id} (video {youtube_video_id}): {type(e).__name__}: {e}")
+                logger.warning("Failed to download DV360 YouTube video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
 
         return None, None
 
@@ -1213,8 +1214,8 @@ class DV360SyncService:
                         except OSError:
                             pass
                         return None, served_url
-        except Exception as e:
-            logger.warning(f"  Failed to download YouTube thumbnail for ad {ad_id}: {type(e).__name__}: {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+            logger.warning("Failed to download YouTube thumbnail for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
         return None, None
 
     def _get_video_duration(self, file_path: str) -> Optional[float]:
@@ -1228,8 +1229,8 @@ class DV360SyncService:
                 duration = data.get("format", {}).get("duration")
                 if duration:
                     return float(duration)
-        except Exception as e:
-            logger.debug(f"  ffprobe failed for {file_path}: {e}")
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
+            logger.debug("ffprobe failed for %s: %s", file_path, e)
         return None
 
     async def _upsert_records(
@@ -1257,13 +1258,13 @@ class DV360SyncService:
         def safe_decimal(val, default=None):
             try:
                 return Decimal(str(val)) if val else default
-            except Exception:
+            except (ValueError, InvalidOperation):
                 return default
 
         def safe_int(val, default=None):
             try:
                 return int(float(val)) if val else default
-            except Exception:
+            except (ValueError, TypeError):
                 return default
 
         def safe_float(val, default=None):
@@ -1272,7 +1273,7 @@ class DV360SyncService:
                     return default
                 s = str(val).strip().rstrip("%")
                 return float(s) if s else default
-            except Exception:
+            except (ValueError, TypeError):
                 return default
 
         rows = []
@@ -1627,8 +1628,8 @@ class DV360SyncService:
                     )
                     if thumb_served:
                         thumb_results[ad_id] = thumb_served
-                except Exception as e:
-                    logger.warning(f"  Thumbnail download failed for ad {ad_id}: {type(e).__name__}: {e}")
+                except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+                    logger.warning("Thumbnail download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
             elif thumb and thumb.startswith("http"):
                 try:
                     _, img_served = await self._download_image_asset(
@@ -1636,8 +1637,8 @@ class DV360SyncService:
                     )
                     if img_served:
                         thumb_results[ad_id] = img_served
-                except Exception as e:
-                    logger.warning(f"  Image download failed for ad {ad_id}: {type(e).__name__}: {e}")
+                except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+                    logger.warning("Image download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
 
         if thumb_results:
             for ad_id, served_url in thumb_results.items():
@@ -1681,9 +1682,9 @@ class DV360SyncService:
                             "video_duration_seconds": self._get_video_duration(vid_path),
                         }
                         downloaded_videos.add(yt_vid)
-                except Exception as e:
+                except (OSError, RuntimeError) as e:
                     video_download_count += 1
-                    logger.warning(f"  Video download failed for ad {ad_id}: {type(e).__name__}: {e}")
+                    logger.warning("Video download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
 
         if video_results:
             for ad_id, r in video_results.items():
@@ -1728,7 +1729,7 @@ class DV360SyncService:
         def safe_float(val, default=None):
             try:
                 return float(val) if val else default
-            except Exception:
+            except (ValueError, TypeError):
                 return default
 
         def _add_val(a, b):

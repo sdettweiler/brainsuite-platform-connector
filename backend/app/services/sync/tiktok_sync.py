@@ -3,8 +3,9 @@ import httpx
 import logging
 import json
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Dict, Any
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -236,7 +237,7 @@ class TikTokSyncService:
             return None
         try:
             return Decimal(str(val))
-        except Exception:
+        except (ValueError, InvalidOperation):
             return None
 
     async def _upsert_records(
@@ -390,8 +391,8 @@ class TikTokSyncService:
             batch = ad_ids[i:i + batch_size]
             try:
                 ads = await self._fetch_ad_info(access_token, advertiser_id, batch)
-            except Exception as e:
-                logger.error(f"  Failed to fetch ad info batch: {e}")
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                logger.error("Failed to fetch ad info batch for %s: %s", advertiser_id, e, exc_info=True)
                 continue
 
             for ad in ads:

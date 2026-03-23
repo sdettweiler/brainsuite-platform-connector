@@ -134,8 +134,8 @@ class GoogleAdsOAuthHandler:
                             "status": "ACTIVE" if not detail.get("testAccount") else "TEST",
                             "platform": "GOOGLE_ADS",
                         })
-                except Exception as e:
-                    logger.warning(f"Could not fetch details for customer {customer_id}: {e}")
+                except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                    logger.warning("Could not fetch details for customer %s: %s", customer_id, e, exc_info=True)
 
         return accounts
 

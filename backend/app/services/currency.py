@@ -5,6 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.performance import CurrencyRate
@@ -97,7 +98,7 @@ class CurrencyConverterService:
                 )
                 db.add(record)
                 await db.flush()
-        except Exception:
+        except (IntegrityError, SQLAlchemyError):
             pass
 
     async def _fetch_rate(
@@ -132,8 +133,8 @@ class CurrencyConverterService:
                 if data.get("result") == "success":
                     rates = data.get("conversion_rates", {})
                     return rates.get(to_currency.upper())
-        except Exception as e:
-            logger.warning(f"exchangerate-api.com failed: {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            logger.warning("exchangerate-api.com failed: %s", e, exc_info=True)
         return None
 
     async def _fetch_from_frankfurter(
@@ -151,8 +152,8 @@ class CurrencyConverterService:
                 data = resp.json()
                 rates = data.get("rates", {})
                 return rates.get(to_currency.upper())
-        except Exception as e:
-            logger.warning(f"frankfurter.dev failed: {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            logger.warning("frankfurter.dev failed: %s", e, exc_info=True)
         return None
 
 

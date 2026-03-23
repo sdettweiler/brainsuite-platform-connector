@@ -10,6 +10,7 @@ import os
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional, List, Dict, Any, Tuple
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -264,8 +265,8 @@ class GoogleAdsSyncService:
                 pass
             logger.info(f"  Downloaded YouTube thumbnail: {filename} ({len(resp.content)} bytes)")
             return None, served_url
-        except Exception as e:
-            logger.warning(f"  Failed to download YouTube thumbnail for ad {ad_id} (video {youtube_video_id}): {e}")
+        except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+            logger.warning("Failed to download YouTube thumbnail for ad %s (video %s): %s", ad_id, youtube_video_id, e, exc_info=True)
             return None, None
 
     async def _download_video(
@@ -332,8 +333,8 @@ class GoogleAdsSyncService:
             else:
                 logger.warning(f"  yt-dlp finished but file not found: {local_path}")
                 return None, None
-        except Exception as e:
-            logger.warning(f"  Failed to download YouTube video for ad {ad_id} (video {youtube_video_id}): {e}")
+        except (OSError, RuntimeError) as e:
+            logger.warning("Failed to download YouTube video for ad %s (video %s): %s", ad_id, youtube_video_id, e, exc_info=True)
             if os.path.exists(local_path):
                 os.remove(local_path)
             return None, None
