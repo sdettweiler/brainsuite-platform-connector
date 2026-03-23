@@ -21,9 +21,23 @@ from app.schemas.creative import (
     AssetDetailResponse, ComparisonRequest,
 )
 from app.api.v1.deps import get_current_user
-from app.services.ace_score import get_performer_tag
 
 router = APIRouter()
+
+
+def _get_performer_tag(
+    total_score: Optional[float],
+    spend: float,
+    roas: Optional[float],
+) -> str:
+    """Classify asset performance based on BrainSuite total_score."""
+    if total_score is None:
+        return "Average"
+    if total_score >= 70:
+        return "Top Performer"
+    if total_score >= 45:
+        return "Average"
+    return "Below Average"
 
 
 @router.get("/stats", response_model=DashboardStats)
@@ -230,8 +244,8 @@ async def get_dashboard_assets(
             "video_views": row.total_video_views,
             "vtr": float(row.avg_vtr) if row.avg_vtr else None,
         }
-        performer_tag = get_performer_tag(
-            asset.ace_score,
+        performer_tag = _get_performer_tag(
+            None,
             float(perf["spend"] or 0),
             perf["roas"],
         )
@@ -245,8 +259,8 @@ async def get_dashboard_assets(
             "asset_format": asset.asset_format,
             "thumbnail_url": asset.thumbnail_url,
             "asset_url": asset.asset_url,
-            "ace_score": asset.ace_score,
-            "ace_score_confidence": asset.ace_score_confidence,
+            "scoring_status": None,
+            "total_score": None,
             "is_active": asset.is_active,
             "performance": perf,
             "performer_tag": performer_tag,
