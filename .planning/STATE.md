@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to execute
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-23T18:55:17.457Z"
+stopped_at: Completed 03-06-PLAN.md
+last_updated: "2026-03-23T19:00:10.204Z"
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 15
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-20)
 ## Current Position
 
 Phase: 03 (brainsuite-scoring-pipeline) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Plan: 3 of 6
 | Phase 02 P05 | 10 | 2 tasks | 12 files |
 | Phase 03 P02 | 15 | 1 tasks | 2 files |
 | Phase 03 P01 | 15 | 2 tasks | 7 files |
+| Phase 03 P06 | 8 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Recent decisions affecting current work:
 - [Phase 03]: map_channel normalizes reels→reel via string replace to handle both instagram_reels and instagram_reel placements
 - [Phase 03]: UniqueConstraint on creative_asset_id (uq_score_per_asset): one score record per asset enforced at DB level
 - [Phase 03]: down_revision=k2l3m4n5o6p7 for e1f2g3h4i5j6 migration: latest in chain at execution time
+- [Phase 03]: down_revision=e1f2g3h4i5j6 for f2g3h4i5j6k7 seed migration: latest in chain at execution time
+- [Phase 03]: Language values in metadata seed sorted alphabetically by label for consistent sort_order across environments
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T18:55:17.455Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-03-23T19:00:10.202Z
+Stopped at: Completed 03-06-PLAN.md
 Resume file: None
