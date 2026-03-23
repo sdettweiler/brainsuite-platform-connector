@@ -25,8 +25,8 @@
 - [x] **SEC-05**: OAuth redirect URI hardened — not constructable from untrusted request headers (x-forwarded-host validation)
 - [x] **SEC-06**: CORS origins locked to explicit allowlist (no wildcard in production)
 - [ ] **QUAL-01**: All broad `except Exception` blocks replaced with specific exception types and structured logging
-- [ ] **QUAL-02**: Frontend `any` types eliminated — typed interfaces defined for all API response DTOs
-- [ ] **QUAL-03**: Backend error responses follow a consistent structure across all endpoints
+- [x] **QUAL-02**: Frontend `any` types eliminated — typed interfaces defined for all API response DTOs
+- [x] **QUAL-03**: Backend error responses follow a consistent structure across all endpoints
 - [x] **QUAL-04**: All identified bugs from codebase audit fixed (Fernet silent fallback, OAuth session cleanup, token refresh failure handling)
 
 ### BrainSuite Scoring
@@ -104,8 +104,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SEC-05 | Phase 2 | Complete |
 | SEC-06 | Phase 2 | Complete |
 | QUAL-01 | Phase 2 | Pending |
-| QUAL-02 | Phase 2 | Pending |
-| QUAL-03 | Phase 2 | Pending |
+| QUAL-02 | Phase 2 | Complete |
+| QUAL-03 | Phase 2 | Complete |
 | QUAL-04 | Phase 2 | Complete |
 | SCORE-01 | Phase 3 | Pending |
 | SCORE-02 | Phase 3 | Pending |
