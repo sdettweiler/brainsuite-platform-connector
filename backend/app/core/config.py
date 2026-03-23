@@ -33,6 +33,7 @@ class Settings(BaseSettings):
 
     # Scheduler
     SCHEDULER_STARTUP_DELAY_SECONDS: int = 0
+    SCHEDULER_ENABLED: bool = True
 
     # Meta
     META_APP_ID: Optional[str] = None

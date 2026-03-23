@@ -929,6 +929,21 @@ async def startup_scheduler(db_session=None) -> None:
             if not conn.initial_sync_completed:
                 pending_initial.append(str(conn.id))
 
+    from app.core.config import settings as _settings
+    from app.services.sync.scoring_job import run_scoring_batch
+
+    if _settings.SCHEDULER_ENABLED:
+        scheduler.add_job(
+            run_scoring_batch,
+            trigger=IntervalTrigger(minutes=15),
+            id="scoring_batch",
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info("Registered scoring_batch job (every 15 minutes)")
+    else:
+        logger.info("SCHEDULER_ENABLED=False — skipping scoring_batch registration")
+
     scheduler.start()
     logger.info(f"Scheduler started with {len(connections)} active connections")
 

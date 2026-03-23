@@ -18,7 +18,7 @@ from app.models.performance import (
 from app.models.platform import PlatformConnection
 from app.models.user import Organization
 from app.services.currency import currency_converter
-from app.services.ace_score import generate_ace_score
+from app.models.scoring import CreativeScoreResult
 
 logger = logging.getLogger(__name__)
 
@@ -848,7 +848,6 @@ class HarmonizationService:
         asset = result.scalar_one_or_none()
 
         if not asset:
-            ace = generate_ace_score(kwargs.get("asset_format"))
             first_seen = kwargs.get("first_seen_at")
             if isinstance(first_seen, str):
                 try:
@@ -874,14 +873,21 @@ class HarmonizationService:
                 creative_id=kwargs.get("creative_id"),
                 placement=kwargs.get("placement"),
                 video_duration=kwargs.get("video_duration"),
-                ace_score=ace["ace_score"],
-                ace_score_confidence=ace["ace_score_confidence"],
-                brainsuite_metadata=ace["brainsuite_metadata"],
                 first_seen_at=first_seen,
                 last_seen_at=first_seen,
             )
             db.add(asset)
             await db.flush()
+
+            # Queue VIDEO assets for BrainSuite scoring
+            asset_fmt = (kwargs.get("asset_format") or "IMAGE").upper()
+            if asset_fmt == "VIDEO":
+                score_stmt = pg_insert(CreativeScoreResult).values(
+                    creative_asset_id=asset.id,
+                    organization_id=connection.organization_id,
+                    scoring_status="UNSCORED",
+                ).on_conflict_do_nothing(index_elements=["creative_asset_id"])
+                await db.execute(score_stmt)
         else:
             if kwargs.get("thumbnail_url") and not asset.thumbnail_url:
                 asset.thumbnail_url = kwargs.get("thumbnail_url")
