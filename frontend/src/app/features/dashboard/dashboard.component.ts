@@ -10,7 +10,9 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { Subject, debounceTime, takeUntil, forkJoin } from 'rxjs';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { Subject, debounceTime, takeUntil, forkJoin, interval, switchMap } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
@@ -22,6 +24,7 @@ import { format, subDays } from 'date-fns';
     CommonModule, ReactiveFormsModule, FormsModule, MatButtonModule,
     MatSelectModule, MatFormFieldModule, MatInputModule, MatMenuModule,
     MatDialogModule, MatTooltipModule, MatCheckboxModule, DateRangePickerComponent,
+    MatProgressSpinnerModule, MatSnackBarModule,
   ],
   template: `
     <div class="page-enter dashboard-page">
@@ -68,7 +71,7 @@ import { format, subDays } from 'date-fns';
             <mat-option value="roas">ROAS</mat-option>
             <mat-option value="cpm">CPM</mat-option>
             <mat-option value="vtr">VTR</mat-option>
-            <mat-option value="ace_score">ACE Score</mat-option>
+            <mat-option value="total_score">ACE Score</mat-option>
             <mat-option value="platform">Platform</mat-option>
             <mat-option value="format">Format</mat-option>
           </mat-select>
@@ -143,9 +146,38 @@ import { format, subDays } from 'date-fns';
               <span class="overlay-platform">
                 <img [src]="getPlatformOverlayIcon(asset.platform)" [alt]="asset.platform" class="overlay-platform-img" />
               </span>
-              <div class="overlay-ace" [class]="getAceClass(asset.ace_score)">
-                {{ asset.ace_score | number:'1.0-0' }}
-              </div>
+              <!-- Score badge overlay -->
+              <ng-container [ngSwitch]="asset.scoring_status">
+                <ng-container *ngSwitchCase="'COMPLETE'">
+                  <div class="overlay-ace ace-score" [class]="getScoreBadgeClass(asset.total_rating)"
+                    [matTooltip]="getScoreTooltip(asset.total_rating)"
+                    [attr.aria-label]="'Score: ' + asset.total_score + ', ' + asset.total_rating">
+                    {{ asset.total_score | number:'1.0-0' }}
+                  </div>
+                </ng-container>
+                <ng-container *ngSwitchCase="'PENDING'">
+                  <div class="overlay-ace overlay-ace-pending" aria-label="Scoring in progress" [matTooltip]="'Scoring in progress'">
+                    <mat-spinner diameter="20"></mat-spinner>
+                    <span class="scoring-label">Scoring…</span>
+                  </div>
+                </ng-container>
+                <ng-container *ngSwitchCase="'PROCESSING'">
+                  <div class="overlay-ace overlay-ace-pending" aria-label="Scoring in progress" [matTooltip]="'Scoring in progress'">
+                    <mat-spinner diameter="20"></mat-spinner>
+                    <span class="scoring-label">Scoring…</span>
+                  </div>
+                </ng-container>
+                <ng-container *ngSwitchCase="'FAILED'">
+                  <div class="overlay-ace overlay-ace-dash" [matTooltip]="'Scoring failed'" aria-label="Scoring failed">
+                    <span class="score-dash">–</span>
+                  </div>
+                </ng-container>
+                <ng-container *ngSwitchDefault>
+                  <div class="overlay-ace overlay-ace-dash" aria-label="Not yet scored">
+                    <span class="score-dash">–</span>
+                  </div>
+                </ng-container>
+              </ng-container>
             </div>
 
             <!-- Tile body -->
@@ -205,6 +237,10 @@ import { format, subDays } from 'date-fns';
         </button>
         <button (click)="openEditMetadata(contextMenu.asset)">
           <i class="bi bi-tag"></i> Edit Metadata
+        </button>
+        <hr class="context-divider" />
+        <button (click)="rescoreAsset(contextMenu.asset)">
+          <i class="bi bi-lightning-charge"></i> Score now
         </button>
       </div>
 
@@ -352,11 +388,28 @@ import { format, subDays } from 'date-fns';
       width: 36px; height: 36px;
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 700;
+      font-size: 12px; font-weight: 700;
+    }
 
-      &.ace-high   { background: rgba(46,204,113,0.85);  color: white; }
-      &.ace-medium { background: rgba(243,156,18,0.85);  color: white; }
-      &.ace-low    { background: rgba(231,76,60,0.85);   color: white; }
+    .overlay-ace-pending {
+      position: absolute; bottom: 6px; right: 6px;
+      display: flex; align-items: center; gap: 4px;
+      background: rgba(0,0,0,0.6); border-radius: 20px;
+      padding: 4px 8px; width: auto; height: auto;
+    }
+
+    .overlay-ace-dash {
+      position: absolute; bottom: 6px; right: 6px;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.5);
+    }
+
+    .context-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 4px 0;
     }
 
     .tile-body { padding: 12px; }
@@ -429,6 +482,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   stats: any = null;
   loading = true;
 
+  private stopPolling$ = new Subject<void>();
+  private pollingActive = false;
+
   selectedPreset = 'last30';
   dateFrom = format(subDays(new Date(), 30), 'yyyy-MM-dd');
   dateTo = format(subDays(new Date(), 1), 'yyyy-MM-dd');
@@ -464,6 +520,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     private dialog: MatDialog,
     private route: ActivatedRoute,
     private router: Router,
+    private snackBar: MatSnackBar,
   ) {}
 
   get orgCurrency(): string {
@@ -486,6 +543,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+    this.stopPolling$.next();
+    this.stopPolling$.complete();
   }
 
   get aggStats(): any[] {
@@ -554,6 +613,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.totalPages = d.total_pages;
         this.loading = false;
         this.preloadAssetDetails();
+        this.stopPolling$.next();
+        this.pollingActive = false;
+        this.startScoringPolling(this.assets);
       },
       error: () => { this.loading = false; },
     });
@@ -771,6 +833,72 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (tag === 'Top Performer') return 'tag-top';
     if (tag === 'Below Average') return 'tag-below';
     return 'tag-avg';
+  }
+
+  getScoreBadgeClass(rating: string | null): string {
+    switch (rating) {
+      case 'positive': return 'ace-score ace-positive';
+      case 'medium': return 'ace-score ace-medium';
+      case 'negative': return 'ace-score ace-negative';
+      default: return 'ace-score';
+    }
+  }
+
+  getScoreTooltip(rating: string | null): string {
+    switch (rating) {
+      case 'positive': return 'Positive effectiveness';
+      case 'medium': return 'Moderate effectiveness';
+      case 'negative': return 'Low effectiveness';
+      default: return 'Scoring failed';
+    }
+  }
+
+  private startScoringPolling(assets: any[]): void {
+    const pendingIds = assets
+      .filter(a => a.scoring_status === 'PENDING' || a.scoring_status === 'PROCESSING')
+      .map(a => a.id);
+
+    if (pendingIds.length === 0 || this.pollingActive) return;
+    this.pollingActive = true;
+
+    interval(10000).pipe(
+      takeUntil(this.stopPolling$),
+      switchMap(() => this.api.getScoringStatus(pendingIds)),
+    ).subscribe(statuses => {
+      for (const status of statuses) {
+        const asset = this.assets.find(a => a.id === status.asset_id);
+        if (asset) {
+          asset.scoring_status = status.scoring_status;
+          asset.total_score = status.total_score;
+          asset.total_rating = status.total_rating;
+        }
+      }
+      const stillPending = statuses.filter(
+        s => s.scoring_status === 'PENDING' || s.scoring_status === 'PROCESSING',
+      );
+      if (stillPending.length === 0) {
+        this.stopPolling$.next();
+        this.pollingActive = false;
+      }
+    });
+  }
+
+  rescoreAsset(asset: any): void {
+    this.contextMenu.visible = false;
+    this.api.rescoreAsset(asset.id).subscribe({
+      next: () => {
+        asset.scoring_status = 'PENDING';
+        asset.total_score = null;
+        asset.total_rating = null;
+        if (!this.pollingActive) {
+          this.startScoringPolling([asset]);
+        }
+        this.snackBar.open('Scoring queued — results in ~2 minutes', 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.snackBar.open('Could not queue scoring. Try again.', 'OK', { duration: 3000 });
+      },
+    });
   }
 
   getTileThumbnail(asset: any): string {

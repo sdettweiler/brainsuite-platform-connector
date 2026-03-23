@@ -148,9 +148,23 @@ p  { margin: 0; }
   font-size: 12px;
   font-weight: 700;
 
-  &.ace-high    { background: rgba(46,204,113,0.2);  color: var(--success); border: 2px solid var(--success); }
-  &.ace-medium  { background: rgba(243,156,18,0.2);  color: var(--warning); border: 2px solid var(--warning); }
-  &.ace-low     { background: rgba(231,76,60,0.2);   color: var(--error);   border: 2px solid var(--error);   }
+  &.ace-high,
+  &.ace-positive { background: rgba(46,204,113,0.2);  color: var(--success); border: 2px solid var(--success); }
+  &.ace-medium   { background: rgba(243,156,18,0.2);  color: var(--warning); border: 2px solid var(--warning); }
+  &.ace-low,
+  &.ace-negative { background: rgba(231,76,60,0.2);   color: var(--error);   border: 2px solid var(--error);   }
+}
+
+.score-dash {
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.scoring-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: 4px;
 }
 
 .platform-meta     { color: #1877F2; }
