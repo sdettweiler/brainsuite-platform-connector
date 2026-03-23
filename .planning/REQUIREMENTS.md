@@ -31,7 +31,7 @@
 
 ### BrainSuite Scoring
 
-- [ ] **SCORE-01**: `creative_score_results` table with scoring state machine (UNSCORED → PENDING → PROCESSING → COMPLETE | FAILED)
+- [x] **SCORE-01**: `creative_score_results` table with scoring state machine (UNSCORED → PENDING → PROCESSING → COMPLETE | FAILED)
 - [x] **SCORE-02**: `BrainSuiteScoreService` — async httpx client with tenacity retry (429 = long backoff, 5xx = short backoff, 4xx = no retry)
 - [x] **SCORE-03**: Fresh GCS/S3 signed URLs generated per scoring request (not stored URLs)
 - [ ] **SCORE-04**: APScheduler scoring job runs every 15 minutes, batches up to 20 UNSCORED assets, respects rate limits
@@ -107,7 +107,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | QUAL-02 | Phase 2 | Complete |
 | QUAL-03 | Phase 2 | Complete |
 | QUAL-04 | Phase 2 | Complete |
-| SCORE-01 | Phase 3 | Pending |
+| SCORE-01 | Phase 3 | Complete |
 | SCORE-02 | Phase 3 | Complete |
 | SCORE-03 | Phase 3 | Complete |
 | SCORE-04 | Phase 3 | Pending |
