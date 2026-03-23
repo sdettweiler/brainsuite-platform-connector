@@ -15,6 +15,98 @@ import { AuthService } from '../../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../../shared/components/date-range-picker.component';
 import type { EChartsOption } from 'echarts';
 
+interface AssetPerformanceDetail {
+  spend: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  ctr: number | null;
+  cpm: number | null;
+  roas: number | null;
+  video_views: number | null;
+  vtr: number | null;
+  conversions: number | null;
+  cvr: number | null;
+  reach: number | null;
+  frequency: number | null;
+  cpp: number | null;
+  cpc: number | null;
+  outbound_clicks: number | null;
+  outbound_ctr: number | null;
+  unique_clicks: number | null;
+  unique_ctr: number | null;
+  inline_link_clicks: number | null;
+  inline_link_click_ctr: number | null;
+  video_plays: number | null;
+  video_3_sec_watched: number | null;
+  video_30_sec_watched: number | null;
+  video_p25: number | null;
+  video_p50: number | null;
+  video_p75: number | null;
+  video_p100: number | null;
+  video_completion_rate: number | null;
+  cost_per_view: number | null;
+  thruplay: number | null;
+  cost_per_thruplay: number | null;
+  focused_view: number | null;
+  cost_per_focused_view: number | null;
+  trueview_views: number | null;
+  post_engagements: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  follows: number | null;
+  conversion_value: number | null;
+  cost_per_conversion: number | null;
+  purchase_roas: number | null;
+  purchases: number | null;
+  purchase_value: number | null;
+  leads: number | null;
+  cost_per_lead: number | null;
+  app_installs: number | null;
+  cost_per_install: number | null;
+  in_app_purchases: number | null;
+  in_app_purchase_value: number | null;
+  subscribe: number | null;
+  offline_purchases: number | null;
+  offline_purchase_value: number | null;
+  messaging_conversations_started: number | null;
+  estimated_ad_recallers: number | null;
+  estimated_ad_recall_rate: number | null;
+}
+
+interface AssetTimeseriesPoint {
+  date: string;
+  value: number;
+}
+
+interface AssetBrainsuiteMetadata {
+  attention_score?: number;
+  brand_score?: number;
+  emotion_score?: number;
+  message_clarity?: number;
+  visual_impact?: number;
+}
+
+interface AssetDetailResponse {
+  id: string;
+  platform: string;
+  ad_id: string;
+  ad_name: string | null;
+  campaign_name: string | null;
+  campaign_objective: string | null;
+  asset_format: string | null;
+  thumbnail_url: string | null;
+  asset_url: string | null;
+  ace_score: number | null;
+  is_active: boolean;
+  performance: AssetPerformanceDetail | null;
+  performer_tag: string | null;
+  campaigns_count: number;
+  campaigns: Array<{ campaign_name?: string; campaign_id?: string; spend?: number }>;
+  timeseries: Record<string, AssetTimeseriesPoint[]> | null;
+  brainsuite_metadata?: AssetBrainsuiteMetadata;
+}
+
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
 
 @Component({
@@ -314,8 +406,8 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
   `],
 })
 export class AssetDetailDialogComponent implements OnInit, OnDestroy {
-  asset: any = null;
-  detail: any = null;
+  asset: AssetDetailResponse | null = null;
+  detail: AssetDetailResponse | null = null;
   loading = true;
 
   dateFrom: string;
@@ -358,7 +450,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     private api: ApiService,
     private auth: AuthService,
     public dialogRef: MatDialogRef<AssetDetailDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: { assetId: string; dateFrom: string; dateTo: string; selectedPreset?: string; preloaded?: any },
+    @Inject(MAT_DIALOG_DATA) public data: { assetId: string; dateFrom: string; dateTo: string; selectedPreset?: string; preloaded?: AssetDetailResponse | null },
   ) {
     this.dateFrom = data.dateFrom;
     this.dateTo = data.dateTo;
@@ -396,7 +488,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   loadDetail(): void {
     const isFirstLoad = !this.detail;
     if (isFirstLoad) this.loading = true;
-    this.api.get<any>(`/dashboard/assets/${this.data.assetId}`, {
+    this.api.get<AssetDetailResponse>(`/dashboard/assets/${this.data.assetId}`, {
       date_from: this.dateFrom,
       date_to: this.dateTo,
       kpis: 'spend,ctr,roas,cpm,video_views,vtr,conversions,cvr,impressions,clicks',
@@ -423,13 +515,14 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const firstTs = this.detail.timeseries[activeKpis[0]];
+    const timeseries = this.detail!.timeseries!;
+    const firstTs = timeseries[activeKpis[0]];
     if (!firstTs || firstTs.length === 0) {
       this.chartOption = null;
       return;
     }
 
-    const dates = firstTs.map((d: any) => {
+    const dates = firstTs.map((d: AssetTimeseriesPoint) => {
       const dt = new Date(d.date + 'T00:00:00');
       return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     });
@@ -438,7 +531,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     const series: any[] = [];
 
     activeKpis.forEach((kpi: string, idx: number) => {
-      const ts = this.detail.timeseries[kpi];
+      const ts = timeseries[kpi];
       if (!ts) return;
 
       const kpiMeta = this.availableKpis.find(k => k.value === kpi);
@@ -463,7 +556,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
         name: label,
         type: 'line',
         yAxisIndex: idx,
-        data: ts.map((d: any) => d.value),
+        data: ts.map((d: AssetTimeseriesPoint) => d.value),
         smooth: 0.3,
         symbol: ts.length > 30 ? 'none' : 'circle',
         symbolSize: 6,

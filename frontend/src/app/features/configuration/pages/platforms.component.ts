@@ -16,6 +16,27 @@ import { ApiService } from '../../../core/services/api.service';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { DisconnectDialogComponent, DisconnectDialogResult } from '../components/disconnect-dialog.component';
 
+interface OAuthAccount {
+  id: string;
+  name: string;
+  currency?: string;
+  timezone?: string;
+  status?: string;
+}
+
+interface OAuthSessionResponse {
+  session_id: string;
+  platform: string;
+  accounts: OAuthAccount[];
+  ready: boolean;
+  requires_manual_entry: boolean;
+}
+
+interface DV360LookupResponse {
+  advertiser: OAuthAccount;
+  accounts: OAuthAccount[];
+}
+
 interface PlatformConnection {
   id: string;
   platform: 'META' | 'TIKTOK' | 'GOOGLE_ADS' | 'DV360';
@@ -572,7 +593,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   pendingSessionId: string | null = null;
   pendingPlatform: string | null = null;
-  pendingAccounts: any[] = [];
+  pendingAccounts: OAuthAccount[] = [];
   selectedAccounts: string[] = [];
   dv360ManualEntry = false;
   dv360AdvertiserId = '';
@@ -890,10 +911,10 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   checkOAuthSession(): void {
     if (!this.pendingSessionId) return;
-    this.api.get<any>(`/platforms/oauth/session/${this.pendingSessionId}`).subscribe({
+    this.api.get<OAuthSessionResponse>(`/platforms/oauth/session/${this.pendingSessionId}`).subscribe({
       next: (session) => {
         this.pendingAccounts = session.accounts || [];
-        this.selectedAccounts = this.pendingAccounts.map((a: any) => a.id);
+        this.selectedAccounts = this.pendingAccounts.map((a: OAuthAccount) => a.id);
         if (session.requires_manual_entry) {
           this.dv360ManualEntry = true;
           this.dv360AdvertiserId = '';
@@ -912,14 +933,14 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     if (!this.dv360AdvertiserId.trim() || !this.pendingSessionId) return;
     this.dv360LookupLoading = true;
     this.dv360LookupError = '';
-    this.api.post<any>('/platforms/oauth/dv360-lookup', {
+    this.api.post<DV360LookupResponse>('/platforms/oauth/dv360-lookup', {
       session_id: this.pendingSessionId,
       advertiser_id: this.dv360AdvertiserId.trim(),
     }).subscribe({
       next: (res) => {
         this.dv360LookupLoading = false;
         this.pendingAccounts = res.accounts || [];
-        this.selectedAccounts = this.pendingAccounts.map((a: any) => a.id);
+        this.selectedAccounts = this.pendingAccounts.map((a: OAuthAccount) => a.id);
         this.dv360AdvertiserId = '';
       },
       error: (err) => {

@@ -16,6 +16,55 @@ import { AuthService } from '../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
 import { format, subDays } from 'date-fns';
 
+interface AssetPerformance {
+  spend: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  ctr: number | null;
+  cpm: number | null;
+  roas: number | null;
+  video_views: number | null;
+  vtr: number | null;
+  conversions: number | null;
+  cvr: number | null;
+}
+
+interface DashboardAsset {
+  id: string;
+  platform: string;
+  ad_id: string;
+  ad_name: string | null;
+  campaign_name: string | null;
+  campaign_objective: string | null;
+  asset_format: string | null;
+  thumbnail_url: string | null;
+  asset_url: string | null;
+  ace_score: number | null;
+  is_active: boolean;
+  performance: AssetPerformance | null;
+  performer_tag: string | null;
+}
+
+interface DashboardAssetsResponse {
+  items: DashboardAsset[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+interface StatsResponse {
+  total_spend: number;
+  total_impressions: number;
+  avg_roas: number | null;
+  total_active_assets: number;
+  new_assets_in_period: number;
+  prev_total_spend: number | null;
+  prev_total_impressions: number | null;
+  prev_avg_roas: number | null;
+  prev_total_active_assets: number | null;
+}
+
 @Component({
   standalone: true,
   imports: [
@@ -425,8 +474,8 @@ import { format, subDays } from 'date-fns';
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
-  assets: any[] = [];
-  stats: any = null;
+  assets: DashboardAsset[] = [];
+  stats: StatsResponse | null = null;
   loading = true;
 
   selectedPreset = 'last30';
@@ -445,9 +494,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   selectedAssets: string[] = [];
   lastSelectedId: string | null = null;
 
-  contextMenu = { visible: false, x: 0, y: 0, asset: null as any };
+  contextMenu = { visible: false, x: 0, y: 0, asset: null as DashboardAsset | null };
 
-  private assetDetailCache = new Map<string, any>();
+  private assetDetailCache = new Map<string, DashboardAsset>();
 
   platforms = [
     { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2', iconUrl: '/assets/images/icon-meta.png' },
@@ -523,14 +572,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     ];
   }
 
-  private pctChange(curr: number, prev: number): string | null {
-    if (!prev) return null;
+  private pctChange(curr: number | null, prev: number | null): string | null {
+    if (!prev || curr == null) return null;
     const pct = ((curr - prev) / prev * 100).toFixed(1);
     return `${pct}%`;
   }
 
-  private changeClass(curr: number, prev: number): string {
-    if (!prev) return 'change-neutral';
+  private changeClass(curr: number | null, prev: number | null): string {
+    if (!prev || curr == null) return 'change-neutral';
     return curr >= prev ? 'change-positive' : 'change-negative';
   }
 
@@ -547,7 +596,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     };
     if (this.selectedFormat) params.formats = this.selectedFormat;
 
-    this.api.get<any>('/dashboard/assets', params).subscribe({
+    this.api.get<DashboardAssetsResponse>('/dashboard/assets', params).subscribe({
       next: (d) => {
         this.assets = d.items;
         this.total = d.total;
@@ -558,7 +607,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       error: () => { this.loading = false; },
     });
 
-    this.api.get<any>('/dashboard/stats', params).subscribe({
+    this.api.get<StatsResponse>('/dashboard/stats', params).subscribe({
       next: (s) => this.stats = s,
     });
   }
@@ -605,7 +654,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   // Asset selection
-  selectAsset(event: MouseEvent, asset: any): void {
+  selectAsset(event: MouseEvent, asset: DashboardAsset): void {
     const id = asset.id;
     if (event.ctrlKey || event.metaKey) {
       if (this.selectedAssets.includes(id)) {
@@ -631,7 +680,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return this.selectedAssets.includes(id);
   }
 
-  onRightClick(event: MouseEvent, asset: any): void {
+  onRightClick(event: MouseEvent, asset: DashboardAsset): void {
     event.preventDefault();
     if (!this.isSelected(asset.id)) {
       this.selectedAssets = [asset.id];
@@ -650,7 +699,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     const kpis = 'spend,ctr,roas,cpm,video_views,vtr,conversions,cvr,impressions,clicks';
     for (const asset of this.assets) {
-      this.api.get<any>(`/dashboard/assets/${asset.id}`, {
+      this.api.get<DashboardAsset>(`/dashboard/assets/${asset.id}`, {
         date_from: this.dateFrom,
         date_to: this.dateTo,
         kpis,
@@ -660,7 +709,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  async openAssetDetail(asset: any): Promise<void> {
+  async openAssetDetail(asset: DashboardAsset): Promise<void> {
     this.contextMenu.visible = false;
     const { AssetDetailDialogComponent } = await import('../dashboard/dialogs/asset-detail-dialog.component');
     this.dialog.open(AssetDetailDialogComponent, {
@@ -707,7 +756,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  async openAssignProject(asset: any): Promise<void> {
+  async openAssignProject(asset: DashboardAsset): Promise<void> {
     this.contextMenu.visible = false;
     const { AssignProjectDialogComponent } = await import('../dashboard/dialogs/assign-project-dialog.component');
     const assetIds = this.selectedAssets.length > 0 ? this.selectedAssets : [asset.id];
@@ -717,7 +766,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  async openEditMetadata(asset: any): Promise<void> {
+  async openEditMetadata(asset: DashboardAsset): Promise<void> {
     this.contextMenu.visible = false;
     const { EditMetadataDialogComponent } = await import('../dashboard/dialogs/edit-metadata-dialog.component');
     const assetIds = this.selectedAssets.length > 0 ? this.selectedAssets : [asset.id];
@@ -773,7 +822,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return 'tag-avg';
   }
 
-  getTileThumbnail(asset: any): string {
+  getTileThumbnail(asset: DashboardAsset): string {
     if (asset.thumbnail_url) return asset.thumbnail_url;
     if (asset.asset_url && !asset.asset_url.endsWith('.mp4')) return asset.asset_url;
     return '/assets/images/placeholder.svg';
