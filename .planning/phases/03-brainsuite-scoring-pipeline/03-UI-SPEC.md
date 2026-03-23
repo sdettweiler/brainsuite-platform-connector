@@ -104,7 +104,7 @@ Replaces the existing `ace_score` column in `dashboard.component.ts`.
 | `FAILED` | Grey dash "–" with tooltip "Scoring failed" | Same as UNSCORED + `matTooltip` |
 | `PENDING` | 20px spinner (MatProgressSpinner diameter=20) + "Scoring…" label at 12px `--text-secondary` | `<mat-spinner diameter="20">` inline |
 | `PROCESSING` | Same as PENDING | Same as PENDING |
-| `COMPLETE` | Circular badge 36×36px, score number 12px weight 700 | Reuse `.ace-score` pattern; add `.ace-positive` / `.ace-medium` / `.ace-negative` variants |
+| `COMPLETE` | Circular badge 36×36px, score number 12px weight 600 | Reuse `.ace-score` pattern; add `.ace-positive` / `.ace-medium` / `.ace-negative` variants |
 
 Score badge CSS variants (rename existing `.ace-high/medium/low` to match BrainSuite enum):
 
