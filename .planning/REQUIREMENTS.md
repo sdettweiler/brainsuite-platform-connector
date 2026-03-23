@@ -32,12 +32,12 @@
 ### BrainSuite Scoring
 
 - [ ] **SCORE-01**: `creative_score_results` table with scoring state machine (UNSCORED → PENDING → PROCESSING → COMPLETE | FAILED)
-- [ ] **SCORE-02**: `BrainSuiteScoreService` — async httpx client with tenacity retry (429 = long backoff, 5xx = short backoff, 4xx = no retry)
-- [ ] **SCORE-03**: Fresh GCS/S3 signed URLs generated per scoring request (not stored URLs)
+- [x] **SCORE-02**: `BrainSuiteScoreService` — async httpx client with tenacity retry (429 = long backoff, 5xx = short backoff, 4xx = no retry)
+- [x] **SCORE-03**: Fresh GCS/S3 signed URLs generated per scoring request (not stored URLs)
 - [ ] **SCORE-04**: APScheduler scoring job runs every 15 minutes, batches up to 20 UNSCORED assets, respects rate limits
 - [ ] **SCORE-05**: New assets automatically queued as UNSCORED after platform sync completes
 - [ ] **SCORE-06**: Manual re-score trigger available per creative via UI and API endpoint
-- [ ] **SCORE-07**: Score dimensions stored and retrievable per creative (exact schema confirmed via API discovery spike at phase start)
+- [x] **SCORE-07**: Score dimensions stored and retrievable per creative (exact schema confirmed via API discovery spike at phase start)
 - [ ] **SCORE-08**: Scoring status endpoint (`/scoring/status`) for frontend polling
 
 ### Dashboard
@@ -108,12 +108,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | QUAL-03 | Phase 2 | Complete |
 | QUAL-04 | Phase 2 | Complete |
 | SCORE-01 | Phase 3 | Pending |
-| SCORE-02 | Phase 3 | Pending |
-| SCORE-03 | Phase 3 | Pending |
+| SCORE-02 | Phase 3 | Complete |
+| SCORE-03 | Phase 3 | Complete |
 | SCORE-04 | Phase 3 | Pending |
 | SCORE-05 | Phase 3 | Pending |
 | SCORE-06 | Phase 3 | Pending |
-| SCORE-07 | Phase 3 | Pending |
+| SCORE-07 | Phase 3 | Complete |
 | SCORE-08 | Phase 3 | Pending |
 | DASH-01 | Phase 4 | Pending |
 | DASH-02 | Phase 4 | Pending |

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-23T14:09:47.955Z"
+status: Ready to execute
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-03-23T18:51:31.137Z"
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 15
+  completed_plans: 10
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-20)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 02 — security-hardening
+**Current focus:** Phase 03 — brainsuite-scoring-pipeline
 
 ## Current Position
 
-Phase: 02 (security-hardening) — EXECUTING
+Phase: 03 (brainsuite-scoring-pipeline) — EXECUTING
 Plan: 2 of 6
 
 ## Performance Metrics
@@ -56,6 +56,7 @@ Plan: 2 of 6
 | Phase 02 P04 | 15 | 2 tasks | 6 files |
 | Phase 02 P06 | 25 | 2 tasks | 6 files |
 | Phase 02 P05 | 10 | 2 tasks | 12 files |
+| Phase 03 P02 | 15 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ Recent decisions affecting current work:
 - [Phase 02]: Both /apps/{id} and /brainsuite-apps/{id} DELETE alias routes fixed to return 204 consistently
 - [Phase 02]: Function-name allowlist in AST test for scheduler.py — allows APScheduler job wrapper functions to keep broad catches for job isolation
 - [Phase 02]: OAuth endpoint catches changed to 502 status — upstream platform auth failures are gateway errors, not bad requests
+- [Phase 03]: Token cached 50 minutes — shorter than OAuth TTL to avoid edge cases where token expires mid-request
+- [Phase 03]: 429 backoff uses x-ratelimit-reset header + 2s buffer; falls back to now+60s if header is malformed
+- [Phase 03]: map_channel normalizes reels→reel via string replace to handle both instagram_reels and instagram_reel placements
 
 ### Pending Todos
 
@@ -97,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T14:09:47.947Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-brainsuite-scoring-pipeline/03-CONTEXT.md
+Last session: 2026-03-23T18:51:31.125Z
+Stopped at: Completed 03-02-PLAN.md
+Resume file: None
