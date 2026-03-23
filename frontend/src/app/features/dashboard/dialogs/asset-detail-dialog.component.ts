@@ -5,6 +5,9 @@ import { MatDialogModule, MAT_DIALOG_DATA, MatDialogRef } from '@angular/materia
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatDividerModule } from '@angular/material/divider';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
 import * as echarts from 'echarts/core';
 import { LineChart } from 'echarts/charts';
@@ -22,6 +25,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
   imports: [
     CommonModule, FormsModule,
     MatDialogModule, MatTabsModule, MatButtonModule, MatTooltipModule,
+    MatProgressSpinnerModule, MatDividerModule, MatSnackBarModule,
     NgxEchartsDirective, DateRangePickerComponent,
   ],
   providers: [
@@ -136,50 +140,60 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
         </mat-tab>
 
         <mat-tab label="Creative Effectiveness">
-          <div class="tab-content">
-            <div class="ce-layout">
-              <div class="ce-preview">
-                <div class="heatmap-toggles">
-                  <button
-                    *ngFor="let overlay of heatmapOverlays"
-                    class="overlay-btn"
-                    [class.active]="activeOverlay === overlay.key"
-                    (click)="activeOverlay = overlay.key"
-                  >
-                    {{ overlay.label }}
-                  </button>
-                </div>
-                <div class="heatmap-container">
-                  <video
-                    *ngIf="asset.asset_format === 'VIDEO' && asset.asset_url && activeOverlay === 'none'"
-                    [src]="asset.asset_url"
-                    controls
-                    class="asset-media"
-                  ></video>
-                  <img
-                    *ngIf="activeOverlay !== 'none' || asset.asset_format !== 'VIDEO' || !asset.asset_url"
-                    [src]="getBaseImage()"
-                    class="asset-media"
-                    alt="Creative"
-                  />
-                  <img
-                    *ngIf="activeOverlay !== 'none'"
-                    [src]="getOverlayImage()"
-                    class="heatmap-overlay"
-                    alt="Overlay"
-                  />
+          <div class="tab-content ce-tab">
+            <!-- Loading state -->
+            <div class="score-loading-state" *ngIf="scoreLoading">
+              <mat-spinner diameter="32" aria-label="Loading score data"></mat-spinner>
+            </div>
+
+            <!-- Complete state -->
+            <ng-container *ngIf="!scoreLoading && scoreDetail?.scoring_status === 'COMPLETE'">
+              <div class="score-hero-row">
+                <span class="score-hero-label">Effectiveness Score</span>
+                <div class="score-hero-badge">
+                  <span class="ace-score" [class]="getScoreBadgeClass(scoreDetail.total_rating)"
+                    [attr.aria-label]="'Score: ' + scoreDetail.total_score + ', ' + scoreDetail.total_rating">
+                    {{ scoreDetail.total_score | number:'1.0-0' }}
+                  </span>
+                  <span class="score-hero-rating" [style.color]="getRatingColor(scoreDetail.total_rating)">
+                    {{ scoreDetail.total_rating }}
+                  </span>
                 </div>
               </div>
 
-              <div class="brainsuite-kpis">
-                <div class="section-label">Brainsuite Creative Scores <span class="badge badge-info">DUMMY DATA</span></div>
-                <div class="bs-kpi-grid">
-                  <div class="bs-kpi-card" *ngFor="let kpi of brainsuiteKpis">
-                    <div class="bs-kpi-value" [class]="getAceClass(kpi.value)">{{ kpi.value | number:'1.0-0' }}</div>
-                    <div class="bs-kpi-label">{{ kpi.label }}</div>
+              <mat-divider style="margin: 16px 0;"></mat-divider>
+
+              <div class="score-categories" *ngIf="getCategories().length > 0">
+                <div class="score-category-row" *ngFor="let cat of getCategories()">
+                  <span class="score-category-name">{{ cat.name }}</span>
+                  <div class="score-category-value">
+                    <span class="score-category-score">{{ cat.score | number:'1.0-1' }}</span>
+                    <span class="rating-dot" [style.background]="getRatingColor(cat.rating)"></span>
                   </div>
                 </div>
               </div>
+            </ng-container>
+
+            <!-- Pending / Processing state -->
+            <div class="score-pending-state"
+              *ngIf="!scoreLoading && (scoreDetail?.scoring_status === 'PENDING' || scoreDetail?.scoring_status === 'PROCESSING')">
+              <mat-spinner diameter="32"></mat-spinner>
+              <p>BrainSuite is scoring this creative…</p>
+            </div>
+
+            <!-- Unscored / Failed state -->
+            <div class="score-empty-state"
+              *ngIf="!scoreLoading && scoreDetail?.scoring_status !== 'COMPLETE' && scoreDetail?.scoring_status !== 'PENDING' && scoreDetail?.scoring_status !== 'PROCESSING'">
+              <i class="bi bi-graph-up score-empty-icon"></i>
+              <ng-container *ngIf="scoreDetail?.scoring_status !== 'FAILED'">
+                <h4>No score yet</h4>
+                <p>This creative hasn't been scored. Click 'Score now' to send it to BrainSuite.</p>
+              </ng-container>
+              <ng-container *ngIf="scoreDetail?.scoring_status === 'FAILED'">
+                <h4>Scoring failed</h4>
+                <p>BrainSuite returned an error for this creative. Check your API credentials or try again.</p>
+              </ng-container>
+              <button mat-stroked-button color="primary" (click)="rescoreFromDialog()">Score now</button>
             </div>
           </div>
         </mat-tab>
@@ -310,6 +324,31 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .bs-kpi-value.ace-low { color: var(--error); }
     .bs-kpi-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 
+    .ce-tab { display: flex; flex-direction: column; }
+
+    .score-hero-row {
+      display: flex; justify-content: space-between; align-items: center; height: 64px;
+    }
+    .score-hero-label { font-size: 14px; font-weight: 400; color: var(--text-secondary); }
+    .score-hero-badge { display: flex; align-items: center; gap: 8px; }
+    .score-hero-rating { font-size: 12px; font-weight: 600; text-transform: capitalize; }
+
+    .score-category-row {
+      display: flex; justify-content: space-between; align-items: center;
+      height: 40px; border-bottom: 1px solid var(--border);
+    }
+    .score-category-name { font-size: 14px; font-weight: 400; color: var(--text-primary); }
+    .score-category-value { display: flex; align-items: center; gap: 8px; }
+    .score-category-score { font-size: 14px; font-weight: 600; }
+    .rating-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    .score-pending-state, .score-empty-state, .score-loading-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 32px; gap: 16px; text-align: center;
+    }
+    .score-empty-icon { font-size: 32px; color: var(--text-muted); }
+    .score-pending-state p, .score-empty-state p { font-size: 14px; color: var(--text-secondary); }
+
     .loading-state { padding: 24px; }
   `],
 })
@@ -317,6 +356,9 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   asset: any = null;
   detail: any = null;
   loading = true;
+
+  scoreDetail: any = null;
+  scoreLoading = true;
 
   dateFrom: string;
   dateTo: string;
@@ -357,6 +399,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   constructor(
     private api: ApiService,
     private auth: AuthService,
+    private snackBar: MatSnackBar,
     public dialogRef: MatDialogRef<AssetDetailDialogComponent>,
     @Inject(MAT_DIALOG_DATA) public data: { assetId: string; dateFrom: string; dateTo: string; selectedPreset?: string; preloaded?: any },
   ) {
@@ -376,6 +419,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     } else {
       this.loadDetail();
     }
+    this.loadScoreDetail();
   }
 
   ngOnDestroy(): void {}
@@ -661,6 +705,56 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
       { label: 'Message Clarity', value: bm.message_clarity || 0 },
       { label: 'Visual Impact', value: bm.visual_impact || 0 },
     ];
+  }
+
+  loadScoreDetail(): void {
+    this.scoreLoading = true;
+    this.api.getScoreDetail(this.data.assetId).subscribe({
+      next: (detail) => {
+        this.scoreDetail = detail;
+        this.scoreLoading = false;
+      },
+      error: () => {
+        this.scoreLoading = false;
+      },
+    });
+  }
+
+  getScoreBadgeClass(rating: string | null): string {
+    switch (rating) {
+      case 'positive': return 'ace-score ace-positive';
+      case 'medium': return 'ace-score ace-medium';
+      case 'negative': return 'ace-score ace-negative';
+      default: return 'ace-score';
+    }
+  }
+
+  getRatingColor(rating: string | null): string {
+    switch (rating) {
+      case 'positive': return 'var(--success)';
+      case 'medium': return 'var(--warning)';
+      case 'negative': return 'var(--error)';
+      default: return 'var(--text-muted)';
+    }
+  }
+
+  getCategories(): any[] {
+    if (!this.scoreDetail?.score_dimensions) return [];
+    const legResults = this.scoreDetail.score_dimensions?.output?.legResults;
+    if (!legResults || legResults.length === 0) return [];
+    return legResults[0].categories || [];
+  }
+
+  rescoreFromDialog(): void {
+    this.api.rescoreAsset(this.data.assetId).subscribe({
+      next: () => {
+        this.scoreDetail = { scoring_status: 'PENDING' };
+        this.snackBar.open('Scoring queued — results in ~2 minutes', 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.snackBar.open('Could not queue scoring. Try again.', 'OK', { duration: 3000 });
+      },
+    });
   }
 
   getBaseImage(): string {
