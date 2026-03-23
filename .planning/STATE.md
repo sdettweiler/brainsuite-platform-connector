@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-03-20T18:17:06.122Z"
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-03-23T08:37:29.718Z"
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -53,6 +53,7 @@ Plan: 2 of 6
 | Phase 02 P01 | 9 | 2 tasks | 15 files |
 | Phase 02 P01 | 9 | 2 tasks | 15 files |
 | Phase 02 P02 | 15 | 2 tasks | 5 files |
+| Phase 02 P04 | 15 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,8 @@ Recent decisions affecting current work:
 - [Phase 02]: Redis singleton uses lazy-init get_redis() - mirrors ObjectStorageService._ensure_client() pattern from Phase 1
 - [Phase 02]: OAuth session cleanup in connect_accounts (not oauth_callback) - session must survive until user confirms account selection
 - [Phase 02]: asyncio_mode=auto in pyproject.toml - eliminates per-test @pytest.mark.asyncio boilerplate for Phase 2 async tests
+- [Phase 02]: APP_INITIALIZER added to app.config.ts: silently attempts httpOnly cookie refresh on startup — prevents flash-of-login-page on page reload when session is valid
+- [Phase 02]: auth.effects.ts logout$ kept for router navigation only — AuthService.logout() clears BehaviorSubject and calls backend endpoint, effect handles redirect
 
 ### Pending Todos
 
@@ -88,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T18:17:06.120Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-03-23T08:37:29.717Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
