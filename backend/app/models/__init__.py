@@ -11,6 +11,7 @@ from app.models.performance import (
     CurrencyRate,
     SyncJob,
 )
+from app.models.scoring import CreativeScoreResult
 
 __all__ = [
     "User", "Organization", "OrganizationRole", "RefreshToken",
@@ -20,4 +21,5 @@ __all__ = [
     "MetaRawPerformance", "TikTokRawPerformance", "GoogleAdsRawPerformance",
     "Dv360RawPerformance",
     "HarmonizedPerformance", "CurrencyRate", "SyncJob",
+    "CreativeScoreResult",
 ]
