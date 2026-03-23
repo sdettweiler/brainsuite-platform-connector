@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to execute
-stopped_at: Completed 03-06-PLAN.md
-last_updated: "2026-03-23T19:00:10.204Z"
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-03-23T19:09:10.079Z"
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 15
-  completed_plans: 12
+  completed_plans: 14
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-20)
 ## Current Position
 
 Phase: 03 (brainsuite-scoring-pipeline) — EXECUTING
-Plan: 4 of 6
+Plan: 6 of 6
 
 ## Performance Metrics
 
@@ -59,6 +59,8 @@ Plan: 4 of 6
 | Phase 03 P02 | 15 | 1 tasks | 2 files |
 | Phase 03 P01 | 15 | 2 tasks | 7 files |
 | Phase 03 P06 | 8 | 2 tasks | 3 files |
+| Phase 03 P03 | 8min | 2 tasks | 6 files |
+| Phase 03 P04 | 15 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -94,6 +96,12 @@ Recent decisions affecting current work:
 - [Phase 03]: down_revision=k2l3m4n5o6p7 for e1f2g3h4i5j6 migration: latest in chain at execution time
 - [Phase 03]: down_revision=e1f2g3h4i5j6 for f2g3h4i5j6k7 seed migration: latest in chain at execution time
 - [Phase 03]: Language values in metadata seed sorted alphabetically by label for consistent sort_order across environments
+- [Phase 03]: Session-per-operation: separate DB sessions for query, PROCESSING update, and COMPLETE/FAILED write; never held during BrainSuite HTTP calls
+- [Phase 03]: on_conflict_do_nothing for UNSCORED injection prevents re-sync from resetting COMPLETE/FAILED score records
+- [Phase 03]: SCHEDULER_ENABLED flag (default True) guards scoring job registration for multi-worker production deployments
+- [Phase 03]: ace_score.py deleted; dashboard uses local _get_performer_tag(None) placeholder until Plan 04 wires real BrainSuite score join
+- [Phase 03]: Scoring router GET /status uses comma-separated query param limited to 100 IDs for simple Angular polling
+- [Phase 03]: Dashboard outerjoin defaults scoring_status to UNSCORED in Python when no score record (row.scoring_status is None)
 
 ### Pending Todos
 
@@ -107,6 +115,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T19:00:10.202Z
-Stopped at: Completed 03-06-PLAN.md
+Last session: 2026-03-23T19:09:10.077Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None
