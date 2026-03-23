@@ -7,7 +7,7 @@ import secrets
 import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 import uuid
@@ -81,7 +81,7 @@ async def update_brainsuite_app(
     return app
 
 
-@router.delete("/apps/{app_id}")
+@router.delete("/apps/{app_id}", status_code=204)
 async def delete_brainsuite_app(
     app_id: uuid.UUID,
     current_user: User = Depends(get_current_admin),
@@ -93,7 +93,7 @@ async def delete_brainsuite_app(
     app.is_active = False
     db.add(app)
     await db.commit()
-    return {"detail": "App deleted"}
+    return Response(status_code=204)
 
 
 # Alias /brainsuite-apps to /apps for frontend convenience
@@ -145,7 +145,7 @@ async def update_brainsuite_app_alias(
     return app
 
 
-@router.delete("/brainsuite-apps/{app_id}")
+@router.delete("/brainsuite-apps/{app_id}", status_code=204)
 async def delete_brainsuite_app_alias(
     app_id: uuid.UUID,
     current_user: User = Depends(get_current_admin),
@@ -157,7 +157,7 @@ async def delete_brainsuite_app_alias(
     app.is_active = False
     db.add(app)
     await db.commit()
-    return {"detail": "App deleted"}
+    return Response(status_code=204)
 
 
 # ─── OAuth Flow ───────────────────────────────────────────────────────────────
