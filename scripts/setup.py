@@ -10,7 +10,9 @@ Usage:
 """
 import getpass
 import secrets
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 # cryptography is already in requirements.txt (42.0.4)
@@ -57,7 +59,7 @@ def main():
     print("--- Database ---")
     pg_user = prompt("PostgreSQL user", "brainsuite")
     pg_password = prompt("PostgreSQL password", "brainsuite_dev", secret=True)
-    pg_db = prompt("PostgreSQL database name", "brainsuite")
+    pg_db = prompt("PostgreSQL database name", "platform_connectors")
 
     # --- Application URL ---
     print("\n--- Application ---")
@@ -116,7 +118,11 @@ def main():
 
     # --- BrainSuite ---
     print("\n--- BrainSuite API ---")
-    brainsuite_api_key = prompt("BrainSuite API key (blank to skip)")
+    print("  OAuth 2.0 Client Credentials (from BrainSuite dashboard)")
+    brainsuite_client_id = prompt("BrainSuite Client ID (blank to skip)")
+    brainsuite_client_secret = prompt("BrainSuite Client Secret", secret=True) if brainsuite_client_id else ""
+    brainsuite_base_url = prompt("BrainSuite API base URL", "https://api.brainsuite.ai") if brainsuite_client_id else "https://api.brainsuite.ai"
+    brainsuite_auth_url = prompt("BrainSuite Auth URL", "https://auth.brainsuite.ai/oauth2/token") if brainsuite_client_id else "https://auth.brainsuite.ai/oauth2/token"
 
     # --- Currency ---
     print("\n--- Currency Conversion ---")
@@ -172,7 +178,10 @@ def main():
         f"DV360_CLIENT_SECRET={dv360_client_secret}",
         "",
         "# --- BrainSuite ---",
-        f"BRAINSUITE_API_KEY={brainsuite_api_key}",
+        f"BRAINSUITE_CLIENT_ID={brainsuite_client_id}",
+        f"BRAINSUITE_CLIENT_SECRET={brainsuite_client_secret}",
+        f"BRAINSUITE_BASE_URL={brainsuite_base_url}",
+        f"BRAINSUITE_AUTH_URL={brainsuite_auth_url}",
         "",
         "# --- Currency ---",
         f"EXCHANGE_RATE_API_KEY={exchange_key}",
@@ -189,10 +198,40 @@ def main():
 
     ENV_PATH.write_text(content)
     print(f"\n.env written to {ENV_PATH}")
+
+    # --- Create MinIO bucket if Docker stack is running ---
+    _create_minio_bucket(s3_bucket, aws_key, aws_secret)
+
     print("\nNext steps:")
     print("  1. Run: make dev")
     print("  2. Open: http://localhost:4200 (frontend)")
     print("  3. Open: http://localhost:9001 (MinIO console)")
+
+
+def _create_minio_bucket(bucket: str, access_key: str, secret_key: str) -> None:
+    """Create the MinIO bucket if the stack is already running."""
+    # Check if minio container is up
+    result = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.Running}}", "brainsuite_minio"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0 or result.stdout.strip() != "true":
+        print("\nMinIO container not running — bucket will be created on first 'make dev'.")
+        print(f"  To create manually: docker exec brainsuite_minio mc alias set local http://localhost:9000 {access_key} {secret_key} && docker exec brainsuite_minio mc mb local/{bucket}")
+        return
+
+    print(f"\nCreating MinIO bucket '{bucket}'...")
+    mc = "docker exec brainsuite_minio mc"
+    cmds = [
+        f"{mc} alias set local http://localhost:9000 {access_key} {secret_key}",
+        f"{mc} mb --ignore-existing local/{bucket}",
+    ]
+    for cmd in cmds:
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"  Warning: {r.stderr.strip() or r.stdout.strip()}")
+            return
+    print(f"  Bucket '{bucket}' ready.")
 
 
 if __name__ == "__main__":
