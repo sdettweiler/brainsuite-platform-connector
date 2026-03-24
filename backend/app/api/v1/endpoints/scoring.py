@@ -1,16 +1,24 @@
-"""Scoring endpoints — rescore trigger, status polling, score detail."""
+"""Scoring endpoints — rescore trigger, status polling, score detail, refetch."""
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, HTTPException
+import logging
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone
 import uuid
 
-from app.db.base import get_db
+from app.db.base import get_db, get_session_factory
 from app.models.user import User
 from app.models.scoring import CreativeScoreResult
 from app.models.creative import CreativeAsset
 from app.api.v1.deps import get_current_user
+from app.services.brainsuite_score import (
+    brainsuite_score_service,
+    extract_score_data,
+    persist_and_replace_visualizations,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -153,3 +161,91 @@ async def get_score_detail(
         "error_reason": score_record.error_reason,
         "scored_at": score_record.scored_at.isoformat() if score_record.scored_at else None,
     }
+
+
+@router.post("/{asset_id}/refetch")
+async def refetch_score(
+    asset_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-fetch results from the existing BrainSuite job and re-persist visualizations.
+
+    Does NOT re-submit the video — only re-calls GET /{jobId} using the stored
+    brainsuite_job_id, downloads all visualization assets to our storage, and
+    updates score_dimensions.  Useful for assets scored before visualization
+    persistence was added, or to refresh expired visualization links.
+
+    Requires scoring_status to be COMPLETE or FAILED with a stored brainsuite_job_id.
+    """
+    # Verify asset belongs to user's org
+    asset_result = await db.execute(
+        select(CreativeAsset).where(
+            CreativeAsset.id == asset_id,
+            CreativeAsset.organization_id == current_user.organization_id,
+        )
+    )
+    asset = asset_result.scalar_one_or_none()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    # Get score record
+    score_result = await db.execute(
+        select(CreativeScoreResult).where(
+            CreativeScoreResult.creative_asset_id == asset_id
+        )
+    )
+    score_record = score_result.scalar_one_or_none()
+
+    if not score_record:
+        raise HTTPException(status_code=404, detail="No score record found for this asset")
+
+    if not score_record.brainsuite_job_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No BrainSuite job ID stored — asset has not been submitted for scoring",
+        )
+
+    if score_record.scoring_status not in ("COMPLETE", "FAILED"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot refetch while scoring_status is '{score_record.scoring_status}'",
+        )
+
+    background_tasks.add_task(
+        _run_refetch_job,
+        str(asset_id),
+        str(score_record.id),
+        score_record.brainsuite_job_id,
+    )
+    return {"status": "refetch_queued", "asset_id": str(asset_id)}
+
+
+async def _run_refetch_job(asset_id: str, score_id: str, job_id: str) -> None:
+    """Background task: re-fetch BrainSuite job result and persist visualizations."""
+    logger.info("Refetch started for asset %s job %s", asset_id, job_id)
+    try:
+        # Re-fetch the completed job from BrainSuite (returns immediately — already Succeeded)
+        result_data = await brainsuite_score_service.poll_job_status(
+            job_id, max_polls=3, poll_interval=5
+        )
+
+        # Persist visualization URLs before they expire
+        raw_output = result_data.get("output", {})
+        stored_output = await persist_and_replace_visualizations(raw_output, asset_id)
+        result_data_updated = {**result_data, "output": stored_output}
+
+        score_data = extract_score_data(result_data_updated, strip_viz=False)
+
+        async with get_session_factory()() as db:
+            score_row = await db.get(CreativeScoreResult, uuid.UUID(score_id))
+            if score_row:
+                score_row.score_dimensions = score_data["score_dimensions"]
+                score_row.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+
+        logger.info("Refetch complete for asset %s", asset_id)
+
+    except Exception as exc:
+        logger.error("Refetch failed for asset %s job %s: %s: %s", asset_id, job_id, type(exc).__name__, exc, exc_info=True)

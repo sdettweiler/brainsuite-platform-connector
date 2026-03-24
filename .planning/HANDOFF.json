@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-03-24T15:19:08.848Z",
+  "phase": "03",
+  "phase_name": "brainsuite-scoring-pipeline",
+  "phase_dir": ".planning/phases/03-brainsuite-scoring-pipeline",
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
+  "status": "paused",
+  "feature": "creative-effectiveness-tab",
+  "note": "Ad-hoc feature work outside formal phase plans — CE tab UI build + bugfixes",
+  "completed_tasks": [
+    {"id": 1, "name": "persist_and_replace_visualizations in brainsuite_score.py", "status": "done"},
+    {"id": 2, "name": "Update scoring_job.py to persist viz after completion", "status": "done"},
+    {"id": 3, "name": "Add POST /refetch endpoint to scoring.py", "status": "done"},
+    {"id": 4, "name": "Redesign Creative Effectiveness tab (full UI)", "status": "done"},
+    {"id": 5, "name": "Fix array-type visualizations in persist function", "status": "done"},
+    {"id": 6, "name": "Fix S3 path prefix (creatives/brainsuite/...)", "status": "done"},
+    {"id": 7, "name": "Fix frontend getSelectedPillarVizModes for array viz", "status": "done"},
+    {"id": 8, "name": "Add assetIsVideo() and getActiveViz() helpers", "status": "done"}
+  ],
+  "remaining_tasks": [
+    {"id": 9, "name": "End-to-end test with real scored asset", "status": "not_started"},
+    {"id": 10, "name": "Verify sub-KPI kpis object shape in real API response", "status": "not_started"},
+    {"id": 11, "name": "Visual QA pass on CE tab layout", "status": "not_started"}
+  ],
+  "blockers": [
+    {
+      "description": "Cannot fully test without a real scored asset that goes through new persist flow",
+      "type": "external",
+      "workaround": "Use /refetch on an existing COMPLETE asset with brainsuite_job_id"
+    }
+  ],
+  "human_actions_pending": [
+    {
+      "action": "Test the CE tab with a real scored asset",
+      "context": "Need browser console + network tab to verify viz URLs load and sub-KPIs render",
+      "blocking": false
+    }
+  ],
+  "decisions": [
+    {"decision": "kpi.visualizations is ARRAY [{type, url}] not dict", "rationale": "API docs show KpiImageVisual/KpiMovieVisual array items", "phase": "03"},
+    {"decision": "S3 path must start with creatives/", "rationale": "serve_object in main.py prepends creatives/ for non-creatives/ paths", "phase": "03"},
+    {"decision": "Re-fetch via FastAPI BackgroundTasks", "rationale": "Simple, immediate, no queue overhead for single-asset re-fetch", "phase": "03"}
+  ],
+  "uncommitted_files": [
+    "backend/app/services/brainsuite_score.py",
+    "backend/app/services/sync/scoring_job.py",
+    "backend/app/api/v1/endpoints/scoring.py",
+    "frontend/src/app/features/dashboard/dialogs/asset-detail-dialog.component.ts"
+  ],
+  "next_action": "Test with real scored asset: check CE tab, inspect console for score_dimensions shape, call /refetch if viz missing",
+  "context_notes": "CE tab redesign complete. Main uncertainty: actual shape of kpis object in real API response (object with named keys per API docs, but need to verify). Viz toggles require re-fetch to populate for existing assets."
+}

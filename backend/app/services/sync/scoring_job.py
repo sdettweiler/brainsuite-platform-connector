@@ -1,9 +1,9 @@
 """BrainSuite scoring batch job — runs via APScheduler every 15 minutes."""
 import logging
+import os
 from datetime import datetime, timezone
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.base import get_session_factory
 from app.models.creative import CreativeAsset, AssetMetadataValue
@@ -13,6 +13,7 @@ from app.services.brainsuite_score import (
     brainsuite_score_service,
     build_scoring_payload,
     extract_score_data,
+    persist_and_replace_visualizations,
     BrainSuiteJobError,
 )
 from app.services.object_storage import get_object_storage
@@ -26,7 +27,8 @@ async def run_scoring_batch() -> None:
     """Process up to BATCH_SIZE UNSCORED VIDEO assets and submit to BrainSuite.
 
     Phase 1: Query batch in one DB session, mark PENDING, release session.
-    Phase 2: For each asset, generate signed URL, submit job, poll, store result.
+    Phase 2: For each asset, download from internal storage, submit via the
+             announce→upload→start flow, poll, store result.
              NO DB session is held during HTTP calls.
     """
     logger.info("Starting scoring batch run")
@@ -82,10 +84,10 @@ async def run_scoring_batch() -> None:
             if s3_key.startswith("objects/"):
                 s3_key = s3_key[len("objects/"):]
 
-            # Generate a fresh signed URL (no DB session needed)
-            signed_url = get_object_storage().generate_signed_url(s3_key, ttl_sec=3600)
-            if not signed_url:
-                raise ValueError("Failed to generate signed S3 URL")
+            # Download video bytes from internal storage (no public URL needed)
+            file_bytes, _ = get_object_storage().download_blob(s3_key)
+            if not file_bytes:
+                raise ValueError(f"Asset not found in object storage: {s3_key}")
 
             # Load metadata for this asset (new short-lived DB session)
             metadata_dict: dict[str, str] = {}
@@ -102,23 +104,21 @@ async def run_scoring_batch() -> None:
                     if field_value is not None:
                         metadata_dict[field_name] = field_value
 
-            # Build BrainSuite payload
-            asset_name = asset.ad_name or f"{asset_id}.mp4"
-            payload = build_scoring_payload(
-                asset_name=asset_name,
-                signed_url=signed_url,
+            # Build BrainSuite briefing data (no URL — file uploaded directly)
+            filename = os.path.basename(s3_key) or (asset.ad_name or f"{asset_id}.mp4")
+            briefing_data = build_scoring_payload(
+                asset_name=filename,
                 platform=asset.platform,
                 placement=asset.placement,
                 metadata=metadata_dict,
             )
 
-            # Submit job (no DB session held)
-            job_response = await brainsuite_score_service.create_job_with_retry(payload)
-
-            # Extract job ID — BrainSuite returns "id" or "jobId"
-            job_id = job_response.get("id") or job_response.get("jobId")
-            if not job_id:
-                raise ValueError(f"BrainSuite response missing job ID: {job_response}")
+            # Submit via announce→upload→start flow (no public URL required)
+            job_id = await brainsuite_score_service.submit_job_with_upload(
+                file_bytes=file_bytes,
+                filename=filename,
+                briefing_data=briefing_data,
+            )
 
             # Mark PROCESSING
             async with get_session_factory()() as db:
@@ -134,8 +134,13 @@ async def run_scoring_batch() -> None:
             # Poll for completion (no DB session held — may take several minutes)
             result_data = await brainsuite_score_service.poll_job_status(str(job_id))
 
-            # Extract score
-            score_data = extract_score_data(result_data)
+            # Persist visualization URLs to our storage before they expire (~1h)
+            raw_output = result_data.get("output", {})
+            stored_output = await persist_and_replace_visualizations(raw_output, str(asset_id))
+            result_data = {**result_data, "output": stored_output}
+
+            # Extract score (strip_viz=False — URLs are now our own persistent ones)
+            score_data = extract_score_data(result_data, strip_viz=False)
 
             # Write results
             async with get_session_factory()() as db:
