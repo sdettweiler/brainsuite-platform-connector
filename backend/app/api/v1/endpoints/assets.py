@@ -379,8 +379,6 @@ async def export_assets(
         for sf in ["quality_ranking", "engagement_rate_ranking", "conversion_rate_ranking", "creative_fatigue"]:
             rankings[sf] = getattr(row, sf, None)
 
-        brainsuite = asset.brainsuite_metadata or {}
-
         entry = {
             "asset_id": str(asset.id),
             "ad_name": asset.ad_name or "",
@@ -402,12 +400,12 @@ async def export_assets(
             **ratios,
             **weighted,
             **rankings,
-            "ace_score": asset.ace_score,
-            "attention_score": brainsuite.get("attention_score"),
-            "brand_score": brainsuite.get("brand_score"),
-            "emotion_score": brainsuite.get("emotion_score"),
-            "message_clarity": brainsuite.get("message_clarity"),
-            "visual_impact": brainsuite.get("visual_impact"),
+            "ace_score": None,
+            "attention_score": None,
+            "brand_score": None,
+            "emotion_score": None,
+            "message_clarity": None,
+            "visual_impact": None,
         }
         assets_data.append(entry)
 
