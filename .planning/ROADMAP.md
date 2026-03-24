@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Infrastructure Portability** - Decouple from Replit; run locally and deploy on any cloud via Docker Compose (completed 2026-03-20)
 - [x] **Phase 2: Security Hardening** - Fix production security blockers and code quality issues before external users onboard (completed 2026-03-23)
-- [ ] **Phase 3: BrainSuite Scoring Pipeline** - Wire the BrainSuite API into an async scoring pipeline and surface scores in the dashboard
+- [x] **Phase 3: BrainSuite Scoring Pipeline** - Wire the BrainSuite API into an async scoring pipeline and surface scores in the dashboard (completed 2026-03-24)
 - [ ] **Phase 4: Dashboard Polish + Reliability** - Complete the creative performance UI and surface sync health to agencies
 
 ## Phase Details
@@ -64,13 +64,13 @@ Plans:
   3. A user can trigger a manual re-score on any individual creative via the UI and see the score update after the next scheduler run
   4. BrainSuite API failures (429, 5xx) do not crash the scheduler or leave assets permanently stuck — failed assets retry automatically; 4xx failures mark the asset as permanently failed with a visible reason
   5. The frontend polling endpoint (`/scoring/status`) is only called while PENDING or PROCESSING assets are on screen — not on every page load
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans complete
 Plans:
 - [x] 03-01-PLAN.md — DB model, migration, config, tenacity dep, test scaffolds
 - [x] 03-02-PLAN.md — BrainSuiteScoreService (auth, create-job, poll, channel mapping)
 - [x] 03-03-PLAN.md — Scoring batch job + harmonizer UNSCORED injection
 - [x] 03-04-PLAN.md — Scoring API router + dashboard endpoint updates
-- [ ] 03-05-PLAN.md — Frontend score badge, polling, Creative Effectiveness tab
+- [x] 03-05-PLAN.md — Frontend score badge, polling, Creative Effectiveness tab
 - [x] 03-06-PLAN.md — Seed BrainSuite MetadataField rows + setup.py/env updates
 
 ### Phase 4: Dashboard Polish + Reliability
@@ -94,5 +94,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Infrastructure Portability | 3/3 | Complete   | 2026-03-20 |
 | 2. Security Hardening | 6/6 | Complete   | 2026-03-23 |
-| 3. BrainSuite Scoring Pipeline | 5/6 | In Progress|  |
+| 3. BrainSuite Scoring Pipeline | 6/6 | Complete   | 2026-03-24 |
 | 4. Dashboard Polish + Reliability | 0/TBD | Not started | - |

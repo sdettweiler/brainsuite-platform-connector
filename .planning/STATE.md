@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Awaiting human verification
-stopped_at: Checkpoint in 03-05-PLAN.md (Task 3 visual verification)
-last_updated: "2026-03-23T19:35:00.000Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 03-05-PLAN.md — Phase 03 all 6 plans done
+last_updated: "2026-03-24T10:02:05.135Z"
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
-  completed_plans: 14
+  completed_plans: 15
 ---
 
 # Project State
@@ -61,6 +61,7 @@ Plan: 6 of 6
 | Phase 03 P06 | 8 | 2 tasks | 3 files |
 | Phase 03 P03 | 8min | 2 tasks | 6 files |
 | Phase 03 P04 | 15 | 2 tasks | 4 files |
+| Phase 03 P05 | 30 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,9 @@ Recent decisions affecting current work:
 - [Phase 03]: ace_score.py deleted; dashboard uses local _get_performer_tag(None) placeholder until Plan 04 wires real BrainSuite score join
 - [Phase 03]: Scoring router GET /status uses comma-separated query param limited to 100 IDs for simple Angular polling
 - [Phase 03]: Dashboard outerjoin defaults scoring_status to UNSCORED in Python when no score record (row.scoring_status is None)
+- [Phase 03]: Score badge uses ngSwitch on scoring_status (not ace_score) — aligns with Plan 04 API changes
+- [Phase 03]: Dialog loads score detail independently on open via getScoreDetail(assetId) — decoupled from dashboard polling
+- [Phase 03]: Item 7 (scored asset view) deferred — BrainSuite credentials not yet configured; code path fully implemented
 
 ### Pending Todos
 
@@ -115,6 +119,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T19:09:10.077Z
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-03-24T10:02:05.133Z
+Stopped at: Completed 03-05-PLAN.md — Phase 03 all 6 plans done
 Resume file: None
