@@ -128,7 +128,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       <div class="detail-header">
         <div class="detail-title-area">
           <div class="detail-platform">
-            <img [src]="getPlatformIconUrl(asset?.platform)" [alt]="asset?.platform" class="platform-icon-img" *ngIf="asset?.platform" />
+            <img [src]="getPlatformIconUrl(asset!.platform)" [alt]="asset?.platform" class="platform-icon-img" *ngIf="asset?.platform" />
             <span>{{ asset?.platform }}</span>
           </div>
           <h2>{{ asset?.ad_name || 'Unnamed Ad' }}</h2>
@@ -178,9 +178,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                 </div>
 
                 <div class="campaigns-section" *ngIf="detail?.campaigns?.length">
-                  <div class="section-label">Used in {{ detail.campaigns_count }} Campaign(s)</div>
+                  <div class="section-label">Used in {{ detail!.campaigns_count }} Campaign(s)</div>
                   <div class="campaigns-list">
-                    <div class="campaign-row" *ngFor="let c of detail.campaigns">
+                    <div class="campaign-row" *ngFor="let c of detail!.campaigns">
                       <i class="bi bi-megaphone" style="font-size: 14px;"></i>
                       <span>{{ c.campaign_name || c.campaign_id }}</span>
                       <span class="campaign-spend">{{ c.spend | currency:orgCurrency:'symbol':'1.0-0' }}</span>

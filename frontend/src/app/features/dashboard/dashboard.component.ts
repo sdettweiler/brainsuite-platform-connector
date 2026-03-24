@@ -244,9 +244,9 @@ interface StatsResponse {
                 </span>
               </div>
               <div class="tile-roas" *ngIf="asset.performance?.roas">
-                ROAS: <strong>{{ asset.performance.roas | number:'1.1-2' }}x</strong>
+                ROAS: <strong>{{ asset.performance?.roas | number:'1.1-2' }}x</strong>
               </div>
-              <div class="tile-tag" [class]="getTagClass(asset.performer_tag)">
+              <div class="tile-tag" [class]="getTagClass(asset.performer_tag || '')">
                 {{ asset.performer_tag }}
               </div>
             </div>
@@ -275,16 +275,16 @@ interface StatsResponse {
 
       <!-- Context menu (positioned via CSS) -->
       <div class="context-menu" *ngIf="contextMenu.visible" [style.top.px]="contextMenu.y" [style.left.px]="contextMenu.x">
-        <button (click)="openAssetDetail(contextMenu.asset)">
+        <button (click)="openAssetDetail(contextMenu.asset!)">
           <i class="bi bi-box-arrow-up-right"></i> Open Report
         </button>
-        <button (click)="openAssignProject(contextMenu.asset)">
+        <button (click)="openAssignProject(contextMenu.asset!)">
           <i class="bi bi-folder"></i> Assign to Project
         </button>
         <button [disabled]="selectedAssets.length < 2 || selectedAssets.length > 4" (click)="compareSelected()">
           <i class="bi bi-arrow-left-right"></i> Compare ({{ selectedAssets.length }})
         </button>
-        <button (click)="openEditMetadata(contextMenu.asset)">
+        <button (click)="openEditMetadata(contextMenu.asset!)">
           <i class="bi bi-tag"></i> Edit Metadata
         </button>
         <hr class="context-divider" />
@@ -884,6 +884,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return 'tag-avg';
   }
 
+<<<<<<< Updated upstream
   getScoreBadgeClass(rating: string | null): string {
     switch (rating) {
       case 'positive': return 'ace-score ace-positive';
@@ -951,8 +952,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   getTileThumbnail(asset: any): string {
-    if (asset.thumbnail_url) return asset.thumbnail_url;
     if (asset.asset_url && !asset.asset_url.endsWith('.mp4')) return asset.asset_url;
+    if (asset.thumbnail_url) return asset.thumbnail_url;
     return '/assets/images/placeholder.svg';
   }
 
