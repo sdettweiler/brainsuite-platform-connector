@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class ObjectStorageService:
     def __init__(self):
         self._client = None
+        self._presigned_client = None
         self._bucket_name = settings.S3_BUCKET_NAME
 
     def _ensure_client(self):
@@ -94,9 +95,33 @@ class ObjectStorageService:
         except ClientError:
             return None
 
+    def _ensure_presigned_client(self):
+        """Separate boto3 client for presigned URL generation.
+
+        Presigned URLs embed the endpoint host in the HMAC signature — the host
+        must be the one the browser will actually use.  We initialise this client
+        with S3_PUBLIC_URL (browser-reachable) rather than S3_ENDPOINT_URL
+        (Docker-internal).  generate_presigned_url() is purely cryptographic and
+        makes no network call, so it works even though the backend container
+        cannot reach S3_PUBLIC_URL itself.
+        """
+        if self._presigned_client is None:
+            endpoint = settings.S3_PUBLIC_URL or settings.S3_ENDPOINT_URL
+            kwargs = {
+                "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
+                "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
+                "region_name": settings.AWS_REGION or "us-east-1",
+                "config": Config(signature_version="s3v4"),
+            }
+            if endpoint:
+                kwargs["endpoint_url"] = endpoint
+            self._presigned_client = boto3.client("s3", **kwargs)
+            logger.info(f"S3 presigned client initialized (endpoint={endpoint})")
+        return self._presigned_client
+
     def generate_signed_url(self, relative_path: str, ttl_sec: int = 3600) -> Optional[str]:
         try:
-            client = self._ensure_client()
+            client = self._ensure_presigned_client()
             url = client.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": self._bucket_name, "Key": self._object_name(relative_path)},

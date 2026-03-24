@@ -88,7 +88,7 @@ INSIGHTS_FIELDS = [
 AD_ENRICHMENT_FIELDS = [
     "configured_status",
     "effective_status",
-    "creative{id,name,body,title,link_url,image_url,thumbnail_url,image_hash,video_id,call_to_action_type,object_story_spec,instagram_permalink_url,instagram_actor_id,object_type}",
+    "creative{id,name,body,title,link_url,image_url,image_hash,video_id,call_to_action_type,object_story_spec,instagram_permalink_url,instagram_actor_id,object_type}",
     "adset{bid_strategy,billing_event,destination_type,optimization_goal}",
 ]
 
@@ -773,7 +773,9 @@ class MetaSyncService:
                         )
                     video_thumbs = video_info.get("thumbnails", {}).get("data", []) if video_info else []
                     if video_thumbs and not thumbnail_url:
-                        thumbnail_url = video_thumbs[0].get("uri")
+                        # Pick the largest thumbnail by width (Meta returns multiple sizes)
+                        best = max(video_thumbs, key=lambda t: t.get("width", 0))
+                        thumbnail_url = best.get("uri")
 
                 if not is_video:
                     full_image_url = None
@@ -802,8 +804,30 @@ class MetaSyncService:
                             full_image_url = image_url
 
                         if full_image_url:
-                            _, asset_served_url = await self._download_asset(
-                                full_image_url, org_dir, connection.organization_id, ad_id, "img"
+                            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                                img_resp = await client.get(full_image_url)
+                                img_resp.raise_for_status()
+                                image_bytes = img_resp.content
+
+                            # Upload full-res asset
+                            content_type = img_resp.headers.get("content-type", "")
+                            ext = ".png" if "png" in content_type else ".jpg"
+                            img_filename = f"img_{ad_id}{ext}"
+                            img_rel = f"creatives/{connection.organization_id}/{img_filename}"
+                            img_local = os.path.join(org_dir, img_filename)
+                            with open(img_local, "wb") as f:
+                                f.write(image_bytes)
+                            from app.services.object_storage import get_object_storage
+                            obj_storage = get_object_storage()
+                            asset_served_url = obj_storage.upload_file(img_local, img_rel)
+                            try:
+                                os.remove(img_local)
+                            except OSError:
+                                pass
+
+                            # Generate thumbnail from full-res image
+                            thumb_served_url = await self._generate_and_upload_thumbnail(
+                                image_bytes, org_dir, connection.organization_id, ad_id
                             )
 
                 if is_video and video_id and not asset_served_url:
@@ -815,9 +839,13 @@ class MetaSyncService:
                         )
                     video_thumbs = video_info.get("thumbnails", {}).get("data", []) if video_info else []
                     if video_thumbs and not thumbnail_url:
-                        thumbnail_url = video_thumbs[0].get("uri")
+                        # Pick the largest thumbnail by width (Meta returns multiple sizes)
+                        best = max(video_thumbs, key=lambda t: t.get("width", 0))
+                        thumbnail_url = best.get("uri")
 
-                if thumbnail_url:
+                # For videos: download the best thumbnail from Meta
+                # For images: thumb_served_url already set above from generated thumbnail
+                if thumbnail_url and not thumb_served_url:
                     _, thumb_served_url = await self._download_asset(
                         thumbnail_url, org_dir, connection.organization_id, ad_id, "thumb"
                     )
@@ -1020,6 +1048,66 @@ class MetaSyncService:
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
             logger.warning("Failed to download asset for ad %s: %s", ad_id, e, exc_info=True)
             return None, None
+
+    @staticmethod
+    def _generate_thumbnail(
+        image_bytes: bytes,
+        max_size: int = 600,
+    ) -> tuple[bytes, str]:
+        """Resize image to fit within max_size×max_size, preserving aspect ratio.
+
+        Returns (thumbnail_bytes, format) where format is 'JPEG' or 'PNG'.
+        JPEG is used for photos; PNG is kept for images that have transparency.
+        """
+        from PIL import Image
+        import io
+
+        img = Image.open(io.BytesIO(image_bytes))
+        has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+
+        img.thumbnail((max_size, max_size), Image.LANCZOS)
+
+        out = io.BytesIO()
+        if has_alpha:
+            img = img.convert("RGBA")
+            img.save(out, format="PNG", optimize=True)
+            return out.getvalue(), "PNG"
+        else:
+            img = img.convert("RGB")
+            img.save(out, format="JPEG", quality=85, optimize=True)
+            return out.getvalue(), "JPEG"
+
+    async def _generate_and_upload_thumbnail(
+        self,
+        image_bytes: bytes,
+        org_dir: str,
+        org_id,
+        ad_id: str,
+    ) -> str | None:
+        """Generate a thumbnail from full-res image bytes and upload to object storage."""
+        try:
+            from app.services.object_storage import get_object_storage
+            obj_storage = get_object_storage()
+
+            thumb_bytes, fmt = self._generate_thumbnail(image_bytes)
+            ext = ".jpg" if fmt == "JPEG" else ".png"
+            filename = f"thumb_{ad_id}{ext}"
+            relative_path = f"creatives/{org_id}/{filename}"
+            local_path = os.path.join(org_dir, filename)
+
+            with open(local_path, "wb") as f:
+                f.write(thumb_bytes)
+
+            served_url = obj_storage.upload_file(local_path, relative_path)
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
+            logger.info(f"  Generated thumbnail: {filename} ({len(thumb_bytes)} bytes)")
+            return served_url
+        except Exception as e:
+            logger.warning("Failed to generate thumbnail for ad %s: %s", ad_id, e, exc_info=True)
+            return None
 
 
 meta_sync = MetaSyncService()

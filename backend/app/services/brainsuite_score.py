@@ -501,8 +501,12 @@ async def persist_and_replace_visualizations(output: dict, asset_id: str) -> dic
 
     storage = get_object_storage()
 
-    async def _download_and_store(url: str, s3_path: str) -> Optional[str]:
-        """Download a single URL and upload to S3.  Returns served URL or None."""
+    async def _download_and_store(url: str, s3_path: str, type_hint: str = "") -> Optional[str]:
+        """Download a single URL and upload to S3.  Returns served URL or None.
+
+        type_hint: BrainSuite viz type field — "image" or "movie" — used as last-resort
+        extension fallback when content-type and URL path give no usable extension.
+        """
         content_type: Optional[str] = None
         try:
             async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
@@ -513,10 +517,32 @@ async def persist_and_replace_visualizations(output: dict, asset_id: str) -> dic
                 )
                 return None
             content_type = resp.headers.get("content-type", "").split(";")[0].strip() or None
-            ext = mimetypes.guess_extension(content_type or "") or ""
-            # Normalise awkward extensions
-            if ext in (".jpe", ".jpeg"):
-                ext = ".jpg"
+            # 1. Explicit map — mimetypes.guess_extension("video/mp4") returns None on most platforms
+            _EXT_MAP = {
+                "video/mp4": ".mp4",
+                "video/webm": ".webm",
+                "video/quicktime": ".mov",
+                "image/jpeg": ".jpg",
+                "image/jpg": ".jpg",
+                "image/png": ".png",
+                "image/gif": ".gif",
+                "image/webp": ".webp",
+            }
+            ext = _EXT_MAP.get(content_type or "")
+            # 2. mimetypes fallback
+            if not ext:
+                ext = mimetypes.guess_extension(content_type or "") or ""
+                if ext in (".jpe", ".jpeg"):
+                    ext = ".jpg"
+            # 3. Extract from the URL path (presigned URLs often contain the original filename)
+            if not ext:
+                from urllib.parse import urlparse
+                _, url_ext = os.path.splitext(urlparse(url).path)
+                if url_ext and len(url_ext) <= 5:
+                    ext = url_ext.lower()
+            # 4. BrainSuite type hint as last resort
+            if not ext:
+                ext = ".mp4" if type_hint == "movie" else ".jpg"
             full_s3_path = s3_path + ext if ext else s3_path
             with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
                 tmp.write(resp.content)
@@ -548,6 +574,7 @@ async def persist_and_replace_visualizations(output: dict, asset_id: str) -> dic
                                     stored = await _download_and_store(
                                         raw_url,
                                         f"creatives/brainsuite/{asset_id}/viz/{safe}/{viz_key}",
+                                        type_hint=viz_val.get("type", ""),
                                     )
                                     viz_val = {**viz_val, "url": stored}
                             new_vizs[viz_key] = viz_val
@@ -563,6 +590,7 @@ async def persist_and_replace_visualizations(output: dict, asset_id: str) -> dic
                                     stored = await _download_and_store(
                                         raw_url,
                                         f"creatives/brainsuite/{asset_id}/viz/{safe}/{idx}",
+                                        type_hint=item.get("type", ""),
                                     )
                                     item = {**item, "url": stored}
                             new_list.append(item)
