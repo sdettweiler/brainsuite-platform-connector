@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     # S3 / MinIO
     S3_ENDPOINT_URL: Optional[str] = None
+    S3_PUBLIC_URL: Optional[str] = None
     S3_BUCKET_NAME: str = "brainsuite-assets"
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
