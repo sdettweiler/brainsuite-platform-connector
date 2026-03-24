@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, field_validator, model_validator
 from typing import List, Optional
 import secrets
 
@@ -52,11 +52,33 @@ class Settings(BaseSettings):
     DV360_CLIENT_ID: Optional[str] = None
     DV360_CLIENT_SECRET: Optional[str] = None
 
+    # Environment
+    CURRENT_ENV: str = "production"
+
     # BrainSuite
     BRAINSUITE_CLIENT_ID: Optional[str] = None
     BRAINSUITE_CLIENT_SECRET: Optional[str] = None
     BRAINSUITE_BASE_URL: str = "https://api.brainsuite.ai"
     BRAINSUITE_AUTH_URL: str = "https://auth.brainsuite.ai/oauth2/token"
+
+    # BrainSuite dev credentials (used when CURRENT_ENV=dev)
+    DEV_BRAINSUITE_CLIENT_ID: Optional[str] = None
+    DEV_BRAINSUITE_CLIENT_SECRET: Optional[str] = None
+    DEV_BRAINSUITE_BASE_URL: Optional[str] = None
+    DEV_BRAINSUITE_AUTH_URL: Optional[str] = None
+
+    @model_validator(mode="after")
+    def apply_env_credentials(self) -> "Settings":
+        if self.CURRENT_ENV == "dev":
+            if self.DEV_BRAINSUITE_CLIENT_ID:
+                self.BRAINSUITE_CLIENT_ID = self.DEV_BRAINSUITE_CLIENT_ID
+            if self.DEV_BRAINSUITE_CLIENT_SECRET:
+                self.BRAINSUITE_CLIENT_SECRET = self.DEV_BRAINSUITE_CLIENT_SECRET
+            if self.DEV_BRAINSUITE_BASE_URL:
+                self.BRAINSUITE_BASE_URL = self.DEV_BRAINSUITE_BASE_URL
+            if self.DEV_BRAINSUITE_AUTH_URL:
+                self.BRAINSUITE_AUTH_URL = self.DEV_BRAINSUITE_AUTH_URL
+        return self
 
     # Currency
     EXCHANGERATE_API_KEY: Optional[str] = None
