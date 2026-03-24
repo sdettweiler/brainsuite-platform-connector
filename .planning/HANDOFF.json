@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-03-24T15:19:08.848Z",
+  "timestamp": "2026-03-24T18:01:25.754Z",
   "phase": "03",
   "phase_name": "brainsuite-scoring-pipeline",
   "phase_dir": ".planning/phases/03-brainsuite-scoring-pipeline",
@@ -9,47 +9,31 @@
   "total_tasks": null,
   "status": "paused",
   "feature": "creative-effectiveness-tab",
-  "note": "Ad-hoc feature work outside formal phase plans — CE tab UI build + bugfixes",
+  "note": "CE tab fully working — all blocking bugs resolved this session",
   "completed_tasks": [
-    {"id": 1, "name": "persist_and_replace_visualizations in brainsuite_score.py", "status": "done"},
-    {"id": 2, "name": "Update scoring_job.py to persist viz after completion", "status": "done"},
-    {"id": 3, "name": "Add POST /refetch endpoint to scoring.py", "status": "done"},
-    {"id": 4, "name": "Redesign Creative Effectiveness tab (full UI)", "status": "done"},
-    {"id": 5, "name": "Fix array-type visualizations in persist function", "status": "done"},
-    {"id": 6, "name": "Fix S3 path prefix (creatives/brainsuite/...)", "status": "done"},
-    {"id": 7, "name": "Fix frontend getSelectedPillarVizModes for array viz", "status": "done"},
-    {"id": 8, "name": "Add assetIsVideo() and getActiveViz() helpers", "status": "done"}
+    {"id": 1, "name": "persist_and_replace_visualizations + scoring_job + refetch endpoint (prior sessions)", "status": "done"},
+    {"id": 2, "name": "Fix viz file extension detection (4-level fallback)", "status": "done"},
+    {"id": 3, "name": "Fix presigned URL SignatureDoesNotMatch (separate boto3 client using S3_PUBLIC_URL)", "status": "done"},
+    {"id": 4, "name": "Fix score_dimensions data path (kpis flat on legResults[0].kpis)", "status": "done"},
+    {"id": 5, "name": "Fix viz toggle buttons not responding to clicks (trackBy on *ngFor)", "status": "done"}
   ],
   "remaining_tasks": [
-    {"id": 9, "name": "End-to-end test with real scored asset", "status": "not_started"},
-    {"id": 10, "name": "Verify sub-KPI kpis object shape in real API response", "status": "not_started"},
-    {"id": 11, "name": "Visual QA pass on CE tab layout", "status": "not_started"}
+    {"id": 6, "name": "Visual QA pass on CE tab layout", "status": "not_started"},
+    {"id": 7, "name": "Commit all CE tab changes", "status": "not_started"}
   ],
-  "blockers": [
-    {
-      "description": "Cannot fully test without a real scored asset that goes through new persist flow",
-      "type": "external",
-      "workaround": "Use /refetch on an existing COMPLETE asset with brainsuite_job_id"
-    }
-  ],
-  "human_actions_pending": [
-    {
-      "action": "Test the CE tab with a real scored asset",
-      "context": "Need browser console + network tab to verify viz URLs load and sub-KPIs render",
-      "blocking": false
-    }
-  ],
+  "blockers": [],
+  "human_actions_pending": [],
   "decisions": [
-    {"decision": "kpi.visualizations is ARRAY [{type, url}] not dict", "rationale": "API docs show KpiImageVisual/KpiMovieVisual array items", "phase": "03"},
-    {"decision": "S3 path must start with creatives/", "rationale": "serve_object in main.py prepends creatives/ for non-creatives/ paths", "phase": "03"},
-    {"decision": "Re-fetch via FastAPI BackgroundTasks", "rationale": "Simple, immediate, no queue overhead for single-asset re-fetch", "phase": "03"}
+    {"decision": "Extension detection: 4-level fallback — explicit MIME map → mimetypes → URL path extraction → BrainSuite type hint (movie→.mp4, image→.jpg)", "rationale": "mimetypes.guess_extension('video/mp4') returns None on most platforms; BrainSuite presigned URLs may return application/octet-stream", "phase": "03"},
+    {"decision": "Presigned URL client (_ensure_presigned_client) uses S3_PUBLIC_URL endpoint, separate from API client", "rationale": "HMAC signature includes hostname; rewriting URL after signing breaks signature (minio:9000 vs localhost:9000)", "phase": "03"},
+    {"decision": "BrainSuite score_dimensions: kpis flat on legResults[0].kpis, each kpi.categories[] names its pillar. executiveSummary.categories has no kpis.", "rationale": "Discovered from real API response — assumed structure was wrong", "phase": "03"},
+    {"decision": "trackBy: trackVizByKey on *ngFor viz toggle buttons", "rationale": "Without trackBy, mousedown triggers CD which recreates *ngFor DOM nodes; click fires on detached element, ceVizMode never updates", "phase": "03"}
   ],
   "uncommitted_files": [
     "backend/app/services/brainsuite_score.py",
-    "backend/app/services/sync/scoring_job.py",
-    "backend/app/api/v1/endpoints/scoring.py",
+    "backend/app/services/object_storage.py",
     "frontend/src/app/features/dashboard/dialogs/asset-detail-dialog.component.ts"
   ],
-  "next_action": "Test with real scored asset: check CE tab, inspect console for score_dimensions shape, call /refetch if viz missing",
-  "context_notes": "CE tab redesign complete. Main uncertainty: actual shape of kpis object in real API response (object with named keys per API docs, but need to verify). Viz toggles require re-fetch to populate for existing assets."
+  "next_action": "Visual QA pass on CE tab, commit changes, then move to Phase 4.",
+  "context_notes": "CE tab fully functional. Viz toggle buttons work. Videos/images load via MinIO presigned URLs. Score data path correct. Three backend files and one frontend file have uncommitted changes."
 }
