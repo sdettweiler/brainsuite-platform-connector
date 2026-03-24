@@ -311,8 +311,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                     <button class="ce-pillar-card"
                       *ngFor="let pillar of getCategories(); let i = index"
                       [class.ce-pillar-active]="selectedPillarIdx === i"
+                      [class.ce-pillar-noclk]="isFormalMandatories(pillar.name)"
                       [style.--pillar-color]="getScoreColor(pillar.score, pillar.rating)"
-                      (click)="selectedPillarIdx = i; ceVizMode = 'original'">
+                      (click)="onPillarClick(i, pillar.name)">
                       <div class="pillar-card-top">
                         <i class="bi" [ngClass]="getPillarIcon(pillar.name)"></i>
                         <span class="pillar-score"
@@ -342,7 +343,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                     <div class="ce-viz-toggle-group">
                       <button class="ce-viz-btn" [class.active]="ceVizMode === 'original'"
                         (click)="ceVizMode = 'original'">Original</button>
-                      <ng-container *ngFor="let viz of getSelectedPillarVizModes()">
+                      <ng-container *ngFor="let viz of getSelectedPillarVizModes(); trackBy: trackVizByKey">
                         <button class="ce-viz-btn" [class.active]="ceVizMode === viz.key"
                           (click)="ceVizMode = viz.key" [disabled]="!viz.url"
                           [class.ce-viz-disabled]="!viz.url"
@@ -385,35 +386,35 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                   </div>
                 </div>
 
-                <!-- Active Pillar Detail -->
-                <div class="ce-pillar-detail-panel" *ngIf="getCategories()[selectedPillarIdx] as activePillar">
+                <!-- Formal Mandatories Panel (fixed — does not change with pillar selection) -->
+                <div class="ce-pillar-detail-panel" *ngIf="getFormalMandatoriesCategory() as fmPillar">
                   <div class="ce-pillar-detail-header">
                     <div class="ce-pillar-detail-mini-donut">
                       <svg viewBox="0 0 60 60" class="mini-donut-svg">
                         <circle class="donut-track" cx="30" cy="30" r="24"/>
                         <circle class="donut-fill" cx="30" cy="30" r="24"
-                          [style.stroke]="getScoreColor(activePillar.score, activePillar.rating)"
+                          [style.stroke]="getScoreColor(fmPillar.score, fmPillar.rating)"
                           [style.stroke-dasharray]="150.8"
-                          [style.stroke-dashoffset]="getMiniDashOffset(activePillar.score)"/>
+                          [style.stroke-dashoffset]="getMiniDashOffset(fmPillar.score)"/>
                       </svg>
                       <div class="mini-donut-center">
-                        <span [style.color]="getScoreColor(activePillar.score, activePillar.rating)">
-                          {{ activePillar.score != null ? (activePillar.score | number:'1.0-0') : '—' }}
+                        <span [style.color]="getScoreColor(fmPillar.score, fmPillar.rating)">
+                          {{ fmPillar.score != null ? (fmPillar.score | number:'1.0-0') : '—' }}
                         </span>
                       </div>
                     </div>
                     <div>
-                      <div class="ce-pillar-detail-title">{{ activePillar.name }}</div>
+                      <div class="ce-pillar-detail-title">{{ fmPillar.name }}</div>
                       <div class="ce-pillar-detail-rating"
-                        [style.color]="getScoreColor(activePillar.score, activePillar.rating)">
-                        {{ formatRatingLabel(activePillar.rating) }}
+                        [style.color]="getScoreColor(fmPillar.score, fmPillar.rating)">
+                        {{ formatRatingLabel(fmPillar.rating) }}
                       </div>
                     </div>
                   </div>
 
-                  <!-- KPI quick list -->
+                  <!-- KPI quick list (always Formal Mandatories) -->
                   <div class="ce-kpi-quick-list">
-                    <div class="ce-kpi-quick-item" *ngFor="let kpi of getSelectedPillarKpiList()">
+                    <div class="ce-kpi-quick-item" *ngFor="let kpi of getFormalMandatoriesKpiList()">
                       <i class="bi ce-kpi-status-icon"
                         [ngClass]="getKpiStatusIcon(kpi.rating)"
                         [style.color]="getScoreColor(kpi.score, kpi.rating)"></i>
@@ -504,7 +505,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .apply-btn:hover { background: var(--accent-hover); }
 
     .detail-tabs { flex: 1; overflow: hidden; }
-    .tab-content { padding: 20px; overflow: hidden; height: calc(85vh - 160px); }
+    .tab-content { padding: 20px; overflow: hidden; height: calc(92vh - 160px); }
     .perf-tab { display: flex; flex-direction: column; }
     .perf-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; flex: 1; min-height: 0; }
     .asset-col { display: flex; flex-direction: column; }
@@ -575,7 +576,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     /* ─── CE tab shell ─── */
     .ce-tab {
       display: flex; flex-direction: column; gap: 16px;
-      overflow-y: auto; height: calc(85vh - 160px);
+      overflow-y: auto; height: calc(92vh - 160px);
       scrollbar-width: thin; scrollbar-color: var(--border) transparent;
     }
     .ce-tab::-webkit-scrollbar { width: 4px; }
@@ -646,9 +647,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
     }
     .ce-pillar-card {
-      background: var(--bg-card); border-radius: 8px; padding: 10px;
+      background: var(--bg-card); border-radius: 8px; padding: 12px 10px;
       border: 1px solid var(--border); cursor: pointer; text-align: left;
-      transition: all var(--transition); display: flex; flex-direction: column; gap: 6px;
+      transition: all var(--transition); display: flex; flex-direction: column; gap: 8px;
       font-family: inherit;
     }
     .ce-pillar-card:hover { border-color: var(--pillar-color, var(--border)); background: var(--bg-primary); }
@@ -656,15 +657,16 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       border-color: var(--accent); background: var(--bg-primary);
       box-shadow: 0 0 0 1px var(--accent);
     }
+    .ce-pillar-card.ce-pillar-noclk { cursor: default; pointer-events: none; }
     .pillar-card-top {
       display: flex; justify-content: space-between; align-items: flex-start;
     }
-    .pillar-card-top .bi { font-size: 16px; color: var(--text-muted); }
+    .pillar-card-top .bi { font-size: 17px; color: var(--text-muted); }
     .ce-pillar-active .pillar-card-top .bi { color: var(--accent); }
-    .pillar-score { font-size: 18px; font-weight: 800; }
-    .pillar-name { font-size: 10px; font-weight: 600; color: var(--text-secondary); line-height: 1.2; }
+    .pillar-score { font-size: 21px; font-weight: 800; }
+    .pillar-name { font-size: 11px; font-weight: 600; color: var(--text-secondary); line-height: 1.2; }
     .pillar-bar-track {
-      height: 3px; background: var(--border); border-radius: 2px; overflow: hidden;
+      height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
     }
     .pillar-bar-fill {
       height: 100%; border-radius: 2px; transition: width 0.5s ease;
@@ -699,7 +701,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       min-height: 200px; background: #111; position: relative;
     }
     .ce-media-asset {
-      width: 100%; max-height: 260px; object-fit: contain; display: block;
+      width: 100%; max-height: 390px; object-fit: contain; display: block;
     }
     .ce-media-unavail {
       display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -736,25 +738,25 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     /* ─── Section 3: KPI detail cards ─── */
     .ce-kpi-section { flex-shrink: 0; padding-bottom: 8px; }
     .ce-kpi-cards-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(161px, 1fr)); gap: 11px;
     }
     .ce-kpi-card {
-      background: var(--bg-hover); border-radius: 8px; padding: 12px;
-      border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;
+      background: var(--bg-hover); border-radius: 9px; padding: 14px;
+      border: 1px solid var(--border); display: flex; flex-direction: column; gap: 9px;
     }
     .ce-kpi-card.kpi-card-negative { border-color: rgba(231,76,60,0.25); }
     .ce-kpi-card.kpi-card-na { opacity: 0.55; }
     .kpi-card-top { display: flex; justify-content: space-between; align-items: flex-start; }
     .kpi-card-icon-wrap {
-      width: 28px; height: 28px; border-radius: 6px;
+      width: 32px; height: 32px; border-radius: 7px;
       display: flex; align-items: center; justify-content: center;
     }
-    .kpi-card-icon-wrap .bi { font-size: 14px; }
+    .kpi-card-icon-wrap .bi { font-size: 16px; }
     .kpi-card-score-wrap { display: flex; flex-direction: column; align-items: flex-end; }
-    .kpi-card-score { font-size: 18px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
-    .kpi-card-status { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+    .kpi-card-score { font-size: 21px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+    .kpi-card-status { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
     .kpi-card-name {
-      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
       color: var(--text-secondary); line-height: 1.3;
     }
 
@@ -1125,47 +1127,72 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     return legResults[0]?.executiveSummary?.categories ?? [];
   }
 
+  /** KPIs for the selected pillar, filtered from legResults[0].kpis by category name. */
   getSelectedPillarKpiList(): any[] {
     const cat = this.getCategories()[this.selectedPillarIdx];
-    if (!cat?.kpis || typeof cat.kpis !== 'object') return [];
-    return Object.values(cat.kpis) as any[];
+    if (!cat) return [];
+    return this.getKpisForCategory(cat.name);
+  }
+
+  /** Returns the Formal Mandatories category object, or null if not present. */
+  getFormalMandatoriesCategory(): any | null {
+    return this.getCategories().find((c: any) =>
+      this.isFormalMandatories(c.name)
+    ) ?? null;
+  }
+
+  /** KPIs belonging to the Formal Mandatories category. */
+  getFormalMandatoriesKpiList(): any[] {
+    const cat = this.getFormalMandatoriesCategory();
+    if (!cat) return [];
+    return this.getKpisForCategory(cat.name);
+  }
+
+  private getKpisForCategory(catName: string): any[] {
+    const allKpis = this.scoreDetail?.score_dimensions?.legResults?.[0]?.kpis;
+    if (!allKpis || typeof allKpis !== 'object') return [];
+    return (Object.values(allKpis) as any[]).filter(
+      (kpi: any) => Array.isArray(kpi.categories) && kpi.categories.includes(catName)
+    );
+  }
+
+  isFormalMandatories(name: string): boolean {
+    const n = (name || '').toLowerCase();
+    return n.includes('formal') || n.includes('mandator');
+  }
+
+  onPillarClick(i: number, name: string): void {
+    if (this.isFormalMandatories(name)) return;
+    this.selectedPillarIdx = i;
+    this.ceVizMode = 'original';
   }
 
   /** Returns viz mode descriptors for the currently selected pillar's KPIs.
-   *  BrainSuite kpi.visualizations is an ARRAY [{type:"image"|"movie", url}].
+   *  Deduplicates by label — if the same label appears twice, only the last entry is kept.
    */
   getSelectedPillarVizModes(): { key: string; label: string; url: string | null; type: string }[] {
-    const cat = this.getCategories()[this.selectedPillarIdx];
-    if (!cat?.kpis) return [];
-    const modes: { key: string; label: string; url: string | null; type: string }[] = [];
-    for (const [, kpi] of Object.entries(cat.kpis) as [string, any][]) {
+    const all: { key: string; label: string; url: string | null; type: string }[] = [];
+    for (const kpi of this.getSelectedPillarKpiList()) {
       const vizs = kpi?.visualizations;
-      if (!vizs) continue;
-      // kpi-level: array of {type, url}
-      if (Array.isArray(vizs)) {
-        for (const vizItem of vizs) {
-          if (modes.length >= 4) break;
-          modes.push({
-            key: `${kpi.name}_${vizItem?.type ?? 'viz'}_${modes.length}`,
-            label: kpi.name ?? 'View',
-            url: vizItem?.url ?? null,
-            type: vizItem?.type === 'movie' ? 'video' : (vizItem?.type ?? 'image'),
-          });
-        }
-      } else if (typeof vizs === 'object') {
-        // executiveSummary-level: {sceneMontage: {type, url}}
-        for (const [vizKey, vizVal] of Object.entries(vizs) as [string, any][]) {
-          if (modes.length >= 4) break;
-          modes.push({
-            key: `${kpi.name}_${vizKey}`,
-            label: kpi.name ?? vizKey,
-            url: (vizVal as any)?.url ?? null,
-            type: (vizVal as any)?.type === 'movie' ? 'video' : ((vizVal as any)?.type ?? 'image'),
-          });
-        }
+      if (!Array.isArray(vizs) || vizs.length === 0) continue;
+      for (const vizItem of vizs) {
+        if (all.length >= 8) break;
+        all.push({
+          key: `${kpi.name}_${vizItem?.type ?? 'viz'}_${all.length}`,
+          label: kpi.name ?? 'View',
+          url: vizItem?.url ?? null,
+          type: vizItem?.type === 'movie' ? 'video' : (vizItem?.type ?? 'image'),
+        });
       }
+      if (all.length >= 8) break;
     }
-    return modes;
+    // Deduplicate by label — keep last occurrence (removes first duplicate)
+    const seen = new Map<string, { key: string; label: string; url: string | null; type: string }>();
+    for (const item of all) {
+      seen.set(item.label, item);
+    }
+    const deduped = Array.from(seen.values());
+    return deduped.slice(0, 4);
   }
 
   // ── CE: score color / formatting ───────────────────────────────────────
@@ -1273,6 +1300,8 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   getActiveViz(): { key: string; label: string; url: string | null; type: string } | null {
     return this.getSelectedPillarVizModes().find(v => v.key === this.ceVizMode) ?? null;
   }
+
+  trackVizByKey(_: number, viz: { key: string }): string { return viz.key; }
 
   getBaseImage(): string {
     if (this.asset?.thumbnail_url) return this.asset.thumbnail_url;

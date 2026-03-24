@@ -777,9 +777,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.contextMenu.visible = false;
     const { AssetDetailDialogComponent } = await import('../dashboard/dialogs/asset-detail-dialog.component');
     this.dialog.open(AssetDetailDialogComponent, {
-      width: '92vw',
-      maxWidth: '1430px',
-      height: '85vh',
+      width: '96vw',
+      maxWidth: '1800px',
+      height: '92vh',
       data: {
         assetId: asset.id,
         dateFrom: this.dateFrom,
@@ -794,9 +794,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   async openAssetById(assetId: string): Promise<void> {
     const { AssetDetailDialogComponent } = await import('../dashboard/dialogs/asset-detail-dialog.component');
     this.dialog.open(AssetDetailDialogComponent, {
-      width: '92vw',
-      maxWidth: '1430px',
-      height: '85vh',
+      width: '96vw',
+      maxWidth: '1800px',
+      height: '92vh',
       data: {
         assetId,
         dateFrom: this.dateFrom,

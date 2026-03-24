@@ -66,6 +66,20 @@ $bs-dark-theme: mat.define-dark-theme((
   --text-secondary: #4A5568;
   --text-muted:     #718096;
   --input-bg:       #EFF4FF;
+
+  // Fix mat-tab label visibility — MDC dark theme ships white labels by default
+  .mat-mdc-tab .mdc-tab__text-label {
+    color: var(--text-secondary) !important;
+  }
+  .mat-mdc-tab.mdc-tab--active .mdc-tab__text-label {
+    color: var(--text-primary) !important;
+  }
+  .mat-mdc-tab-header {
+    border-bottom-color: var(--border) !important;
+  }
+  .mdc-tab-indicator__content--underline {
+    border-color: var(--accent) !important;
+  }
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -149,10 +163,10 @@ p  { margin: 0; }
   font-weight: 700;
 
   &.ace-high,
-  &.ace-positive { background: rgba(46,204,113,0.2);  color: var(--success); border: 2px solid var(--success); }
-  &.ace-medium   { background: rgba(243,156,18,0.2);  color: var(--warning); border: 2px solid var(--warning); }
+  &.ace-positive { background: var(--success); color: #fff; border: none; }
+  &.ace-medium   { background: var(--warning); color: #fff; border: none; }
   &.ace-low,
-  &.ace-negative { background: rgba(231,76,60,0.2);   color: var(--error);   border: 2px solid var(--error);   }
+  &.ace-negative { background: var(--error);   color: #fff; border: none; }
 }
 
 .score-dash {

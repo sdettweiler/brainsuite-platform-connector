@@ -1,7 +1,9 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { Subscription } from 'rxjs';
+import { ThemeService } from '../../services/theme.service';
 
 interface NavItem {
   label: string;
@@ -20,7 +22,7 @@ interface NavItem {
       <div class="sidebar-logo">
         <img
           *ngIf="!collapsed"
-          src="/assets/images/logo-orange-white.png"
+          [src]="isDark ? '/assets/images/logo-orange-white.png' : '/assets/images/logo-orange.png'"
           alt="Brainsuite"
           class="logo-full"
         />
@@ -169,9 +171,22 @@ interface NavItem {
     .sidebar.collapsed .nav-label { display: none; }
   `],
 })
-export class SidebarComponent {
+export class SidebarComponent implements OnInit, OnDestroy {
   @Input() collapsed = false;
   @Output() toggleCollapse = new EventEmitter<void>();
+
+  isDark = true;
+  private themeSub!: Subscription;
+
+  constructor(private themeService: ThemeService) {}
+
+  ngOnInit(): void {
+    this.themeSub = this.themeService.currentTheme$.subscribe(
+      t => this.isDark = t === 'dark-theme'
+    );
+  }
+
+  ngOnDestroy(): void { this.themeSub?.unsubscribe(); }
 
   navItems: NavItem[] = [
     { label: 'Home',        icon: 'house',              route: '/home' },
