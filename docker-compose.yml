@@ -9,13 +9,13 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-brainsuite}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brainsuite_dev}
-      POSTGRES_DB: ${POSTGRES_DB:-brainsuite}
+      POSTGRES_DB: ${POSTGRES_DB:-platform_connectors}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-brainsuite}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-brainsuite} -d ${POSTGRES_DB:-platform_connectors}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -35,7 +35,7 @@ services:
 
   # ─── MinIO (S3-compatible object storage) ────────────────────────────────────
   minio:
-    image: minio/minio:RELEASE.2025-10-15T17-29-55Z
+    image: minio/minio:latest
     container_name: brainsuite_minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -68,8 +68,8 @@ services:
       minio:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-brainsuite}:${POSTGRES_PASSWORD:-brainsuite_dev}@db:5432/${POSTGRES_DB:-brainsuite}
-      SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-brainsuite}:${POSTGRES_PASSWORD:-brainsuite_dev}@db:5432/${POSTGRES_DB:-brainsuite}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-brainsuite}:${POSTGRES_PASSWORD:-brainsuite_dev}@db:5432/${POSTGRES_DB:-platform_connectors}
+      SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-brainsuite}:${POSTGRES_PASSWORD:-brainsuite_dev}@db:5432/${POSTGRES_DB:-platform_connectors}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-32-char-random-string}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
       BACKEND_CORS_ORIGINS: '["http://localhost:4200","http://localhost:80","http://frontend"]'
@@ -83,6 +83,7 @@ services:
 
       # Object Storage (S3/MinIO)
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://localhost:9000}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-brainsuite-assets}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin123}
@@ -103,6 +104,30 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:8000/api/v1/platforms/oauth/callback/google}
       GOOGLE_DEVELOPER_TOKEN: ${GOOGLE_DEVELOPER_TOKEN:-}
+
+      # BrainSuite
+      BRAINSUITE_CLIENT_ID: ${BRAINSUITE_CLIENT_ID:-}
+      BRAINSUITE_CLIENT_SECRET: ${BRAINSUITE_CLIENT_SECRET:-}
+      BRAINSUITE_BASE_URL: ${BRAINSUITE_BASE_URL:-https://api.brainsuite.ai}
+      BRAINSUITE_AUTH_URL: ${BRAINSUITE_AUTH_URL:-https://auth.brainsuite.ai/oauth2/token}
+
+      # Environment
+      CURRENT_ENV: ${CURRENT_ENV:-production}
+
+      # Dev credentials (active when CURRENT_ENV=development)
+      DEV_META_APP_ID: ${DEV_META_APP_ID:-}
+      DEV_META_APP_SECRET: ${DEV_META_APP_SECRET:-}
+      DEV_TIKTOK_APP_ID: ${DEV_TIKTOK_APP_ID:-}
+      DEV_TIKTOK_APP_SECRET: ${DEV_TIKTOK_APP_SECRET:-}
+      DEV_GOOGLE_CLIENT_ID: ${DEV_GOOGLE_CLIENT_ID:-}
+      DEV_GOOGLE_CLIENT_SECRET: ${DEV_GOOGLE_CLIENT_SECRET:-}
+      DEV_GOOGLE_DEVELOPER_TOKEN: ${DEV_GOOGLE_DEVELOPER_TOKEN:-}
+      DEV_DV360_CLIENT_ID: ${DEV_DV360_CLIENT_ID:-}
+      DEV_DV360_CLIENT_SECRET: ${DEV_DV360_CLIENT_SECRET:-}
+      DEV_BRAINSUITE_CLIENT_ID: ${DEV_BRAINSUITE_CLIENT_ID:-}
+      DEV_BRAINSUITE_CLIENT_SECRET: ${DEV_BRAINSUITE_CLIENT_SECRET:-}
+      DEV_BRAINSUITE_BASE_URL: ${DEV_BRAINSUITE_BASE_URL:-}
+      DEV_BRAINSUITE_AUTH_URL: ${DEV_BRAINSUITE_AUTH_URL:-}
 
       # Currency
       EXCHANGE_RATE_API_KEY: ${EXCHANGE_RATE_API_KEY:-}
