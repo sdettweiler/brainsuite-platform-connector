@@ -9,6 +9,20 @@ export class ApiService {
 
   constructor(private http: HttpClient) {}
 
+  getScoringStatus(assetIds: string[]): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/scoring/status`, {
+      params: new HttpParams().set('asset_ids', assetIds.join(',')),
+    });
+  }
+
+  rescoreAsset(assetId: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/scoring/${assetId}/rescore`, {});
+  }
+
+  getScoreDetail(assetId: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/scoring/${assetId}`);
+  }
+
   get<T>(path: string, params?: Record<string, any>): Observable<T> {
     let httpParams = new HttpParams();
     if (params) {
