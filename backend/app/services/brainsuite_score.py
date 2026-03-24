@@ -72,6 +72,7 @@ class BrainSuiteScoreService:
         credentials = f"{client_id}:{client_secret}"
         encoded = base64.b64encode(credentials.encode()).decode()
 
+        logger.info("BrainSuite auth: POST %s (client_id=%s...)", settings.BRAINSUITE_AUTH_URL, client_id[:8] if client_id else "MISSING")
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 settings.BRAINSUITE_AUTH_URL,
@@ -81,8 +82,10 @@ class BrainSuiteScoreService:
                 },
                 data={"grant_type": "client_credentials"},
             )
-            resp.raise_for_status()
-            data = resp.json()
+
+        logger.info("BrainSuite auth response: status=%s body=%s", resp.status_code, resp.text[:500])
+        resp.raise_for_status()
+        data = resp.json()
 
         self._token = data["access_token"]
         self._token_expires_at = now + timedelta(minutes=50)
@@ -107,6 +110,11 @@ class BrainSuiteScoreService:
             ValueError: on other 4xx errors (no retry — log as FAILED).
         """
         url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/ACE_VIDEO_SMV_API/create"
+        logger.info("BrainSuite create job: POST %s | channel=%s asset=%s",
+                    url,
+                    payload.get("input", {}).get("channel"),
+                    payload.get("assets", [{}])[0].get("name"))
+        logger.debug("BrainSuite create job payload: %s", payload)
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
                 url,
@@ -116,6 +124,8 @@ class BrainSuiteScoreService:
                 },
                 json=payload,
             )
+
+        logger.info("BrainSuite create job response: status=%s body=%s", resp.status_code, resp.text[:500])
 
         if resp.status_code == 429:
             reset_header = resp.headers.get("x-ratelimit-reset", "")
@@ -231,7 +241,7 @@ class BrainSuiteScoreService:
             data = resp.json()
             status = data.get("status", "")
 
-            logger.debug(
+            logger.info(
                 "BrainSuite job %s — status=%s (poll %d/%d)",
                 job_id,
                 status,
