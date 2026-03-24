@@ -41,7 +41,9 @@ interface DashboardAsset {
   asset_format: string | null;
   thumbnail_url: string | null;
   asset_url: string | null;
-  ace_score: number | null;
+  scoring_status: string | null;
+  total_score: number | null;
+  total_rating: string | null;
   is_active: boolean;
   performance: AssetPerformance | null;
   performer_tag: string | null;
@@ -884,7 +886,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return 'tag-avg';
   }
 
-<<<<<<< Updated upstream
   getScoreBadgeClass(rating: string | null): string {
     switch (rating) {
       case 'positive': return 'ace-score ace-positive';
