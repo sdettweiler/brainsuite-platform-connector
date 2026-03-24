@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     SCHEDULER_STARTUP_DELAY_SECONDS: int = 0
     SCHEDULER_ENABLED: bool = True
 
+    # Environment
+    CURRENT_ENV: str = "production"
+
     # Meta
     META_APP_ID: Optional[str] = None
     META_APP_SECRET: Optional[str] = None
@@ -52,16 +55,22 @@ class Settings(BaseSettings):
     DV360_CLIENT_ID: Optional[str] = None
     DV360_CLIENT_SECRET: Optional[str] = None
 
-    # Environment
-    CURRENT_ENV: str = "production"
-
     # BrainSuite
     BRAINSUITE_CLIENT_ID: Optional[str] = None
     BRAINSUITE_CLIENT_SECRET: Optional[str] = None
     BRAINSUITE_BASE_URL: str = "https://api.brainsuite.ai"
     BRAINSUITE_AUTH_URL: str = "https://auth.brainsuite.ai/oauth2/token"
 
-    # BrainSuite dev credentials (used when CURRENT_ENV=dev)
+    # Development credentials (used when CURRENT_ENV=development)
+    DEV_META_APP_ID: Optional[str] = None
+    DEV_META_APP_SECRET: Optional[str] = None
+    DEV_TIKTOK_APP_ID: Optional[str] = None
+    DEV_TIKTOK_APP_SECRET: Optional[str] = None
+    DEV_GOOGLE_CLIENT_ID: Optional[str] = None
+    DEV_GOOGLE_CLIENT_SECRET: Optional[str] = None
+    DEV_GOOGLE_DEVELOPER_TOKEN: Optional[str] = None
+    DEV_DV360_CLIENT_ID: Optional[str] = None
+    DEV_DV360_CLIENT_SECRET: Optional[str] = None
     DEV_BRAINSUITE_CLIENT_ID: Optional[str] = None
     DEV_BRAINSUITE_CLIENT_SECRET: Optional[str] = None
     DEV_BRAINSUITE_BASE_URL: Optional[str] = None
@@ -69,15 +78,26 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def apply_env_credentials(self) -> "Settings":
-        if self.CURRENT_ENV == "dev":
-            if self.DEV_BRAINSUITE_CLIENT_ID:
-                self.BRAINSUITE_CLIENT_ID = self.DEV_BRAINSUITE_CLIENT_ID
-            if self.DEV_BRAINSUITE_CLIENT_SECRET:
-                self.BRAINSUITE_CLIENT_SECRET = self.DEV_BRAINSUITE_CLIENT_SECRET
-            if self.DEV_BRAINSUITE_BASE_URL:
-                self.BRAINSUITE_BASE_URL = self.DEV_BRAINSUITE_BASE_URL
-            if self.DEV_BRAINSUITE_AUTH_URL:
-                self.BRAINSUITE_AUTH_URL = self.DEV_BRAINSUITE_AUTH_URL
+        if self.CURRENT_ENV == "development":
+            pairs = [
+                ("META_APP_ID", "DEV_META_APP_ID"),
+                ("META_APP_SECRET", "DEV_META_APP_SECRET"),
+                ("TIKTOK_APP_ID", "DEV_TIKTOK_APP_ID"),
+                ("TIKTOK_APP_SECRET", "DEV_TIKTOK_APP_SECRET"),
+                ("GOOGLE_CLIENT_ID", "DEV_GOOGLE_CLIENT_ID"),
+                ("GOOGLE_CLIENT_SECRET", "DEV_GOOGLE_CLIENT_SECRET"),
+                ("GOOGLE_DEVELOPER_TOKEN", "DEV_GOOGLE_DEVELOPER_TOKEN"),
+                ("DV360_CLIENT_ID", "DEV_DV360_CLIENT_ID"),
+                ("DV360_CLIENT_SECRET", "DEV_DV360_CLIENT_SECRET"),
+                ("BRAINSUITE_CLIENT_ID", "DEV_BRAINSUITE_CLIENT_ID"),
+                ("BRAINSUITE_CLIENT_SECRET", "DEV_BRAINSUITE_CLIENT_SECRET"),
+                ("BRAINSUITE_BASE_URL", "DEV_BRAINSUITE_BASE_URL"),
+                ("BRAINSUITE_AUTH_URL", "DEV_BRAINSUITE_AUTH_URL"),
+            ]
+            for prod_key, dev_key in pairs:
+                dev_val = getattr(self, dev_key)
+                if dev_val:
+                    setattr(self, prod_key, dev_val)
         return self
 
     # Currency
