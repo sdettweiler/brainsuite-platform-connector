@@ -25,11 +25,15 @@ A user can connect all their ad accounts, see every creative's performance metri
 
 ### Active
 
-- [ ] BrainSuite API integration — POST asset + metadata, receive score + dimensions, store results
-- [ ] Creative scoring visible in dashboard — scores + dimension breakdown surfaced in UI alongside performance metrics
-- [ ] Production security hardening — fix in-memory OAuth sessions, localStorage token storage, path traversal vulnerability
-- [ ] Platform data reliability — ensure metrics/assets sync reliably and surface sync errors to users
-- [ ] Dashboard UX polish — refine creative performance views, top/bottom performer identification
+*(All v1.0 requirements validated — see Validated section)*
+
+### Validated (Phase 4 complete — 2026-03-25)
+
+- ✓ BrainSuite API integration — POST asset + metadata, receive score + dimensions, store results (Phase 3)
+- ✓ Creative scoring visible in dashboard — score badge, CE dimension tab, sort/filter by score range (Phase 3–4)
+- ✓ Production security hardening — httpOnly cookie auth, encrypted tokens, path traversal fix (Phase 2)
+- ✓ Platform data reliability — health badges, reconnect prompts, token_expiry exposed, SCHEDULER_ENABLED guard (Phase 3–4)
+- ✓ Dashboard UX polish — thumbnail fallback, score range slider, nullslast sort, total_score alias (Phase 4)
 
 ### Out of Scope
 
