@@ -1,47 +1,52 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: MVP
-status: Milestone archived
-stopped_at: v1.0 complete — archived 2026-03-25
+milestone: v1.1
+milestone_name: Insights + Intelligence
+status: Defining requirements
+stopped_at: Milestone started — requirements in progress
 last_updated: "2026-03-25T00:00:00.000Z"
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 19
-  completed_plans: 19
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-25 after v1.0 milestone)
+See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Planning next milestone — run `/gsd:new-milestone`
+**Current focus:** Defining v1.1 requirements and roadmap
 
 ## Current Position
 
-Milestone v1.0 complete and archived. All 4 phases, 19 plans done.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-25 — Milestone v1.1 started
 
 ## Accumulated Context
 
 ### Decisions
 
-All decisions logged in PROJECT.md Key Decisions table. See also milestone archive at `.planning/milestones/v1.0-ROADMAP.md`.
+All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ### Pending Todos
 
 None.
 
-### Blockers/Concerns (carry to next milestone)
+### Blockers/Concerns (carry from v1.0)
 
-- BrainSuite scoring credentials need configuration in production (code path fully implemented)
-- Google Ads OAuth consent screen "Published" status should be verified before external user onboarding
+- BrainSuite image scoring: Static endpoint has different endpoint/payload from video — requires API discovery spike before finalizing schema
+- BrainSuite production credentials: need configuration (code path fully implemented)
+- Google Ads OAuth consent screen: verify "Published" status before external onboarding
+- AI metadata inference provider: TBD (likely Claude API) — needs investigation
 
 ## Session Continuity
 
 Last session: 2026-03-25
-Stopped at: v1.0 milestone archived
-Resume: Start next milestone with `/gsd:new-milestone`
+Stopped at: v1.1 milestone started — defining requirements
+Resume: Continue requirements definition
