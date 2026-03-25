@@ -57,13 +57,12 @@ Source: `frontend/src/styles.scss` utility classes (`.gap-2` = 8px, `.gap-3` = 1
 | Role | Size | Weight | Line Height | Usage |
 |------|------|--------|-------------|-------|
 | Body | 14px | 400 (regular) | 1.5 | Default body text, `html/body` global style, table cell text |
-| Label | 13px | 400 (regular) | 1.4 | Filter chips, table cells (`tbody td`), slider value labels, health badge captions, "2 hours ago" relative time |
-| Caption | 12px | 600 (semibold) | 1.3 | Uppercase column headers (`.connections-table thead th`), badge text (`.badge`), VIDEO tag overlay, `UNSCORED` chip, `--text-muted` metadata |
+| Caption | 12px | 600 (semibold) | 1.3 | Uppercase column headers (`.connections-table thead th`), badge text (`.badge`), VIDEO tag overlay, `UNSCORED` chip, `--text-muted` metadata, filter chips, table cells (`tbody td`), slider value labels, health badge captions, "2 hours ago" relative time |
 | Heading | 16–20px | 600 (semibold) | 1.2 | Section headings (`.section-header h2` = 16px/600; `.agg-value` = 20px/600); page title (h1) |
 
 Two weights in use: **400** (regular) and **600** (semibold). Weight 700 is not used in this phase — all headings, numeric metric values (ROAS, score numbers), and the h1 page title use 600/semibold.
 
-Typography scale: 12 / 13 / 14 / 16 / 20.
+Typography scale: 12 / 14 / 16 / 20.
 
 Source: `frontend/src/styles.scss` global type rules and component usage audit.
 
