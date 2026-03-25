@@ -56,6 +56,7 @@ class PlatformConnectionResponse(BaseModel):
     timezone: Optional[str]
     sync_status: str
     last_synced_at: Optional[datetime]
+    token_expiry: Optional[datetime] = None
     initial_sync_completed: bool
     historical_sync_completed: bool
     is_active: bool
