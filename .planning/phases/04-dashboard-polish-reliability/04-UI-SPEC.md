@@ -57,11 +57,13 @@ Source: `frontend/src/styles.scss` utility classes (`.gap-2` = 8px, `.gap-3` = 1
 | Role | Size | Weight | Line Height | Usage |
 |------|------|--------|-------------|-------|
 | Body | 14px | 400 (regular) | 1.5 | Default body text, `html/body` global style, table cell text |
-| Label | 13px | 400–500 | 1.4 | Filter chips, table cells (`tbody td`), slider value labels, health badge captions, "2 hours ago" relative time |
-| Caption | 11–12px | 600 | 1.3 | Uppercase column headers (`.connections-table thead th`), badge text (`.badge`), VIDEO tag overlay, `UNSCORED` chip, `--text-muted` metadata |
-| Heading | 16–20px | 600–700 | 1.2 | Section headings (`.section-header h2` = 16px/600; `.agg-value` = 20px/700) |
+| Label | 13px | 400 (regular) | 1.4 | Filter chips, table cells (`tbody td`), slider value labels, health badge captions, "2 hours ago" relative time |
+| Caption | 12px | 600 (semibold) | 1.3 | Uppercase column headers (`.connections-table thead th`), badge text (`.badge`), VIDEO tag overlay, `UNSCORED` chip, `--text-muted` metadata |
+| Heading | 16–20px | 600 (semibold) | 1.2 | Section headings (`.section-header h2` = 16px/600; `.agg-value` = 20px/600); page title (h1) |
 
-Two weights in use: **400** (regular) and **600** (semibold). Weight 700 is used only for numeric metric values (ROAS, score numbers) and the h1 page title.
+Two weights in use: **400** (regular) and **600** (semibold). Weight 700 is not used in this phase — all headings, numeric metric values (ROAS, score numbers), and the h1 page title use 600/semibold.
+
+Typography scale: 12 / 13 / 14 / 16 / 20.
 
 Source: `frontend/src/styles.scss` global type rules and component usage audit.
 
@@ -109,6 +111,10 @@ All components below exist in the project. Phase 4 modifies or adds to them — 
 | Health badge | `.badge` + `.badge-success` / `.badge-warning` / `.badge-error` (existing badge classes) | D-13, styles.scss |
 | Video fallback tile | `<div class="video-fallback">` inside `.tile-thumb` with `background: #111` | D-06 |
 
+### Focal Points
+
+Dashboard primary focal point: the score slider in the filter bar draws the eye as the only new orange-accented interactive element. Configuration page primary focal point: the health badge column is the first new element users scan when checking connection status.
+
 ---
 
 ## Slider Styling Contract
@@ -137,8 +143,8 @@ Each platform connection row in the Configuration page gains three new data poin
 | Health State | Badge Class | Badge Label | Action Button |
 |-------------|-------------|-------------|---------------|
 | `connected` | `badge badge-success` | "Connected" | None |
-| `token_expired` | `badge badge-warning` | "Token expired" | "Reconnect" (accent fill button) |
-| `sync_failed` | `badge badge-error` | "Sync failed" | "Reconnect" (accent fill button) |
+| `token_expired` | `badge badge-warning` | "Token expired" | "Reconnect Account" (accent fill button) |
+| `sync_failed` | `badge badge-error` | "Sync failed" | "Reconnect Account" (accent fill button) |
 
 Health state computation (client-side, D-15):
 - `token_expired`: `token_expiry` field is set AND is before `new Date()`
@@ -160,7 +166,7 @@ Column placement: Replace (not augment) the existing `.col-status` column with t
 | Image | `asset_url` or `thumbnail_url` present | `<img>` with `object-fit: cover` in 160px container |
 | Image | Both null | `placeholder.svg` (D-07) |
 | Video | `thumbnail_url` present | `<img>` with `object-fit: cover` in 160px container |
-| Video | `thumbnail_url` null | Dark bg (`#111`) + platform icon (48x48px, opacity 0.6) centered + "VIDEO" tag (9px/700, bottom-right 6px) |
+| Video | `thumbnail_url` null | Dark bg (`#111`) + platform icon (48x48px, opacity 0.6) centered + "VIDEO" tag (9px/600, bottom-right 6px) |
 
 The `getTileThumbnail()` method returns `null` for the video-no-thumb case; template switches to `.video-fallback` div. CSS class `.video-no-thumb` sets `background: #111` on the containing tile.
 
@@ -184,8 +190,8 @@ Image tile height: 160px (locked, D-08). No change to existing `object-fit: cove
 | State | Visual |
 |-------|--------|
 | Connected | Green `.badge-success` pill, no button |
-| Token expired | Amber `.badge-warning` pill + "Reconnect" `mat-button` with `var(--accent)` color |
-| Sync failed | Red `.badge-error` pill + "Reconnect" `mat-button` with `var(--accent)` color |
+| Token expired | Amber `.badge-warning` pill + "Reconnect Account" `mat-button` with `var(--accent)` color |
+| Sync failed | Red `.badge-error` pill + "Reconnect Account" `mat-button` with `var(--accent)` color |
 | Reconnect in-flight | Button shows `mat-spinner` (diameter 16px) inline, disabled |
 
 ### Sort (Score column)
@@ -202,7 +208,7 @@ Image tile height: 160px (locked, D-08). No change to existing `object-fit: cove
 
 | Element | Copy |
 |---------|------|
-| Primary CTA (platform reconnect) | "Reconnect" |
+| Primary CTA (platform reconnect) | "Reconnect Account" |
 | Slider disabled tooltip | "No scored creatives yet" |
 | Score filter label | "Score range" |
 | Score filter value display | "0 – 100" (full range, no filter) / "{min} – {max}" (filtered) |
@@ -212,7 +218,7 @@ Image tile height: 160px (locked, D-08). No change to existing `object-fit: cove
 | Last sync: has value | "{N} hours ago" / "{N} days ago" (date-fns output) |
 | Last sync: never synced | "Never" |
 | Empty state — no connections (existing) | Icon + "No connections yet" + "Connect a platform to start syncing creatives." |
-| Video fallback label | "VIDEO" (all caps, 9px, bottom-right overlay) |
+| Video fallback label | "VIDEO" (all caps, 9px/600, bottom-right overlay) |
 | Score sort null behavior | No explicit user-facing copy — silent NULLS LAST ordering |
 | Error: reconnect failed (API error) | "Reconnect failed. Please try again." (Angular Material snackbar, existing pattern) |
 | Error: score filter API failure | "Failed to load creatives. Please refresh." (existing loadAssets error handler) |
