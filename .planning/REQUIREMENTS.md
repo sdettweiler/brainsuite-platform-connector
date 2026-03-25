@@ -83,36 +83,37 @@ Which phases cover which requirements. Filled by roadmapper.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROD-01 | TBD | Not started |
-| PROD-02 | TBD | Not started |
-| IMG-01 | TBD | Not started |
-| IMG-02 | TBD | Not started |
-| IMG-03 | TBD | Not started |
-| IMG-04 | TBD | Not started |
-| BACK-01 | TBD | Not started |
-| BACK-02 | TBD | Not started |
-| TREND-01 | TBD | Not started |
-| TREND-02 | TBD | Not started |
-| TREND-03 | TBD | Not started |
-| PERF-01 | TBD | Not started |
-| CORR-01 | TBD | Not started |
-| CORR-02 | TBD | Not started |
-| AI-01 | TBD | Not started |
-| AI-02 | TBD | Not started |
-| AI-03 | TBD | Not started |
-| AI-04 | TBD | Not started |
-| AI-05 | TBD | Not started |
-| AI-06 | TBD | Not started |
-| UI-01 | TBD | Not started |
-| NOTIF-01 | TBD | Not started |
-| NOTIF-02 | TBD | Not started |
-| NOTIF-03 | TBD | Not started |
-| NOTIF-04 | TBD | Not started |
-| NOTIF-05 | TBD | Not started |
+| PROD-01 | Phase 5 | Not started |
+| PROD-02 | Phase 5 | Not started |
+| IMG-01 | Phase 5 | Not started |
+| IMG-02 | Phase 5 | Not started |
+| IMG-03 | Phase 5 | Not started |
+| IMG-04 | Phase 5 | Not started |
+| BACK-01 | Phase 6 | Not started |
+| BACK-02 | Phase 6 | Not started |
+| TREND-01 | Phase 6 | Not started |
+| TREND-02 | Phase 7 | Not started |
+| TREND-03 | Phase 7 | Not started |
+| PERF-01 | Phase 7 | Not started |
+| UI-01 | Phase 7 | Not started |
+| CORR-01 | Phase 8 | Not started |
+| CORR-02 | Phase 8 | Not started |
+| AI-01 | Phase 9 | Not started |
+| AI-02 | Phase 9 | Not started |
+| AI-03 | Phase 9 | Not started |
+| AI-04 | Phase 9 | Not started |
+| AI-05 | Phase 9 | Not started |
+| AI-06 | Phase 9 | Not started |
+| NOTIF-01 | Phase 10 | Not started |
+| NOTIF-02 | Phase 10 | Not started |
+| NOTIF-03 | Phase 10 | Not started |
+| NOTIF-04 | Phase 10 | Not started |
+| NOTIF-05 | Phase 10 | Not started |
 
 **Coverage:**
 - v1.1 requirements: 26 total
-- Mapped to phases: TBD (filled by roadmapper)
+- Mapped to phases: 26/26 (100%)
 
 ---
 *Requirements defined: 2026-03-25*
+*Traceability filled: 2026-03-25 (roadmapper)*
