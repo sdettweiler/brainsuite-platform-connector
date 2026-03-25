@@ -15,6 +15,9 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '../../../core/services/api.service';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { DisconnectDialogComponent, DisconnectDialogResult } from '../components/disconnect-dialog.component';
+import { formatDistanceToNow } from 'date-fns';
+
+type HealthState = 'connected' | 'token_expired' | 'sync_failed';
 
 interface OAuthAccount {
   id: string;
@@ -46,6 +49,7 @@ interface PlatformConnection {
   timezone: string;
   sync_status: 'ACTIVE' | 'EXPIRED' | 'ERROR' | 'PENDING';
   last_synced_at?: string;
+  token_expiry?: string;
   initial_sync_completed: boolean;
   brainsuite_app_id?: string;
   brainsuite_app_id_image?: string;
@@ -264,7 +268,7 @@ const PLATFORMS: PlatformDef[] = [
                 </th>
                 <th class="col-platform">Platform</th>
                 <th class="col-name">Account</th>
-                <th class="col-status">Status</th>
+                <th class="col-health">Health</th>
                 <th class="col-currency">Currency</th>
                 <th class="col-tz">Timezone</th>
                 <th class="col-sync">Last Synced</th>
@@ -294,17 +298,18 @@ const PLATFORMS: PlatformDef[] = [
                   <span class="cell-name">{{ conn.ad_account_name }}</span>
                   <span class="cell-id">{{ conn.ad_account_id }}</span>
                 </td>
-                <td class="col-status">
-                  <span class="status-chip" [class]="'status-' + conn.sync_status.toLowerCase()">
-                    {{ conn.sync_status }}
+                <td class="col-health">
+                  <span [class]="getHealthBadgeClass(getHealthState(conn))">
+                    {{ getHealthLabel(getHealthState(conn)) }}
                   </span>
                   <span class="sync-sub" *ngIf="!conn.initial_sync_completed">Syncing...</span>
                 </td>
                 <td class="col-currency">{{ conn.currency }}</td>
                 <td class="col-tz" [matTooltip]="conn.timezone">{{ conn.timezone }}</td>
                 <td class="col-sync">
-                  <span *ngIf="conn.last_synced_at">{{ conn.last_synced_at | date:'MMM d, HH:mm' }}</span>
-                  <span *ngIf="!conn.last_synced_at" class="no-data">—</span>
+                  <span [matTooltip]="conn.last_synced_at ? ((conn.last_synced_at | date:'MMM d, yyyy HH:mm') || '') : ''">
+                    {{ getRelativeTime(conn.last_synced_at) }}
+                  </span>
                 </td>
                 <td class="col-app">
                   <mat-form-field appearance="outline" class="inline-app-select">
@@ -333,6 +338,14 @@ const PLATFORMS: PlatformDef[] = [
                   </mat-form-field>
                 </td>
                 <td class="col-actions">
+                  <button
+                    *ngIf="needsReconnect(conn)"
+                    mat-flat-button
+                    class="reconnect-btn"
+                    (click)="reconnect(conn); $event.stopPropagation()"
+                  >
+                    Reconnect Account
+                  </button>
                   <button mat-icon-button [matMenuTriggerFor]="rowMenu" [matMenuTriggerData]="{conn: conn}">
                     <i class="bi bi-three-dots-vertical"></i>
                   </button>
@@ -1029,6 +1042,51 @@ export class PlatformsComponent implements OnInit, OnDestroy {
         },
       });
     });
+  }
+
+  getHealthState(conn: PlatformConnection): HealthState {
+    const now = new Date();
+    if (conn.token_expiry && new Date(conn.token_expiry) < now) {
+      return 'token_expired';
+    }
+    if (!conn.last_synced_at) {
+      return 'sync_failed';
+    }
+    const hoursSinceSync = (now.getTime() - new Date(conn.last_synced_at).getTime()) / 3_600_000;
+    if (hoursSinceSync > 48) {
+      return 'sync_failed';
+    }
+    return 'connected';
+  }
+
+  getHealthLabel(state: HealthState): string {
+    switch (state) {
+      case 'connected': return 'Connected';
+      case 'token_expired': return 'Token expired';
+      case 'sync_failed': return 'Sync failed';
+    }
+  }
+
+  getHealthBadgeClass(state: HealthState): string {
+    switch (state) {
+      case 'connected': return 'badge badge-success';
+      case 'token_expired': return 'badge badge-warning';
+      case 'sync_failed': return 'badge badge-error';
+    }
+  }
+
+  getRelativeTime(isoString: string | undefined): string {
+    if (!isoString) return 'Never';
+    return formatDistanceToNow(new Date(isoString), { addSuffix: true });
+  }
+
+  needsReconnect(conn: PlatformConnection): boolean {
+    const state = this.getHealthState(conn);
+    return state === 'token_expired' || state === 'sync_failed';
+  }
+
+  reconnect(conn: PlatformConnection): void {
+    this.startOAuth(conn.platform);
   }
 
   getPlatformColor(platform: string): string {
