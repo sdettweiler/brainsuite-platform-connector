@@ -83,7 +83,12 @@ Plans:
   3. Platform connection panel shows last sync time and a health indicator (connected / token expired / sync failed) for each connected platform
   4. When a platform token expires or a sync fails, the user sees an inline reconnect prompt — no silent stale data
   5. APScheduler runs on exactly one worker regardless of how many app instances are deployed (SCHEDULER_ENABLED guard prevents duplicate job execution and double-counted metrics)
-**Plans**: TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 04-01-PLAN.md — Backend: score filter params, sort nullslast fix, token_expiry schema exposure
+- [ ] 04-02-PLAN.md — Frontend dashboard: ngx-slider score range filter + video thumbnail fallback
+- [ ] 04-03-PLAN.md — Frontend config: platform health badges + reconnect prompts
+- [ ] 04-04-PLAN.md — End-to-end verification checkpoint
 
 ## Progress
 
@@ -95,4 +100,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Infrastructure Portability | 3/3 | Complete   | 2026-03-20 |
 | 2. Security Hardening | 6/6 | Complete   | 2026-03-23 |
 | 3. BrainSuite Scoring Pipeline | 6/6 | Complete   | 2026-03-24 |
-| 4. Dashboard Polish + Reliability | 0/TBD | Not started | - |
+| 4. Dashboard Polish + Reliability | 0/4 | Planning complete | - |
