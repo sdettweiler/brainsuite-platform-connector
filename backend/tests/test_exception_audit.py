@@ -16,6 +16,10 @@ ALLOWED_FILES = {"main.py", "base.py"}
 # Functions where broad except Exception is intentionally allowed:
 #   - scheduler.py deadlock retry
 #   - scheduler.py top-level job dispatchers (APScheduler job isolation)
+#   - scoring_job.py batch processor + failure marker (job isolation / non-fatal)
+#   - scoring.py refetch job dispatcher (APScheduler job isolation)
+#   - brainsuite_score.py persist_and_replace_visualizations (non-fatal, returns None)
+#   - meta_sync.py _generate_and_upload_thumbnail (non-fatal, returns None)
 ALLOWED_FUNCTIONS = {
     "_harmonize_with_deadlock_retry",
     "run_daily_sync",
@@ -23,6 +27,12 @@ ALLOWED_FUNCTIONS = {
     "run_initial_sync",
     "run_historical_sync",
     "_run_dv360_asset_downloads",
+    # Phase 3/4 additions
+    "run_scoring_batch",
+    "_mark_failed",
+    "_run_refetch_job",
+    "persist_and_replace_visualizations",
+    "_generate_and_upload_thumbnail",
 }
 
 
@@ -72,6 +82,13 @@ def test_no_broad_except_exception():
       deadlock detection by string match) and top-level APScheduler job wrappers
       (run_daily_sync, run_full_resync, run_initial_sync, run_historical_sync,
       _run_dv360_asset_downloads)
+    - app/services/sync/scoring_job.py: run_scoring_batch (APScheduler job isolation),
+      _mark_failed (error logging safety net — must not raise during failure marking)
+    - app/api/v1/endpoints/scoring.py: _run_refetch_job (APScheduler job isolation)
+    - app/services/brainsuite_score.py: persist_and_replace_visualizations
+      (non-fatal viz persistence — returns None on failure)
+    - app/services/sync/meta_sync.py: _generate_and_upload_thumbnail
+      (non-fatal thumbnail generation — returns None on failure)
     """
     root = pathlib.Path(__file__).parent.parent / "app"
     violations = _find_broad_catches(root)
