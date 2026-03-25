@@ -1,186 +1,338 @@
 # Project Research Summary
 
-**Project:** BrainSuite Platform Connector
-**Domain:** Multi-tenant ad creative analytics platform with AI effectiveness scoring
-**Researched:** 2026-03-20
-**Confidence:** MEDIUM-HIGH
+**Project:** BrainSuite Platform Connector — v1.1 Insights + Intelligence
+**Domain:** Creative analytics dashboard for performance marketing agencies
+**Researched:** 2026-03-25
+**Confidence:** HIGH
 
 ## Executive Summary
 
-BrainSuite Platform Connector is a brownfield SaaS product for ad agencies that already syncs creatives from Meta, TikTok, Google Ads, and DV360 into a unified dashboard. The gap being closed in this milestone is threefold: wiring BrainSuite's pre-launch creative effectiveness API into the scoring pipeline, hardening the platform against production security vulnerabilities that exist in the current codebase, and surfacing sync health and scores in the UI. Experts build this class of product with a decoupled async scoring pipeline — never blocking the sync or request path on a third-party AI API call — and with Redis-backed session state to handle horizontal scaling.
+The v1.1 milestone adds seven capabilities to a working v1.0 product: BrainSuite image scoring, AI metadata auto-fill, score-to-ROAS correlation view, top/bottom performer highlights, score trend over time, in-app notifications, and historical backfill scoring. The existing stack (FastAPI, SQLAlchemy 2.0, APScheduler, Redis, Angular 17, NgRx, ECharts 5.6) handles all of these without any new frontend packages. The only net-new backend dependencies are `anthropic >=0.86.0` (Claude vision for metadata inference) and `openai >=2.29.0` (Whisper for audio transcription and voice-over detection). Every other feature extends code and patterns that are already working and well-understood.
 
-The recommended approach is to execute in three sequential phases: security hardening first (two critical blockers must be fixed before real users onboard), then BrainSuite scoring pipeline integration (the primary milestone deliverable), then dashboard polish and sync reliability improvements that make the product trustworthy at agency scale. The existing FastAPI + Angular + PostgreSQL + APScheduler stack is retained unchanged. New additions are minimal: redis-py asyncio (already configured, just needs wiring), tenacity for retry logic, and an httpx upgrade. No new infrastructure is required for v1.
+The recommended build order treats image scoring as the critical prerequisite. Image scoring unlocks historical backfill for both asset types, which fills the data needed to make the analytics views (correlation chart, trend, highlights) meaningful on day one. AI metadata auto-fill is independent and can be built in parallel. In-app notifications are also independent; the PITFALLS research is unambiguous that polling (30-second interval) is the correct scope for v1.1 — not SSE or WebSockets. The ARCHITECTURE research nonetheless chose Redis pub/sub → SSE. This is the single area where the two research files are in direct tension and the conflict must be resolved before implementation begins. The polling approach is recommended.
 
-The key risk is the existing codebase's in-memory OAuth session dict and localStorage JWT storage — both are production blockers exploitable under Replit Autoscale or by XSS. A second risk is the BrainSuite API schema: it is not publicly documented, so the scoring schema (dimension names, score range, response format) must be validated against a live API call before UI work proceeds. A third risk is APScheduler running on every worker in a multi-worker deploy, which can cause duplicate sync execution and double-counted ad metrics — this must be resolved in the reliability phase with a single-scheduler env var guard.
+The three highest-risk areas are: (1) AI inference cost blowout if re-triggering is not guarded with an `ai_inference_status` state machine (up to ~$384/day/tenant if unguarded), (2) image vs. video scoring routed to the wrong BrainSuite endpoint due to unreliable `content_type` values from ad platform APIs, and (3) a score history table that grows without bound if deduplication and partitioning are not built in from day one. All three risks are well-documented with clear prevention patterns. The BrainSuite Static API endpoint and payload for image scoring remain explicitly unconfirmed — a discovery spike must be the first deliverable of the image scoring phase before any implementation begins.
+
+---
 
 ## Key Findings
 
-### Recommended Stack
+### Recommended Stack Additions
 
-The existing stack (FastAPI 0.115, Angular 17, PostgreSQL, APScheduler 3.10.4, httpx 0.25.2) is fixed and not re-evaluated. New additions are strictly minimal. Redis is already configured via `REDIS_URL` — it just needs the `redis.asyncio` client wired up to replace the in-memory OAuth session dict and act as ephemeral job state store. Tenacity 9.1.4 provides composable retry logic for BrainSuite API calls with differentiated backoff per exception type (429 = long backoff, 5xx = short backoff, 4xx = no retry). httpx should be upgraded from 0.25.2 to 0.28.1 for bug fixes.
+The existing stack requires only two new backend Python packages. No new frontend packages are needed — Angular Material, ECharts 5.6, and NgRx already cover all new UI requirements.
 
-Three libraries are explicitly off-limits: `aioredis` (abandoned, merged into redis-py, breaks Python 3.12), `arq` (maintenance-only since March 2025), and `httpx-retry` (abandoned April 2025). The existing APScheduler handles scoring jobs — no second task system should be introduced. For Replit Autoscale, Upstash Redis is the recommended backing service since Replit does not include a Redis sidecar.
+**Net-new dependencies:**
 
-**Core technologies:**
-- `redis.asyncio` (redis-py 7.1.1): OAuth session store + scoring job state — already configured, needs wiring
-- `tenacity` 9.1.4: Retry logic for BrainSuite API calls — composable per-exception backoff
-- `httpx` 0.28.1: HTTP client for BrainSuite — already in use, upgrade for bug fixes
-- `APScheduler` 3.10.4 (existing): Background scoring jobs — extend existing scheduler, do not add a second system
-- `pytest` + `pytest-asyncio` + `pytest-httpx`: Test coverage for BrainSuite client before wiring to production
+| Layer | Package | Version | Purpose |
+|-------|---------|---------|---------|
+| Backend | `anthropic` | `>=0.86.0` | Claude vision API for AI metadata inference — use `claude-haiku-4-5-20251001` as primary model; escalate to Sonnet only if output quality is insufficient for a specific field |
+| Backend | `openai` | `>=2.29.0` | Whisper API (`whisper-1`) for audio transcription and voice-over language detection — avoids GPU/model-size dependency that local Whisper would require |
+
+**New environment variables required:**
+- `ANTHROPIC_API_KEY` — add to `.env` and pydantic `Settings`
+- `OPENAI_API_KEY` — add to `.env` and pydantic `Settings`
+
+**Existing stack components used by v1.1 (no changes needed):**
+- `AsyncAnthropic` client — non-blocking; sync `Anthropic()` client must not be used in async contexts
+- ECharts `ScatterChart` and `LineChart` — register alongside existing chart types in `app.config.ts`; do not switch to the full `import 'echarts'` bundle (adds ~1 MB to Angular bundle)
+- `MatSnackBar`, `MatBadge`, `MatMenu` — all ship with `@angular/material 17` already installed; do not add `ngx-toastr`
+
+**Image passing pattern — base64 required for MinIO assets.** MinIO presigned URLs are only valid inside the Docker network. Claude's API cannot reach a local MinIO instance. Fetch bytes server-side, encode to base64, pass inline. Approximate cost: ~1,600 tokens at 1 megapixel = ~$0.0016 per image at Haiku pricing.
+
+See `/STACK.md` for implementation patterns including base64 image encoding, Whisper transcription, ECharts scatter and line option structures, and the Angular Material bell notification pattern.
+
+---
 
 ### Expected Features
 
-The product's core value proposition — a pre-launch AI effectiveness score alongside live performance data — requires completing BrainSuite integration before any UI polish makes sense. Competitors (Motion, Superads) derive scores from performance data after ads run; BrainSuite scores creatives independently of spend. The UI must reinforce this distinction clearly.
+**Must have — Table Stakes (v1.1):**
+- **BrainSuite image scoring** — images are a primary ad format; video-only scoring is a conspicuous gap agencies ask about immediately; parity requirement
+- **Top/bottom performer highlights** — every comparable creative analytics tool (Triple Whale, Motion, Superads, Segwise) provides this; users scan grids, not tables
+- **Score-to-ROAS correlation view** — without this, the BrainSuite score is a black box; agencies need to validate that score predicts performance to maintain buy-in
+- **In-app notifications for sync/scoring events** — async workflows require status feedback; expected in any SaaS tool with background jobs
+- **Historical backfill scoring** — assets synced before Phase 3 have no scores; without backfill the correlation and trend views are underpowered and confusing on first use
 
-**Must have (table stakes):**
-- BrainSuite API integration (POST asset URL, receive score + dimensions, persist) — primary milestone gap
-- Score + dimension breakdown visible per creative — agencies trust breakdown, not just an aggregate number
-- Auto-scoring on sync — no manual trigger; score present when creative appears
-- Production security hardening (Redis OAuth sessions, httpOnly JWT cookies) — gate before external users
-- Sort and filter by score, ROAS, CTR, spend, platform, date range — core navigation
-- Creative thumbnail visible — users need to see the ad, not just data
-- Sync status display + sync error surfacing — stale/failed data destroys trust
-- Fernet key startup validation — prevents catastrophic token loss on container restart
+**Should have — Differentiators:**
+- **AI metadata auto-fill** — eliminates manual entry of 7 BrainSuite fields per creative; agencies managing hundreds of assets find this friction a direct barrier to scoring adoption
+- **Score trend over time** — creative fatigue signal; VidMob and Segwise offer this; the 15-minute scheduler already generates the data
 
-**Should have (competitive):**
-- Score-to-performance correlation view (score vs. ROAS scatter/table) — builds agency trust in scoring system
-- Manual re-score trigger — for missing or stale scores
-- Top/bottom performer visual identification — "scale this, kill that" decision support
-- Read-only share link — agencies share results with clients; higher value than notifications
+**Defer to v2+:**
+- Real-time WebSocket score updates — 30-second polling is invisible to users at this event frequency
+- AI metadata fully replacing human input — hallucinated brand names or language codes silently corrupt BrainSuite submissions; suggestions with user confirmation is the correct pattern
+- Email/Slack notifications — design the notifications data model now to extend to external channels in v1.2 without schema migration
+- Per-platform ROAS correlation breakdown — insufficient data per platform in early tenants
+- Automated creative retirement based on score — too prescriptive; surface data, let users act
 
-**Defer (v2+):**
-- Notification system (Slack/email on score arrival)
-- White-label reports
-- Multi-platform creative identity (same creative on Meta and TikTok)
-- Ad copy / text creative scoring
-- Creative scoring trend over time
+**AI inference field accuracy by type:**
+
+| Field | Accuracy | Auto-apply? |
+|-------|----------|-------------|
+| Voice Over (yes/no) | ~95% | Yes — high confidence |
+| Voice Over Language | ~90% major languages | With confidence indicator |
+| Language/Market | ~90% when legible text present | With confidence indicator |
+| Asset Name | ~85% (filename normalization) | Yes |
+| Brand Names | Variable — hallucination risk on niche brands | Suggestion with review required |
+| Asset Stage | Loose visual correlation only | Suggestion with review required |
+| Project Name | Not inferable from creative content | Manual entry required |
+
+**UX requirement:** Never auto-submit AI-filled fields to BrainSuite without user confirmation. Use a two-phase interaction: inference runs async on modal open → pre-populated form shown with per-field confidence indicators → user reviews and explicitly submits.
+
+See `/FEATURES.md` for full feature deep-dives including scatter plot edge cases, notification event table, trend data density analysis, and wave sequencing.
+
+---
 
 ### Architecture Approach
 
-The correct architecture for this integration is a state-machine-backed async scoring pipeline: sync services mark new assets as `UNSCORED` in a `creative_score_results` table, an APScheduler job (every 15 minutes) picks up batches of unscored assets and calls `BrainSuiteScoreService`, results are written back to both the authoritative `creative_score_results` table and denormalized onto `creative_assets.ace_score` for fast dashboard queries. The frontend polls a status endpoint every 30 seconds only while PENDING/PROCESSING assets are visible — not on every page load.
+The v1.1 features integrate into the existing codebase primarily through extension of `scoring_job.py`, `brainsuite_score.py`, and `asset-detail-dialog.component.ts`, plus three new database tables and one new NgRx slice. No new Docker services are required.
 
-Build order matters: schema and Alembic migration first, then the `BrainSuiteScoreService` (testable in isolation), then scheduler integration, then API endpoints, then frontend score badge, then dimension breakdown panel, then conditional polling.
+**Key architectural decisions:**
 
-**Major components:**
-1. `creative_score_results` table — authoritative scoring status per asset; states: UNSCORED → PENDING → PROCESSING → COMPLETE | FAILED
-2. `BrainSuiteScoreService` (`backend/app/services/brainsuite_score.py`) — async httpx client with tenacity retry; generates fresh GCS signed URLs per request
-3. APScheduler scoring job — registered alongside existing sync jobs; 15-minute interval; batch of 20; respects BrainSuite rate limits via semaphore
-4. Scoring API endpoints (`/scoring/trigger`, `/scoring/status`) — manual trigger + frontend polling surface
-5. Score badge + dimension breakdown components — Angular components wired into existing dashboard table
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Image vs. video scoring routing | Same APScheduler job, branch inside `run_scoring_batch()` on `asset_format` | A second APScheduler job duplicates the PENDING-lock machinery and competes for the same BrainSuite rate limit window |
+| AI inference trigger | FastAPI `BackgroundTasks` on-demand — `POST /assets/{id}/ai-suggest` returns 202; client polls GET | User-initiated, latency-sensitive but not synchronous; APScheduler is wrong trigger model for per-user ad-hoc actions |
+| Score trend storage | New append-only `creative_score_history` table | The `uq_score_per_asset` unique constraint and `on_conflict_do_nothing` injection pattern on `creative_score_results` must be preserved; history is a separate append concern |
+| Notifications transport | **CONFLICT — see Research Flags.** ARCHITECTURE.md: Redis pub/sub → SSE. PITFALLS.md: polling only. | Resolve before Phase 7 implementation |
+| Backfill job design | Admin-only `POST /admin/backfill-scoring` endpoint using BackgroundTasks | Avoids `SCHEDULER_ENABLED=false` multi-worker problem; PENDING state machine is the natural mutex against the live scorer |
+
+**New database tables (3):**
+
+| Table | Purpose | Critical design constraint |
+|-------|---------|---------------------------|
+| `creative_score_history` | Append-only score time series | One row per asset per day (not per scheduler tick); monthly range partitioning on `scored_at`; 90-day retention; index `(creative_asset_id, scored_at DESC)` |
+| `ai_metadata_suggestions` | AI inference result persistence | Status machine PENDING/COMPLETE/FAILED; one row per asset (UNIQUE); never writes to live metadata columns |
+| `notifications` | Per-org notification inbox | `(id, org_id, type, payload JSONB, read, created_at)`; index `(organization_id, read, created_at)` |
+
+**Modified backend components:**
+- `scoring_job.py` — remove `asset_format == "VIDEO"` filter; add IMAGE branch; append to `creative_score_history`; publish notification events
+- `brainsuite_score.py` — add `submit_image_job_with_upload()` and `_announce_image_job()`; extend `build_scoring_payload()` for static assets
+- `app/core/config.py` — add `ANTHROPIC_API_KEY`, `AI_MODEL`, `OPENAI_API_KEY`
+- `dashboard.py` — add `GET /dashboard/score-roas` endpoint; confirm `performer_tag` in response schema
+
+**Modified frontend components:**
+- `asset-detail-dialog.component.ts` — AI auto-fill button + loading state; Score Trend tab with ECharts line chart
+- `dashboard.component.ts` — performer overlay badges; score-ROAS scatter panel
+- `app.state.ts` — add `notifications: NotificationsState`
+- `header.component.ts` — mount bell icon component
+
+See `/ARCHITECTURE.md` for full component boundary tables, data model DDL, and the A–G build order.
+
+---
 
 ### Critical Pitfalls
 
-1. **In-memory OAuth sessions break under Autoscale** — Replace `_oauth_sessions` dict with Redis `SETEX` (10-minute TTL). This is a hard production blocker; second worker cannot find sessions created by the first. Must land before any external user onboarding.
+**Critical severity — architecture decisions must be made before writing code:**
 
-2. **JWT in localStorage exposes all ad platform tokens on XSS** — Migrate to hybrid pattern: access token in Angular service memory only, refresh token in `httpOnly; Secure; SameSite=Lax` cookie. Remove all `localStorage.setItem` calls in `auth.service.ts`. Ad creative metadata rendered in the dashboard is an XSS surface.
+1. **AI inference cost blowout on re-trigger (Pitfall 1)** — without an `ai_inference_status` state machine, inference fires on every scheduler tick for every asset. At 1,000 assets and 96 APScheduler ticks/day using Claude Haiku pricing: ~$384/day per tenant. Prevention: add `ai_inference_status` (`PENDING | COMPLETE | FAILED`) to asset records with the same `on_conflict_do_nothing` guard pattern used by scoring. Never co-locate inference inside the scoring loop.
 
-3. **APScheduler runs on every worker — duplicate syncs, double-counted metrics** — Add `SCHEDULER_ENABLED` env var; disable scheduler in secondary workers. The existing deadlock retry string-matching in `scheduler.py` is evidence this is already occurring.
+2. **Image vs. video routing to wrong BrainSuite endpoint (Pitfall 2)** — `content_type` from ad platform APIs is unreliable across Meta, TikTok, Google Ads, and DV360 (e.g., video thumbnails arrive as `image/jpeg`). Implicit `if "video" in content_type` string matching silently FAIL-marks assets. Prevention: define an explicit `ScoringEndpointType` enum (`VIDEO | STATIC_IMAGE`); populate it at sync time using a tested `(platform, raw_content_type, file_extension)` lookup table; add test fixtures for each platform/type combination.
 
-4. **BrainSuite N+1 scoring inline during sync** — Never call BrainSuite inside the asset sync loop. Mark assets `UNSCORED` after sync; let the separate scoring scheduler handle batched submission with rate limiting.
+3. **Backfill job competing with live 15-minute scorer (Pitfall 3)** — if implemented as a second APScheduler job, both pick up the same `WHERE score_status = 'UNSCORED'` queue simultaneously, producing duplicate BrainSuite API calls. Prevention: implement as an admin API endpoint using BackgroundTasks, not APScheduler. The existing PENDING state machine provides the natural claim lock.
 
-5. **Fernet key lost on container restart invalidates all stored platform tokens** — Add startup assertion: fail fast if `TOKEN_ENCRYPTION_KEY` is not set and valid. Store in Replit secrets, not `.env`.
+**High severity — must be designed before implementation:**
+
+4. **Score trend table unbounded growth (Pitfall 6)** — one row per scoring run × 96 ticks/day × 500 assets × 10 tenants = 175M rows/year. Prevention: insert one row per asset per day only (conditional insert where score AND date match); PostgreSQL monthly range partitioning on `scored_at` from day one; 90-day retention. Note: partitioned tables cannot be created with `CREATE TABLE LIKE` in Alembic — write as raw DDL.
+
+5. **AI inference payload size exceeding 32 MB Claude API limit (Pitfall 4)** — ad creatives are often 5–20 MB; base64 multiplies size by 1.37x. Prevention: HEAD request for `Content-Length` before fetching; downsample to 1568px max on long edge if file exceeds 4 MB (Anthropic's own recommendation for time-to-first-token optimization); use Claude Files API for assets analyzed more than once.
+
+6. **Low-confidence inference overwriting user-entered metadata (Pitfall 5)** — the fastest implementation path writes inference directly to live metadata columns, silently corrupting carefully entered values. Prevention: store all AI results in `ai_metadata_suggestions` only; only suggest for fields that are currently empty; require explicit user confirmation for every field application.
+
+7. **ROAS correlation chart skewed by zero and outlier data (Pitfall 7)** — zero ROAS (no conversions), null ROAS (platform not reporting revenue), and low-spend outliers (3 conversions on $0.50 spend = 600x ROAS) each corrupt the scatter in different ways. Prevention: return `total_spend` alongside ROAS in the query; apply a configurable minimum spend threshold (default $10); treat null and zero ROAS explicitly and distinctly in both query and UI; cap Y-axis at 99th percentile with a log-scale toggle.
+
+8. **Notification system over-engineering (Pitfall 8)** — see Research Flags. The polling approach is 1–2 days of work; Redis pub/sub + SSE infrastructure is 1–2 weeks.
+
+See `/PITFALLS.md` for the full 14-pitfall catalog including top/bottom highlights using absolute vs. relative rank (Pitfall 11), AI prompt returning unstructured text (Pitfall 12), presigned URL expiry for inference (Pitfall 13), and score trend flat-line UX (Pitfall 14).
+
+---
 
 ## Implications for Roadmap
 
-Based on combined research, a three-phase structure is recommended. Security blockers gate real users, BrainSuite integration is the milestone's primary deliverable, and dashboard/reliability polish is the final layer.
+The FEATURES.md and ARCHITECTURE.md research both independently converge on the same dependency-driven build order. The suggested phase structure follows the A–G ordering from ARCHITECTURE.md, mapped to user-facing deliverables.
 
-### Phase 1: Security Hardening
+### Phase 1: BrainSuite Image Scoring
 
-**Rationale:** Two critical vulnerabilities (in-memory OAuth sessions, localStorage JWT) are production blockers that make external user onboarding unsafe. A third (Fernet key validation) is a potential catastrophic data loss event. These must be fixed before any new feature work is visible to real users. All fixes are well-understood, low-dependency, and can be completed without touching the scoring pipeline.
+**Rationale:** Hard prerequisite for backfill, AI metadata auto-fill, and all analytics views. Without image scoring, the scored asset pool is limited to video assets only, making the analytics views underpowered. Must begin with a BrainSuite Static API discovery spike — no implementation before the spike confirms endpoint/payload/response shape.
 
-**Delivers:** A production-safe auth stack; OAuth flows that survive multi-worker deploys; tokens protected from XSS; startup key validation; path traversal fix on asset endpoint; CORS lockdown.
+**Delivers:** Image assets scored alongside video assets in the existing 15-minute scheduler; explicit `ScoringEndpointType` routing table for all asset types.
 
-**Addresses pitfalls:** Pitfall 1 (OAuth sessions), Pitfall 2 (OAuth redirect URI injection), Pitfall 3 (JWT in localStorage), Pitfall 6 (Fernet key rotation), Pitfall 8 (path traversal)
+**Addresses:** Image scoring (table stakes); routing table that unlocks all subsequent image-aware features.
 
-**Features:** Production security hardening (P1); enables safe external user onboarding gate
+**Avoids:** Pitfall 2 (wrong endpoint routing) by making the routing lookup table the first deliverable of this phase; Pitfall 9 (API discovery skipped) by gating all implementation on a confirmed test call.
 
-**Research flag:** No deeper research needed — these are well-documented patterns with HIGH confidence.
+**Research flag: MANDATORY SPIKE.** BrainSuite Static API endpoint URL, required payload fields, response schema, and rate limit tier are unconfirmed. One authenticated test call with a real image asset must be the first deliverable. Document confirmed details in `BRAINSUITE_API.md` before writing any implementation code.
 
-### Phase 2: BrainSuite Scoring Pipeline
+---
 
-**Rationale:** This is the primary deliverable of the milestone. The architecture (async scoring pipeline with state machine) must be established before any UI work on scores can begin. The BrainSuite API schema is unknown — the first step of this phase must validate the actual response format from a live API call before schema and UI are finalized. Build order follows component dependency chain: schema → service → scheduler → endpoints → frontend.
+### Phase 2: Historical Backfill Scoring
 
-**Delivers:** Full scoring pipeline from sync-trigger to dashboard display; `creative_score_results` table with status machine; `BrainSuiteScoreService` with tenacity retry; APScheduler scoring job; score badge and dimension breakdown in dashboard; historical backfill for existing unscored assets.
+**Rationale:** Depends on Phase 1 so that backfill covers both IMAGE and VIDEO assets. Must run immediately after deployment so that analytics views in Phases 3–5 have sufficient data on first use. The correlation view is explicitly described as showing an empty state without backfill data.
 
-**Uses:** redis-py asyncio (job state), tenacity 9.1.4 (retry), httpx 0.28.1 (API client), APScheduler (existing)
+**Delivers:** Admin endpoint `POST /admin/backfill-scoring`; all pre-v1.1 assets scored; `creative_score_history` seeded with initial score entries from existing `creative_score_results` data.
 
-**Implements:** BrainSuiteScoreService, creative_score_results table, scoring API endpoints, score badge component, dimension breakdown panel, conditional RxJS polling
+**Addresses:** Historical backfill (table stakes); critical path dependency for the correlation view being useful on day one.
 
-**Addresses pitfalls:** Pitfall 5 (N+1 scoring), BrainSuite N+1 anti-pattern, scoring status polling anti-pattern
+**Avoids:** Pitfall 3 (backfill competing with live scorer) by using BackgroundTasks + admin endpoint, not APScheduler; Pitfall 10 (DB session held during BrainSuite HTTP calls) by copying the session-per-operation pattern from the live scorer verbatim.
 
-**Research flag:** Needs live BrainSuite API schema validation at phase start — dimension field names, score range, response envelope are unknown. Do not finalize DB schema or Angular component until first real response is inspected.
+**Research flag:** Standard patterns. No research phase needed.
 
-### Phase 3: Platform Reliability + Dashboard Polish
+---
 
-**Rationale:** With security hardened and scoring working, the remaining work is making the platform trustworthy under real agency usage: silent sync failures must surface, the APScheduler multi-worker duplicate execution risk must be eliminated, and the dashboard UX must meet agency speed/clarity expectations (thumbnails, sort/filter, sync status, top/bottom performer identification).
+### Phase 3: Score Trend Over Time
 
-**Delivers:** Explicit platform connection state machine (connected / token_refresh_failed / disconnected) with UI reconnect prompts; APScheduler single-instance guard via `SCHEDULER_ENABLED` env var; dashboard sort + filter by score, ROAS, CTR, spend; creative thumbnails; sync status display per platform; sync error surfacing; score dimension context (color-coded ranges, tooltips).
+**Rationale:** Schema decision for `creative_score_history` must be made before any scoring data is written, since retroactive fixes require migration and data reconstruction. Schema and migration work can begin in parallel with Phase 1; endpoint and UI follow Phase 1 completion.
 
-**Addresses pitfalls:** Pitfall 4 (silent token refresh failure), Pitfall 7 (APScheduler duplicate execution), performance trap (N+1 dashboard queries), UX pitfall (stale data with no indicator)
+**Delivers:** `creative_score_history` table with monthly partitioning + 90-day retention; `GET /assets/{id}/score-history` endpoint; Score Trend tab in asset detail dialog with ECharts line chart.
 
-**Research flag:** No deeper research needed — platform connection state machines and APScheduler single-instance patterns are standard. UX details (color thresholds for score ranges) depend on BrainSuite's confirmed score scale from Phase 2.
+**Addresses:** Score trend over time (differentiator).
+
+**Avoids:** Pitfall 6 (unbounded table growth) with one-row-per-day conditional inserts and range partitioning; Pitfall 14 (flat-line UX) by scoping the chart with appropriate empty-state handling (single data point must not render as a line).
+
+**Research flag:** Alembic gotcha — partitioned tables cannot use `CREATE TABLE LIKE`; must write raw DDL. Otherwise standard patterns; no research phase needed.
+
+---
+
+### Phase 4: Top/Bottom Performer Highlights
+
+**Rationale:** Lowest-complexity v1.1 deliverable. `_get_performer_tag()` already exists in `dashboard.py`. Once Phase 1 expands the scored asset pool, the function has enough data to produce meaningful results. This is primarily a frontend CSS/badge overlay change.
+
+**Delivers:** Performer badge/ribbon overlays on dashboard grid cards; relative ranking using `PERCENT_RANK()` window function.
+
+**Addresses:** Top/bottom performer highlights (table stakes).
+
+**Avoids:** Pitfall 11 (absolute threshold produces empty or meaningless sections) by switching from absolute score thresholds to `PERCENT_RANK()` / `NTILE(10)` with a minimum 10-asset sample guard.
+
+**Research flag:** No research phase needed — standard frontend pattern.
+
+---
+
+### Phase 5: Score-to-ROAS Correlation View
+
+**Rationale:** Most compelling analytics feature but depends on having enough data (10+ assets with both score and ROAS populated). Best built after Phases 1–2 have expanded the scored asset pool. No schema changes needed — data already exists in `creative_score_results` and `harmonized_performance`.
+
+**Delivers:** `GET /dashboard/score-roas` endpoint; ECharts scatter panel in dashboard with quadrant reference lines (Stars / Question Marks / Workhorses / Laggards); hover tooltips with thumbnail, score, ROAS, spend, platform.
+
+**Addresses:** Score-to-ROAS correlation (table stakes for agency buy-in).
+
+**Avoids:** Pitfall 7 (zero/null ROAS corruption) by returning `total_spend` in the query, applying a configurable minimum spend threshold ($10 default), treating null vs. zero ROAS distinctly, and capping Y-axis at 99th percentile.
+
+**Research flag:** No research phase needed. Scatter plot with quadrant lines is established by industry consensus across Segwise, VidMob, Madgicx.
+
+---
+
+### Phase 6: AI Metadata Auto-Fill
+
+**Rationale:** Independent of Phases 1–5 at the implementation level and can be built in parallel starting after Phase 1 confirms the MinIO asset fetch pattern. However, the cost-guard architecture (Pitfall 1) must be designed first, before any inference code is written. This is the highest-risk feature and the only one requiring the two new API keys.
+
+**Delivers:** `ai_metadata_suggestions` table + migration; `ai_metadata.py` inference service using `AsyncAnthropic` (vision) and `AsyncOpenAI` (Whisper); `POST /assets/{id}/ai-suggest` + polling GET; Auto-fill button in asset detail dialog with per-field confidence indicators; Pydantic model validation on Claude structured output.
+
+**Addresses:** AI metadata auto-fill (differentiator — reduces scoring adoption friction).
+
+**Avoids:** Pitfall 1 (cost blowout) with `ai_inference_status` state machine; Pitfall 4 (payload size) with pre-encoding downsampling to 1568px max; Pitfall 5 (overwriting user data) with suggestions-only table; Pitfall 12 (unstructured response) with Claude tool use / structured output + Pydantic validation; Pitfall 13 (presigned URL expiry) with fetch-then-base64 pattern.
+
+**Research flag:** Recommended targeted spike on Claude tool-use / structured output schema for the exact metadata field definitions and confidence scoring. Validate cost model against real image samples before enabling for all tenants. Confirm whether `OPENAI_API_KEY` should be optional in config (image-only agencies never call Whisper).
+
+---
+
+### Phase 7: In-App Notifications
+
+**Rationale:** Infrastructure (table, API endpoints, NgRx slice, bell component) can be scaffolded at any point during the milestone; event wiring into `scoring_job.py` and `scheduler.py` is the last step after the scoring pipeline is stable. Must resolve the polling vs. SSE conflict before any implementation begins.
+
+**Delivers:** `notifications` table + migration; notification API (list, mark-read, poll or stream endpoint per architecture decision); NgRx notifications slice; bell icon component in header with unread badge; toast integration via `MatSnackBar`.
+
+**Addresses:** In-app notifications (table stakes).
+
+**Avoids:** Pitfall 8 (over-engineering) — architecture must be locked at polling for v1.1.
+
+**Research flag:** Architecture conflict must be resolved. See below.
+
+---
 
 ### Phase Ordering Rationale
 
-- Security hardening must come first: the OAuth session and JWT issues are exploitable today and block external onboarding regardless of feature completeness.
-- BrainSuite integration is phase-gated on security being clean, and gate-keeps dashboard polish (no point styling score badges before scores exist).
-- Dashboard polish and reliability improvements are last because they depend on confirmed scoring schema (BrainSuite dimension field names needed for dimension tooltips) and require the security layer to be stable so UX can be tested with real users.
-- The BrainSuite API schema unknown is the single highest-risk dependency gap in the entire roadmap — Phase 2 must start with a spike to validate the actual API response before committing to schema design.
+- Phases 1 → 2 are hard sequential dependencies: image scoring before backfill (so backfill covers both types); backfill before analytics views (so views have data on first use).
+- Phases 3, 4, 5 are independent of each other once Phase 1 is complete and can be parallelized if capacity allows.
+- Phase 6 (AI metadata) is independent of all others but requires cost-guard design first; can be built in parallel with Phases 2–5.
+- Phase 7 (notifications) infrastructure can be scaffolded early; event wiring is the last step in the milestone.
+
+**Critical path for correlation view being useful on day one:**
+1. BrainSuite image scoring (Phase 1) — expands scored asset pool
+2. Historical backfill (Phase 2) — run immediately after deployment
+3. Score-to-ROAS correlation view (Phase 5) — arrives with data already in it
+
+---
 
 ### Research Flags
 
-Phases needing deeper research during planning:
-- **Phase 2 (BrainSuite Scoring):** BrainSuite API schema is unknown. Requires a discovery spike at phase start: POST a test asset to the API, inspect the full response envelope (score field names, dimension structure, score range, error format, rate limit headers). Do not finalize `creative_score_results` table schema or Angular component structure until this is complete.
+**Needs research before implementation:**
 
-Phases with standard patterns (skip research-phase):
-- **Phase 1 (Security Hardening):** All fixes are well-documented with HIGH confidence sources. Redis OAuth sessions, httpOnly cookies, pathlib path validation, Fernet startup assertion — these are standard production patterns.
-- **Phase 3 (Reliability + Polish):** APScheduler single-instance guard and platform connection state machines are standard patterns. UX thresholds (score color ranges) are a product decision, not a research question.
+- **Phase 1 (image scoring) — MANDATORY GATE:** BrainSuite Static API endpoint URL, payload shape, response schema, and rate limit tier are unconfirmed. A single authenticated test call with a real image asset must be the first deliverable of this phase. No implementation code before the spike. Document findings in `BRAINSUITE_API.md`.
+
+- **Phase 6 (AI metadata) — RECOMMENDED:** Targeted spike on Claude tool-use schema for structured metadata output with per-field confidence scoring. Validate cost model against real samples. Confirm `OPENAI_API_KEY` optionality requirement.
+
+**Architecture conflict requiring resolution before Phase 7:**
+
+ARCHITECTURE.md chose Redis pub/sub → SSE for notifications. PITFALLS.md explicitly warns that any infrastructure beyond polling is over-engineering for in-app-only notifications at this usage scale (one active user per org at a time; minute-to-hour event granularity).
+
+**Recommendation: Use polling for v1.1.** The polling approach (`GET /notifications/unread` every 30 seconds) is 1–2 days of work. Redis pub/sub + SSE adds persistent connections per browser tab, Redis channel management, and proxy/Docker network reconnect logic — 1–2 weeks of work for no user-visible benefit at this event frequency. The notifications data model extends to SSE or email/Slack in v1.2 without schema changes.
+
+**Phases with well-established patterns (no research phase needed):**
+- Phase 2 (backfill) — copy session-per-operation pattern from live scorer verbatim
+- Phase 3 (score trend) — standard PostgreSQL append-only history table; Alembic DDL gotcha is documented
+- Phase 4 (highlights) — purely frontend; `PERCENT_RANK()` is standard SQL
+- Phase 5 (correlation) — scatter chart with quadrant lines; established industry pattern
+
+---
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | MEDIUM-HIGH | Existing stack verified by codebase analysis. New additions (redis-py, tenacity) verified via PyPI/GitHub. Upstash Redis on Replit is MEDIUM (integration confirmed, sidecar availability not definitively confirmed). |
-| Features | MEDIUM-HIGH | Table stakes and differentiators grounded in competitor analysis (Motion, Superads official sources) and PROJECT.md. BrainSuite API capability assumptions (dimensions, score range) are MEDIUM — unconfirmed until live API call. |
-| Architecture | HIGH | Grounded in existing codebase analysis + well-established async pipeline patterns (APScheduler + FastAPI BackgroundTasks + PostgreSQL state machine). Build order verified against actual file structure. |
-| Pitfalls | HIGH | Most pitfalls identified from direct codebase inspection (`_oauth_sessions`, `localStorage`, deadlock retry string-matching, Fernet fallback generation). Not theoretical — these are confirmed issues in the existing code. |
+| Stack additions | HIGH | Both new packages verified against official PyPI and API docs on 2026-03-25; versions confirmed; integration patterns verified against official Anthropic and OpenAI API references |
+| Features (scope and classification) | MEDIUM–HIGH | Table stakes/differentiator classification supported by competitor analysis (Motion, Superads, Segwise, Triple Whale). AI inference accuracy estimates based on known VLM capabilities, not BrainSuite-specific testing — empirical validation required |
+| Architecture (integration patterns) | HIGH | Based on direct codebase inspection of production code; all patterns extend known-working implementations; three key design invariants explicitly identified and preserved |
+| Pitfalls | HIGH | Cost formulas from official Anthropic pricing docs; database patterns from PostgreSQL official docs; session-leak patterns from FastAPI SQLAlchemy production issue reports; routing pitfall grounded in observed ad platform API inconsistencies |
 
-**Overall confidence:** MEDIUM-HIGH
+**Overall confidence:** HIGH for implementation decisions. One hard unknown: BrainSuite Static API endpoint/payload (Phase 1 spike required). One process decision: polling vs. SSE for notifications (must be locked before Phase 7).
 
 ### Gaps to Address
 
-- **BrainSuite API schema:** Unknown. Dimension field names, score range (0–100? 0–1?), response envelope, error format, rate limit headers — all unknown. Handle by making the first task of Phase 2 a dedicated API discovery spike. Do not design schema, DB columns, or Angular types until this is confirmed.
-- **Upstash Redis availability on Replit Autoscale:** Replit's own Redis sidecar availability is not confirmed from docs. Handle by using Upstash Redis (confirmed Replit integration) as the target from day one rather than assuming a local Redis sidecar.
-- **BrainSuite API rate limits:** Not documented. Handle by starting with a conservative batch size (5–10 concurrent requests per scheduler run) and building the semaphore to be configurable. Monitor 429 responses in the first week of production use.
-- **Google Ads OAuth consent screen status:** If the Google Cloud project is still in "Testing" mode, refresh tokens expire after 7 days in production. Verify consent screen is published before Phase 3.
-- **69 `any` types in Angular frontend:** Increases XSS risk (untyped API responses may carry unexpected HTML) and will cause silent failures when BrainSuite dimension field names are added. Should be addressed as part of Phase 2 frontend work when score types are defined.
+| Gap | How to Handle |
+|-----|--------------|
+| BrainSuite Static API endpoint/payload | Mandatory spike as Phase 1 gate — confirm endpoint URL, required fields, response schema, rate limit; document in `BRAINSUITE_API.md` |
+| Polling vs. SSE for in-app notifications | Architectural decision must be locked before Phase 7 begins; recommendation is polling per PITFALLS.md reasoning |
+| AI inference field accuracy on real agency creatives | Validate cost model and output quality against real image samples before enabling for all tenants; set per-tenant daily spend cap in Redis from day one |
+| BrainSuite score determinism for trend charts | If BrainSuite returns identical scores for unchanged assets (likely), the trend chart is only meaningful after creative edits — validate this assumption with test submissions and scope trend tab UX accordingly (Pitfall 14) |
+| `OPENAI_API_KEY` optionality | If an agency's inventory is images-only, the Whisper path is never called; confirm whether `OPENAI_API_KEY` should be optional in `Settings` or always required at startup |
+
+---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- BrainSuite Platform Connector codebase: direct inspection of `_oauth_sessions`, `auth.service.ts`, `scheduler.py`, `security.py`, `creative.py`, `object_storage.py`
-- `.planning/codebase/CONCERNS.md` — identified production concerns from codebase audit
-- PROJECT.md — validated project scope and constraints from project owner
-- [redis-py PyPI 7.1.1](https://pypi.org/project/redis/) — unified asyncio API, aioredis abandonment confirmed
-- [tenacity PyPI 9.1.4](https://pypi.org/project/tenacity/) — Python 3.10+ requirement confirmed
-- [FastAPI Background Tasks official docs](https://fastapi.tiangolo.com/tutorial/background-tasks/) — async task pattern
-- [FastAPI httpOnly cookie JWT pattern](https://www.fastapitutorial.com/blog/fastapi-jwt-httponly-cookie/) — documented official pattern
-- [aioredis abandoned, merged into redis-py](https://redis.io/faq/doc/26366kjrif/what-is-the-difference-between-aioredis-v2-0-and-redis-py-asyncio) — official Redis FAQ
+- Anthropic Models Overview — model IDs, pricing, context windows — verified 2026-03-25
+- Anthropic Vision API Docs — image format constraints, token formula, 32 MB request limit, downsampling recommendation — verified 2026-03-25
+- `anthropic` PyPI v0.86.0 — version confirmed 2026-03-25
+- OpenAI Transcriptions API Reference — `whisper-1`, `verbose_json` response format, language field
+- `openai` PyPI v2.29.0 — version confirmed 2026-03-25
+- Direct codebase inspection: `scoring_job.py`, `brainsuite_score.py`, `scoring.py`, `dashboard.py`, `redis.py`, `config.py`, `app.state.ts`, `asset-detail-dialog.component.ts`, `alembic/versions/e1f2g3h4i5j6_add_creative_score_results.py`
+- PostgreSQL range partitioning docs — partition drop behavior vs. DELETE
+- APScheduler 3.x docs — `SCHEDULER_ENABLED` multi-worker behavior
+- Angular Material 17 API — `MatSnackBar`, `MatBadge`, `MatMenu` verified as shipped with `@angular/material 17.3`
 
 ### Secondary (MEDIUM confidence)
-- [Superads: How We Built Superads Scores](https://www.superads.ai/blog/how-we-built-superads-scores) — competitor scoring feature analysis
-- [Superads vs. Motion Feature Comparison](https://www.superads.ai/superads-vs-motion) — feature landscape
-- [Motion: Key Creative Performance Metrics](https://motionapp.com/blog/key-creative-performance-metrics) — competitor feature analysis
-- [Upstash Replit integration docs](https://upstash.com/docs/redis/integrations/replit-templates) — confirmed Replit+Upstash Redis support
-- [httpx GitHub releases 0.28.1](https://github.com/encode/httpx/releases/tag/0.28.0) — proxies argument removal noted
-- [APScheduler multi-process duplicate execution](https://apscheduler.readthedocs.io/en/stable/faq.html) — distributed lock guidance
-- [JWT hybrid pattern (access in memory, refresh in httpOnly cookie)](https://medium.com/lets-code-future/stop-using-localstorage-for-jwts-in-your-spa-heres-the-safer-smarter-alternative-in-2025-ece409045978)
-- [OAuth 2.0 redirect URI injection](https://securityboulevard.com/2025/03/oauth-2-0-explained-a-complete-guide-to-secure-authorization/)
+- Improvado creative analytics guide — scatter plot as standard correlation chart type
+- Segwise, VidMob, Madgicx — competitor feature analysis for table stakes classification and quadrant framing
+- Supermetrics, Triple Whale, Madgicx — 7/30-day trend windows as industry standard for creative fatigue
+- LogRocket SSE vs. WebSockets comparison — polling rationale for in-app-only notifications
+- FastAPI SQLAlchemy session leak in background jobs — session-per-operation pattern rationale
 
-### Tertiary (LOW confidence)
-- [Segwise: Creative Analytics for Meta Ads in 2026](https://segwise.ai/blog/facebook-ads-reporting-creative-intelligence) — industry blog, feature context
-- [Madgicx: 10 Best Ad Tech Platforms for Creative Optimization in 2025](https://madgicx.com/blog/ad-tech-platform-for-creative-optimization) — industry blog, feature landscape
+### Tertiary (needs empirical validation)
+- AI inference accuracy estimates (Voice Over ~95%, Language ~90%, Brand Names variable) — based on published VLM capability benchmarks, not BrainSuite-specific testing
+- AI inference latency estimate (5–10 seconds per asset) — based on Claude API performance benchmarks; actual latency depends on asset dimensions, API load, and audio extraction approach
+- ROAS correlation minimum threshold (10+ assets for visible pattern, 30+ for statistical signal) — industry rule of thumb, not statistically derived
 
 ---
-*Research completed: 2026-03-20*
-*Ready for roadmap: yes*
+*Research completed: 2026-03-25*
+*Milestone: v1.1 Insights + Intelligence*
+*Supersedes v1.0 SUMMARY.md (2026-03-20)*
+*Ready for roadmap: yes — with BrainSuite Static API spike gating Phase 1, and polling/SSE decision locking Phase 7*

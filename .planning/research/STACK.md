@@ -1,185 +1,252 @@
-# Stack Research
+# Technology Stack — v1.1 Additions
 
-**Domain:** Ad tech platform — third-party AI scoring API integration + production hardening
-**Researched:** 2026-03-20
-**Confidence:** MEDIUM-HIGH (existing stack verified; new additions verified via PyPI/GitHub; BrainSuite API schema unknown)
-
----
-
-## Context: What This Research Covers
-
-This is a brownfield project. The existing stack (FastAPI 0.115 + Angular 17 + PostgreSQL + APScheduler + httpx) is fixed. This research focuses exclusively on **new additions** needed for:
-
-1. BrainSuite API integration — async HTTP calls with retry, job state tracking
-2. Production security hardening — OAuth session store, JWT token storage
-3. Platform data reliability — sync error surfacing, resilient background jobs
-
-Do not re-evaluate Angular, FastAPI, SQLAlchemy, or PostgreSQL. They are not changing.
+**Project:** BrainSuite Platform Connector
+**Milestone:** v1.1 Insights + Intelligence
+**Researched:** 2026-03-25
+**Scope:** New library additions only. Existing stack (FastAPI 0.115, SQLAlchemy 2.0, httpx 0.25.2, tenacity, APScheduler 3.10.4, Redis, boto3, Angular 17, NgRx 17, ECharts 5.6 / ngx-echarts 17.2, Angular Material 17) is validated and NOT repeated here.
 
 ---
 
-## Recommended Stack: New Additions Only
+## New Backend Dependencies
 
-### Core Technologies
+### 1. Anthropic Python SDK — AI Metadata Inference
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| redis-py (asyncio) | 7.1.1 | Job state tracking, OAuth session store, scoring job queue | Redis is already configured (`REDIS_URL` env var exists, client just needs wiring). `redis.asyncio` is the unified async API since redis-py 4.2 — aioredis is abandoned. Native asyncio support means no bridge needed with FastAPI's async stack. |
-| tenacity | 9.1.4 | Retry logic with exponential backoff for BrainSuite API calls | Already the Python ecosystem standard for retry logic. Supports `@retry` on async functions natively via `AsyncRetrying`. Handles retries on timeouts, 429s, and transient 5xx — exactly what a third-party AI API integration needs. Composable with `wait_exponential`, `stop_after_attempt`, `retry_if_exception_type`. |
-| APScheduler 3.10.4 | 3.10.4 | Background scoring jobs triggered post-sync | Already in requirements.txt. Keep it — the existing sync jobs use it. Do not introduce a second task system for scoring jobs; route scoring through the same scheduler instead. |
+| Property | Value |
+|----------|-------|
+| Package | `anthropic` |
+| Version | `>=0.86.0` (latest as of 2026-03-25) |
+| Install | `pip install anthropic` |
+| Python requirement | 3.9+ |
 
-### Supporting Libraries
+**Why:** The AI metadata auto-fill feature requires analyzing creative images and video frames to infer Language/Market, Brand Names, Project Name, Asset Name, Asset Stage, and Voice Over presence. The Claude vision API supports all of this in a single multimodal call — no separate object-detection library needed.
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| httpx | 0.28.1 | HTTP client for BrainSuite API calls | Already in requirements at 0.25.2; upgrade to 0.28.1 for bug fixes and modern SSL API. The project already uses httpx for all platform API calls — use it consistently for BrainSuite too. `httpx.AsyncClient` with tenacity wrapping is the pattern. |
-| python-jose[cryptography] | 3.4.0 (existing) | JWT signing + verification | Already present. For the httpOnly cookie migration, no new JWT library is needed — the signing stays the same; only the transport mechanism (cookie vs Authorization header) changes. |
-| fastapi (built-in Response) | 0.115.0 (existing) | Set httpOnly cookies on login response | FastAPI's `Response.set_cookie()` with `httponly=True`, `secure=True`, `samesite="lax"` is sufficient. No additional library needed. |
+**Model to use:** `claude-haiku-4-5-20251001`
 
-### Development Tools
+Rationale: Haiku 4.5 is the fastest current-generation model at $1/$5 per MTok input/output. Structured metadata extraction from ad creatives (not deep reasoning) fits Haiku's capability profile. Cost per creative inference stays low. If Haiku produces poor-quality output for a specific field, escalate to `claude-sonnet-4-6` ($3/$15) for that field only — test Haiku first.
 
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| pytest-asyncio | Async test support for scoring pipeline | The project has no Python test framework. Adding pytest + pytest-asyncio enables testing the BrainSuite client and retry logic before wiring to production. |
-| pytest-httpx | Mock httpx calls in tests | Allows testing BrainSuite API client without live API calls. Pairs with pytest-asyncio. |
-
----
-
-## Installation
-
-```bash
-# Backend: new additions to requirements.txt
-pip install redis==7.1.1 tenacity==9.1.4
-
-# Upgrade httpx from 0.25.2 to 0.28.1
-pip install httpx==0.28.1
-
-# Dev/test only
-pip install pytest pytest-asyncio pytest-httpx
-```
-
-No frontend library additions are needed. The Angular scoring UI uses RxJS polling against a FastAPI job-status endpoint — RxJS is already bundled with Angular 17.
-
----
-
-## Alternatives Considered
-
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| redis-py asyncio (job state in Redis) | PostgreSQL job state table | Use PostgreSQL if Redis is unavailable or too costly. Adds row-level locking complexity; Redis is faster for ephemeral job state. PostgreSQL is the right store for final scored results, not job status. |
-| tenacity | httpx-retries transport layer | Use httpx-retries if you want retry logic declaratively at the transport level rather than the function level. Tenacity is preferred here because retry behavior needs to vary by exception type (429 = long backoff; 5xx = short backoff; 4xx = no retry), which is easier to express with tenacity's composable retry conditions. |
-| APScheduler (existing, extended) | taskiq / arq | Use taskiq if the project outgrows single-process scheduling and needs distributed workers. ARQ is explicitly in maintenance-only mode (GitHub issue #510) — do not introduce it. Taskiq is the async-native successor but adds significant setup overhead for what is a modest scoring workload. APScheduler with Redis-backed job state is sufficient for v1. |
-| APScheduler (existing, extended) | Celery + Redis | Use Celery only if CPU-bound work or distributed workers across machines are required. Celery adds broker management overhead and is synchronous by default — bridging to FastAPI's async event loop requires extra configuration. Not warranted here. |
-| FastAPI built-in cookies | fastapi-jwt-auth library | Use fastapi-jwt-auth only if you need token refresh rotation, CSRF double-submit pattern, or complex multi-token scenarios out of the box. For this project, manually setting `httponly=True` cookies in login/refresh endpoints is 10 lines of code and avoids a dependency. |
-
----
-
-## What NOT to Use
-
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| arq (Python task queue) | Officially in maintenance-only mode (GitHub issue #510, confirmed March 2025). No new features. PRs go unreviewed. | Extend APScheduler for job-triggered scoring; use taskiq if outgrowing APScheduler in v2. |
-| aioredis | Abandoned — merged into redis-py 4.2 in 2022. PyPI package is archived. `import aioredis` will break on Python 3.12. | `import redis.asyncio as redis` from redis-py 7.x |
-| httpx-retry | Abandoned as of April 2025 per maintainer. | tenacity wrapping httpx.AsyncClient, or httpx-retries if transport-level retry is preferred. |
-| In-memory `_oauth_sessions` dict (existing) | Dies on process restart; breaks multi-worker Replit Autoscale deployments. OAuth state tokens become invalid when a request hits a different worker. | Redis key with TTL (e.g., 10-minute expiry on state param). This is the primary production blocker. |
-| localStorage for JWT (existing) | XSS-vulnerable. Any injected script reads the token. Industry consensus since 2020: access tokens in memory, refresh token in httpOnly cookie. | httpOnly `Secure` cookie for refresh token; in-memory variable (Angular service) for short-lived access token. |
-| Polling the BrainSuite API synchronously in the HTTP request path | Ties up a FastAPI worker thread/coroutine for the duration of the scoring call (potentially 10-30s for video). Causes request timeouts and blocks other users. | Enqueue a scoring job in APScheduler/Redis from the sync completion hook; poll job status from the frontend via a `/scoring/status/{job_id}` endpoint. |
-
----
-
-## Scoring Pipeline Pattern
-
-The correct async integration pattern for a third-party AI scoring API without known response time SLA:
-
-```
-[Sync completes] → [APScheduler fires score_creative job]
-                         ↓
-              [Fetch GCS signed URL for asset]
-                         ↓
-              [POST to BrainSuite API via httpx.AsyncClient]
-              [tenacity: retry on 429/5xx, max 5 attempts, exponential backoff]
-                         ↓
-              [Store result in PostgreSQL creative_scores table]
-              [Update job state in Redis: pending → complete/failed]
-                         ↓
-[Angular polls /api/v1/scoring/status/{job_id} every 5s]
-[RxJS: timer(0, 5000).pipe(switchMap(...), takeUntil(complete$))]
-                         ↓
-              [Dashboard updates score display when complete]
-```
-
-**Why polling, not webhook:**
-BrainSuite's API schema is unknown. Polling is safer to implement without knowing if BrainSuite supports webhooks. Once BrainSuite API docs are confirmed, webhooks can replace polling in v2 if latency matters.
-
-**Why GCS signed URL, not re-upload:**
-Assets are already in Google Cloud Storage. BrainSuite should receive a signed URL reference. This avoids bandwidth costs, upload latency, and duplication. Signed URLs can be short-lived (1-hour TTL is sufficient for a scoring job).
-
----
-
-## Security Hardening Stack Decisions
-
-### OAuth Session Store Migration
-
-**Current:** `_oauth_sessions = {}` — in-memory dict in platforms.py
-**Target:** Redis key with TTL
-
+**Image passing pattern — base64 preferred for MinIO assets:**
 ```python
-# Key pattern: oauth_session:{state_token}
-# TTL: 600 seconds (10 minutes — long enough for OAuth dance)
-# Value: JSON blob with platform, redirect_uri, user_id
-await redis_client.setex(f"oauth_session:{state}", 600, json.dumps(session_data))
+import anthropic
+import base64
+import httpx
+
+client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+# Fetch from MinIO presigned URL, encode to base64
+image_bytes = httpx.get(presigned_url).content
+image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+
+response = await client.messages.create(
+    model="claude-haiku-4-5-20251001",
+    max_tokens=512,
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",  # or image/png, image/webp, image/gif
+                        "data": image_b64,
+                    },
+                },
+                {"type": "text", "text": "<structured extraction prompt>"},
+            ],
+        }
+    ],
+)
 ```
 
-Redis is already configured via `REDIS_URL`. This is a 1-day change, not a migration project.
+**Why base64 over presigned URL:** Presigned MinIO URLs are only valid inside the Docker network. Claude's API cannot reach a local MinIO instance. Fetch bytes server-side, encode to base64, pass inline.
 
-### JWT Token Storage Migration
+**Multi-image (image + video frames) in a single call:** Pass multiple `image` content blocks before the text block. Haiku 4.5 has a 200k-token context window, which limits batch requests to 100 images per call. For ad creatives, 1 image or 2-3 video keyframes per inference call is typical — well within limits.
 
-**Current:** localStorage in Angular
-**Target:** Refresh token in httpOnly cookie; access token in memory only
+**Image format constraints:**
+- Supported: JPEG, PNG, GIF, WebP
+- Max 5 MB per image
+- Resize to ≤1568 px on the long edge before encoding — reduces token count and latency
+- Approximate cost: ~1,600 tokens at 1 megapixel (1092×1092 px), ~$0.0016 per image at Haiku pricing
 
-FastAPI side: `response.set_cookie("refresh_token", token, httponly=True, secure=True, samesite="lax", max_age=604800)`
+**AsyncAnthropic client:** Use `anthropic.AsyncAnthropic()` for non-blocking calls inside FastAPI async handlers and APScheduler jobs. The sync `anthropic.Anthropic()` client blocks the event loop and must not be used in async contexts.
 
-Angular side: Remove `localStorage.getItem("token")` calls. Store access token in an Angular service's private property (survives navigation, cleared on tab close). On page load, call `/api/v1/auth/refresh` with the httpOnly cookie to rehydrate the access token.
-
-**Confidence:** HIGH — this is the documented production pattern for FastAPI + Angular SPA auth.
-
----
-
-## Version Compatibility
-
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| redis 7.1.1 | Python 3.12+ | Requires Python 3.8+. redis-py 7.x dropped Python 3.7. Compatible with existing stack. |
-| tenacity 9.1.4 | Python 3.10+ | Requires Python >=3.10. Existing stack is Python 3.12 — compatible. |
-| httpx 0.28.1 | FastAPI 0.115 | FastAPI uses httpx internally for TestClient. 0.28.x is the current stable. The `proxies` argument was removed in 0.28 — verify no existing code passes `proxies=` to httpx. |
-| APScheduler 3.10.4 (existing) | redis-py 7.x | APScheduler 3.x has a Redis jobstore (`apscheduler.jobstores.redis`) — not needed here, but compatible. Keep APScheduler at 3.10.4; version 4.x has breaking API changes. |
+**Confidence:** HIGH — verified against official Anthropic API docs and PyPI (2026-03-25).
 
 ---
 
-## Upstash Redis (Replit Constraint Note)
+### 2. OpenAI Python SDK — Audio Transcription for Voice Over Detection
 
-Replit Autoscale does not include a Redis sidecar. The existing `REDIS_URL=redis://localhost:6379/0` will fail in production autoscale because there is no local Redis process.
+| Property | Value |
+|----------|-------|
+| Package | `openai` |
+| Version | `>=2.29.0` (latest as of 2026-03-25) |
+| Install | `pip install openai` |
+| Python requirement | 3.9+ |
 
-**Recommended:** Upstash Redis (serverless, HTTP-based Redis compatible with redis-py via `rediss://` URL). Upstash has explicit Replit integration documentation and is used in production on Replit. Free tier covers the OAuth session + job state volume of this project.
+**Why:** Claude does not process audio directly. Voice Over presence and Voice Over Language require audio transcription. The OpenAI Whisper API (`whisper-1` model) returns both the transcript text and the detected language ISO-639-1 code in a single API call — exactly the two data points needed (`has_voice_over`, `voice_over_language`).
 
-The `REDIS_URL` env var already in config.py is the right abstraction — changing from `redis://localhost:6379` to an Upstash `rediss://` URL requires no code change, only environment variable update.
+**Usage pattern:**
+```python
+from openai import AsyncOpenAI
+import io
 
-**Confidence:** MEDIUM — verified Upstash + Replit integration exists; Replit's own Redis sidecar availability not confirmed from docs.
+openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+# Fetch audio bytes from MinIO (extracted from video using imageio-ffmpeg, already in stack)
+audio_bytes = await fetch_audio_from_minio(asset_key)
+
+transcription = await openai_client.audio.transcriptions.create(
+    model="whisper-1",
+    file=("audio.mp3", io.BytesIO(audio_bytes), "audio/mpeg"),
+    response_format="verbose_json",  # returns .text + .language
+)
+
+has_voice_over = len(transcription.text.strip()) > 0
+voice_over_language = transcription.language  # ISO-639-1 code, e.g. "en", "de", "fr"
+```
+
+**Why `whisper-1` via OpenAI API over local Whisper:**
+- No GPU dependency in Docker Compose — local Whisper large-v3 requires ~1.5 GB model download and significant CPU at startup
+- Language detection is built into the `verbose_json` response — no second call needed
+- Cost is negligible for ad creative durations: $0.006/minute, and a typical ad is under 60 seconds
+- `imageio-ffmpeg` is already in `requirements.txt` — use it to extract the audio track from video assets before sending to Whisper
+
+**Audio format support:** mp3, mp4, mpeg, mpga, m4a, wav, webm — all common ad creative formats are covered.
+
+**Confidence:** HIGH — verified against OpenAI API reference (transcriptions.create endpoint) and PyPI (2026-03-25).
+
+---
+
+### 3. No New Libraries for BrainSuite Image Scoring or Historical Backfill
+
+- **BrainSuite Static endpoint (image scoring):** Uses existing `httpx` + `tenacity`. The difference from video scoring is endpoint URL, payload shape, and state-machine routing. No new library.
+- **APScheduler backfill job:** Uses existing `apscheduler==3.10.4`. No new library.
+
+---
+
+## New Frontend Dependencies
+
+### 4. No New Libraries for In-App Notifications
+
+**Use Angular Material `MatSnackBar` for toasts and a custom NgRx-backed notification center for the bell.**
+
+Angular Material 17 (`@angular/material: ^17.3.0`) is already in the stack. `MatSnackBar` ships with it and works with standalone components — inject `MatSnackBar` directly, no additional module imports beyond what is already configured.
+
+**Why not ngx-toastr:** `ngx-toastr` is valid but adds a dependency for functionality Angular Material already provides. The app uses Angular Material throughout — visual consistency is free with `MatSnackBar`. For rich toast layouts, use `MatSnackBar.openFromComponent()` with a custom standalone component.
+
+**Bell notification center — native pattern, no library:**
+```typescript
+// Notification interface for NgRx store
+interface Notification {
+  id: string;
+  type: 'sync_complete' | 'scoring_complete' | 'error';
+  message: string;
+  timestamp: Date;
+  read: boolean;
+}
+
+// Bell icon uses MatBadge (already in @angular/material) for unread count
+// Dropdown uses MatMenu or a positioned overlay panel
+// Store feeds notifications from polling or Server-Sent Events
+```
+
+`MatBadge` and `MatMenu` are both part of `@angular/material 17` — already available, zero additional installs.
+
+**Confidence:** HIGH — Angular Material MatSnackBar, MatBadge, MatMenu verified as part of @angular/material 17.3.
+
+---
+
+### 5. No New Libraries for ECharts Charts
+
+The stack already includes `echarts: ^5.6.0` and `ngx-echarts: ^17.2.0`. Scatter plots and line charts are native ECharts 5 chart types — no additional packages needed.
+
+**Scatter plot (Score-to-ROAS correlation) — ECharts 5 option structure:**
+```typescript
+// Register ScatterChart alongside existing chart registrations in app.config.ts
+import { ScatterChart } from 'echarts/charts';
+import { TooltipComponent, GridComponent } from 'echarts/components';
+echarts.use([ScatterChart, TooltipComponent, GridComponent, CanvasRenderer]);
+
+// Component chartOption:
+const correlationChartOption: EChartsOption = {
+  tooltip: {
+    trigger: 'item',
+    formatter: (params: any) =>
+      `${params.data[2]}<br/>Score: ${params.data[0]}<br/>ROAS: ${params.data[1].toFixed(2)}x`,
+  },
+  xAxis: { name: 'BrainSuite Score', type: 'value', min: 0, max: 100 },
+  yAxis: { name: 'ROAS', type: 'value' },
+  series: [{
+    type: 'scatter',
+    // data format: [x, y, label] — label only used in tooltip formatter
+    data: assets.map(a => [a.score, a.roas, a.name]),
+    symbolSize: 10,
+  }],
+};
+```
+
+**Line chart (Score trend over time) — ECharts 5 option structure:**
+```typescript
+// Register LineChart alongside existing chart registrations
+import { LineChart } from 'echarts/charts';
+echarts.use([LineChart]);
+
+const trendChartOption: EChartsOption = {
+  tooltip: { trigger: 'axis' },
+  xAxis: { type: 'time' },
+  yAxis: { name: 'Score', min: 0, max: 100 },
+  series: [{
+    type: 'line',
+    smooth: true,
+    data: scoreHistory.map(h => [h.scored_at, h.score]),  // [Date, number]
+  }],
+};
+```
+
+**Tree-shaking note:** The project already imports `echarts/core` with selective chart/component registration (the ngx-echarts pattern). Add `ScatterChart` and `LineChart` to the existing registration block. Do not switch to the full `import 'echarts'` bundle — that would bloat the Angular bundle by ~1 MB.
+
+**Confidence:** HIGH — ECharts 5 scatter and line are core chart types; ngx-echarts 17.2 is already in the stack and verified compatible with Angular 17.
+
+---
+
+## Environment Variables to Add
+
+| Variable | Purpose | Required By |
+|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | Claude API for metadata inference | AI metadata auto-fill |
+| `OPENAI_API_KEY` | Whisper API for audio transcription | Voice Over detection |
+
+Both are secrets. Add to `.env` (Docker Compose `env_file`) and to the `pydantic-settings` `Settings` model. Never commit values.
+
+---
+
+## Summary: Net-New Additions for v1.1
+
+| Layer | Addition | Version | Purpose |
+|-------|----------|---------|---------|
+| Backend | `anthropic` | `>=0.86.0` | Claude vision API for AI metadata inference |
+| Backend | `openai` | `>=2.29.0` | Whisper API for audio transcription + VO language detection |
+| Frontend | none | — | All new UI features use existing Angular Material + ECharts |
+
+Everything else is handled by the existing stack. Do not add:
+- `ngx-toastr` — Angular Material MatSnackBar already covers toast needs
+- `faster-whisper` or `openai-whisper` (local) — OpenAI API avoids GPU/model-size constraints in Docker
+- Any additional charting library — ECharts 5 handles scatter and line natively
 
 ---
 
 ## Sources
 
-- [python-arq/arq GitHub — Issue #510 (maintenance mode)](https://github.com/python-arq/arq/issues/437) — confirmed maintenance-only status
-- [redis-py PyPI — version 7.1.1](https://pypi.org/project/redis/) — current version, asyncio unified API
-- [tenacity PyPI — version 9.1.4](https://pypi.org/project/tenacity/) — current version, Python 3.10+ requirement
-- [httpx GitHub releases — 0.28.1](https://github.com/encode/httpx/releases/tag/0.28.0) — current stable, proxies argument removed
-- [Upstash Replit integration docs](https://upstash.com/docs/redis/integrations/replit-templates) — confirmed Replit+Upstash Redis support
-- [Angular polling with RxJS — production patterns](https://medium.com/@sourabhda1998/5-genius-ways-to-build-a-polling-service-using-rxjs-interval-that-actually-work-in-production-414cdccd1e35) — MEDIUM confidence (web search)
-- [FastAPI httpOnly cookie JWT pattern](https://www.fastapitutorial.com/blog/fastapi-jwt-httponly-cookie/) — HIGH confidence, documented official pattern
-- [aioredis abandoned, merged into redis-py](https://redis.io/faq/doc/26366kjrif/what-is-the-difference-between-aioredis-v2-0-and-redis-py-asyncio) — HIGH confidence, official Redis FAQ
+- [Anthropic Models Overview](https://platform.claude.com/docs/en/about-claude/models/overview) — verified 2026-03-25 (HIGH confidence)
+- [Anthropic Vision API Docs](https://platform.claude.com/docs/en/build-with-claude/vision) — verified 2026-03-25 (HIGH confidence)
+- [anthropic PyPI — v0.86.0](https://pypi.org/project/anthropic/) — version confirmed 2026-03-25 (HIGH confidence)
+- [OpenAI Transcriptions API Reference](https://platform.openai.com/docs/api-reference/audio/createTranscription) — method signature verified (HIGH confidence)
+- [openai-python GitHub transcriptions.py](https://github.com/openai/openai-python/blob/main/src/openai/resources/audio/transcriptions.py) — response_format and language field confirmed (HIGH confidence)
+- [openai PyPI — v2.29.0](https://pypi.org/project/openai/) — version confirmed 2026-03-25 (HIGH confidence)
+- [ngx-echarts npm — v17.2.0](https://www.npmjs.com/package/ngx-echarts) — already in stack, Angular 17 compatible (HIGH confidence)
+- [Apache ECharts scatter handbook](https://apache.github.io/echarts-handbook/en/how-to/chart-types/scatter/basic-scatter/) — data format [x, y] confirmed (HIGH confidence)
+- [Angular Material Snackbar API](https://material.angular.dev/components/snack-bar/api) — part of @angular/material 17, standalone compatible (HIGH confidence)
 
 ---
 
-*Stack research for: BrainSuite creative scoring integration + production hardening*
-*Researched: 2026-03-20*
+*v1.1 stack research completed 2026-03-25. Supersedes v1.0 STACK.md for new additions.*

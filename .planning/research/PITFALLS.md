@@ -1,323 +1,382 @@
-# Pitfalls Research
+# Domain Pitfalls: v1.1 Feature Additions
 
-**Domain:** Multi-tenant ad platform connector with async creative scoring (FastAPI + Angular + GCS)
-**Researched:** 2026-03-20
-**Confidence:** HIGH (most pitfalls grounded in specific known issues in the existing codebase + verified external sources)
+**Domain:** Adding AI inference, image scoring, analytics views, notifications, and backfill to production Angular 17 + FastAPI + PostgreSQL system
+**Researched:** 2026-03-25
+**Confidence:** HIGH — pitfalls grounded in existing codebase patterns + verified against official docs and production issue reports
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: In-Memory OAuth Sessions Silently Break Under Autoscale
+Mistakes that cause rewrites, data corruption, cost overruns, or broken production behavior.
+
+---
+
+### Pitfall 1: AI Inference Cost Blowout on Re-Trigger
 
 **What goes wrong:**
-The `_oauth_sessions` dict lives in one worker's memory. Under Replit Autoscale, the OAuth callback may land on a different worker than initiated the flow — the session is not found, the user gets a cryptic error, and the platform connection silently fails. There is also no TTL, so abandoned OAuth attempts accumulate indefinitely, eating memory.
+The AI metadata inference call fires every time an asset is processed rather than once per asset per lifetime. With 1,000 existing assets in the backfill job plus ongoing syncs, and each image inference call costing ~$0.004 for a 1MP image using Claude Sonnet, a naive implementation that calls the API on every sync pass costs ~$4 per full re-scan of 1,000 images. At 15-minute intervals with 96 scheduler ticks per day, an unguarded inference call will cost hundreds of dollars per day per tenant.
 
 **Why it happens:**
-OAuth state stored in-memory is the "obvious" quick solution during development on a single-process dev server. The problem is invisible until the second worker instance spins up under load.
+The BrainSuite scoring pipeline already has an `on_conflict_do_nothing` guard that prevents re-scoring completed assets. If inference is added as a step inside the same scoring loop without an equivalent guard, it runs on every scheduler tick regardless of whether inference was already done. The temptation is to co-locate inference with scoring because they share the same asset payload.
 
-**How to avoid:**
-Replace `_oauth_sessions` with Redis using a short TTL (10–15 minutes). Use the already-configured `REDIS_URL` env var. Key the session by a cryptographically random `state` parameter, not user ID. Delete the key immediately on successful callback. Verify that `SETEX` (set-with-expiry) is used — not `SET` followed by `EXPIRE` — to avoid the race where the key exists with no TTL between those two calls.
+**Cost quantification (HIGH confidence — official Anthropic docs):**
+- Image token formula: `tokens = (width_px * height_px) / 750`
+- 1MP image ≈ 1,334 tokens ≈ $0.004 per inference at claude-sonnet-4-6 pricing ($3/M input tokens)
+- 1,000 assets × $0.004 = $4 per full scan
+- 96 scheduler ticks/day × $4 = $384/day if not guarded
 
-**Warning signs:**
-- OAuth connection works locally but fails inconsistently in production
-- Users report "connection failed" after approving the platform consent screen
-- Memory on the backend process grows over time with no corresponding user activity
+**Prevention:**
+1. Add an `ai_inference_status` column to the creative asset table — identical state machine to scoring: `PENDING → COMPLETE / FAILED`.
+2. Use the same `on_conflict_do_nothing` + status-check guard before any inference call. Query `WHERE ai_inference_status IS NULL OR ai_inference_status = 'FAILED'` before dispatching.
+3. Store inference results (inferred metadata) in the database immediately after a successful call — never re-infer unless the user explicitly requests it or the asset is replaced.
+4. Add a hard per-tenant daily spend cap in the inference service (count calls in Redis, stop after configurable limit, surface warning in UI).
 
-**Phase to address:**
-Security Hardening phase (before any external users onboard). This is a hard blocker for production.
+**Detection / warning signs:**
+- Inference called inside any loop that runs on a scheduler tick without a status-check guard
+- No `ai_inference_status` field on the asset model
+- Claude API spend climbing linearly with the number of scheduler ticks in billing dashboard
+
+**Phase:** AI metadata inference phase. Architecture decision must be made before any inference code is written.
 
 ---
 
-### Pitfall 2: OAuth Redirect URI Constructed from Request Headers
+### Pitfall 2: Image vs. Video Scoring Routed to Wrong BrainSuite Endpoint
 
 **What goes wrong:**
-The redirect URI is built from `x-forwarded-host` without validating the header value. A malicious actor sends a crafted request with a different host header during an OAuth initiation, causing the platform's callback to redirect tokens to an attacker-controlled domain. This is a classic OAuth redirect URI injection.
+The v1.0 scoring pipeline calls the video endpoint for all assets. When image scoring is added, the most common mistake is using `asset.content_type` (which may be `video/mp4`, `image/jpeg`, etc.) or `asset.asset_type` to branch between the Static (image) and video endpoint — but these fields are populated at sync time from ad platform API responses, which are inconsistent across Meta, TikTok, Google Ads, and DV360. A video thumbnail synced from Meta may arrive with `content_type = image/jpeg`. A GIF ad creative may be classified as `image/gif`. DV360 HTML5 ad creatives may have no content_type at all.
+
+If the dispatch logic does not have an explicit, tested mapping for every (platform, asset_type, content_type) combination, some assets silently hit the wrong endpoint. The BrainSuite video endpoint will reject image payloads with a 4xx error. If tenacity's no-retry-on-4xx rule is already in place (which it is), the asset is immediately marked `FAILED` and never retried — silently producing no score.
 
 **Why it happens:**
-Trusting forwarded headers is common when sitting behind a reverse proxy, but the assumption is that the proxy has already validated and locked down those headers. Replit's Autoscale environment does not guarantee this.
+The scoring loop processes the queue without inspecting the actual file; it trusts the metadata field set during sync. That metadata was not set with scoring endpoint dispatch in mind — it was set with dashboard display in mind.
 
-**How to avoid:**
-Define the redirect URI as a hardcoded configuration value (env var `META_REDIRECT_URI`, `TIKTOK_REDIRECT_URI`, etc.) and compare the inbound `x-forwarded-host` against an allowlist. Never construct the redirect URI dynamically from request headers in production. The env vars for redirect URIs already exist in the codebase — use them exclusively.
+**Prevention:**
+1. Define an explicit `ScoringEndpointType` enum: `VIDEO | STATIC_IMAGE`. Populate this field on every asset record at sync time, not at scoring time. Write a separate helper that maps `(platform, raw_content_type, file_extension)` → `ScoringEndpointType`.
+2. The BrainSuite spike at the start of the image scoring phase must confirm: exactly which `content_type` values map to the Static endpoint vs. the video endpoint. Document in code as a lookup table, not implicit `if "video" in content_type` string matching.
+3. Add a test fixture for each (platform, type) combination that asserts the correct endpoint is selected.
+4. If `ScoringEndpointType` cannot be determined at sync time, mark the asset with `score_status = UNROUTABLE` and surface it in an admin view rather than silently failing.
 
 **Warning signs:**
-- Redirect URI in OAuth init is constructed with string interpolation rather than read from config
-- No validation of `x-forwarded-host` against a known list of domains
-- OAuth consent screen shows a domain that does not match your configured app domain
+- Scoring dispatch logic uses `if "video" in asset.content_type`
+- No test coverage for (TikTok, image/jpeg), (Meta, video/mp4), (DV360, null) combinations
+- Sudden spike in `FAILED` score status after image scoring is deployed
 
-**Phase to address:**
-Security Hardening phase. Exploitable in production — fix before external users.
+**Phase:** BrainSuite image scoring phase. The routing table must be the first deliverable in the phase, before endpoint integration.
 
 ---
 
-### Pitfall 3: JWT in localStorage Exposes All User Tokens on XSS
+### Pitfall 3: Backfill Job Competing with Live 15-Minute Scorer
 
 **What goes wrong:**
-A single XSS vector anywhere in the Angular app — including third-party ad preview iframes or injected creative metadata — allows an attacker to `localStorage.getItem('access_token')` and exfiltrate all of the user's ad platform tokens. Because those tokens are encrypted with Fernet and stored server-side against the user account, a stolen JWT grants access to the user's entire Meta/TikTok/Google/DV360 connection.
+The backfill job and the live 15-minute scheduler both query `WHERE score_status = 'UNSCORED'` and submit assets to BrainSuite. Without coordination, they will simultaneously pick up the same assets, submit duplicate scoring requests, and attempt to write conflicting score results back. The existing `on_conflict_do_nothing` prevents duplicate row creation, but it does not prevent duplicate BrainSuite API calls — each one consumes API quota and may return slightly different scores (if BrainSuite is non-deterministic or the asset URL produces a different presigned URL on each call).
+
+Worse: if the backfill job runs inside the same APScheduler instance as the live scorer (added as a one-shot job), `SCHEDULER_ENABLED=false` workers correctly skip the live scorer but also skip the backfill trigger — there is no mechanism to run the backfill exactly once across the fleet.
 
 **Why it happens:**
-localStorage is the default recommendation in most Angular tutorial code. The XSS risk is abstract until a creative asset with crafted metadata is imported and rendered.
+The backfill is conceptually "the same thing as the live scorer, but for old assets." Adding it as a second scheduler job is the path of least resistance, but it shares the same queue with no coordination.
 
-**How to avoid:**
-Switch to the hybrid pattern: access token in memory only (Angular service property, not persisted storage), refresh token in an `httpOnly; Secure; SameSite=Strict` cookie. Add a `POST /api/v1/auth/refresh` endpoint that accepts the httpOnly cookie, validates, and returns a new in-memory access token. Remove all `localStorage.setItem` calls in `auth.service.ts` and `auth.effects.ts`. Add a `Content-Security-Policy` header that disallows inline scripts and restricts `frame-src` to known ad platform preview domains.
+**Prevention:**
+1. Introduce a `scoring_lock` field or a `score_submitted_at` timestamp on the asset record. The live scorer and backfill both update this field atomically when they claim an asset: `UPDATE assets SET score_submitted_at = now() WHERE id = :id AND score_submitted_at IS NULL`. Only one job wins the claim.
+2. Run the backfill as a one-time triggered API endpoint (`POST /admin/backfill/start`) rather than an APScheduler job. This endpoint is only callable by admin users, runs in a background task, and respects the same claim mechanism as the live scorer. This avoids the `SCHEDULER_ENABLED` multi-worker problem entirely.
+3. The backfill must apply the same tenacity retry policy, rate limiting, and session-per-operation pattern already established in the live scorer. Copy the pattern, not the job registration.
+4. Add a progress table (`backfill_runs`: id, started_at, completed_at, total_assets, processed_assets, failed_assets) so the backfill is observable and idempotent — if it is interrupted and restarted, it resumes from where it stopped.
 
 **Warning signs:**
-- `localStorage.setItem` used in `auth.service.ts` or any NgRx effect
-- No `Content-Security-Policy` header on API responses or the Angular shell
-- Creative metadata is rendered with `innerHTML` or `[innerHTML]` without sanitization
+- Backfill added as a second APScheduler `interval` or `cron` job alongside the live scorer
+- No `score_submitted_at` or equivalent claim field on assets
+- Two simultaneous BrainSuite API calls visible in logs for the same `asset_id`
 
-**Phase to address:**
-Security Hardening phase. The 69 `any` type instances in the frontend increase this risk because untyped API responses may silently carry unexpected HTML/script content.
+**Phase:** Historical backfill phase. Must be designed before implementation — not retrofitted after.
 
 ---
 
-### Pitfall 4: Platform Token Refresh Failures Are Swallowed Silently
+### Pitfall 4: AI Inference Payload Size Blowing the 32 MB API Limit
 
 **What goes wrong:**
-Background sync jobs refresh platform access tokens. If token refresh fails — expired refresh token, revoked app access, Google Cloud project still in "Testing" status, or TikTok 24-hour access token not rotated — the sync service falls into `except Exception` blocks that log an error and move on. The user never sees a notification. They see stale metrics indefinitely, with no indication their connection is broken.
+Assets stored in MinIO/S3 may be high-resolution source files — ad creatives from Meta or TikTok uploads are often 5–20 MB. The inference service fetches the asset via a presigned URL, encodes it as base64, and includes it in the Claude API request body. A 5 MB image becomes ~6.7 MB base64. The Claude API standard endpoint limit is 32 MB total request size. A request with two or three large images, combined with the system prompt and metadata context, can exceed this limit and return a 413 error — which is a 4xx and therefore not retried by tenacity.
+
+Separately, Claude internally resizes images larger than 1568px on the long edge before processing. This adds latency (time-to-first-token increases) with no quality benefit.
 
 **Why it happens:**
-Broad exception handling (`except Exception`) in `meta_sync.py`, `scheduler.py`, and `platforms.py` suppresses the failure signal. The scheduler continues scheduling the job. The connection record is never updated to a "disconnected" state.
+The presigned URL fetch + base64 encode pattern mirrors how the BrainSuite video scoring pipeline was implemented (pass the URL). But BrainSuite fetches the asset server-side from the URL — Claude API with base64 source requires the client to include the full payload.
 
-**How to avoid:**
-Model platform connection state explicitly: `connected`, `token_refresh_failed`, `disconnected`. When a token refresh fails after N retries, update the connection record's status and surface a visible error in the dashboard ("Your Meta connection needs to be reconnected"). Add a dedicated exception type for `PlatformTokenExpiredError` that sync services raise, and catch it specifically in the scheduler to trigger the state transition.
+**Prevention:**
+1. Before encoding: fetch asset headers (Content-Length) via a HEAD request. If the file exceeds 4 MB, downsample to a maximum of 1568px on the long edge and 1.15 megapixels before encoding. This is explicitly recommended by Anthropic docs for time-to-first-token optimization.
+2. Prefer the Claude Files API (`beta.files.upload` + `file_id` reference) for assets that will be re-analyzed. This keeps the request payload small regardless of image size and avoids re-uploading the same file.
+3. For video inference, never send the raw video binary. Extract a representative frame at a fixed timestamp (e.g., 1 second in) using ffmpeg or a lightweight frame extractor, then send the frame. Videos in MinIO can be large (100+ MB) — never pass video bytes directly to Claude.
+4. Set `max_tokens` conservatively on inference calls (256–512 tokens is sufficient for metadata field inference) — this constrains output cost while not limiting the quality of structured JSON metadata responses.
 
 **Warning signs:**
-- `except Exception` in any sync service without a state transition on the platform connection record
-- No `status` or `health` field on `PlatformConnection` model
-- Dashboard shows metrics from 3+ days ago without any error indicator
+- Inference service fetches presigned URL and passes full binary directly without checking size
+- No image downsampling step before base64 encoding
+- `max_tokens` set to 1024+ on inference calls that only need metadata field values
 
-**Phase to address:**
-Platform Reliability phase (sync hardening). Also requires a UI indicator in the Dashboard Polish phase.
+**Phase:** AI metadata inference phase. Downsampling utility must be implemented before any inference calls against real production assets.
 
 ---
 
-### Pitfall 5: BrainSuite Scoring Creates N+1 Asset Submissions
+### Pitfall 5: Low-Confidence Inference Results Overwriting Good User Data
 
 **What goes wrong:**
-When the BrainSuite integration is built, the naive implementation submits each creative individually as it is synced. With large accounts (hundreds to thousands of creatives), this creates hundreds of sequential HTTP calls to the BrainSuite API. If the BrainSuite API has per-minute rate limits, this immediately starts returning 429s. If not rate-limited, it creates a latency cascade during sync that delays the entire job.
+The AI inference result is written directly to the asset metadata fields (Language, Market, Brand Name, etc.) without asking the user. If the inference is wrong — which it will be for some percentage of assets — the user's existing metadata (potentially carefully entered by hand) is silently overwritten. Worse: if the inference runs on every sync and writes back to the database, user corrections are overwritten on the next scheduler tick.
+
+This is the canonical "helpful AI feature that destroys user trust" failure mode. One wrong brand name inference on a key campaign asset is enough for a user to distrust the entire feature.
 
 **Why it happens:**
-The sync services already download/store assets one at a time. Appending a BrainSuite API call after each asset store is the path of least resistance, but does not account for API rate limits or failure handling.
+The quickest implementation path writes the inference result directly to the same metadata columns used for display. There is no distinction between "human-entered" and "AI-inferred" provenance.
 
-**How to avoid:**
-Queue creative IDs for scoring separately from the sync pipeline. After a sync completes, enqueue all unscored creatives into a scoring task. The scoring task processes with a configurable rate limit (e.g., 5 per second). Store score status on the creative record (`pending`, `scoring`, `scored`, `failed`). Use existing Redis as the queue backing. This decouples sync reliability from scoring reliability.
+**Prevention:**
+1. Never overwrite existing metadata fields that have been set by a user. Add a `metadata_source` enum (`USER_PROVIDED | AI_INFERRED | PLATFORM_API | EMPTY`) per metadata field (or at minimum a `metadata_confirmed` boolean on the asset).
+2. Store inference results in a separate `ai_metadata_suggestions` table (or JSONB column), not in the live metadata columns. Surface them as suggestions in the UI with an "Apply" / "Dismiss" action.
+3. Include a `confidence` score in the inference response (prompt Claude to return a confidence level for each field). Only auto-apply suggestions above a threshold (e.g., 0.85) — and only to fields that are currently empty, not fields with existing values.
+4. If the inference API call fails or returns below-threshold confidence on all fields, the asset remains unchanged and the failure is logged — it does not block any other pipeline step.
 
 **Warning signs:**
-- BrainSuite API call made inline inside the asset download/store loop
-- No `score_status` field on the creative record
-- No backoff or retry logic around BrainSuite API calls
+- Inference result written directly via `UPDATE assets SET language = :inferred_language`
+- No separate storage for AI-suggested vs. user-confirmed metadata
+- Inference runs on already-scored assets with populated metadata fields
 
-**Phase to address:**
-BrainSuite Integration phase. Architecture decision must be made before the first line of scoring code is written.
+**Phase:** AI metadata inference phase.
 
 ---
 
-### Pitfall 6: Fernet Key Rotation Silently Invalidates All Stored Platform Tokens
+### Pitfall 6: Score Trend Table Growing Without Bound
 
 **What goes wrong:**
-If `TOKEN_ENCRYPTION_KEY` is not set in production (or is set incorrectly), the application generates a new Fernet key on each startup. All platform OAuth tokens stored in the database were encrypted with the previous key. Every sync job fails immediately with decryption errors. Users must reconnect all their ad accounts. The failure mode is indistinguishable at the surface from "connection expired."
+A `creative_score_history` table that appends one row per asset per scoring run, with the 15-minute scheduler and hundreds of assets per tenant, produces:
+- 1 row per asset × 96 ticks/day × 365 days = 35,040 rows/year per asset
+- At 500 assets per tenant and 10 tenants: 175,200,000 rows/year
+
+This is before backfill (which may produce scores for historical dates retroactively). Without a retention policy, this table becomes the largest table in the database within months, degrades dashboard query performance (the trend chart query must aggregate across all historical rows), and makes backups slow.
 
 **Why it happens:**
-The fallback to generate a new key was intended as a development convenience. It becomes catastrophic in a stateless deploy (e.g., Replit container restart) where environment variables may not persist.
+The natural implementation appends a row every time the scoring pipeline writes a score. Partitioning and retention are "future problems" that never get prioritized.
 
-**How to avoid:**
-Add a startup validation that asserts `TOKEN_ENCRYPTION_KEY` is set and is a valid Fernet key format before accepting any traffic. Fail fast with a descriptive error rather than silently continuing. Store the key in Replit's secret store, not as a `.env` file that may not survive a container rebuild. Document key rotation procedure: generate new key, re-encrypt all tokens in a migration, update the secret.
+**Prevention:**
+1. Score trend does not need per-tick granularity. Store one row per asset per **day**, not per scoring run. If the score did not change since the last entry, do not insert a new row (`INSERT ... WHERE NOT EXISTS (SELECT 1 FROM score_history WHERE asset_id = :id AND date = :today AND score = :score)`).
+2. Add a retention policy at the database level from day one. For an agency tool, 90 days of trend history is sufficient. Use PostgreSQL range partitioning on `scored_at` with monthly partitions — dropping a partition is near-instant and does not generate dead tuples, unlike a `DELETE` statement.
+3. Index on `(asset_id, scored_at DESC)` — the primary query pattern for trend charts is "last N days for this asset."
+4. For the backfill job: only insert one historical score per asset per day, not one per historical occurrence.
 
 **Warning signs:**
-- `security.py` has a `try/except` around Fernet key parsing with silent fallback
-- `TOKEN_ENCRYPTION_KEY` not listed in deployment runbook as required
-- Sync errors spiking immediately after a deployment
+- `INSERT INTO score_history` inside the main scoring loop with no deduplication check
+- No `UNIQUE` constraint or conditional insert on `(asset_id, date)`
+- No table partitioning plan or retention policy in the schema design
 
-**Phase to address:**
-Security Hardening phase. Startup validation should be implemented before production traffic.
+**Phase:** Score trend / analytics views phase. Schema design is the critical deliverable — cannot be easily changed after data is written.
 
 ---
 
-### Pitfall 7: APScheduler Multi-Worker Duplicate Job Execution
+### Pitfall 7: ROAS Correlation Chart Skewed by Zero and Missing Data Points
 
 **What goes wrong:**
-APScheduler uses an in-memory job store by default. Under Replit Autoscale with multiple workers, each worker runs its own scheduler instance. Every worker fires the same sync job at the same scheduled time. This causes simultaneous duplicate syncs: duplicate API calls to ad platforms (may hit rate limits or trigger platform abuse detection), duplicate database writes that cause constraint violations or inflated metrics, and database deadlocks on upsert operations.
+The correlation view plots BrainSuite score on one axis, ROAS on the other. Three data quality problems corrupt the chart:
+
+1. **Zero ROAS:** Assets that have impressions and spend but zero conversions/revenue have ROAS = 0. These are not outliers — they are common in top-of-funnel creative. Plotting them collapses the regression line toward zero regardless of score, making high-score awareness creatives look like they perform the same as low-score assets.
+
+2. **Missing ROAS:** Assets synced from platforms that do not report revenue (e.g., DV360 brand campaigns, TikTok accounts without pixel setup) have `NULL` ROAS. If the frontend filters these out silently, the correlation is computed only on direct-response campaigns, introducing survivorship bias.
+
+3. **Low-spend outliers:** A creative with $0.50 spend and 3 conversions shows ROAS = 600x. One outlier point anchors the trendline and makes the correlation appear stronger than it is.
 
 **Why it happens:**
-APScheduler is well-suited for single-process deployments. The existing deadlock retry logic (`string matching "deadlock"` in `scheduler.py`) is the evidence this has already been observed — it's a symptom of this exact problem.
+Aggregation queries return whatever data is in the database. The chart component receives the raw records and passes them to a charting library. The charting library plots every point without awareness of spend significance.
 
-**How to avoid:**
-Configure APScheduler with a database-backed job store (PostgreSQL or Redis) that enforces single-instance execution via distributed locking. Alternatively, use a dedicated lightweight worker approach: run the scheduler only in a designated worker (check a `SCHEDULER_ENABLED` env var) and disable it in other workers. For the scale of this application, the env-var approach is simpler and sufficient.
+**Prevention:**
+1. Separate NULL ROAS and zero ROAS explicitly in the UI. NULL ROAS should show the asset in a separate "Untracked" section or with a distinct visual treatment — never silently excluded. Zero ROAS is valid and should be displayed, but the chart should label the "ROAS = 0" cluster explicitly.
+2. Apply a minimum spend threshold filter (configurable, default: exclude assets with less than $10 total spend from the correlation scatter). Surface the filter threshold and the number of excluded assets in the chart legend ("Excluding 23 assets with < $10 spend").
+3. Use a log scale on the ROAS axis (or Winsorize at the 95th percentile) to prevent extreme outliers from distorting the view. Provide a UI toggle between log and linear scale.
+4. The SQL query must return spend alongside ROAS — the frontend needs spend to implement client-side filtering without a separate round trip.
+5. Do not compute a correlation coefficient or trendline server-side and present it as "statistically significant." With typical agency account sizes (20–200 assets), the sample size is insufficient for reliable Pearson correlation. Either omit the trendline entirely or display it with an explicit "indicative only" label.
 
 **Warning signs:**
-- APScheduler initialized in `main.py` lifespan without a distributed job store
-- `string.find("deadlock")` error-detection pattern already present in scheduler
-- Metrics showing double-counted spend/impressions after a sync
+- Correlation chart query does not return `total_spend` alongside `roas`
+- NULL and zero ROAS treated identically (both filtered out or both included without distinction)
+- No minimum spend filter at chart render time
+- Trendline or correlation coefficient displayed without a confidence interval or sample size note
 
-**Phase to address:**
-Platform Reliability phase. Also relevant when adding BrainSuite scoring queue — scoring jobs must not be executed twice for the same creative.
+**Phase:** Score-to-ROAS correlation / analytics views phase.
 
 ---
 
-### Pitfall 8: Path Traversal in Asset Serving Endpoint
+### Pitfall 8: Notification System Complexity Creep
 
 **What goes wrong:**
-The asset serving endpoint in `main.py` constructs a GCS object path by concatenating a user-supplied `object_path` parameter with the `creatives/` prefix. A crafted value like `../secrets/SERVICE_ACCOUNT_KEY.json` may traverse outside the intended directory. Even if GCS rejects directory traversal in object names, the endpoint could be used to probe for the existence of objects in other GCS paths, or future refactoring could introduce a local filesystem serving variant where this becomes fully exploitable.
+The in-app notification feature is scoped to bell + toasts for v1.1, with Slack/email explicitly out of scope. The temptation is to build a "proper" notification infrastructure: a `notifications` table, a WebSocket channel per user, a Redis pub/sub fan-out, event types, read/unread state, notification preferences, and an admin delivery panel. This takes 2–3x longer than the feature warrants and introduces new infrastructure components (long-lived WebSocket connections, Redis pub/sub) that must be operated and debugged.
+
+For an in-app-only, sync/scoring status notification system, none of this complexity is required.
 
 **Why it happens:**
-The existing mitigation (prefix with `creatives/`) is insufficient. A path like `creatives/../other-tenant/asset.jpg` normalizes to `other-tenant/asset.jpg` after GCS path resolution, potentially exposing another organization's assets.
+"Notifications" triggers a mental model of enterprise notification systems. The pattern of WebSocket + Redis Streams + fan-out is heavily promoted in tutorials but is designed for chat applications and systems with thousands of concurrent users — not for a multi-tenant agency tool where one user is active at a time per organization.
 
-**How to avoid:**
-Use `pathlib.PurePosixPath` to normalize the path and assert the resolved path starts with `creatives/`. Also assert the path matches a pattern consistent with GCS object naming (`^creatives/[a-zA-Z0-9_\-./]+$`). Switch from serving via proxy to generating short-lived GCS signed URLs (15-minute expiry) — this is already supported by `object_storage.py` — and redirecting the client directly. This eliminates the proxy surface entirely.
+**The correct scope for v1.1:**
+- Backend: A `notifications` table with `(id, org_id, user_id, type, message, created_at, read_at)`. Insert rows from the scoring pipeline and sync service when key events occur (sync complete, scoring complete, error).
+- Backend: A `GET /api/v1/notifications/unread` polling endpoint. No WebSockets. No pub/sub.
+- Frontend: Angular polling service calls this endpoint every 30 seconds when the user is on the dashboard. Renders bell badge (unread count) and toast for new notifications.
+- Frontend: `POST /api/v1/notifications/:id/read` to mark read.
+
+This is 1–2 days of work, not 1–2 weeks. It handles the stated scope (sync and scoring events, in-app only) without any new infrastructure.
+
+**Prevention:**
+Do not add WebSockets, Redis pub/sub, PostgreSQL LISTEN/NOTIFY, or server-sent events to this project for v1.1 notifications. The polling approach is sufficient, observable, debuggable, and extends trivially to email/Slack in v2 by changing the delivery step in the same event insertion function.
 
 **Warning signs:**
-- Object path built with string concatenation rather than `pathlib`
-- No regex validation on `object_path` parameter
-- Asset endpoint returns binary content directly rather than a redirect to a signed URL
+- Notification design document mentions WebSocket, SSE, or Redis pub/sub
+- Notification design involves more than 2 new database tables
+- Notification design involves a new Docker service or infrastructure component
 
-**Phase to address:**
-Security Hardening phase. Also: switching to signed URL redirects is the correct long-term architecture regardless of the security fix.
-
----
-
-## Technical Debt Patterns
-
-Shortcuts that seem reasonable but create long-term problems.
-
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| `any` type in Angular API service | Fast iteration on untyped API responses | Runtime errors when API shape changes; refactoring requires guessing; BrainSuite score fields typed as `any` fail silently in templates | Only during initial prototype; never in production frontend |
-| `except Exception` in sync services | Prevents crashes on unexpected errors | Swallows signal that tokens are expired; makes root cause analysis require log diving; masks data corruption | Never in a system with financial data (ad spend metrics) |
-| In-memory OAuth session dict | No Redis dependency in dev | Sessions lost on restart; impossible to scale horizontally; no TTL means memory growth | Only acceptable in local development with single process |
-| APScheduler without distributed lock | No queue infrastructure needed | Duplicate sync on multi-worker deploy; race conditions on upsert; deadlocks | Only acceptable when guaranteed single-process (local dev, single Replit deployment) |
-| Synchronous Alembic migration at startup | Simple deployment | Blocks startup for up to 15s; fails if migration takes longer than health check timeout; migrations run on every worker restart | Only for MVP/prototype; unacceptable before autoscale |
-| Hardcoded `password` in default DATABASE_URL | Easy local setup | Developers accidentally use default in production; security incident risk | Never in a committed config file; use env var with no default |
+**Phase:** Notifications phase. The architecture decision (polling vs. push) must be made and locked before implementation starts.
 
 ---
 
-## Integration Gotchas
+## Moderate Pitfalls
 
-Common mistakes when connecting to external services.
+### Pitfall 9: BrainSuite API Discovery Spike Skipped or Rushed
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| Google Ads OAuth | Using "Testing" OAuth app status causes refresh tokens to expire after 7 days, even in production deployments | Verify Google Cloud project OAuth consent screen is published ("In production"), not testing status |
-| TikTok Ads API | Treating TikTok access tokens as long-lived; they expire in 24 hours | Schedule background rotation of TikTok access tokens; store both access and refresh token with explicit expiry timestamps |
-| Meta Ads API | Requesting `ads_management` scope when only `ads_read` is needed; triggers more aggressive review | Request minimum required scopes; `ads_management` only if write operations are planned |
-| BrainSuite API | Sending GCS object paths directly without verifying URL is publicly accessible or signed | Verify the URL passed to BrainSuite is a publicly accessible HTTPS URL or a long-lived signed URL (BrainSuite likely fetches the asset server-side) |
-| GCS Signed URLs | Generating signed URLs with the default 7-day maximum expiry for dashboard display | Use short expiry (15–60 min) for signed URLs; regenerate on each dashboard load; never store signed URLs in the database |
-| DV360 Report API | Treating report polling as a single-request operation; large reports can take up to 2 hours | Persist poll state to database; resume on scheduler restart; set a maximum wait before marking sync as "partial" |
-| ExchangeRate-API | Silently returning 1.0 (no conversion) when both currency services fail | Log the failure with the target currency and amount; surface "currency data unavailable" state in the UI rather than silently passing through unconverted values |
+**What goes wrong:**
+The PROJECT.md explicitly flags: "Static image endpoint has different endpoint/payload — requires API discovery spike at Phase 5 start." If this spike is skipped to save time and the image endpoint is assumed to mirror the video endpoint, the implementation is built on a false assumption. The BrainSuite Static endpoint likely has a different:
+- HTTP method or URL path
+- Required metadata fields (aspect ratio, image format are different concepts for static vs. video)
+- Response schema (may not return identical dimension names as video)
+- Rate limit tier
 
----
+A built-and-deployed image scoring pipeline that calls the wrong endpoint or sends malformed payloads wastes the entire phase deliverable.
 
-## Performance Traps
+**Prevention:**
+1. Before writing any image scoring code: make one authenticated test call to the Static endpoint with a real image from MinIO. Confirm the request schema, response schema, HTTP status codes, and rate limit behavior.
+2. Document the confirmed endpoint details in a `BRAINSUITE_API.md` reference file. This becomes the source of truth for the phase — not assumptions from the video endpoint.
+3. If the BrainSuite API returns dimension names that differ between video and image responses, write a normalization layer that maps both to the same internal representation before storing in the database.
 
-Patterns that work at small scale but fail as usage grows.
-
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Scoring all creatives inline during sync | Sync jobs take 10x longer; platform API rate limits hit during score submission | Decouple scoring from sync; queue creatives for scoring post-sync | First account with >100 creatives |
-| N+1 queries when rendering dashboard with unindexed columns | Dashboard load time degrades linearly with data volume | Add composite indexes on `(platform_connection_id, report_date)`, `(ad_account_id, report_date)` | ~5000 performance records per account |
-| APScheduler running sync jobs in single thread | Syncs for all platforms queue behind one another; 4-platform sync takes 4x as long as 1 platform | Use async job execution; configure thread pool for concurrent platform syncs | 2+ connected platforms with large datasets |
-| Fetching all creatives to find unscored ones | Full table scan on creative table; slow as library grows | Add `score_status` column with index; query `WHERE score_status = 'pending'` | ~1000 creatives |
-| Loading full creative asset binary through FastAPI proxy | API server saturates on asset-heavy dashboard loads | Generate GCS signed URL, return redirect; let GCS serve the binary | ~10 concurrent dashboard users |
-| Default asyncpg pool size (20) under multi-worker autoscale | Connection pool exhaustion; 500 errors under moderate load | Set `POSTGRES_POOL_SIZE` per worker to `floor(max_connections / worker_count)`; monitor pool wait time | 3+ Replit Autoscale workers + any background jobs |
+**Phase:** First deliverable of the BrainSuite image scoring phase.
 
 ---
 
-## Security Mistakes
+### Pitfall 10: Backfill Job Holds DB Sessions During BrainSuite HTTP Calls
 
-Domain-specific security issues beyond general web security.
+**What goes wrong:**
+The existing scoring pipeline's critical pattern is "session-per-operation: never hold a DB session during HTTP calls." The backfill job, written under time pressure, opens a session to fetch a batch of unscored assets, then calls BrainSuite inside the same session context before committing. BrainSuite API calls take 2–10 seconds each. With 500 assets in the backfill queue, this holds DB connections for hours, exhausting the asyncpg pool and causing 500 errors for all other requests.
 
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Storing ad platform OAuth tokens without verifying they are bound to the requesting organization | Token from one tenant usable by another if user ID check is bypassed | Add `organization_id` filter on all `PlatformConnection` queries; never rely solely on `user_id` for multi-tenant isolation |
-| Using organization/account IDs directly in API URLs without authorization check | Attacker enumerates numeric IDs to access other tenants' data | Validate ownership on every read/write; use opaque UUIDs for public-facing resource IDs |
-| Returning full platform API error messages to the frontend | Meta/Google error messages may include internal account structure, developer token partial values | Sanitize external API errors before returning; map to user-facing messages |
-| CORS configured with `allow_methods=["*"]` and `allow_headers=["*"]` | Allows unexpected HTTP methods and headers; weakens CORS as a defense layer | Explicitly enumerate: `["GET", "POST", "PUT", "DELETE", "OPTIONS"]` and required headers only |
-| Plaintext temporary passwords sent to users | Interceptable in transit; user may never change them | Generate cryptographically random temporary passwords; force change on first login; log and alert if password not changed within 24 hours |
-| No rate limiting on OAuth initiation endpoints | Platform OAuth initiation can be abused to flood callback logs or probe for valid redirect URIs | Add sliding-window rate limiting per IP on `/oauth/init` and `/oauth/callback` endpoints |
+**Prevention:**
+1. Fetch the batch of asset IDs (not full asset records) in one short-lived session. Close that session.
+2. For each asset ID: open a fresh session → fetch asset → close session → call BrainSuite → open fresh session → write result → close session.
+3. This is the exact pattern already established in the live scorer. The backfill must copy this pattern verbatim, not simplify it.
 
----
+**Warning signs:**
+- Backfill function opens a session with `async with db_session()` before the BrainSuite call loop, not inside it
+- Connection pool utilization at 100% during backfill runs
 
-## UX Pitfalls
-
-Common user experience mistakes in this domain.
-
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Showing creative performance metrics without a score status indicator | Users see empty score columns and assume BrainSuite is broken or the integration is incomplete | Show "Scoring..." spinner or "Score pending" badge while `score_status = 'pending'`; show "Score unavailable" if scoring failed |
-| Silent sync failures — dashboard shows stale data with no indication | Users make budget decisions on 3-day-old metrics without knowing they are stale | Show "Last synced: 3 days ago — reconnect your Meta account" warning on dashboards when sync age exceeds threshold |
-| Treating all 4 platforms as if they sync on the same cadence | DV360 reports take hours; users expect immediate data after connecting | Per-platform sync status; DV360 progress indication; "Initial sync may take up to 2 hours for DV360" onboarding message |
-| Displaying BrainSuite dimension scores without explanation | Users see "Attention: 72" and "Memory: 45" with no context for what constitutes a good score | Add score range indicators (color-coded), tooltips explaining each dimension, and contextual comparison (above/below account average) |
-| Requiring full page reload to see updated connection status after OAuth | User completes OAuth, returns to app, still sees "Not connected" until they refresh | Poll connection status for 30 seconds after OAuth callback; update NgRx store reactively |
+**Phase:** Historical backfill phase.
 
 ---
 
-## "Looks Done But Isn't" Checklist
+### Pitfall 11: Top/Bottom Performer Highlights Using Absolute Score vs. Relative Rank
 
-Things that appear complete but are missing critical pieces.
+**What goes wrong:**
+"Top performer" is implemented as `WHERE score >= 80` (absolute threshold). In an account where all scores are between 45 and 65 — common for early campaigns — no assets qualify as "top performers" and the highlights section is permanently empty. Conversely, in a strong-performing account where most assets score above 80, too many assets qualify and the highlights are not useful.
 
-- [ ] **OAuth connection flow:** Shows "Connected" in UI — verify the stored token has been successfully used to make at least one API call; OAuth consent does not guarantee working API access (scopes may be wrong, developer token may be missing for Google Ads)
-- [ ] **BrainSuite scoring:** Score appears in dashboard — verify the score was persisted to the database and is not just held in component state; verify failed scores are retried, not silently dropped
-- [ ] **Asset serving:** Images display in dashboard — verify the serving path has been hardened against traversal; verify GCS permissions prevent unauthenticated direct access to the bucket
-- [ ] **Token refresh:** Sync runs without error — verify token refresh failure increments a failure counter and eventually transitions platform connection to `disconnected` state; a single refresh failure should not permanently break sync silently
-- [ ] **Multi-tenant isolation:** User only sees their own data — verify every database query for creatives, metrics, and platform connections filters on `organization_id`, not just `user_id`; run a cross-tenant access test
-- [ ] **Redis session store:** OAuth sessions persist across restarts — verify sessions are not being written to both Redis and the old in-memory dict; verify the TTL is actually being set (check with `TTL session:xyz` in Redis CLI)
-- [ ] **Production key management:** App starts successfully — verify `TOKEN_ENCRYPTION_KEY` and `SECRET_KEY` are set as Replit secrets, not in a `.env` file that may be ephemeral; verify startup validation rejects missing keys
+**Prevention:**
+Top/bottom highlights should use relative rank, not absolute threshold:
+- "Top performers" = top 10% by score within the organization's scored assets (or top N, whichever is smaller)
+- "Bottom performers" = bottom 10% by score within the organization's scored assets
 
----
+Use `PERCENT_RANK()` or `NTILE(10)` window functions. Add a minimum sample size guard: if fewer than 10 scored assets exist, show "Not enough data for highlights" rather than presenting misleading top/bottom labels.
 
-## Recovery Strategies
-
-When pitfalls occur despite prevention, how to recover.
-
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| Fernet key rotation invalidates all platform tokens | HIGH | 1. Restore previous key value from backup/secret history. 2. If key is unrecoverable: notify users, prompt re-connection of all platform accounts. 3. Add startup key validation to prevent recurrence. |
-| In-memory session loss after deploy | LOW | Users retry OAuth flow; no data lost. Reduce user impact by shortening OAuth session TTL and displaying a friendlier "session expired, please reconnect" error. |
-| APScheduler duplicate sync creates double-counted metrics | MEDIUM | Identify affected date ranges from sync job logs. Run deduplication query on performance table keyed by `(platform, account_id, creative_id, date)`. Add `UNIQUE` constraint on that combination to prevent future duplication. |
-| JWT localStorage tokens stolen via XSS | HIGH | 1. Rotate `SECRET_KEY` to invalidate all existing JWTs. 2. Force re-login for all users. 3. Audit logs for suspicious API activity. 4. Patch XSS vector. 5. Migrate to httpOnly cookies before re-opening to users. |
-| BrainSuite scoring backlog (thousands of unscored creatives) | LOW | Add `score_status = 'pending'` index. Run batch scoring job with rate limiting during off-peak hours. Use `LIMIT 100` chunks with exponential backoff. |
-| Path traversal exploit on asset endpoint | MEDIUM-HIGH | 1. Take asset endpoint offline immediately. 2. Audit GCS access logs for anomalous object path requests. 3. Implement pathlib validation + signed URL redirect. 4. Re-enable only after hardening is verified. |
+**Phase:** Analytics views / dashboard redesign phase.
 
 ---
 
-## Pitfall-to-Phase Mapping
+### Pitfall 12: AI Inference Prompt Returns Unstructured Text
 
-How roadmap phases should address these pitfalls.
+**What goes wrong:**
+The Claude API is prompted to "infer metadata fields" and returns a paragraph of prose instead of machine-parseable JSON. The inference service attempts to parse the response and either crashes (KeyError, AttributeError) or stores the raw prose in the suggestions table. This is a silent failure mode that shows users garbled "suggestions."
 
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| In-memory OAuth sessions (Pitfall 1) | Security Hardening | Redis session TTL set; OAuth flow works after simulated worker restart; no `_oauth_sessions` dict in code |
-| OAuth redirect URI header injection (Pitfall 2) | Security Hardening | Redirect URIs read exclusively from env vars; `x-forwarded-host` validated against allowlist |
-| JWT in localStorage (Pitfall 3) | Security Hardening | No `localStorage.setItem` in Angular auth code; access token lives in service memory; `Set-Cookie: httpOnly; Secure` header on login response |
-| Silent platform token refresh failure (Pitfall 4) | Platform Reliability | `PlatformConnection.status` field exists; dashboard shows reconnect prompt when `status = 'token_refresh_failed'` |
-| BrainSuite N+1 scoring calls (Pitfall 5) | BrainSuite Integration | Scoring decoupled from sync; `score_status` field on creative; rate-limited queue confirmed with >50 creative test |
-| Fernet key rotation catastrophe (Pitfall 6) | Security Hardening | Startup fails with descriptive error when `TOKEN_ENCRYPTION_KEY` not set; key stored in Replit secrets |
-| APScheduler duplicate job execution (Pitfall 7) | Platform Reliability | Scheduler disabled in secondary workers via env var; no duplicate metric rows after simulated multi-worker sync |
-| Path traversal in asset serving (Pitfall 8) | Security Hardening | `pathlib` normalization + regex validation in asset endpoint; or endpoint replaced with signed URL redirect |
+**Prevention:**
+1. Use structured output via the Claude API's tool use / function calling feature to enforce a JSON schema. Define the exact metadata schema as a tool input schema — Claude will return structured JSON conforming to the schema.
+2. Alternatively: include explicit JSON format instructions in the system prompt, set `temperature: 0` for determinism, and validate the response against a Pydantic model before storing. If validation fails, log the raw response and mark the inference as `FAILED` — do not store partial results.
+3. Include a `confidence` field (0.0–1.0) for each inferred field in the schema. This enables threshold-based auto-apply logic.
+
+**Phase:** AI metadata inference phase.
+
+---
+
+## Minor Pitfalls
+
+### Pitfall 13: Presigned URL Expiry Mismatch for Inference
+
+**What goes wrong:**
+MinIO presigned URLs are generated with a short expiry (15–60 minutes, per the v1.0 signed URL pattern). If the AI inference service passes this presigned URL to the Claude API's URL image source (instead of base64), and there is any queue delay between URL generation and Claude fetching it, the URL may have expired by the time Claude makes the fetch request. This results in a 403 from MinIO that Claude treats as an image load failure.
+
+**Prevention:**
+Generate presigned URLs for inference with a longer TTL (1 hour minimum for queued inference). Or: fetch the asset bytes immediately upon queue pickup and use base64 source in the Claude request — this is safer for queued systems.
+
+**Phase:** AI metadata inference phase.
+
+---
+
+### Pitfall 14: Score Trend Chart Shows Flat Line for Most Assets
+
+**What goes wrong:**
+BrainSuite scores are deterministic for a given asset — the same asset submitted twice returns the same score. Score trend will show a flat line for every asset that has not changed. This makes the "Score Trend" tab look broken or useless to users who do not understand that scores are stable unless the asset content changes.
+
+**Prevention:**
+1. Document in the UI tooltip: "Score trend changes when an asset is re-submitted to BrainSuite with updated content."
+2. Consider whether the trend chart should only show assets where the score has actually changed at least once. If 95% of assets have flat lines, the trend tab is not useful as a primary analytics surface.
+3. If trend is primarily useful for showing regression after a creative edit, scope it accordingly in the UX: "How has this creative's effectiveness changed over time?"
+
+**Phase:** Score trend / analytics views phase — UX scoping before implementation.
+
+---
+
+## Phase-Specific Warning Summary
+
+| Phase Topic | Pitfall | Severity | Mitigation |
+|-------------|---------|----------|------------|
+| BrainSuite image scoring | Wrong endpoint called for images vs. videos (Pitfall 2) | CRITICAL | Explicit routing table; spike before code |
+| BrainSuite image scoring | API discovery spike skipped (Pitfall 9) | HIGH | Confirmed test call is phase gate |
+| AI metadata inference | Cost blowout from re-triggering (Pitfall 1) | CRITICAL | `ai_inference_status` guard before every call |
+| AI metadata inference | Payload too large for API (Pitfall 4) | HIGH | Downsample to 1568px max before encoding |
+| AI metadata inference | Overwrites user-entered data (Pitfall 5) | HIGH | Suggestions table, never overwrite user data |
+| AI metadata inference | Unstructured response crashes parser (Pitfall 12) | MEDIUM | Structured output / tool use enforced |
+| AI metadata inference | Presigned URL expiry in queue (Pitfall 13) | LOW | 1-hour TTL or fetch-then-base64 |
+| Historical backfill | Competes with live scorer (Pitfall 3) | CRITICAL | Claim lock on asset; admin endpoint not scheduler job |
+| Historical backfill | DB session held during HTTP calls (Pitfall 10) | HIGH | Copy session-per-operation pattern from live scorer |
+| Score trend | Unbounded table growth (Pitfall 6) | HIGH | One row/day/asset; monthly partitions; 90-day retention |
+| Score trend | Flat line for most assets (Pitfall 14) | LOW | UX scope check before building |
+| ROAS correlation | Zero/null ROAS skews chart (Pitfall 7) | HIGH | Explicit NULL/zero treatment; spend threshold filter |
+| Top/bottom highlights | Absolute threshold produces empty sections (Pitfall 11) | MEDIUM | Relative rank (PERCENT_RANK) with minimum sample guard |
+| Notifications | Over-engineering for in-app scope (Pitfall 8) | HIGH | Polling endpoint only; no WebSockets for v1.1 |
+
+---
+
+## Integration Gotchas Specific to v1.1
+
+| Integration Point | Gotcha | Correct Pattern |
+|-------------------|--------|-----------------|
+| Claude API + MinIO assets | Passing MinIO presigned URL directly as Claude `url` source — MinIO may not be publicly accessible in Docker Compose deployment | Fetch bytes from MinIO via backend, encode as base64 for Claude request; never assume MinIO is internet-accessible |
+| BrainSuite Static endpoint | Assuming same payload shape as video endpoint | Confirmed via spike: separate required fields for images (no video duration, different aspect ratio handling) |
+| BrainSuite + tenacity | Retry policy applied globally to all BrainSuite calls, including new image endpoint | Confirm image endpoint returns same HTTP status codes as video; add image endpoint to retry policy explicitly |
+| APScheduler + backfill | Backfill registered as APScheduler one-shot job — `SCHEDULER_ENABLED=false` workers skip it | Use admin API endpoint that triggers background task; bypass APScheduler entirely for one-time jobs |
+| PostgreSQL + trend table | Adding partitioned table to existing schema via Alembic — partitioned tables cannot be created with `CREATE TABLE LIKE` | Write partition creation as raw DDL in Alembic migration; test migration on a copy of production schema before deploying |
+| Angular + polling notifications | Polling interval creates memory leak if component is destroyed before interval clears | Use `takeUntilDestroyed()` or explicit `ngOnDestroy` unsubscription on the polling interval observable |
+| Claude API + structured output | Tool use / function calling requires `anthropic-beta` header for some model versions | Pin the exact model version and beta header used during development; document in `.env.example` |
 
 ---
 
 ## Sources
 
-- BrainSuite Platform Connector codebase concern audit: `.planning/codebase/CONCERNS.md`
-- TikTok Ads API access token management: https://developers.tiktok.com/doc/oauth-user-access-token-management
-- Google Ads API refresh token expiry (Testing vs Production status): https://groups.google.com/g/adwords-api/c/6WNYZYBMF2c
-- OAuth 2.0 production pitfalls (redirect URI injection, PKCE, token exposure): https://securityboulevard.com/2025/03/oauth-2-0-explained-a-complete-guide-to-secure-authorization/
-- Third-party OAuth token supply chain risks: https://unit42.paloaltonetworks.com/third-party-supply-chain-token-management/
-- JWT localStorage vs httpOnly cookies, Angular SPA: https://javascript.plainenglish.io/the-secure-way-to-handle-jwt-authentication-in-angular-stop-using-localstorage-96e7be0d9b8c
-- JWT hybrid pattern (access in memory, refresh in httpOnly cookie): https://medium.com/lets-code-future/stop-using-localstorage-for-jwts-in-your-spa-heres-the-safer-smarter-alternative-in-2025-ece409045978
-- FastAPI async SQLAlchemy production patterns: https://orchestrator.dev/blog/2025-1-30-fastapi-production-patterns/
-- Sync SQLAlchemy in async FastAPI (event loop blocking): https://medium.com/@patrickduch93/the-hidden-trap-in-fastapi-projects-accidently-using-sync-sql-alchemy-in-an-async-app-245b0391a17d
-- APScheduler multi-process duplicate execution: https://apscheduler.readthedocs.io/en/stable/faq.html
-- APScheduler AsyncIOScheduler defaults to ThreadPoolExecutor (event loop risk): https://github.com/agronholm/apscheduler/issues/304
-- Redis session race conditions and TTL pitfalls: https://fsck.sh/en/blog/redis-session-locking-pitfalls-symfony/
-- Redis session management best practices: https://redis.io/tutorials/howtos/solutions/mobile-banking/session-management/
-- Multi-tenant data isolation and cross-tenant leakage patterns: https://agnitestudio.com/blog/preventing-cross-tenant-leakage/
-- Row-level security failures in multi-tenant SaaS: https://medium.com/@instatunnel/multi-tenant-leakage-when-row-level-security-fails-in-saas-da25f40c788c
-- GCS signed URL best practices (short expiry, HTTPS only): https://medium.com/google-cloud/managing-signed-url-risks-in-google-cloud-4d256bd58735
-- Async pipeline idempotency (duplicate execution, stuck jobs): https://dev.to/damikaanupama/designing-asynchronous-apis-with-a-pending-processing-and-done-workflow-4gpd
-- Idempotent data pipeline patterns: https://medium.com/towards-data-engineering/building-idempotent-data-pipelines-a-practical-guide-to-reliability-at-scale-2afc1dcb7251
+- Anthropic Vision docs (official, HIGH confidence): https://platform.claude.com/docs/en/build-with-claude/vision
+- Claude API image token formula `tokens = (width_px * height_px) / 750`: official Anthropic docs, verified 2026-03-25
+- Claude Sonnet image pricing $3/M input tokens, $4.80/1k images at 1.19MP: official Anthropic pricing docs
+- APScheduler `max_instances`, `coalesce`, `misfire_grace_time` — concurrent job pitfalls: https://apscheduler.readthedocs.io/en/3.x/userguide.html
+- APScheduler duplicate execution real production issue: https://github.com/agronholm/apscheduler/issues/356
+- PostgreSQL range partitioning for time-series, instant partition drop vs. DELETE: https://www.postgresql.org/docs/current/ddl-partitioning.html
+- Notification systems: polling vs. WebSocket vs. SSE — no WebSocket needed for simple in-app notifications: https://hexshift.medium.com/real-time-notifications-with-fastapi-websockets-and-postgres-listen-notify-f26dbb9fe3e2
+- ROAS data quality and skewed correlation: https://www.linkedin.com/advice/0/what-main-challenges-pitfalls-measuring
+- Statistical correlation with skewed/outlier data: https://pmc.ncbi.nlm.nih.gov/articles/PMC5079093/
+- FastAPI SQLAlchemy session leak in background jobs: https://dev.to/akarshan/asynchronous-database-sessions-in-fastapi-with-sqlalchemy-1o7e
+- FinOps for Claude API at scale — cost blowout risk: https://www.cloudzero.com/blog/finops-for-claude/
 
 ---
-*Pitfalls research for: Multi-tenant ad platform connector with BrainSuite creative scoring (FastAPI + Angular + GCS)*
-*Researched: 2026-03-20*
+*Pitfalls research for: v1.1 feature additions — BrainSuite image scoring, AI inference, analytics views, notifications, backfill*
+*Researched: 2026-03-25*
+*Supersedes v1.0 pitfalls in this file for new features; v1.0 pitfalls (OAuth, JWT, APScheduler multi-worker) remain addressed as of 2026-03-25*
