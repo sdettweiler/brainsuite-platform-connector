@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, text, case
+from sqlalchemy import select, func, and_, or_, text, case, nullslast
 from sqlalchemy.orm import selectinload
 import uuid
 
@@ -128,6 +128,8 @@ async def get_dashboard_assets(
     sort_order: str = Query(default="desc"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=250),
+    score_min: Optional[float] = Query(default=None, ge=0, le=100),
+    score_max: Optional[float] = Query(default=None, ge=0, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -205,6 +207,11 @@ async def get_dashboard_assets(
             )
         )
 
+    if score_min is not None:
+        query = query.where(CreativeScoreResult.total_score >= score_min)
+    if score_max is not None:
+        query = query.where(CreativeScoreResult.total_score <= score_max)
+
     # Only assets with performance in period
     query = query.where(perf_subq.c.total_spend.isnot(None))
 
@@ -219,12 +226,13 @@ async def get_dashboard_assets(
         "platform": CreativeAsset.platform,
         "format": CreativeAsset.asset_format,
         "score": CreativeScoreResult.total_score,
+        "total_score": CreativeScoreResult.total_score,  # alias for frontend compat
     }
     sort_col = sort_col_map.get(sort_by, perf_subq.c.total_spend)
     if sort_order.lower() == "desc":
-        query = query.order_by(sort_col.desc().nullslast())
+        query = query.order_by(nullslast(sort_col.desc()))
     else:
-        query = query.order_by(sort_col.asc().nullsfirst())
+        query = query.order_by(nullslast(sort_col.asc()))
 
     # Count total
     count_q = select(func.count()).select_from(query.subquery())
