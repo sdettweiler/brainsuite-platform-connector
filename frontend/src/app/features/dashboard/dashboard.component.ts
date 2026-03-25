@@ -13,6 +13,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { Subject, debounceTime, takeUntil, forkJoin, interval, switchMap } from 'rxjs';
+import { NgxSliderModule, Options } from '@angular-slider/ngx-slider';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
@@ -76,6 +77,7 @@ interface StatsResponse {
     MatSelectModule, MatFormFieldModule, MatInputModule, MatMenuModule,
     MatDialogModule, MatTooltipModule, MatCheckboxModule, DateRangePickerComponent,
     MatProgressSpinnerModule, MatSnackBarModule,
+    NgxSliderModule,
   ],
   template: `
     <div class="page-enter dashboard-page">
@@ -137,6 +139,18 @@ interface StatsResponse {
           <i class="bi" [ngClass]="sortOrder === 'desc' ? 'bi-arrow-down' : 'bi-arrow-up'"></i>
         </button>
 
+        <!-- Score range filter (per D-01, D-02, D-04) -->
+        <div class="score-slider-wrapper" [matTooltip]="sliderDisabled ? 'No scored creatives yet' : ''">
+          <span class="slider-label">Score range</span>
+          <ngx-slider
+            [(value)]="scoreMin"
+            [(highValue)]="scoreMax"
+            [options]="sliderOptions"
+            (userChangeEnd)="onScoreChange()"
+          ></ngx-slider>
+          <span class="slider-values">{{ scoreMin }} - {{ scoreMax }}</span>
+        </div>
+
         <div class="toolbar-spacer"></div>
 
         <!-- Export button -->
@@ -186,12 +200,18 @@ interface StatsResponse {
             (contextmenu)="onRightClick($event, asset)"
           >
             <!-- Thumbnail -->
-            <div class="tile-thumb">
+            <div class="tile-thumb" [class.video-no-thumb]="isVideoNoThumb(asset)">
               <img
-                [src]="getTileThumbnail(asset)"
+                *ngIf="getTileThumbnail(asset) as thumb"
+                [src]="thumb"
                 [alt]="asset.ad_name"
                 (error)="onImgError($event)"
               />
+              <!-- Fallback for video with no thumbnail (D-06) -->
+              <div *ngIf="isVideoNoThumb(asset)" class="video-fallback">
+                <img [src]="getPlatformOverlayIcon(asset.platform)" class="video-fallback-icon" alt="" />
+                <span class="video-tag">VIDEO</span>
+              </div>
               <!-- Overlays -->
               <span class="overlay-format">{{ asset.asset_format }}</span>
               <span class="overlay-platform">
@@ -526,6 +546,98 @@ interface StatsResponse {
     }
 
     .skeleton-tile { pointer-events: none; }
+
+    .score-slider-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 200px;
+      max-width: 280px;
+      padding: 0 8px;
+
+      .slider-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+
+      .slider-values {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        min-width: 50px;
+        text-align: center;
+      }
+
+      ngx-slider {
+        flex: 1;
+      }
+    }
+
+    ::ng-deep .ngx-slider {
+      .ngx-slider-pointer {
+        width: 20px !important;
+        height: 20px !important;
+        top: -8px !important;
+        background-color: #FFFFFF !important;
+        border: 2px solid var(--accent) !important;
+        border-radius: 50% !important;
+
+        &::after { display: none !important; }
+      }
+      .ngx-slider-selection {
+        background: var(--accent) !important;
+      }
+      .ngx-slider-bar {
+        background: var(--border) !important;
+        height: 4px !important;
+      }
+      .ngx-slider-bubble {
+        background: var(--bg-card) !important;
+        color: var(--text-primary) !important;
+        padding: 2px 6px !important;
+        border-radius: 4px !important;
+        font-size: 11px !important;
+      }
+      &.ngx-slider-disabled {
+        opacity: 0.4 !important;
+      }
+    }
+
+    .video-no-thumb {
+      background: #111 !important;
+    }
+
+    .video-fallback {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .video-fallback-icon {
+      width: 48px !important;
+      height: 48px !important;
+      opacity: 0.6;
+      object-fit: contain !important;
+    }
+
+    .video-tag {
+      position: absolute;
+      bottom: 6px;
+      right: 6px;
+      background: rgba(0, 0, 0, 0.65);
+      color: white;
+      font-size: 9px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
@@ -548,6 +660,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
   pageSize = 50;
   total = 0;
   totalPages = 1;
+
+  scoreMin = 0;
+  scoreMax = 100;
+  sliderOptions: Options = {
+    floor: 0,
+    ceil: 100,
+    step: 1,
+    noSwitching: true,
+    disabled: true,
+  };
+  sliderDisabled = true;
+  private scoreChange$ = new Subject<void>();
 
   selectedAssets: string[] = [];
   lastSelectedId: string | null = null;
@@ -579,6 +703,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Debounced score filter
+    this.scoreChange$.pipe(
+      debounceTime(400),
+      takeUntil(this.destroy$)
+    ).subscribe(() => this.onFilterChange());
+
     // Handle query params (from homepage navigation or direct link)
     this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe(params => {
       if (params['platforms']) {
@@ -656,6 +786,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       page_size: this.pageSize,
     };
     if (this.selectedFormat) params.formats = this.selectedFormat;
+    if (this.scoreMin > 0) params['score_min'] = this.scoreMin;
+    if (this.scoreMax < 100) params['score_max'] = this.scoreMax;
 
     this.api.get<DashboardAssetsResponse>('/dashboard/assets', params).subscribe({
       next: (d) => {
@@ -663,6 +795,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.total = d.total;
         this.totalPages = d.total_pages;
         this.loading = false;
+        const hasScored = this.assets.some((a: any) => a.scoring_status === 'COMPLETE');
+        this.sliderDisabled = !hasScored;
+        this.sliderOptions = { ...this.sliderOptions, disabled: !hasScored };
         this.preloadAssetDetails();
         this.stopPolling$.next();
         this.pollingActive = false;
@@ -679,6 +814,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   onFilterChange(): void {
     this.page = 1;
     this.loadData();
+  }
+
+  onScoreChange(): void {
+    this.scoreChange$.next();
   }
 
   onDateRangeChange(event: DateRangeChange): void {
@@ -952,10 +1091,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  getTileThumbnail(asset: any): string {
+  getTileThumbnail(asset: any): string | null {
+    if (asset.asset_format === 'VIDEO') {
+      // Video: use thumbnail_url if available, else null triggers CSS fallback (D-06)
+      return asset.thumbnail_url || null;
+    }
+    // Image/Carousel: use asset_url (skip .mp4), then thumbnail, then placeholder (D-07)
     if (asset.asset_url && !asset.asset_url.endsWith('.mp4')) return asset.asset_url;
     if (asset.thumbnail_url) return asset.thumbnail_url;
     return '/assets/images/placeholder.svg';
+  }
+
+  isVideoNoThumb(asset: any): boolean {
+    return asset.asset_format === 'VIDEO' && !asset.thumbnail_url;
   }
 
   onImgError(event: Event): void {
