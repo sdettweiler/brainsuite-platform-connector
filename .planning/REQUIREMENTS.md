@@ -44,15 +44,15 @@
 
 - [x] **DASH-01**: Creative thumbnail (image or video frame) visible per creative in list/table view
 - [x] **DASH-02**: BrainSuite score badge visible per creative in list/table view
-- [ ] **DASH-03**: Score dimension breakdown panel accessible per creative (expandable or side panel)
-- [ ] **DASH-04**: Creatives sortable by score, ROAS, CTR, spend
+- [x] **DASH-03**: Score dimension breakdown panel accessible per creative (expandable or side panel)
+- [x] **DASH-04**: Creatives sortable by score, ROAS, CTR, spend
 - [x] **DASH-05**: Creatives filterable by platform, date range, and score range
 
 ### Reliability
 
-- [ ] **REL-01**: Last sync time and connection health displayed per platform
-- [ ] **REL-02**: Failed syncs and expired platform tokens surfaced to user with reconnect prompt
-- [ ] **REL-03**: APScheduler runs on exactly one worker (SCHEDULER_ENABLED env var guard for multi-worker Autoscale / cloud deployments)
+- [x] **REL-01**: Last sync time and connection health displayed per platform
+- [x] **REL-02**: Failed syncs and expired platform tokens surfaced to user with reconnect prompt
+- [x] **REL-03**: APScheduler runs on exactly one worker (SCHEDULER_ENABLED env var guard for multi-worker Autoscale / cloud deployments)
 
 ## v2 Requirements
 
@@ -117,12 +117,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCORE-08 | Phase 3 | Complete |
 | DASH-01 | Phase 4 | Complete |
 | DASH-02 | Phase 4 | Complete |
-| DASH-03 | Phase 4 | Pending |
-| DASH-04 | Phase 4 | Pending |
+| DASH-03 | Phase 4 | Complete |
+| DASH-04 | Phase 4 | Complete |
 | DASH-05 | Phase 4 | Complete |
-| REL-01 | Phase 4 | Pending |
-| REL-02 | Phase 4 | Pending |
-| REL-03 | Phase 4 | Pending |
+| REL-01 | Phase 4 | Complete |
+| REL-02 | Phase 4 | Complete |
+| REL-03 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 34 total

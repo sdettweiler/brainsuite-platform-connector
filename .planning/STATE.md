@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to execute
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-25T09:24:00.517Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-03-25T09:26:49.771Z"
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 18
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-20)
 ## Current Position
 
 Phase: 04 (dashboard-polish-reliability) — EXECUTING
-Plan: 2 of 4
+Plan: 4 of 4
 
 ## Performance Metrics
 
@@ -63,6 +63,8 @@ Plan: 2 of 4
 | Phase 03 P04 | 15 | 2 tasks | 4 files |
 | Phase 03 P05 | 30 | 3 tasks | 4 files |
 | Phase 04 P02 | 8 | 2 tasks | 3 files |
+| Phase 04 P01 | 3 | 2 tasks | 3 files |
+| Phase 04 P03 | 10 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -109,6 +111,10 @@ Recent decisions affecting current work:
 - [Phase 03]: Item 7 (scored asset view) deferred — BrainSuite credentials not yet configured; code path fully implemented
 - [Phase 04]: ngx-slider pinned to 17.0.2 — Angular 17 compatible; latest v21 requires Angular 21 (D-01)
 - [Phase 04]: getTileThumbnail returns null for video-no-thumb; *ngIf as-thumb guard triggers video-fallback div instead
+- [Phase 04]: Use standalone nullslast() function import from sqlalchemy (not deprecated .nullslast() column method) for both ASC/DESC sort directions
+- [Phase 04]: score_min/score_max filter on CreativeScoreResult.total_score; ge=0/le=100 validation; NULL scores implicitly excluded when filter applied
+- [Phase 04]: token_expiry added as Optional[datetime]=None to PlatformConnectionResponse — backward compatible, ORM mapping automatic via from_attributes=True
+- [Phase 04]: HealthState derived from token_expiry and 48h sync recency check — not from sync_status enum which can lag; reconnect() reuses startOAuth() for zero new OAuth code
 
 ### Pending Todos
 
@@ -122,6 +128,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T09:24:00.514Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-25T09:26:49.768Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
