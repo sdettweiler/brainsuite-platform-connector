@@ -42,11 +42,11 @@
 
 ### Dashboard
 
-- [ ] **DASH-01**: Creative thumbnail (image or video frame) visible per creative in list/table view
-- [ ] **DASH-02**: BrainSuite score badge visible per creative in list/table view
+- [x] **DASH-01**: Creative thumbnail (image or video frame) visible per creative in list/table view
+- [x] **DASH-02**: BrainSuite score badge visible per creative in list/table view
 - [ ] **DASH-03**: Score dimension breakdown panel accessible per creative (expandable or side panel)
 - [ ] **DASH-04**: Creatives sortable by score, ROAS, CTR, spend
-- [ ] **DASH-05**: Creatives filterable by platform, date range, and score range
+- [x] **DASH-05**: Creatives filterable by platform, date range, and score range
 
 ### Reliability
 
@@ -115,11 +115,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCORE-06 | Phase 3 | Complete |
 | SCORE-07 | Phase 3 | Complete |
 | SCORE-08 | Phase 3 | Complete |
-| DASH-01 | Phase 4 | Pending |
-| DASH-02 | Phase 4 | Pending |
+| DASH-01 | Phase 4 | Complete |
+| DASH-02 | Phase 4 | Complete |
 | DASH-03 | Phase 4 | Pending |
 | DASH-04 | Phase 4 | Pending |
-| DASH-05 | Phase 4 | Pending |
+| DASH-05 | Phase 4 | Complete |
 | REL-01 | Phase 4 | Pending |
 | REL-02 | Phase 4 | Pending |
 | REL-03 | Phase 4 | Pending |
