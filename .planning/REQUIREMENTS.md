@@ -7,13 +7,13 @@
 
 ### Production Readiness (v1.0 Loose Threads)
 
-- [ ] **PROD-01**: BrainSuite API credentials (video and image apps) configured and verified in production environment
-- [ ] **PROD-02**: Google Ads OAuth consent screen verified as "Published" (not "Testing") to prevent 7-day refresh token expiry for production users
+- [x] **PROD-01**: BrainSuite API credentials (video and image apps) configured and verified in production environment
+- [x] **PROD-02**: Google Ads OAuth consent screen verified as "Published" (not "Testing") to prevent 7-day refresh token expiry for production users
 
 ### BrainSuite Image Scoring
 
-- [ ] **IMG-01**: BrainSuite Static API endpoint, payload shape, and response schema confirmed via live discovery spike before any implementation begins
-- [ ] **IMG-02**: `ScoringEndpointType` enum (`VIDEO | STATIC_IMAGE`) assigned at asset sync time using a tested `(platform, content_type, file_extension)` lookup table — never inferred at scoring time
+- [x] **IMG-01**: BrainSuite Static API endpoint, payload shape, and response schema confirmed via live discovery spike before any implementation begins
+- [x] **IMG-02**: `ScoringEndpointType` enum (`VIDEO | STATIC_IMAGE`) assigned at asset sync time using a tested `(platform, content_type, file_extension)` lookup table — never inferred at scoring time
 - [ ] **IMG-03**: Image assets scored by the existing 15-minute APScheduler batch job (branch inside `run_scoring_batch()`, not a separate job)
 - [ ] **IMG-04**: Scored image creatives display score badge and Creative Effectiveness tab in the asset detail dialog (same UI as video)
 

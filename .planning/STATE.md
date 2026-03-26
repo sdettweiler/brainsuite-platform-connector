@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
-status: Roadmap defined — ready for Phase 5
-stopped_at: Roadmap created — Phase 5 is next
-last_updated: "2026-03-25T00:00:00.000Z"
+status: Ready to execute
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-26T09:03:10.431Z"
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 1
 ---
 
 # Project State
@@ -19,18 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 5 — BrainSuite Image Scoring (hard prerequisite for all v1.1 analytics features)
+**Current focus:** Phase 05 — brainsuite-image-scoring
 
 ## Current Position
 
-Phase: 5 — BrainSuite Image Scoring
-Plan: —
-Status: Not started
-Last activity: 2026-03-25 — v1.1 roadmap created (Phases 5–10)
-
-```
-v1.1 Progress: [░░░░░░░░░░░░░░░░░░░░] 0/6 phases
-```
+Phase: 05 (brainsuite-image-scoring) — EXECUTING
+Plan: 2 of 3
 
 ## Accumulated Context
 
@@ -39,11 +33,13 @@ v1.1 Progress: [░░░░░░░░░░░░░░░░░░░░] 0/
 All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 **v1.1 architectural decisions (locked at roadmap stage):**
+
 - Notifications transport: polling (`GET /notifications/unread` every 30 seconds) — not SSE or WebSockets. Resolves ARCHITECTURE.md vs. PITFALLS.md conflict in favour of PITFALLS recommendation: 1–2 days of work vs. 1–2 weeks, no user-visible difference at minute-to-hour event frequency.
 - Backfill mechanism: admin API endpoint using BackgroundTasks — not a second APScheduler job — to avoid competing with the live 15-minute scorer on the same `UNSCORED` queue.
 - AI metadata writes: suggestions-only table (`ai_metadata_suggestions`) — never writes to live metadata columns without explicit user confirmation.
 - Score trend deduplication: one row per asset per day in `creative_score_history` (conditional insert); monthly range partitioning from day one; 90-day retention.
 - Image scoring routing: explicit `ScoringEndpointType` enum populated at sync time from a `(platform, raw_content_type, file_extension)` lookup table — never inferred at scoring time.
+- [Phase 05-brainsuite-image-scoring]: ScoringEndpointType in dedicated module with explicit 8-entry D-11 lookup table and UNSUPPORTED default; endpoint_type Alembic migration backfills existing rows to VIDEO
 
 ### Pending Todos
 
@@ -59,6 +55,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last session: 2026-03-25
-Stopped at: v1.1 roadmap defined — 6 phases (5–10), 26 requirements mapped
+Last session: 2026-03-26T09:03:10.429Z
+Stopped at: Completed 05-01-PLAN.md
 Resume: Start Phase 5 with BrainSuite Static API discovery spike, then PROD-01/02 credential verification
