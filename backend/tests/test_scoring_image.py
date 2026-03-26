@@ -141,3 +141,60 @@ def test_endpoint_type_none_format():
 def test_endpoint_type_empty_strings():
     """Empty string platform and format returns UNSUPPORTED."""
     assert get_endpoint_type("", "") == ScoringEndpointType.UNSUPPORTED
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 Plan 02: build_static_scoring_payload + map_static_channel tests
+# ---------------------------------------------------------------------------
+
+from app.services.brainsuite_static_score import build_static_scoring_payload, map_static_channel
+
+
+def test_static_announce_payload_basic():
+    """build_static_scoring_payload for META/facebook_feed produces correct structure."""
+    result = build_static_scoring_payload("img.jpg", "META", "facebook_feed", {})
+    assert result["input"]["channel"] == "Facebook"
+    legs = result["input"]["legs"]
+    assert len(legs) == 1
+    assert legs[0]["staticImage"]["assetId"] == "leg1"
+
+
+def test_static_announce_payload_instagram():
+    """META + instagram_stories placement maps to Instagram channel."""
+    result = build_static_scoring_payload("img.jpg", "META", "instagram_stories", {})
+    assert result["input"]["channel"] == "Instagram"
+
+
+def test_static_announce_payload_intended_messages():
+    """brainsuite_intended_messages are split into list and intendedMessagesLanguage is set."""
+    metadata = {"brainsuite_intended_messages": "msg1\nmsg2"}
+    result = build_static_scoring_payload("img.jpg", "META", "facebook_feed", metadata)
+    assert result["input"]["intendedMessages"] == ["msg1", "msg2"]
+    assert "intendedMessagesLanguage" in result["input"]
+
+
+def test_static_announce_payload_no_brand_values():
+    """build_static_scoring_payload output never contains brandValues key."""
+    result = build_static_scoring_payload("img.jpg", "META", "facebook_feed", {})
+    assert "brandValues" not in str(result)
+
+
+def test_static_announce_payload_no_aoi():
+    """build_static_scoring_payload output never contains areasOfInterest key."""
+    result = build_static_scoring_payload("img.jpg", "META", "facebook_feed", {})
+    assert "areasOfInterest" not in str(result)
+
+
+def test_map_static_channel_meta_facebook():
+    """META + facebook_feed maps to Facebook."""
+    assert map_static_channel("META", "facebook_feed") == "Facebook"
+
+
+def test_map_static_channel_meta_instagram():
+    """META + instagram_stories maps to Instagram."""
+    assert map_static_channel("META", "instagram_stories") == "Instagram"
+
+
+def test_map_static_channel_non_meta_fallback():
+    """Non-META platform falls back to Facebook."""
+    assert map_static_channel("TIKTOK", None) == "Facebook"
