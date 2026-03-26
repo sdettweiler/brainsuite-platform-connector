@@ -551,8 +551,8 @@ interface StatsResponse {
       display: flex;
       align-items: center;
       gap: 8px;
-      min-width: 200px;
-      max-width: 280px;
+      min-width: 280px;
+      max-width: 380px;
       padding: 0 8px;
 
       .slider-label {
@@ -578,9 +578,9 @@ interface StatsResponse {
 
     ::ng-deep .ngx-slider {
       .ngx-slider-pointer {
-        width: 20px !important;
-        height: 20px !important;
-        top: -8px !important;
+        width: 14px !important;
+        height: 14px !important;
+        top: -5px !important;
         background-color: #FFFFFF !important;
         border: 2px solid var(--accent) !important;
         border-radius: 50% !important;
@@ -671,6 +671,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     disabled: true,
   };
   sliderDisabled = true;
+  private hasAnyScored = false;
   private scoreChange$ = new Subject<void>();
 
   selectedAssets: string[] = [];
@@ -795,9 +796,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.total = d.total;
         this.totalPages = d.total_pages;
         this.loading = false;
-        const hasScored = this.assets.some((a: any) => a.scoring_status === 'COMPLETE');
-        this.sliderDisabled = !hasScored;
-        this.sliderOptions = { ...this.sliderOptions, disabled: !hasScored };
+        // Only enable slider once we've seen scored assets — don't disable when filtered results are empty
+        if (this.assets.some((a: any) => a.scoring_status === 'COMPLETE')) {
+          this.hasAnyScored = true;
+        }
+        this.sliderDisabled = !this.hasAnyScored;
+        this.sliderOptions = { ...this.sliderOptions, disabled: !this.hasAnyScored };
         this.preloadAssetDetails();
         this.stopPolling$.next();
         this.pollingActive = false;

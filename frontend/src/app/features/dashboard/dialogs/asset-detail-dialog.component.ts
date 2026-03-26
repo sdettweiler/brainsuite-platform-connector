@@ -100,7 +100,8 @@ interface AssetDetailResponse {
   asset_format: string | null;
   thumbnail_url: string | null;
   asset_url: string | null;
-  ace_score: number | null;
+  total_score: number | null;
+  total_rating: string | null;
   is_active: boolean;
   performance: AssetPerformanceDetail | null;
   performer_tag: string | null;
@@ -172,8 +173,8 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                     class="asset-media"
                     alt="Creative"
                   />
-                  <div class="ace-badge" [class]="getAceClass(asset.ace_score)">
-                    ACE: {{ asset.ace_score | number:'1.0-0' }}
+                  <div class="ace-badge" [class]="getAceClass(scoreDetail?.total_score)" *ngIf="scoreDetail?.total_score != null">
+                    ACE: {{ scoreDetail.total_score | number:'1.0-0' }}
                   </div>
                 </div>
 
