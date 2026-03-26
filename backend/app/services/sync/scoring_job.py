@@ -16,6 +16,10 @@ from app.services.brainsuite_score import (
     persist_and_replace_visualizations,
     BrainSuiteJobError,
 )
+from app.services.brainsuite_static_score import (
+    brainsuite_static_score_service,
+    build_static_scoring_payload,
+)
 from app.services.object_storage import get_object_storage
 
 logger = logging.getLogger(__name__)
@@ -24,7 +28,12 @@ BATCH_SIZE = 20
 
 
 async def run_scoring_batch() -> None:
-    """Process up to BATCH_SIZE UNSCORED VIDEO assets and submit to BrainSuite.
+    """Process up to BATCH_SIZE UNSCORED VIDEO and IMAGE assets and submit to BrainSuite.
+
+    Routes each asset to the correct BrainSuite service based on endpoint_type:
+      - VIDEO        → BrainSuiteScoreService (ACE_VIDEO_SMV_API)
+      - STATIC_IMAGE → BrainSuiteStaticScoreService (ACE_STATIC_SOCIAL_STATIC_API)
+      - UNSUPPORTED  → excluded from query (scoring_status=UNSUPPORTED, not UNSCORED)
 
     Phase 1: Query batch in one DB session, mark PENDING, release session.
     Phase 2: For each asset, download from internal storage, submit via the
@@ -43,7 +52,7 @@ async def run_scoring_batch() -> None:
             .join(CreativeAsset, CreativeAsset.id == CreativeScoreResult.creative_asset_id)
             .where(
                 CreativeScoreResult.scoring_status == "UNSCORED",
-                CreativeAsset.asset_format == "VIDEO",
+                CreativeScoreResult.endpoint_type.in_(["VIDEO", "STATIC_IMAGE"]),
             )
             .order_by(CreativeScoreResult.created_at.asc())
             .limit(BATCH_SIZE)
@@ -51,7 +60,7 @@ async def run_scoring_batch() -> None:
         rows = result.all()
 
         if not rows:
-            logger.info("Scoring batch: no UNSCORED VIDEO assets found, exiting")
+            logger.info("Scoring batch: no UNSCORED VIDEO or STATIC_IMAGE assets found, exiting")
             return
 
         for score_row, asset_row in rows:
@@ -59,6 +68,7 @@ async def run_scoring_batch() -> None:
                 "score_id": score_row.id,
                 "asset_id": asset_row.id,
                 "asset": asset_row,
+                "endpoint_type": score_row.endpoint_type,
             })
             score_row.scoring_status = "PENDING"
 
@@ -73,6 +83,7 @@ async def run_scoring_batch() -> None:
         score_id = item["score_id"]
         asset = item["asset"]
         asset_id = item["asset_id"]
+        endpoint_type = item["endpoint_type"]
 
         try:
             # Build S3 key from asset_url
@@ -84,7 +95,7 @@ async def run_scoring_batch() -> None:
             if s3_key.startswith("objects/"):
                 s3_key = s3_key[len("objects/"):]
 
-            # Download video bytes from internal storage (no public URL needed)
+            # Download asset bytes from internal storage (no public URL needed)
             file_bytes, _ = get_object_storage().download_blob(s3_key)
             if not file_bytes:
                 raise ValueError(f"Asset not found in object storage: {s3_key}")
@@ -104,21 +115,42 @@ async def run_scoring_batch() -> None:
                     if field_value is not None:
                         metadata_dict[field_name] = field_value
 
-            # Build BrainSuite briefing data (no URL — file uploaded directly)
-            filename = os.path.basename(s3_key) or (asset.ad_name or f"{asset_id}.mp4")
-            briefing_data = build_scoring_payload(
-                asset_name=filename,
-                platform=asset.platform,
-                placement=asset.placement,
-                metadata=metadata_dict,
-            )
+            filename = os.path.basename(s3_key) or (asset.ad_name or f"{asset_id}")
 
-            # Submit via announce→upload→start flow (no public URL required)
-            job_id = await brainsuite_score_service.submit_job_with_upload(
-                file_bytes=file_bytes,
-                filename=filename,
-                briefing_data=briefing_data,
-            )
+            # Branch on endpoint_type: VIDEO uses video service, STATIC_IMAGE uses static service
+            if endpoint_type == "VIDEO":
+                # Existing video path — unchanged
+                briefing_data = build_scoring_payload(
+                    asset_name=filename,
+                    platform=asset.platform,
+                    placement=asset.placement,
+                    metadata=metadata_dict,
+                )
+                job_id = await brainsuite_score_service.submit_job_with_upload(
+                    file_bytes=file_bytes,
+                    filename=filename,
+                    briefing_data=briefing_data,
+                )
+            elif endpoint_type == "STATIC_IMAGE":
+                # New image path — Static API
+                announce_payload = build_static_scoring_payload(
+                    asset_name=filename,
+                    platform=asset.platform,
+                    placement=asset.placement,
+                    metadata=metadata_dict,
+                )
+                job_id = await brainsuite_static_score_service.submit_job_with_upload(
+                    file_bytes=file_bytes,
+                    filename=filename,
+                    announce_payload=announce_payload,
+                )
+            else:
+                logger.warning(
+                    "Unexpected endpoint_type %s for asset %s, skipping",
+                    endpoint_type,
+                    asset_id,
+                )
+                continue
 
             # Mark PROCESSING
             async with get_session_factory()() as db:
@@ -129,10 +161,14 @@ async def run_scoring_batch() -> None:
                     score_row.updated_at = datetime.now(timezone.utc)
                 await db.commit()
 
-            logger.info("Scoring job submitted for asset %s, job_id=%s", asset_id, job_id)
+            logger.info("Scoring job submitted for asset %s, job_id=%s endpoint_type=%s", asset_id, job_id, endpoint_type)
 
             # Poll for completion (no DB session held — may take several minutes)
-            result_data = await brainsuite_score_service.poll_job_status(str(job_id))
+            # Branch on endpoint_type for correct service polling
+            if endpoint_type == "VIDEO":
+                result_data = await brainsuite_score_service.poll_job_status(str(job_id))
+            elif endpoint_type == "STATIC_IMAGE":
+                result_data = await brainsuite_static_score_service.poll_job_status(str(job_id))
 
             # Persist visualization URLs to our storage before they expire (~1h)
             raw_output = result_data.get("output", {})

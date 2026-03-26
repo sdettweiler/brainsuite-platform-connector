@@ -58,6 +58,12 @@ async def rescore_asset(
         )
         db.add(score_record)
     else:
+        # Prevent rescoring UNSUPPORTED assets — they have no scoring endpoint
+        if score_record.endpoint_type == "UNSUPPORTED":
+            raise HTTPException(
+                status_code=422,
+                detail="Asset type is not supported for scoring (endpoint_type=UNSUPPORTED)",
+            )
         # Reset to UNSCORED
         score_record.scoring_status = "UNSCORED"
         score_record.error_reason = None
