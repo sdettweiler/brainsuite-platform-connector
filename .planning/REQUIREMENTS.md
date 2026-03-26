@@ -14,7 +14,7 @@
 
 - [x] **IMG-01**: BrainSuite Static API endpoint, payload shape, and response schema confirmed via live discovery spike before any implementation begins
 - [x] **IMG-02**: `ScoringEndpointType` enum (`VIDEO | STATIC_IMAGE`) assigned at asset sync time using a tested `(platform, content_type, file_extension)` lookup table — never inferred at scoring time
-- [ ] **IMG-03**: Image assets scored by the existing 15-minute APScheduler batch job (branch inside `run_scoring_batch()`, not a separate job)
+- [x] **IMG-03**: Image assets scored by the existing 15-minute APScheduler batch job (branch inside `run_scoring_batch()`, not a separate job)
 - [ ] **IMG-04**: Scored image creatives display score badge and Creative Effectiveness tab in the asset detail dialog (same UI as video)
 
 ### Historical Backfill

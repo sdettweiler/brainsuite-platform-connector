@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
 status: Ready to execute
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-26T09:03:10.431Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-26T09:11:26.040Z"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 ## Current Position
 
 Phase: 05 (brainsuite-image-scoring) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Accumulated Context
 
@@ -40,6 +40,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - Score trend deduplication: one row per asset per day in `creative_score_history` (conditional insert); monthly range partitioning from day one; 90-day retention.
 - Image scoring routing: explicit `ScoringEndpointType` enum populated at sync time from a `(platform, raw_content_type, file_extension)` lookup table — never inferred at scoring time.
 - [Phase 05-brainsuite-image-scoring]: ScoringEndpointType in dedicated module with explicit 8-entry D-11 lookup table and UNSUPPORTED default; endpoint_type Alembic migration backfills existing rows to VIDEO
+- [Phase 05]: Static API channel mapping uses substring match ('instagram' in placement) for simplicity; rescore endpoint returns 422 for UNSUPPORTED assets
 
 ### Pending Todos
 
@@ -55,6 +56,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last session: 2026-03-26T09:03:10.429Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-03-26T09:11:26.037Z
+Stopped at: Completed 05-02-PLAN.md
 Resume: Start Phase 5 with BrainSuite Static API discovery spike, then PROD-01/02 credential verification
