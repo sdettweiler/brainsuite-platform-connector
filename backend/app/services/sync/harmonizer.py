@@ -19,6 +19,7 @@ from app.models.platform import PlatformConnection
 from app.models.user import Organization
 from app.services.currency import currency_converter
 from app.models.scoring import CreativeScoreResult
+from app.services.scoring_endpoint_type import get_endpoint_type, ScoringEndpointType
 
 logger = logging.getLogger(__name__)
 
@@ -879,13 +880,20 @@ class HarmonizationService:
             db.add(asset)
             await db.flush()
 
-            # Queue VIDEO assets for BrainSuite scoring
+            # Queue VIDEO and IMAGE assets for BrainSuite scoring
             asset_fmt = (kwargs.get("asset_format") or "IMAGE").upper()
-            if asset_fmt == "VIDEO":
+            endpoint_type = get_endpoint_type(connection.platform, asset_fmt)
+
+            if asset_fmt in ("VIDEO", "IMAGE"):
+                initial_status = (
+                    "UNSUPPORTED" if endpoint_type == ScoringEndpointType.UNSUPPORTED
+                    else "UNSCORED"
+                )
                 score_stmt = pg_insert(CreativeScoreResult).values(
                     creative_asset_id=asset.id,
                     organization_id=connection.organization_id,
-                    scoring_status="UNSCORED",
+                    scoring_status=initial_status,
+                    endpoint_type=endpoint_type.value,
                 ).on_conflict_do_nothing(index_elements=["creative_asset_id"])
                 await db.execute(score_stmt)
         else:
