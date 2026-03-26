@@ -42,7 +42,7 @@
 Plans:
 - [x] 05-01-PLAN.md — Discovery spike + ScoringEndpointType enum + DB migration
 - [x] 05-02-PLAN.md — BrainSuiteStaticScoreService + scoring pipeline wiring
-- [ ] 05-03-PLAN.md — Frontend UI (UNSUPPORTED badge, image metadata, CE tab)
+- [x] 05-03-PLAN.md — Frontend UI (UNSUPPORTED badge, image metadata, CE tab)
 **UI hint**: yes
 
 ### Phase 6: Historical Backfill + Score History Schema
