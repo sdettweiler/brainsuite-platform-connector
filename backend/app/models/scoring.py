@@ -11,11 +11,17 @@ class CreativeScoreResult(Base):
     """Scoring result record for a creative asset from the BrainSuite API.
 
     Valid scoring_status values:
-        UNSCORED  – asset has never been scored
-        PENDING   – submitted to BrainSuite, awaiting job creation confirmation
-        PROCESSING – BrainSuite job is in progress
-        COMPLETE  – score received and stored
-        FAILED    – scoring attempt failed; see error_reason
+        UNSCORED    – asset has never been scored
+        PENDING     – submitted to BrainSuite, awaiting job creation confirmation
+        PROCESSING  – BrainSuite job is in progress
+        COMPLETE    – score received and stored
+        FAILED      – scoring attempt failed; see error_reason
+        UNSUPPORTED – asset type not supported by any scoring endpoint (e.g. TikTok images)
+
+    Valid endpoint_type values (see ScoringEndpointType enum):
+        VIDEO        – ACE_VIDEO_SMV_API (video creatives)
+        STATIC_IMAGE – ACE_STATIC_SOCIAL_STATIC_API (META image creatives)
+        UNSUPPORTED  – no scoring endpoint available; asset excluded from scoring batch
     """
     __tablename__ = "creative_score_results"
 
@@ -31,6 +37,7 @@ class CreativeScoreResult(Base):
         nullable=False,
     )
     scoring_status: Mapped[str] = mapped_column(String(50), nullable=False, default="UNSCORED")
+    endpoint_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     brainsuite_job_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     total_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     total_rating: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
