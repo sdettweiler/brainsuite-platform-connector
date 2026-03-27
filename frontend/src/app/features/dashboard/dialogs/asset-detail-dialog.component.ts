@@ -109,6 +109,7 @@ interface AssetDetailResponse {
   campaigns: Array<{ campaign_name?: string; campaign_id?: string; spend?: number }>;
   timeseries: Record<string, AssetTimeseriesPoint[]> | null;
   brainsuite_metadata?: AssetBrainsuiteMetadata;
+  metadata_values?: Record<string, string>;
 }
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
@@ -247,9 +248,17 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
               <p>BrainSuite is scoring this creative…</p>
             </div>
 
+            <!-- ── UNSUPPORTED ── -->
+            <div class="ce-state-center"
+              *ngIf="!scoreLoading && scoreDetail?.scoring_status === 'UNSUPPORTED'">
+              <i class="bi bi-info-circle ce-empty-icon"></i>
+              <h4>Scoring not available</h4>
+              <p>Image scoring is not available for this platform. Only Meta image creatives can be scored at this time.</p>
+            </div>
+
             <!-- ── Unscored / Failed ── -->
             <div class="ce-state-center"
-              *ngIf="!scoreLoading && scoreDetail?.scoring_status !== 'COMPLETE' && scoreDetail?.scoring_status !== 'PENDING' && scoreDetail?.scoring_status !== 'PROCESSING'">
+              *ngIf="!scoreLoading && scoreDetail?.scoring_status !== 'COMPLETE' && scoreDetail?.scoring_status !== 'PENDING' && scoreDetail?.scoring_status !== 'PROCESSING' && scoreDetail?.scoring_status !== 'UNSUPPORTED'">
               <i class="bi bi-graph-up-arrow ce-empty-icon"></i>
               <ng-container *ngIf="scoreDetail?.scoring_status !== 'FAILED'">
                 <h4>No score yet</h4>
@@ -330,6 +339,17 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                         </div>
                       </div>
                     </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ── Image-only metadata ── -->
+              <div class="ce-image-meta" *ngIf="imageMetadataFields.length > 0">
+                <span class="ce-panel-label">Image Metadata</span>
+                <div class="ce-image-meta-fields">
+                  <div class="ce-image-meta-field" *ngFor="let f of imageMetadataFields">
+                    <span class="ce-image-meta-label">{{ f.label }}</span>
+                    <span class="ce-image-meta-value">{{ f.value }}</span>
                   </div>
                 </div>
               </div>
@@ -762,6 +782,35 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     }
 
     .loading-state { padding: 24px; }
+
+    .ce-image-meta {
+      margin-top: 16px;
+      padding: 16px;
+      background: var(--bg-secondary, #f5f5f5);
+      border-radius: 8px;
+    }
+    .ce-image-meta-fields {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 8px;
+    }
+    .ce-image-meta-field {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .ce-image-meta-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: var(--text-secondary);
+    }
+    .ce-image-meta-value {
+      font-size: 14px;
+      color: var(--text-primary);
+    }
   `],
 })
 export class AssetDetailDialogComponent implements OnInit, OnDestroy {
@@ -795,6 +844,8 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   selectedPillarIdx = 0;
   ceVizMode = 'original';
   refetchLoading = false;
+
+  private allMetadataFields: Array<{ id: string; name: string; label: string }> = [];
 
   chartOption: EChartsOption | null = null;
   chartMerge: EChartsOption = {};
@@ -830,6 +881,9 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
       this.loadDetail();
     }
     this.loadScoreDetail();
+    this.api.get<any[]>('/assets/metadata/fields').subscribe({
+      next: (fields) => { this.allMetadataFields = fields; },
+    });
   }
 
   ngOnDestroy(): void {}
@@ -1013,6 +1067,22 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     return items;
   }
 
+  get imageMetadataFields(): { label: string; value: string }[] {
+    if (!this.asset || this.asset.asset_format !== 'IMAGE') return [];
+    const mv = this.asset.metadata_values;
+    if (!mv) return [];
+
+    const imageFieldNames = ['brainsuite_intended_messages', 'brainsuite_iconic_color_scheme'];
+    const result: { label: string; value: string }[] = [];
+
+    for (const field of this.allMetadataFields) {
+      if (imageFieldNames.includes(field.name) && mv[field.id]) {
+        result.push({ label: field.label, value: mv[field.id] });
+      }
+    }
+    return result;
+  }
+
   get kpiCategories(): { label: string; rows: { label: string; value: string }[] }[] {
     const p = this.detail?.performance;
     if (!p) return [];
@@ -1187,10 +1257,10 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
       }
       if (all.length >= 8) break;
     }
-    // Deduplicate by label — keep last occurrence (removes first duplicate)
+    // Deduplicate by label — keep first occurrence (heatmap at index 0, not fogmap at index 1)
     const seen = new Map<string, { key: string; label: string; url: string | null; type: string }>();
     for (const item of all) {
-      seen.set(item.label, item);
+      if (!seen.has(item.label)) seen.set(item.label, item);
     }
     const deduped = Array.from(seen.values());
     return deduped.slice(0, 4);
