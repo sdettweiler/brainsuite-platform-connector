@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
-status: Phase complete — ready for verification
-stopped_at: "Reached checkpoint:human-verify for 05-03-PLAN.md"
-last_updated: "2026-03-26T09:16:34.699Z"
+status: Ready to execute
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-03-27T18:28:09.747Z"
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 ## Current Position
 
 Phase: 05 (brainsuite-image-scoring) — EXECUTING
-Plan: 3 of 3
+Plan: 2 of 4
 
 ## Accumulated Context
 
@@ -42,6 +42,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase 05-brainsuite-image-scoring]: ScoringEndpointType in dedicated module with explicit 8-entry D-11 lookup table and UNSUPPORTED default; endpoint_type Alembic migration backfills existing rows to VIDEO
 - [Phase 05]: Static API channel mapping uses substring match ('instagram' in placement) for simplicity; rescore endpoint returns 422 for UNSUPPORTED assets
 - [Phase 05]: Used ngSwitch on scoring_status in dashboard tile to add UNSUPPORTED case alongside existing numeric badge
+- [Phase 05]: Load metadata field definitions at init so imageMetadataFields getter resolves UUID keys synchronously without extra API calls
 
 ### Pending Todos
 
@@ -57,6 +58,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last session: 2026-03-26T09:16:34.697Z
-Stopped at: Reached checkpoint:human-verify for 05-03-PLAN.md
+Last session: 2026-03-27T18:28:09.744Z
+Stopped at: Completed 05-04-PLAN.md
 Resume: Start Phase 5 with BrainSuite Static API discovery spike, then PROD-01/02 credential verification

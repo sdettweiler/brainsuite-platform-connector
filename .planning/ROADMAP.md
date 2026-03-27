@@ -19,7 +19,7 @@
 
 ### 🚧 v1.1 Insights + Intelligence
 
-- [ ] **Phase 5: BrainSuite Image Scoring** — Production credentials verified; image assets scored alongside video in the existing pipeline
+- [x] **Phase 5: BrainSuite Image Scoring** — Production credentials verified; image assets scored alongside video in the existing pipeline (completed 2026-03-27)
 - [ ] **Phase 6: Historical Backfill + Score History Schema** — All pre-v1.1 assets scored; append-only history table seeded
 - [ ] **Phase 7: Score Trend, Performer Highlights + Performance Tab** — Score trend chart live; top/bottom badges visible; performance tab redesigned
 - [ ] **Phase 8: Score-to-ROAS Correlation** — Scatter chart with quadrant framing live in dashboard
@@ -38,12 +38,12 @@
   3. An image creative asset in the dashboard receives a score badge after the next 15-minute scheduler tick — without the user triggering anything
   4. The asset detail dialog for an image creative shows the score badge and Creative Effectiveness dimension tab, identical to the video experience
   5. Routing to the image vs. video BrainSuite endpoint is determined by an explicit `ScoringEndpointType` lookup table — not by string-matching `content_type` at scoring time
-**Plans:** 4 plans (3 executed + 1 gap closure)
+**Plans:** 4/4 plans complete
 Plans:
 - [x] 05-01-PLAN.md — Discovery spike + ScoringEndpointType enum + DB migration
 - [x] 05-02-PLAN.md — BrainSuiteStaticScoreService + scoring pipeline wiring
 - [x] 05-03-PLAN.md — Frontend UI (UNSUPPORTED badge, image metadata, CE tab)
-- [ ] 05-04-PLAN.md — Gap closure: imageMetadataFields getter, UNSUPPORTED CE notice, image-only metadata section
+- [x] 05-04-PLAN.md — Gap closure: imageMetadataFields getter, UNSUPPORTED CE notice, image-only metadata section
 **UI hint**: yes
 
 ### Phase 6: Historical Backfill + Score History Schema
@@ -114,7 +114,7 @@ Plans:
 | 2. Security Hardening | v1.0 | 6/6 | Complete | 2026-03-23 |
 | 3. BrainSuite Scoring Pipeline | v1.0 | 6/6 | Complete | 2026-03-24 |
 | 4. Dashboard Polish + Reliability | v1.0 | 4/4 | Complete | 2026-03-25 |
-| 5. BrainSuite Image Scoring | v1.1 | 3/4 | In Progress|  |
+| 5. BrainSuite Image Scoring | v1.1 | 4/4 | Complete   | 2026-03-27 |
 | 6. Historical Backfill + Score History Schema | v1.1 | 0/? | Not started | - |
 | 7. Score Trend, Performer Highlights + Performance Tab | v1.1 | 0/? | Not started | - |
 | 8. Score-to-ROAS Correlation | v1.1 | 0/? | Not started | - |
