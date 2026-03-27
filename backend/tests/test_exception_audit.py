@@ -33,6 +33,8 @@ ALLOWED_FUNCTIONS = {
     "_run_refetch_job",
     "persist_and_replace_visualizations",
     "_generate_and_upload_thumbnail",
+    # Phase 5 additions
+    "_process_asset",  # scoring_job.py per-asset error isolation (must not raise in batch loop)
 }
 
 
@@ -83,7 +85,8 @@ def test_no_broad_except_exception():
       (run_daily_sync, run_full_resync, run_initial_sync, run_historical_sync,
       _run_dv360_asset_downloads)
     - app/services/sync/scoring_job.py: run_scoring_batch (APScheduler job isolation),
-      _mark_failed (error logging safety net — must not raise during failure marking)
+      _mark_failed (error logging safety net — must not raise during failure marking),
+      _process_asset (per-asset error isolation — must not raise in batch loop)
     - app/api/v1/endpoints/scoring.py: _run_refetch_job (APScheduler job isolation)
     - app/services/brainsuite_score.py: persist_and_replace_visualizations
       (non-fatal viz persistence — returns None on failure)
