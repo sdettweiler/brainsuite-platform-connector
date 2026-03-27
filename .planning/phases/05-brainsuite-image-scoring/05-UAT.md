@@ -1,5 +1,5 @@
 ---
-status: complete
+status: resolved
 phase: 05-brainsuite-image-scoring
 source: [05-01-SUMMARY.md, 05-02-SUMMARY.md, 05-03-SUMMARY.md]
 started: 2026-03-27T00:00:00Z
@@ -68,9 +68,9 @@ skipped: 3
 ## Gaps
 
 - truth: "CE tab for an IMAGE asset shows Intended Messages and Iconic Color Scheme metadata fields; VIDEO assets do not show them"
-  status: failed
-  reason: "User reported: Not seeing image metadata fields for image assets in the CE tab. Diagnosis: imageMetadataFields getter and image-only metadata section were not added to asset-detail-dialog.component.ts — the commit only changed 7 lines (interface field renames). UNSUPPORTED CE tab notice also missing from dialog."
+  status: resolved
+  reason: "User reported: Not seeing image metadata fields for image assets in the CE tab. Fixed in 05-04: imageMetadataFields getter, image-only metadata section, and UNSUPPORTED CE notice added to asset-detail-dialog.component.ts (commit 63ce3cb). Dashboard UNSUPPORTED tooltip also fixed (commit c921e40)."
   severity: major
   test: 9
   artifacts: [frontend/src/app/features/dashboard/dialogs/asset-detail-dialog.component.ts]
-  missing: [imageMetadataFields getter, image-only metadata section in CE preview column, UNSUPPORTED notice block in CE tab]
+  missing: []
