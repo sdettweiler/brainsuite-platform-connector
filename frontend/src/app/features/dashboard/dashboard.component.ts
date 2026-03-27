@@ -243,6 +243,11 @@ interface StatsResponse {
                     <span class="score-dash">–</span>
                   </div>
                 </ng-container>
+                <ng-container *ngSwitchCase="'UNSUPPORTED'">
+                  <div class="overlay-ace overlay-ace-dash" [matTooltip]="'Image scoring not supported for this platform'" aria-label="Image scoring not supported">
+                    <span class="score-dash">–</span>
+                  </div>
+                </ng-container>
                 <ng-container *ngSwitchDefault>
                   <div class="overlay-ace overlay-ace-dash" aria-label="Not yet scored">
                     <span class="score-dash">–</span>
