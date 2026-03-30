@@ -9,6 +9,20 @@ export class ApiService {
 
   constructor(private http: HttpClient) {}
 
+  getScoringStatus(assetIds: string[]): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/scoring/status`, {
+      params: new HttpParams().set('asset_ids', assetIds.join(',')),
+    });
+  }
+
+  rescoreAsset(assetId: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/scoring/${assetId}/rescore`, {});
+  }
+
+  getScoreDetail(assetId: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/scoring/${assetId}`);
+  }
+
   get<T>(path: string, params?: Record<string, any>): Observable<T> {
     let httpParams = new HttpParams();
     if (params) {
@@ -43,9 +57,5 @@ export class ApiService {
 
   exportData(payload: any): Promise<Blob> {
     return this.http.post(`${this.base}/assets/export`, payload, { responseType: 'blob' }).toPromise() as Promise<Blob>;
-  }
-
-  getScoreTrend(params: { date_from: string; date_to: string; platforms?: string }): Observable<any> {
-    return this.http.get(`${this.base}/dashboard/score-trend`, { params: params as any });
   }
 }

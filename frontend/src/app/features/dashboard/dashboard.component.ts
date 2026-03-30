@@ -10,19 +10,65 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { Subject, debounceTime, takeUntil, forkJoin } from 'rxjs';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { Subject, debounceTime, takeUntil, forkJoin, interval, switchMap } from 'rxjs';
+import { NgxSliderModule, Options } from '@angular-slider/ngx-slider';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
 import { format, subDays } from 'date-fns';
-import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
-import * as echarts from 'echarts/core';
-import { LineChart } from 'echarts/charts';
-import { GridComponent, TooltipComponent } from 'echarts/components';
-import { CanvasRenderer } from 'echarts/renderers';
-import type { EChartsOption } from 'echarts';
 
-echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
+interface AssetPerformance {
+  spend: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  ctr: number | null;
+  cpm: number | null;
+  roas: number | null;
+  video_views: number | null;
+  vtr: number | null;
+  conversions: number | null;
+  cvr: number | null;
+}
+
+interface DashboardAsset {
+  id: string;
+  platform: string;
+  ad_id: string;
+  ad_name: string | null;
+  campaign_name: string | null;
+  campaign_objective: string | null;
+  asset_format: string | null;
+  thumbnail_url: string | null;
+  asset_url: string | null;
+  scoring_status: string | null;
+  total_score: number | null;
+  total_rating: string | null;
+  is_active: boolean;
+  performance: AssetPerformance | null;
+  performer_tag: string | null;
+}
+
+interface DashboardAssetsResponse {
+  items: DashboardAsset[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+interface StatsResponse {
+  total_spend: number;
+  total_impressions: number;
+  avg_roas: number | null;
+  total_active_assets: number;
+  new_assets_in_period: number;
+  prev_total_spend: number | null;
+  prev_total_impressions: number | null;
+  prev_avg_roas: number | null;
+  prev_total_active_assets: number | null;
+}
 
 @Component({
   standalone: true,
@@ -30,10 +76,8 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
     CommonModule, ReactiveFormsModule, FormsModule, MatButtonModule,
     MatSelectModule, MatFormFieldModule, MatInputModule, MatMenuModule,
     MatDialogModule, MatTooltipModule, MatCheckboxModule, DateRangePickerComponent,
-    NgxEchartsDirective,
-  ],
-  providers: [
-    provideEchartsCore({ echarts }),
+    MatProgressSpinnerModule, MatSnackBarModule,
+    NgxSliderModule,
   ],
   template: `
     <div class="page-enter dashboard-page">
@@ -80,7 +124,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
             <mat-option value="roas">ROAS</mat-option>
             <mat-option value="cpm">CPM</mat-option>
             <mat-option value="vtr">VTR</mat-option>
-            <mat-option value="ace_score">ACE Score</mat-option>
+            <mat-option value="total_score">ACE Score</mat-option>
             <mat-option value="platform">Platform</mat-option>
             <mat-option value="format">Format</mat-option>
           </mat-select>
@@ -94,6 +138,18 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
         >
           <i class="bi" [ngClass]="sortOrder === 'desc' ? 'bi-arrow-down' : 'bi-arrow-up'"></i>
         </button>
+
+        <!-- Score range filter (per D-01, D-02, D-04) -->
+        <div class="score-slider-wrapper" [matTooltip]="sliderDisabled ? 'No scored creatives yet' : ''">
+          <span class="slider-label">Score range</span>
+          <ngx-slider
+            [(value)]="scoreMin"
+            [(highValue)]="scoreMax"
+            [options]="sliderOptions"
+            (userChangeEnd)="onScoreChange()"
+          ></ngx-slider>
+          <span class="slider-values">{{ scoreMin }} - {{ scoreMax }}</span>
+        </div>
 
         <div class="toolbar-spacer"></div>
 
@@ -114,28 +170,6 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
             {{ s.change }}
           </div>
         </div>
-      </div>
-
-      <!-- Score Trend Panel -->
-      <div class="score-trend-panel card" *ngIf="!scoreTrendError || scoreTrendLoading">
-        <div class="score-trend-header">
-          <h4>Average BrainSuite Score</h4>
-        </div>
-        <!-- Loading skeleton -->
-        <div *ngIf="scoreTrendLoading" class="score-trend-skeleton skeleton" style="height: 200px;"></div>
-        <!-- Chart (2+ data points) -->
-        <div *ngIf="!scoreTrendLoading && scoreTrendDataPoints >= 2"
-             echarts [options]="scoreTrendOptions" class="echart-box" style="height: 200px;"></div>
-        <!-- Empty state (< 2 data points) -->
-        <div *ngIf="!scoreTrendLoading && scoreTrendDataPoints < 2" class="score-trend-empty">
-          <i class="bi bi-graph-up"></i>
-          <p>Not enough data yet</p>
-          <p class="text-sm">Score trend appears after the first two scoring runs</p>
-        </div>
-      </div>
-      <!-- Error state -->
-      <div class="score-trend-panel card score-trend-error" *ngIf="scoreTrendError && !scoreTrendLoading">
-        <p>Could not load score data. Refresh to try again.</p>
       </div>
 
       <!-- Asset grid -->
@@ -166,26 +200,60 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
             (contextmenu)="onRightClick($event, asset)"
           >
             <!-- Thumbnail -->
-            <div class="tile-thumb">
+            <div class="tile-thumb" [class.video-no-thumb]="isVideoNoThumb(asset)">
               <img
-                [src]="getTileThumbnail(asset)"
+                *ngIf="getTileThumbnail(asset) as thumb"
+                [src]="thumb"
                 [alt]="asset.ad_name"
                 (error)="onImgError($event)"
               />
+              <!-- Fallback for video with no thumbnail (D-06) -->
+              <div *ngIf="isVideoNoThumb(asset)" class="video-fallback">
+                <img [src]="getPlatformOverlayIcon(asset.platform)" class="video-fallback-icon" alt="" />
+                <span class="video-tag">VIDEO</span>
+              </div>
               <!-- Overlays -->
               <span class="overlay-format">{{ asset.asset_format }}</span>
               <span class="overlay-platform">
                 <img [src]="getPlatformOverlayIcon(asset.platform)" [alt]="asset.platform" class="overlay-platform-img" />
               </span>
-              <div class="overlay-ace" [class]="getAceClass(asset.ace_score)">
-                {{ asset.ace_score | number:'1.0-0' }}
-              </div>
-              <!-- Performer badge overlay (bottom-left) -->
-              <div class="tile-tag" [class]="getTagClass(asset.performer_tag)"
-                   *ngIf="asset.performer_tag"
-                   [matTooltip]="getPerformerTooltip(asset.performer_tag)">
-                {{ asset.performer_tag }}
-              </div>
+              <!-- Score badge overlay -->
+              <ng-container [ngSwitch]="asset.scoring_status">
+                <ng-container *ngSwitchCase="'COMPLETE'">
+                  <div class="overlay-ace ace-score" [class]="getScoreBadgeClass(asset.total_rating)"
+                    [matTooltip]="getScoreTooltip(asset.total_rating)"
+                    [attr.aria-label]="'Score: ' + asset.total_score + ', ' + asset.total_rating">
+                    {{ asset.total_score | number:'1.0-0' }}
+                  </div>
+                </ng-container>
+                <ng-container *ngSwitchCase="'PENDING'">
+                  <div class="overlay-ace overlay-ace-pending" aria-label="Scoring in progress" [matTooltip]="'Scoring in progress'">
+                    <mat-spinner diameter="20"></mat-spinner>
+                    <span class="scoring-label">Scoring…</span>
+                  </div>
+                </ng-container>
+                <ng-container *ngSwitchCase="'PROCESSING'">
+                  <div class="overlay-ace overlay-ace-pending" aria-label="Scoring in progress" [matTooltip]="'Scoring in progress'">
+                    <mat-spinner diameter="20"></mat-spinner>
+                    <span class="scoring-label">Scoring…</span>
+                  </div>
+                </ng-container>
+                <ng-container *ngSwitchCase="'FAILED'">
+                  <div class="overlay-ace overlay-ace-dash" [matTooltip]="'Scoring failed'" aria-label="Scoring failed">
+                    <span class="score-dash">–</span>
+                  </div>
+                </ng-container>
+                <ng-container *ngSwitchCase="'UNSUPPORTED'">
+                  <div class="overlay-ace overlay-ace-dash" [matTooltip]="'Image scoring not supported for this platform'" aria-label="Image scoring not supported">
+                    <span class="score-dash">–</span>
+                  </div>
+                </ng-container>
+                <ng-container *ngSwitchDefault>
+                  <div class="overlay-ace overlay-ace-dash" aria-label="Not yet scored">
+                    <span class="score-dash">–</span>
+                  </div>
+                </ng-container>
+              </ng-container>
             </div>
 
             <!-- Tile body -->
@@ -203,7 +271,10 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
                 </span>
               </div>
               <div class="tile-roas" *ngIf="asset.performance?.roas">
-                ROAS: <strong>{{ asset.performance.roas | number:'1.1-2' }}x</strong>
+                ROAS: <strong>{{ asset.performance?.roas | number:'1.1-2' }}x</strong>
+              </div>
+              <div class="tile-tag" [class]="getTagClass(asset.performer_tag || '')">
+                {{ asset.performer_tag }}
               </div>
             </div>
           </div>
@@ -231,17 +302,21 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
       <!-- Context menu (positioned via CSS) -->
       <div class="context-menu" *ngIf="contextMenu.visible" [style.top.px]="contextMenu.y" [style.left.px]="contextMenu.x">
-        <button (click)="openAssetDetail(contextMenu.asset)">
+        <button (click)="openAssetDetail(contextMenu.asset!)">
           <i class="bi bi-box-arrow-up-right"></i> Open Report
         </button>
-        <button (click)="openAssignProject(contextMenu.asset)">
+        <button (click)="openAssignProject(contextMenu.asset!)">
           <i class="bi bi-folder"></i> Assign to Project
         </button>
         <button [disabled]="selectedAssets.length < 2 || selectedAssets.length > 4" (click)="compareSelected()">
           <i class="bi bi-arrow-left-right"></i> Compare ({{ selectedAssets.length }})
         </button>
-        <button (click)="openEditMetadata(contextMenu.asset)">
+        <button (click)="openEditMetadata(contextMenu.asset!)">
           <i class="bi bi-tag"></i> Edit Metadata
+        </button>
+        <hr class="context-divider" />
+        <button (click)="rescoreAsset(contextMenu.asset)">
+          <i class="bi bi-lightning-charge"></i> Score now
         </button>
       </div>
 
@@ -389,11 +464,28 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
       width: 36px; height: 36px;
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 700;
+      font-size: 12px; font-weight: 700;
+    }
 
-      &.ace-high   { background: rgba(46,204,113,0.85);  color: white; }
-      &.ace-medium { background: rgba(243,156,18,0.85);  color: white; }
-      &.ace-low    { background: rgba(231,76,60,0.85);   color: white; }
+    .overlay-ace-pending {
+      position: absolute; bottom: 6px; right: 6px;
+      display: flex; align-items: center; gap: 4px;
+      background: rgba(0,0,0,0.6); border-radius: 20px;
+      padding: 4px 8px; width: auto; height: auto;
+    }
+
+    .overlay-ace-dash {
+      position: absolute; bottom: 6px; right: 6px;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.5);
+    }
+
+    .context-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 4px 0;
     }
 
     .tile-body { padding: 12px; }
@@ -410,18 +502,14 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
     .tile-roas { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
 
     .tile-tag {
-      position: absolute;
-      bottom: 8px;
-      left: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 4px 8px;
+      display: inline-block;
+      font-size: 10px; font-weight: 600;
+      padding: 2px 8px;
       border-radius: 12px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      z-index: 2;
-      &.tag-top    { background: rgba(46, 204, 113, 0.15); color: #2ECC71; }
-      &.tag-below  { background: rgba(231, 76, 60, 0.15);  color: #E74C3C; }
+      &.tag-top    { background: rgba(46,204,113,0.15); color: var(--success); }
+      &.tag-avg    { background: var(--accent-light); color: var(--accent); }
+      &.tag-below  { background: rgba(231,76,60,0.15);  color: var(--error); }
     }
 
     .pagination {
@@ -464,63 +552,106 @@ echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
     .skeleton-tile { pointer-events: none; }
 
-    .score-trend-panel {
-      background: var(--bg-card);
-      border-radius: 8px;
-      padding: 16px;
-      border: 1px solid var(--border);
-      margin-bottom: 24px;
-    }
-    .score-trend-header {
+    .score-slider-wrapper {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 16px;
+      gap: 8px;
+      min-width: 280px;
+      max-width: 380px;
+      padding: 0 8px;
+
+      .slider-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+
+      .slider-values {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        min-width: 50px;
+        text-align: center;
+      }
+
+      ngx-slider {
+        flex: 1;
+      }
     }
-    .score-trend-header h4 {
-      font-size: 16px;
-      font-weight: 600;
-      margin: 0;
+
+    ::ng-deep .ngx-slider {
+      .ngx-slider-pointer {
+        width: 14px !important;
+        height: 14px !important;
+        top: -5px !important;
+        background-color: #FFFFFF !important;
+        border: 2px solid var(--accent) !important;
+        border-radius: 50% !important;
+
+        &::after { display: none !important; }
+      }
+      .ngx-slider-selection {
+        background: var(--accent) !important;
+      }
+      .ngx-slider-bar {
+        background: var(--border) !important;
+        height: 4px !important;
+      }
+      .ngx-slider-bubble {
+        background: var(--bg-card) !important;
+        color: var(--text-primary) !important;
+        padding: 2px 6px !important;
+        border-radius: 4px !important;
+        font-size: 11px !important;
+      }
+      &.ngx-slider-disabled {
+        opacity: 0.4 !important;
+      }
     }
-    .score-trend-empty {
+
+    .video-no-thumb {
+      background: #111 !important;
+    }
+
+    .video-fallback {
+      width: 100%;
+      height: 100%;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 120px;
-      color: var(--text-muted);
+      position: relative;
     }
-    .score-trend-empty i {
-      font-size: 32px;
-      margin-bottom: 8px;
+
+    .video-fallback-icon {
+      width: 48px !important;
+      height: 48px !important;
+      opacity: 0.6;
+      object-fit: contain !important;
     }
-    .score-trend-empty p {
-      margin: 0;
-    }
-    .score-trend-empty .text-sm {
-      font-size: 12px;
-      margin-top: 4px;
-    }
-    .score-trend-error {
-      text-align: center;
-      padding: 24px;
-      color: var(--text-secondary);
-    }
-    .score-trend-skeleton {
+
+    .video-tag {
+      position: absolute;
+      bottom: 6px;
+      right: 6px;
+      background: rgba(0, 0, 0, 0.65);
+      color: white;
+      font-size: 9px;
+      font-weight: 600;
+      padding: 2px 6px;
       border-radius: 4px;
+      text-transform: uppercase;
     }
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
-  assets: any[] = [];
-  stats: any = null;
+  assets: DashboardAsset[] = [];
+  stats: StatsResponse | null = null;
   loading = true;
 
-  scoreTrendData: { date: string; avg_score: number }[] = [];
-  scoreTrendDataPoints = 0;
-  scoreTrendLoading = false;
-  scoreTrendError = false;
-  scoreTrendOptions: EChartsOption = {};
+  private stopPolling$ = new Subject<void>();
+  private pollingActive = false;
 
   selectedPreset = 'last30';
   dateFrom = format(subDays(new Date(), 30), 'yyyy-MM-dd');
@@ -535,12 +666,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
   total = 0;
   totalPages = 1;
 
+  scoreMin = 0;
+  scoreMax = 100;
+  sliderOptions: Options = {
+    floor: 0,
+    ceil: 100,
+    step: 1,
+    noSwitching: true,
+    disabled: true,
+  };
+  sliderDisabled = true;
+  private hasAnyScored = false;
+  private scoreChange$ = new Subject<void>();
+
   selectedAssets: string[] = [];
   lastSelectedId: string | null = null;
 
-  contextMenu = { visible: false, x: 0, y: 0, asset: null as any };
+  contextMenu = { visible: false, x: 0, y: 0, asset: null as DashboardAsset | null };
 
-  private assetDetailCache = new Map<string, any>();
+  private assetDetailCache = new Map<string, DashboardAsset>();
 
   platforms = [
     { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2', iconUrl: '/assets/images/icon-meta.png' },
@@ -557,6 +701,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     private dialog: MatDialog,
     private route: ActivatedRoute,
     private router: Router,
+    private snackBar: MatSnackBar,
   ) {}
 
   get orgCurrency(): string {
@@ -564,13 +709,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Debounced score filter
+    this.scoreChange$.pipe(
+      debounceTime(400),
+      takeUntil(this.destroy$)
+    ).subscribe(() => this.onFilterChange());
+
     // Handle query params (from homepage navigation or direct link)
     this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe(params => {
       if (params['platforms']) {
         this.selectedPlatforms = new Set([params['platforms'].toUpperCase()]);
       }
       this.loadData();
-      this.loadScoreTrend();
       if (params['assetId']) {
         this.openAssetById(params['assetId']);
       }
@@ -580,6 +730,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+    this.stopPolling$.next();
+    this.stopPolling$.complete();
   }
 
   get aggStats(): any[] {
@@ -617,14 +769,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     ];
   }
 
-  private pctChange(curr: number, prev: number): string | null {
-    if (!prev) return null;
+  private pctChange(curr: number | null, prev: number | null): string | null {
+    if (!prev || curr == null) return null;
     const pct = ((curr - prev) / prev * 100).toFixed(1);
     return `${pct}%`;
   }
 
-  private changeClass(curr: number, prev: number): string {
-    if (!prev) return 'change-neutral';
+  private changeClass(curr: number | null, prev: number | null): string {
+    if (!prev || curr == null) return 'change-neutral';
     return curr >= prev ? 'change-positive' : 'change-negative';
   }
 
@@ -640,19 +792,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
       page_size: this.pageSize,
     };
     if (this.selectedFormat) params.formats = this.selectedFormat;
+    if (this.scoreMin > 0) params['score_min'] = this.scoreMin;
+    if (this.scoreMax < 100) params['score_max'] = this.scoreMax;
 
-    this.api.get<any>('/dashboard/assets', params).subscribe({
+    this.api.get<DashboardAssetsResponse>('/dashboard/assets', params).subscribe({
       next: (d) => {
         this.assets = d.items;
         this.total = d.total;
         this.totalPages = d.total_pages;
         this.loading = false;
+        // Only enable slider once we've seen scored assets — don't disable when filtered results are empty
+        if (this.assets.some((a: any) => a.scoring_status === 'COMPLETE')) {
+          this.hasAnyScored = true;
+        }
+        this.sliderDisabled = !this.hasAnyScored;
+        this.sliderOptions = { ...this.sliderOptions, disabled: !this.hasAnyScored };
         this.preloadAssetDetails();
+        this.stopPolling$.next();
+        this.pollingActive = false;
+        this.startScoringPolling(this.assets);
       },
       error: () => { this.loading = false; },
     });
 
-    this.api.get<any>('/dashboard/stats', params).subscribe({
+    this.api.get<StatsResponse>('/dashboard/stats', params).subscribe({
       next: (s) => this.stats = s,
     });
   }
@@ -662,57 +825,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadData();
   }
 
-  loadScoreTrend(): void {
-    this.scoreTrendLoading = true;
-    this.scoreTrendError = false;
-    const params: any = {
-      date_from: this.dateFrom,
-      date_to: this.dateTo,
-    };
-    if (this.selectedPlatforms?.size) {
-      params.platforms = [...this.selectedPlatforms].join(',');
-    }
-    this.api.getScoreTrend(params).subscribe({
-      next: (res: any) => {
-        this.scoreTrendData = res.trend || [];
-        this.scoreTrendDataPoints = res.data_points || 0;
-        this.scoreTrendLoading = false;
-        if (this.scoreTrendDataPoints >= 2) {
-          this.scoreTrendOptions = {
-            color: ['#FF7700'],
-            xAxis: {
-              type: 'category',
-              data: this.scoreTrendData.map(d => d.date),
-              axisLabel: { fontSize: 12 },
-            },
-            yAxis: {
-              type: 'value',
-              min: 0,
-              max: 100,
-              axisLabel: { fontSize: 12 },
-            },
-            series: [{
-              type: 'line',
-              data: this.scoreTrendData.map(d => d.avg_score),
-              smooth: true,
-              lineStyle: { width: 2 },
-            }],
-            tooltip: {
-              trigger: 'axis',
-              formatter: (params: any) => {
-                const p = Array.isArray(params) ? params[0] : params;
-                return `${p.axisValue}<br/>Score: ${p.value}`;
-              },
-            },
-            grid: { left: 40, right: 20, top: 16, bottom: 32 },
-          };
-        }
-      },
-      error: () => {
-        this.scoreTrendLoading = false;
-        this.scoreTrendError = true;
-      },
-    });
+  onScoreChange(): void {
+    this.scoreChange$.next();
   }
 
   onDateRangeChange(event: DateRangeChange): void {
@@ -720,7 +834,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.dateTo = event.dateTo;
     this.selectedPreset = event.preset;
     this.onFilterChange();
-    this.loadScoreTrend();
   }
 
 
@@ -731,7 +844,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.selectedPlatforms.add(key);
     }
     this.onFilterChange();
-    this.loadScoreTrend();
   }
 
   isPlatformActive(key: string): boolean {
@@ -754,7 +866,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   // Asset selection
-  selectAsset(event: MouseEvent, asset: any): void {
+  selectAsset(event: MouseEvent, asset: DashboardAsset): void {
     const id = asset.id;
     if (event.ctrlKey || event.metaKey) {
       if (this.selectedAssets.includes(id)) {
@@ -780,7 +892,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return this.selectedAssets.includes(id);
   }
 
-  onRightClick(event: MouseEvent, asset: any): void {
+  onRightClick(event: MouseEvent, asset: DashboardAsset): void {
     event.preventDefault();
     if (!this.isSelected(asset.id)) {
       this.selectedAssets = [asset.id];
@@ -799,7 +911,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     const kpis = 'spend,ctr,roas,cpm,video_views,vtr,conversions,cvr,impressions,clicks';
     for (const asset of this.assets) {
-      this.api.get<any>(`/dashboard/assets/${asset.id}`, {
+      this.api.get<DashboardAsset>(`/dashboard/assets/${asset.id}`, {
         date_from: this.dateFrom,
         date_to: this.dateTo,
         kpis,
@@ -809,13 +921,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  async openAssetDetail(asset: any): Promise<void> {
+  async openAssetDetail(asset: DashboardAsset): Promise<void> {
     this.contextMenu.visible = false;
     const { AssetDetailDialogComponent } = await import('../dashboard/dialogs/asset-detail-dialog.component');
     this.dialog.open(AssetDetailDialogComponent, {
-      width: '92vw',
-      maxWidth: '1430px',
-      height: '85vh',
+      width: '96vw',
+      maxWidth: '1800px',
+      height: '92vh',
       data: {
         assetId: asset.id,
         dateFrom: this.dateFrom,
@@ -830,9 +942,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   async openAssetById(assetId: string): Promise<void> {
     const { AssetDetailDialogComponent } = await import('../dashboard/dialogs/asset-detail-dialog.component');
     this.dialog.open(AssetDetailDialogComponent, {
-      width: '92vw',
-      maxWidth: '1430px',
-      height: '85vh',
+      width: '96vw',
+      maxWidth: '1800px',
+      height: '92vh',
       data: {
         assetId,
         dateFrom: this.dateFrom,
@@ -856,7 +968,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  async openAssignProject(asset: any): Promise<void> {
+  async openAssignProject(asset: DashboardAsset): Promise<void> {
     this.contextMenu.visible = false;
     const { AssignProjectDialogComponent } = await import('../dashboard/dialogs/assign-project-dialog.component');
     const assetIds = this.selectedAssets.length > 0 ? this.selectedAssets : [asset.id];
@@ -866,7 +978,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  async openEditMetadata(asset: any): Promise<void> {
+  async openEditMetadata(asset: DashboardAsset): Promise<void> {
     this.contextMenu.visible = false;
     const { EditMetadataDialogComponent } = await import('../dashboard/dialogs/edit-metadata-dialog.component');
     const assetIds = this.selectedAssets.length > 0 ? this.selectedAssets : [asset.id];
@@ -916,22 +1028,91 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return 'ace-low';
   }
 
-  getTagClass(tag: string | null): string {
-    if (tag === 'Top Performer') return 'tile-tag tag-top';
-    if (tag === 'Below Average') return 'tile-tag tag-below';
-    return 'tile-tag';
+  getTagClass(tag: string): string {
+    if (tag === 'Top Performer') return 'tag-top';
+    if (tag === 'Below Average') return 'tag-below';
+    return 'tag-avg';
   }
 
-  getPerformerTooltip(tag: string | null): string {
-    if (tag === 'Top Performer') return 'Top 10% of your scored creatives';
-    if (tag === 'Below Average') return 'Bottom 10% of your scored creatives';
-    return '';
+  getScoreBadgeClass(rating: string | null): string {
+    switch (rating) {
+      case 'positive': return 'ace-score ace-positive';
+      case 'medium': return 'ace-score ace-medium';
+      case 'negative': return 'ace-score ace-negative';
+      default: return 'ace-score';
+    }
   }
 
-  getTileThumbnail(asset: any): string {
-    if (asset.thumbnail_url) return asset.thumbnail_url;
+  getScoreTooltip(rating: string | null): string {
+    switch (rating) {
+      case 'positive': return 'Positive effectiveness';
+      case 'medium': return 'Moderate effectiveness';
+      case 'negative': return 'Low effectiveness';
+      default: return 'Scoring failed';
+    }
+  }
+
+  private startScoringPolling(assets: any[]): void {
+    const pendingIds = assets
+      .filter(a => a.scoring_status === 'PENDING' || a.scoring_status === 'PROCESSING')
+      .map(a => a.id);
+
+    if (pendingIds.length === 0 || this.pollingActive) return;
+    this.pollingActive = true;
+
+    interval(10000).pipe(
+      takeUntil(this.stopPolling$),
+      switchMap(() => this.api.getScoringStatus(pendingIds)),
+    ).subscribe(statuses => {
+      for (const status of statuses) {
+        const asset = this.assets.find(a => a.id === status.asset_id);
+        if (asset) {
+          asset.scoring_status = status.scoring_status;
+          asset.total_score = status.total_score;
+          asset.total_rating = status.total_rating;
+        }
+      }
+      const stillPending = statuses.filter(
+        s => s.scoring_status === 'PENDING' || s.scoring_status === 'PROCESSING',
+      );
+      if (stillPending.length === 0) {
+        this.stopPolling$.next();
+        this.pollingActive = false;
+      }
+    });
+  }
+
+  rescoreAsset(asset: any): void {
+    this.contextMenu.visible = false;
+    this.api.rescoreAsset(asset.id).subscribe({
+      next: () => {
+        asset.scoring_status = 'PENDING';
+        asset.total_score = null;
+        asset.total_rating = null;
+        if (!this.pollingActive) {
+          this.startScoringPolling([asset]);
+        }
+        this.snackBar.open('Scoring queued — results in ~2 minutes', 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.snackBar.open('Could not queue scoring. Try again.', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  getTileThumbnail(asset: any): string | null {
+    if (asset.asset_format === 'VIDEO') {
+      // Video: use thumbnail_url if available, else null triggers CSS fallback (D-06)
+      return asset.thumbnail_url || null;
+    }
+    // Image/Carousel: use asset_url (skip .mp4), then thumbnail, then placeholder (D-07)
     if (asset.asset_url && !asset.asset_url.endsWith('.mp4')) return asset.asset_url;
+    if (asset.thumbnail_url) return asset.thumbnail_url;
     return '/assets/images/placeholder.svg';
+  }
+
+  isVideoNoThumb(asset: any): boolean {
+    return asset.asset_format === 'VIDEO' && !asset.thumbnail_url;
   }
 
   onImgError(event: Event): void {
