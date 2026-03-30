@@ -14,10 +14,18 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { Subject, debounceTime, takeUntil, forkJoin, interval, switchMap } from 'rxjs';
 import { NgxSliderModule, Options } from '@angular-slider/ngx-slider';
+import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
+import * as echarts from 'echarts/core';
+import { LineChart } from 'echarts/charts';
+import { GridComponent, TooltipComponent } from 'echarts/components';
+import { CanvasRenderer } from 'echarts/renderers';
+import type { EChartsOption } from 'echarts';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
 import { format, subDays } from 'date-fns';
+
+echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
 interface AssetPerformance {
   spend: number | null;
@@ -78,6 +86,10 @@ interface StatsResponse {
     MatDialogModule, MatTooltipModule, MatCheckboxModule, DateRangePickerComponent,
     MatProgressSpinnerModule, MatSnackBarModule,
     NgxSliderModule,
+    NgxEchartsDirective,
+  ],
+  providers: [
+    provideEchartsCore({ echarts }),
   ],
   template: `
     <div class="page-enter dashboard-page">
@@ -170,6 +182,28 @@ interface StatsResponse {
             {{ s.change }}
           </div>
         </div>
+      </div>
+
+      <!-- Score Trend Panel -->
+      <div class="score-trend-panel card" *ngIf="!scoreTrendError || scoreTrendLoading">
+        <div class="score-trend-header">
+          <h4>Average BrainSuite Score</h4>
+        </div>
+        <!-- Loading skeleton -->
+        <div *ngIf="scoreTrendLoading" class="score-trend-skeleton skeleton" style="height: 200px;"></div>
+        <!-- Chart (2+ data points) -->
+        <div *ngIf="!scoreTrendLoading && scoreTrendDataPoints >= 2"
+             echarts [options]="scoreTrendOptions" class="echart-box" style="height: 200px;"></div>
+        <!-- Empty state (< 2 data points) -->
+        <div *ngIf="!scoreTrendLoading && scoreTrendDataPoints < 2" class="score-trend-empty">
+          <i class="bi bi-graph-up"></i>
+          <p>Not enough data yet</p>
+          <p class="text-sm">Score trend appears after the first two scoring runs</p>
+        </div>
+      </div>
+      <!-- Error state -->
+      <div class="score-trend-panel card score-trend-error" *ngIf="scoreTrendError && !scoreTrendLoading">
+        <p>Could not load score data. Refresh to try again.</p>
       </div>
 
       <!-- Asset grid -->
@@ -643,12 +677,64 @@ interface StatsResponse {
       border-radius: 4px;
       text-transform: uppercase;
     }
+
+    .score-trend-panel {
+      background: var(--bg-card);
+      border-radius: 8px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+    .score-trend-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .score-trend-header h4 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .score-trend-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 120px;
+      color: var(--text-muted);
+    }
+    .score-trend-empty i {
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+    .score-trend-empty p {
+      margin: 0;
+    }
+    .score-trend-empty .text-sm {
+      font-size: 12px;
+      margin-top: 4px;
+    }
+    .score-trend-error {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-secondary);
+    }
+    .score-trend-skeleton {
+      border-radius: 4px;
+    }
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   assets: DashboardAsset[] = [];
   stats: StatsResponse | null = null;
   loading = true;
+
+  scoreTrendData: { date: string; avg_score: number }[] = [];
+  scoreTrendDataPoints = 0;
+  scoreTrendLoading = false;
+  scoreTrendError = false;
+  scoreTrendOptions: EChartsOption = {};
 
   private stopPolling$ = new Subject<void>();
   private pollingActive = false;
@@ -721,6 +807,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.selectedPlatforms = new Set([params['platforms'].toUpperCase()]);
       }
       this.loadData();
+      this.loadScoreTrend();
       if (params['assetId']) {
         this.openAssetById(params['assetId']);
       }
@@ -834,8 +921,61 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.dateTo = event.dateTo;
     this.selectedPreset = event.preset;
     this.onFilterChange();
+    this.loadScoreTrend();
   }
 
+  loadScoreTrend(): void {
+    this.scoreTrendLoading = true;
+    this.scoreTrendError = false;
+    const params: any = {
+      date_from: this.dateFrom,
+      date_to: this.dateTo,
+    };
+    if (this.selectedPlatforms?.size) {
+      params.platforms = [...this.selectedPlatforms].join(',');
+    }
+    this.api.getScoreTrend(params).subscribe({
+      next: (res: any) => {
+        this.scoreTrendData = res.trend || [];
+        this.scoreTrendDataPoints = res.data_points || 0;
+        this.scoreTrendLoading = false;
+        if (this.scoreTrendDataPoints >= 2) {
+          this.scoreTrendOptions = {
+            color: ['#FF7700'],
+            xAxis: {
+              type: 'category',
+              data: this.scoreTrendData.map(d => d.date),
+              axisLabel: { fontSize: 12 },
+            },
+            yAxis: {
+              type: 'value',
+              min: 0,
+              max: 100,
+              axisLabel: { fontSize: 12 },
+            },
+            series: [{
+              type: 'line',
+              data: this.scoreTrendData.map(d => d.avg_score),
+              smooth: true,
+              lineStyle: { width: 2 },
+            }],
+            tooltip: {
+              trigger: 'axis',
+              formatter: (params: any) => {
+                const p = Array.isArray(params) ? params[0] : params;
+                return `${p.axisValue}<br/>Score: ${p.value}`;
+              },
+            },
+            grid: { left: 40, right: 20, top: 16, bottom: 32 },
+          };
+        }
+      },
+      error: () => {
+        this.scoreTrendLoading = false;
+        this.scoreTrendError = true;
+      },
+    });
+  }
 
   togglePlatform(key: string): void {
     if (this.selectedPlatforms.has(key)) {
@@ -844,6 +984,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.selectedPlatforms.add(key);
     }
     this.onFilterChange();
+    this.loadScoreTrend();
   }
 
   isPlatformActive(key: string): boolean {
