@@ -42,29 +42,32 @@ Declared values (must be multiples of 4):
 | 3xl | 64px | Page-level spacing |
 
 Exceptions:
-- Performer badge pill: 2px top/bottom, 8px left/right (matches existing `.tile-tag` pattern — source: `dashboard.component.ts` line 505)
-- CE pillar card internal padding: 12px top/bottom, 10px left/right (matches existing `.ce-pillar-card` — copy pattern exactly for new performance tiles)
-- Score trend chart container height: 200px fixed (scannable at a glance, does not crowd the grid)
-- Mini data tiles (Spend + Impressions below preview): 8px padding, 12px gap
+
+| Location | Value | Justification |
+|----------|-------|---------------|
+| Score trend chart container height | 200px fixed | Scannable at a glance; does not crowd the grid |
+| `.perf-mini-tiles` gap | 12px | Three-column compact layout; 8px is too tight, 16px wastes horizontal space in a two-tile row. Accepted as a one-off layout exception. |
 
 ---
 
 ## Typography
 
+Exactly 4 sizes, exactly 2 weights from body + label, 3 weights total:
+
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
+| Label / metric name / category header | 12px | 600 | 1.2 |
 | Body | 14px | 400 | 1.5 |
-| Label / metric name | 12px | 600 | 1.2 |
 | Heading (section titles, tile headers) | 16px | 500 | 1.2 |
-| Display (score trend Y-axis max, large metric values) | 20px | 700 | 1.2 |
+| Display (large metric values) | 20px | 700 | 1.2 |
 
 Source: `frontend/src/styles.scss` — `html` base is 14px/1.5; h4 is 16px/500; h2 is 20px/600; `.pillar-score` uses 21px/800 (kept for CE tab parity only — do not introduce a fifth size for new components).
 
-Notes:
-- Performer badge text: 10px / 600 / uppercase / letter-spacing 0.5px — matches existing `.tile-tag`
-- Metric category labels (Delivery, Engagement, etc.): 12px / 600 / uppercase
-- Campaign name in "Used in X campaigns" rows: 14px / 400 — standard body
-- ECharts axis labels: 11px (set via ECharts `axisLabel.fontSize`)
+Component-internal sizing notes (these are NOT new type sizes — they reference the 12px label token):
+- Performer badge text: references the **12px label token** — render at 12px / 600 / uppercase / letter-spacing 0.5px. Do not declare a separate 10px token.
+- Mini data tile labels ("Spend", "Impressions"): references the **12px label token** — render at 12px / 600 / uppercase. Do not declare a separate 11px token.
+- ECharts axis labels: set `axisLabel.fontSize: 12` (ECharts internal config — closest standard token; overrides ECharts default without introducing a new design token).
+- Metric name/value rows: use the **14px body token** (400 for names, 600 for values). The former 13px spec is absorbed — 1px difference is imperceptible.
 
 ---
 
@@ -115,8 +118,8 @@ Metric category icon colors (Claude's discretion, consistent with existing seman
 
 **ECharts config contract:**
 - Chart type: `LineChart`
-- X-axis: date strings (YYYY-MM-DD), `axisLabel.fontSize: 11`
-- Y-axis: 0–100 domain, `axisLabel.fontSize: 11`
+- X-axis: date strings (YYYY-MM-DD), `axisLabel.fontSize: 12`
+- Y-axis: 0–100 domain, `axisLabel.fontSize: 12`
 - Line color: `#FF7700` (accent)
 - Line width: 2px, no area fill
 - Tooltip: show date + score value (format: "Score: {value}")
@@ -144,9 +147,9 @@ Center-aligned, container height 120px.
   position: absolute;
   bottom: 8px;
   left: 8px;        // moved from current position to bottom-left
-  font-size: 10px;
+  font-size: 12px;  // 12px label token — no separate 10px token
   font-weight: 600;
-  padding: 2px 8px;
+  padding: 4px 8px; // 4px vertical (xs token), 8px horizontal (sm token)
   border-radius: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -175,7 +178,7 @@ Guard: if fewer than 10 scored assets in org → backend returns `null` for all 
   │   ├── h4 "Performance Over Time"
   │   ├── [existing KPI multi-select checkboxes: Spend, CTR, ROAS, etc.]
   │   └── div.echart-box [echarts] [options]="kpiChartOptions" (height: 200px)
-  └── .perf-asset-tile (.card style — same as ce-pillar-card: bg-card, border, border-radius 8px, padding 12px 10px)
+  └── .perf-asset-tile (.card style — bg-card, border, border-radius 8px, padding 12px)
       ├── .perf-asset-header (display: flex; justify-content: space-between; align-items: center)
       │   ├── span.perf-asset-label "Creative Asset" (12px / 600 / text-secondary)
       │   └── span.tile-tag [tag-top or tag-below] (if performer_tag not null)
@@ -183,12 +186,14 @@ Guard: if fewer than 10 scored assets in org → backend returns `null` for all 
       ├── .perf-asset-meta (display: flex; justify-content: space-between; margin-top 8px)
       │   ├── span.perf-filename (14px / 400; text-overflow: ellipsis)
       │   └── span.perf-duration (12px / 400 / text-secondary; video only — omit for images)
-      └── .perf-mini-tiles (display: flex; gap: 8px; margin-top 8px)
+      └── .perf-mini-tiles (display: flex; gap: 12px; margin-top 8px)
           ├── .perf-mini-tile (flex: 1; bg-primary; border-radius 6px; padding 8px)
-          │   ├── span "Spend" (11px / 600 / text-secondary / uppercase)
+          │   ├── span "Spend" (12px / 600 / text-secondary / uppercase — 12px label token)
           │   └── span (14px / 700) formatted value
           └── .perf-mini-tile (same structure for "Impressions")
 ```
+
+Note: `.perf-asset-tile` uses uniform `padding: 12px` (md/1 token) on all sides, matching the `.ce-pillar-card` pattern. The 12px gap in `.perf-mini-tiles` is a declared spacing exception (see Spacing Scale table).
 
 **Performance Summary section (below top row, full width):**
 
@@ -202,9 +207,9 @@ Each metric category renders as a group:
   │   └── span (12px / 600 / uppercase / letter-spacing 0.5px; color = category color)
   └── .perf-metrics-grid (display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px)
       └── .perf-metric-row (display: flex; justify-content: space-between; align-items: center;
-                            padding: 6px 0; border-bottom: 1px solid var(--border))
-          ├── span.metric-name (13px / 400 / text-secondary)
-          └── span.metric-value (13px / 600 / text-primary)
+                            padding: 8px 0; border-bottom: 1px solid var(--border))
+          ├── span.metric-name (14px / 400 / text-secondary)
+          └── span.metric-value (14px / 600 / text-primary)
 ```
 
 Category definitions:
@@ -227,9 +232,10 @@ Section header: "Used in {N} campaign{s}" — h4, margin-bottom 12px.
 ```
 .perf-campaigns-list
   └── .perf-campaign-row (display: flex; align-items: center; justify-content: space-between;
-                          padding: 10px 0; border-bottom: 1px solid var(--border))
+                          padding: 8px 0; border-bottom: 1px solid var(--border))
       ├── span.campaign-name (14px / 400)
       └── a.campaign-link [href]="getCampaignUrl(campaign)" target="_blank" rel="noopener noreferrer"
+                          [attr.aria-label]="'Open campaign in ' + campaign.platform + ' Ads Manager'"
           └── i.bi.bi-box-arrow-up-right (14px; color: text-secondary; hover: accent)
 ```
 
@@ -282,7 +288,7 @@ Empty state (no campaigns): render nothing (section omitted if `campaigns` array
 
 ### Performance Tab
 - KPI chart: existing multi-select checkbox behavior unchanged.
-- Campaign link: opens in new tab (`target="_blank"`).
+- Campaign link: opens in new tab (`target="_blank"`). `aria-label` declared in component inventory above.
 - Metric rows: non-interactive (no hover, no click).
 - Asset thumbnail: non-interactive (no click to expand in this tab).
 
