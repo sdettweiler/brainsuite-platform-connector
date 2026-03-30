@@ -7,7 +7,8 @@ from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, text, case, nullslast
+from sqlalchemy import select, func, and_, or_, text, case, nullslast, cast
+from sqlalchemy.types import Date
 from sqlalchemy.orm import selectinload
 import uuid
 
@@ -26,19 +27,24 @@ from app.api.v1.deps import get_current_user
 router = APIRouter()
 
 
-def _get_performer_tag(
-    total_score: Optional[float],
-    spend: float,
-    roas: Optional[float],
-) -> str:
-    """Classify asset performance based on BrainSuite total_score."""
-    if total_score is None:
-        return "Average"
-    if total_score >= 70:
+def _compute_performer_tag(pct_rank: Optional[float], total_scored: int) -> Optional[str]:
+    """Classify asset performance using PERCENT_RANK() window function result.
+
+    Returns None when:
+    - pct_rank is None (asset not scored)
+    - total_scored < 10 (minimum guard — not enough data for relative ranking)
+
+    Returns "Top Performer" when pct_rank >= 0.90 (top 10%).
+    Returns "Below Average" when pct_rank <= 0.10 (bottom 10%).
+    Returns None for the middle 80%.
+    """
+    if pct_rank is None or total_scored < 10:
+        return None
+    if pct_rank >= 0.90:
         return "Top Performer"
-    if total_score >= 45:
-        return "Average"
-    return "Below Average"
+    if pct_rank <= 0.10:
+        return "Below Average"
+    return None
 
 
 @router.get("/stats", response_model=DashboardStats)
@@ -116,6 +122,63 @@ async def get_dashboard_stats(
     )
 
 
+@router.get("/score-trend")
+async def get_score_trend(
+    date_from: date = Query(default=None),
+    date_to: date = Query(default=None),
+    platforms: Optional[str] = Query(default=None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Daily average BrainSuite score for an org's COMPLETE-scored assets within a date range.
+
+    Returns:
+        {
+            "trend": [{"date": "YYYY-MM-DD", "avg_score": float}, ...],
+            "data_points": int
+        }
+    """
+    if not date_from:
+        date_from = date.today() - timedelta(days=30)
+    if not date_to:
+        date_to = date.today() - timedelta(days=1)
+
+    platform_list = [p.strip().upper() for p in platforms.split(",")] if platforms else None
+
+    trend_query = (
+        select(
+            cast(CreativeScoreResult.scored_at, Date).label("score_date"),
+            func.avg(CreativeScoreResult.total_score).label("avg_score"),
+            func.count(CreativeScoreResult.id).label("count"),
+        )
+        .join(CreativeAsset, CreativeAsset.id == CreativeScoreResult.creative_asset_id)
+        .where(
+            CreativeAsset.organization_id == current_user.organization_id,
+            CreativeScoreResult.scoring_status == "COMPLETE",
+            CreativeScoreResult.scored_at >= date_from,
+            CreativeScoreResult.scored_at <= date_to,
+        )
+        .group_by(cast(CreativeScoreResult.scored_at, Date))
+        .order_by(cast(CreativeScoreResult.scored_at, Date))
+    )
+
+    if platform_list:
+        trend_query = trend_query.where(CreativeAsset.platform.in_(platform_list))
+
+    results = (await db.execute(trend_query)).all()
+
+    return {
+        "trend": [
+            {
+                "date": row.score_date.isoformat(),
+                "avg_score": round(float(row.avg_score), 1),
+            }
+            for row in results
+        ],
+        "data_points": len(results),
+    }
+
+
 @router.get("/assets", response_model=dict)
 async def get_dashboard_assets(
     date_from: date = Query(default=None),
@@ -178,6 +241,26 @@ async def get_dashboard_assets(
         .subquery()
     )
 
+    # PERCENT_RANK subquery for relative performer tagging
+    rank_subq = (
+        select(
+            CreativeScoreResult.creative_asset_id,
+            func.percent_rank()
+                .over(order_by=CreativeScoreResult.total_score)
+                .label("pct_rank"),
+            func.count(CreativeScoreResult.id)
+                .over()
+                .label("total_scored"),
+        )
+        .join(CreativeAsset, CreativeAsset.id == CreativeScoreResult.creative_asset_id)
+        .where(
+            CreativeAsset.organization_id == current_user.organization_id,
+            CreativeScoreResult.scoring_status == "COMPLETE",
+            CreativeScoreResult.total_score.isnot(None),
+        )
+        .subquery()
+    )
+
     # Main asset query
     query = (
         select(
@@ -186,9 +269,12 @@ async def get_dashboard_assets(
             CreativeScoreResult.scoring_status,
             CreativeScoreResult.total_score,
             CreativeScoreResult.total_rating,
+            rank_subq.c.pct_rank,
+            rank_subq.c.total_scored,
         )
         .outerjoin(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
         .outerjoin(CreativeScoreResult, CreativeScoreResult.creative_asset_id == CreativeAsset.id)
+        .outerjoin(rank_subq, rank_subq.c.creative_asset_id == CreativeAsset.id)
         .where(CreativeAsset.organization_id == current_user.organization_id)
     )
 
@@ -260,10 +346,9 @@ async def get_dashboard_assets(
             "video_views": row.total_video_views,
             "vtr": float(row.avg_vtr) if row.avg_vtr else None,
         }
-        performer_tag = _get_performer_tag(
-            row.total_score,
-            float(perf["spend"] or 0),
-            perf["roas"],
+        performer_tag = _compute_performer_tag(
+            row.pct_rank,
+            int(row.total_scored or 0),
         )
         assets_out.append({
             "id": str(asset.id),
@@ -483,6 +568,7 @@ async def get_asset_detail(
         "thumbnail_url": asset.thumbnail_url,
         "asset_url": asset.asset_url,
         "video_duration": asset.video_duration,
+        "ad_account_id": str(asset.ad_account_id) if asset.ad_account_id else None,
         "scoring_status": None,
         "total_score": None,
         "total_rating": None,
