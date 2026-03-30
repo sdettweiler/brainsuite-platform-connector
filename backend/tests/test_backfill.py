@@ -137,3 +137,88 @@ async def test_backfill_empty_batch():
             await run_backfill_task()
 
     mock_score.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Task 2 tests: POST /admin/backfill endpoint
+# ---------------------------------------------------------------------------
+
+def _make_count_session_factory(count: int):
+    """Return a mock get_session_factory() that returns a scalar count from execute().
+
+    The endpoint executes: result = await db.execute(select(func.count(...)))
+    then calls result.scalar_one() to get the integer count.
+    """
+    mock_result = MagicMock()
+    mock_result.scalar_one.return_value = count
+
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(return_value=mock_result)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+
+    mock_factory_instance = MagicMock(return_value=mock_session)
+    mock_factory = MagicMock(return_value=mock_factory_instance)
+    return mock_factory
+
+
+def test_backfill_endpoint_returns_202():
+    """POST /admin/backfill with admin auth returns 202 and {status, assets_queued}."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI, BackgroundTasks, Depends
+    from app.models.user import User
+    from app.api.v1.endpoints.scoring import router
+    from app.api.v1.deps import get_current_admin
+
+    # Build a minimal app with the scoring router
+    test_app = FastAPI()
+    test_app.include_router(router, prefix="/scoring")
+
+    # Create a mock admin user
+    mock_admin = MagicMock(spec=User)
+    mock_admin.id = uuid.uuid4()
+    mock_admin.organization_id = uuid.uuid4()
+
+    # Override the admin dependency
+    test_app.dependency_overrides[get_current_admin] = lambda: mock_admin
+
+    mock_factory = _make_count_session_factory(count=3)
+
+    with patch("app.api.v1.endpoints.scoring.get_session_factory", mock_factory):
+        with patch("app.api.v1.endpoints.scoring.run_backfill_task", new=AsyncMock()):
+            client = TestClient(test_app, raise_server_exceptions=True)
+            response = client.post("/scoring/admin/backfill")
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "backfill_started"
+    assert body["assets_queued"] == 3
+
+
+def test_backfill_requires_admin():
+    """POST /admin/backfill without admin role returns 403."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI, HTTPException, status
+    from app.api.v1.endpoints.scoring import router
+    from app.api.v1.deps import get_current_admin
+
+    test_app = FastAPI()
+    test_app.include_router(router, prefix="/scoring")
+
+    # Override to raise 403 (non-admin user)
+    def _non_admin():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+
+    test_app.dependency_overrides[get_current_admin] = _non_admin
+
+    with patch("app.api.v1.endpoints.scoring.get_session_factory", _make_count_session_factory(0)):
+        with patch("app.api.v1.endpoints.scoring.run_backfill_task", new=AsyncMock()):
+            client = TestClient(test_app, raise_server_exceptions=False)
+            response = client.post("/scoring/admin/backfill")
+
+    assert response.status_code == 403

@@ -3,7 +3,7 @@ from typing import List, Optional
 import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime, timezone
 import uuid
 
@@ -11,26 +11,56 @@ from app.db.base import get_db, get_session_factory
 from app.models.user import User
 from app.models.scoring import CreativeScoreResult
 from app.models.creative import CreativeAsset
-from app.api.v1.deps import get_current_user
+from app.api.v1.deps import get_current_user, get_current_admin
 from app.services.brainsuite_score import (
     brainsuite_score_service,
     extract_score_data,
     persist_and_replace_visualizations,
 )
+from app.services.sync.scoring_job import score_asset_now, run_backfill_task
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
+@router.post("/admin/backfill", status_code=202)
+async def admin_backfill_scoring(
+    background_tasks: BackgroundTasks,
+    current_admin: User = Depends(get_current_admin),
+):
+    """Queue all UNSCORED assets (cross-tenant) for the live scoring pipeline.
+
+    Returns immediately with a count of assets queued.
+    Progress is visible per-asset in the dashboard.
+    """
+    async with get_session_factory()() as db:
+        result = await db.execute(
+            select(func.count(CreativeScoreResult.id))
+            .where(
+                CreativeScoreResult.scoring_status == "UNSCORED",
+                CreativeScoreResult.endpoint_type.in_(["VIDEO", "STATIC_IMAGE"]),
+            )
+        )
+        assets_queued = result.scalar_one()
+
+    background_tasks.add_task(run_backfill_task)
+    logger.info(
+        "admin_backfill_scoring: queuing %d UNSCORED assets (requested by user %s)",
+        assets_queued,
+        current_admin.id,
+    )
+    return {"status": "backfill_started", "assets_queued": assets_queued}
+
+
 @router.post("/{asset_id}/rescore")
 async def rescore_asset(
     asset_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Reset asset scoring_status to UNSCORED to trigger re-scoring on next batch run."""
-    # Verify asset exists and belongs to user's org
+    """Trigger immediate scoring for an asset (runs in background, does not wait for scheduler)."""
     result = await db.execute(
         select(CreativeAsset).where(
             CreativeAsset.id == asset_id,
@@ -41,7 +71,6 @@ async def rescore_asset(
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    # Query existing score record
     score_result = await db.execute(
         select(CreativeScoreResult).where(
             CreativeScoreResult.creative_asset_id == asset_id
@@ -50,28 +79,33 @@ async def rescore_asset(
     score_record = score_result.scalar_one_or_none()
 
     if score_record is None:
-        # Create a new UNSCORED record
         score_record = CreativeScoreResult(
             creative_asset_id=asset_id,
             organization_id=current_user.organization_id,
-            scoring_status="UNSCORED",
+            scoring_status="PENDING",
+            endpoint_type=None,
         )
         db.add(score_record)
     else:
-        # Prevent rescoring UNSUPPORTED assets — they have no scoring endpoint
         if score_record.endpoint_type == "UNSUPPORTED":
             raise HTTPException(
                 status_code=422,
                 detail="Asset type is not supported for scoring (endpoint_type=UNSUPPORTED)",
             )
-        # Reset to UNSCORED
-        score_record.scoring_status = "UNSCORED"
+        if score_record.scoring_status in ("PENDING", "PROCESSING"):
+            return {"status": "already_in_progress", "asset_id": str(asset_id)}
+        score_record.scoring_status = "PENDING"
         score_record.error_reason = None
         score_record.brainsuite_job_id = None
         score_record.updated_at = datetime.now(timezone.utc)
 
+    await db.flush()
+    score_id = score_record.id
     await db.commit()
-    return {"status": "queued", "asset_id": str(asset_id)}
+
+    background_tasks.add_task(score_asset_now, score_id)
+    logger.info("rescore_asset: queued immediate scoring for asset %s (score_id=%s)", asset_id, score_id)
+    return {"status": "scoring_started", "asset_id": str(asset_id)}
 
 
 @router.get("/status")
