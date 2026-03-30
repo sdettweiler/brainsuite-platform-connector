@@ -70,8 +70,8 @@ completed: 2026-03-30
 
 ## Task Commits
 
-1. **Task 1: API service method + Score trend panel in dashboard** - `0a79d42` (feat)
-2. **Task 2: Performer badge relocation to bottom-left overlay** - `30e0813` (feat)
+1. **Task 1: ECharts imports + Score trend panel in dashboard** - `c526d47` (feat)
+2. **Task 2: Performer badge relocation to bottom-left overlay** - `2a2bcdf` (feat)
 
 ## Files Created/Modified
 
@@ -87,9 +87,13 @@ completed: 2026-03-30
 
 None - plan executed exactly as written.
 
+## Build Verification
+
+Angular production build: PASSED (exit 0, ~7.6s). Pre-existing NG8107 warnings in asset-detail-dialog.component.ts are out of scope.
+
 ## Issues Encountered
 
-- Worktree frontend directory had no `node_modules` (worktrees share main repo code but not build dependencies). Created temporary symlink from main project's `node_modules` for building, then removed it. No files were committed for this — it was a transient build aid.
+None.
 
 ## User Setup Required
 

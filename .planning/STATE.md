@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
-status: Ready to execute
+status: Phase complete — ready for verification
 stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-03-30T13:07:17.819Z"
+last_updated: "2026-03-30T17:47:56.537Z"
 progress:
   total_phases: 6
   completed_phases: 2
@@ -48,6 +48,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase 07-score-trend-performer-highlights-performance-tab]: PERCENT_RANK() replaces fixed-threshold performer tagging — relative ranking adapts to any org's score distribution, 10-asset minimum guard prevents misleading rankings in small orgs
 - [Phase 07-score-trend-performer-highlights-performance-tab]: Score trend data_points < 2 threshold for empty-state is frontend concern; backend returns all data points including single-point results
 - [Phase 07-score-trend-performer-highlights-performance-tab]: Score trend panel reuses main filter bar date range — no separate DateRangePicker in panel (single source of truth)
+- [Phase 07-score-trend-performer-highlights-performance-tab]: Score trend panel reuses dashboard filter bar date range — no separate DateRangePicker added (single source of truth)
+- [Phase 07-score-trend-performer-highlights-performance-tab]: getTagClass() returns full class string 'tile-tag tag-top' because [class] binding replaces base class
 
 ### Pending Todos
 
@@ -63,6 +65,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last session: 2026-03-30T13:07:17.817Z
+Last session: 2026-03-30T17:47:51.291Z
 Stopped at: Completed 07-02-PLAN.md
 Resume: Start Phase 5 with BrainSuite Static API discovery spike, then PROD-01/02 credential verification
