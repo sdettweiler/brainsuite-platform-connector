@@ -67,7 +67,11 @@ Plans:
   2. The asset detail dialog has a Score Trend tab with an ECharts line chart; a 30-day window is shown by default; an appropriate empty state appears when fewer than 2 data points exist
   3. Dashboard grid cards for the top 10% and bottom 10% of scored assets (by relative rank) display a performer badge overlay — and no badges appear when the scored asset pool is fewer than 10 assets
   4. The asset detail dialog performance tab presents metrics in a tile/card grid layout that visually matches the Creative Effectiveness tab style
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 07-01-PLAN.md -- Backend: score trend endpoint + PERCENT_RANK performer tagging + tests
+- [ ] 07-02-PLAN.md -- Frontend: score trend panel + performer badge relocation
+- [ ] 07-03-PLAN.md -- Frontend: Performance tab redesign (tile/card grid)
 **UI hint**: yes
 
 ### Phase 8: Score-to-ROAS Correlation
