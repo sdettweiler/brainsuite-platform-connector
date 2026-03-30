@@ -196,8 +196,11 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                     </span>
                   </div>
                   <div class="perf-preview">
-                    <img *ngIf="detail?.thumbnail_url" [src]="detail!.thumbnail_url!" [alt]="detail?.ad_name || 'Asset'" />
-                    <video *ngIf="!detail?.thumbnail_url && detail?.asset_url" [src]="detail!.asset_url!" preload="metadata"></video>
+                    <video *ngIf="detail?.asset_format === 'VIDEO' && detail?.asset_url"
+                           [src]="detail!.asset_url!" controls preload="metadata"></video>
+                    <img *ngIf="detail?.asset_format !== 'VIDEO'"
+                         [src]="detail?.asset_url || detail?.thumbnail_url || ''"
+                         [alt]="detail?.ad_name || 'Asset'" />
                   </div>
                   <div class="perf-asset-meta">
                     <span class="perf-filename">{{ detail?.ad_name || 'Unnamed Asset' }}</span>
