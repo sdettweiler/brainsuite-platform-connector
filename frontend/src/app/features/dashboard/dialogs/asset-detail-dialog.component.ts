@@ -573,7 +573,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .kpi-native-select:focus { outline: none; border-color: var(--accent); }
 
     .chart-container { background: var(--bg-hover); border-radius: 8px; overflow: hidden; }
-    .echart-box { width: 100%; height: 200px; }
+    .echart-box { width: 100%; height: 280px; }
 
     .chart-empty {
       background: var(--bg-hover); border-radius: 8px; padding: 40px;
@@ -609,9 +609,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .perf-asset-header .tag-top { background: rgba(46,204,113,0.15); color: #2ECC71; }
     .perf-asset-header .tag-below { background: rgba(231,76,60,0.15); color: #E74C3C; }
 
-    .perf-preview { margin-bottom: 8px; }
+    .perf-preview { margin-bottom: 8px; background: var(--bg-primary); border-radius: 4px; }
     .perf-preview img, .perf-preview video {
-      width: 100%; max-height: 140px; object-fit: cover; border-radius: 4px; display: block;
+      width: 100%; height: 220px; object-fit: contain; border-radius: 4px; display: block;
     }
     .perf-asset-meta {
       display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
