@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
-status: Ready to plan
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-30T07:41:17.388Z"
+status: Ready to execute
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-30T12:58:40.048Z"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 8
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 06 — historical-backfill-score-history-schema
+**Current focus:** Phase 07 — score-trend-performer-highlights-performance-tab
 
 ## Current Position
 
-Phase: 7
-Plan: Not started
+Phase: 07 (score-trend-performer-highlights-performance-tab) — EXECUTING
+Plan: 2 of 3
 
 ## Accumulated Context
 
@@ -45,6 +45,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase 05]: Load metadata field definitions at init so imageMetadataFields getter resolves UUID keys synchronously without extra API calls
 - [Phase 06]: TREND-01 deferred: creative_score_history table not created — BrainSuite scores are static per D-09
 - [Phase 06]: BackgroundTasks used for backfill (not APScheduler) to avoid competing with 15-min batch on same UNSCORED queue
+- [Phase 07-score-trend-performer-highlights-performance-tab]: PERCENT_RANK() replaces fixed-threshold performer tagging — relative ranking adapts to any org's score distribution, 10-asset minimum guard prevents misleading rankings in small orgs
+- [Phase 07-score-trend-performer-highlights-performance-tab]: Score trend data_points < 2 threshold for empty-state is frontend concern; backend returns all data points including single-point results
 
 ### Pending Todos
 
@@ -60,6 +62,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last session: 2026-03-30T07:37:53.814Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-03-30T12:58:40.046Z
+Stopped at: Completed 07-01-PLAN.md
 Resume: Start Phase 5 with BrainSuite Static API discovery spike, then PROD-01/02 credential verification

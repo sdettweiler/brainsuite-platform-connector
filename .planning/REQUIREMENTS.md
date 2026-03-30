@@ -25,12 +25,12 @@
 ### Score Trend Over Time
 
 - [x] **TREND-01**: Append-only `creative_score_history` table with one row per asset per day, monthly range partitioning, and 90-day retention — schema finalized before first data is written
-- [ ] **TREND-02**: Score history written automatically by the scoring job after every COMPLETE result
+- [x] **TREND-02**: Score history written automatically by the scoring job after every COMPLETE result
 - [ ] **TREND-03**: Asset detail dialog includes a Score Trend tab with an ECharts line chart showing score over time (30-day default window; appropriate empty state when fewer than 2 data points exist)
 
 ### Top/Bottom Performer Highlights
 
-- [ ] **PERF-01**: Dashboard creative grid shows performer badge overlays using relative ranking (`PERCENT_RANK()`) — top 10% and bottom 10% — with a minimum 10-asset sample guard before any badges appear
+- [x] **PERF-01**: Dashboard creative grid shows performer badge overlays using relative ranking (`PERCENT_RANK()`) — top 10% and bottom 10% — with a minimum 10-asset sample guard before any badges appear
 
 ### Score-to-ROAS Correlation
 
