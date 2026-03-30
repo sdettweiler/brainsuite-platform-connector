@@ -44,7 +44,7 @@ A user can connect all their ad accounts, see every creative's performance metri
 - BrainSuite image scoring not yet wired up (different endpoint/payload from video)
 - BrainSuite production credentials need configuration
 - Google Ads OAuth consent screen "Published" status needs verification
-- Historical assets synced before Phase 3 have no score records
+- ~~Historical assets synced before Phase 3 have no score records~~ — resolved via admin backfill endpoint (Phase 6)
 
 ## Requirements
 
@@ -66,6 +66,7 @@ A user can connect all their ad accounts, see every creative's performance metri
 - ✓ Creative scoring visible in dashboard — score badge, CE dimension tab, sort/filter by score range — v1.0 (Phase 3–4)
 - ✓ Platform data reliability — health badges, reconnect prompts, token_expiry exposed, SCHEDULER_ENABLED guard — v1.0 (Phase 3–4)
 - ✓ Dashboard UX polish — thumbnail fallback, score range slider, nullslast sort — v1.0 (Phase 4)
+- ✓ Historical asset backfill — admin endpoint queues all UNSCORED assets cross-tenant — v1.1 (Phase 6)
 
 ### Active
 
@@ -122,4 +123,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-25 — v1.1 milestone started*
+*Last updated: 2026-03-30
