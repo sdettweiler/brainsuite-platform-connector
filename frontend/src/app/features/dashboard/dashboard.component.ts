@@ -288,6 +288,12 @@ interface StatsResponse {
                   </div>
                 </ng-container>
               </ng-container>
+              <!-- Performer badge overlay (bottom-left) -->
+              <div class="tile-tag" [class]="getTagClass(asset.performer_tag)"
+                   *ngIf="asset.performer_tag"
+                   [matTooltip]="getPerformerTooltip(asset.performer_tag)">
+                {{ asset.performer_tag }}
+              </div>
             </div>
 
             <!-- Tile body -->
@@ -306,9 +312,6 @@ interface StatsResponse {
               </div>
               <div class="tile-roas" *ngIf="asset.performance?.roas">
                 ROAS: <strong>{{ asset.performance?.roas | number:'1.1-2' }}x</strong>
-              </div>
-              <div class="tile-tag" [class]="getTagClass(asset.performer_tag || '')">
-                {{ asset.performer_tag }}
               </div>
             </div>
           </div>
@@ -536,14 +539,24 @@ interface StatsResponse {
     .tile-roas { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
 
     .tile-tag {
-      display: inline-block;
-      font-size: 10px; font-weight: 600;
-      padding: 2px 8px;
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 8px;
       border-radius: 12px;
       text-transform: uppercase;
-      &.tag-top    { background: rgba(46,204,113,0.15); color: var(--success); }
-      &.tag-avg    { background: var(--accent-light); color: var(--accent); }
-      &.tag-below  { background: rgba(231,76,60,0.15);  color: var(--error); }
+      letter-spacing: 0.5px;
+      z-index: 2;
+      &.tag-top {
+        background: rgba(46, 204, 113, 0.15);
+        color: #2ECC71;
+      }
+      &.tag-below {
+        background: rgba(231, 76, 60, 0.15);
+        color: #E74C3C;
+      }
     }
 
     .pagination {
@@ -1169,10 +1182,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return 'ace-low';
   }
 
-  getTagClass(tag: string): string {
-    if (tag === 'Top Performer') return 'tag-top';
-    if (tag === 'Below Average') return 'tag-below';
-    return 'tag-avg';
+  getTagClass(tag: string | null): string {
+    if (tag === 'Top Performer') return 'tile-tag tag-top';
+    if (tag === 'Below Average') return 'tile-tag tag-below';
+    return 'tile-tag';
+  }
+
+  getPerformerTooltip(tag: string | null): string {
+    if (tag === 'Top Performer') return 'Top 10% of your scored creatives';
+    if (tag === 'Below Average') return 'Bottom 10% of your scored creatives';
+    return '';
   }
 
   getScoreBadgeClass(rating: string | null): string {
