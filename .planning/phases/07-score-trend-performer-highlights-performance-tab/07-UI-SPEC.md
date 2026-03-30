@@ -52,16 +52,16 @@ Exceptions:
 
 ## Typography
 
-Exactly 4 sizes, exactly 2 weights from body + label, 3 weights total:
+Exactly 4 sizes, 2 weights: 400 regular, 600 semibold:
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Label / metric name / category header | 12px | 600 | 1.2 |
 | Body | 14px | 400 | 1.5 |
-| Heading (section titles, tile headers) | 16px | 500 | 1.2 |
-| Display (large metric values) | 20px | 700 | 1.2 |
+| Heading (section titles, tile headers) | 16px | 600 | 1.2 |
+| Display (large metric values) | 20px | 600 | 1.2 |
 
-Source: `frontend/src/styles.scss` — `html` base is 14px/1.5; h4 is 16px/500; h2 is 20px/600; `.pillar-score` uses 21px/800 (kept for CE tab parity only — do not introduce a fifth size for new components).
+Source: `frontend/src/styles.scss` — `html` base is 14px/1.5; existing heading and display elements use weight variants that are consolidated here to 400/600 only. Visual hierarchy is established through font-size contrast (20px vs 14px vs 12px), not weight variation.
 
 Component-internal sizing notes (these are NOT new type sizes — they reference the 12px label token):
 - Performer badge text: references the **12px label token** — render at 12px / 600 / uppercase / letter-spacing 0.5px. Do not declare a separate 10px token.
@@ -189,7 +189,7 @@ Guard: if fewer than 10 scored assets in org → backend returns `null` for all 
       └── .perf-mini-tiles (display: flex; gap: 12px; margin-top 8px)
           ├── .perf-mini-tile (flex: 1; bg-primary; border-radius 6px; padding 8px)
           │   ├── span "Spend" (12px / 600 / text-secondary / uppercase — 12px label token)
-          │   └── span (14px / 700) formatted value
+          │   └── span (14px / 600) formatted value
           └── .perf-mini-tile (same structure for "Impressions")
 ```
 
