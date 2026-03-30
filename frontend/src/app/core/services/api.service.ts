@@ -58,4 +58,8 @@ export class ApiService {
   exportData(payload: any): Promise<Blob> {
     return this.http.post(`${this.base}/assets/export`, payload, { responseType: 'blob' }).toPromise() as Promise<Blob>;
   }
+
+  getScoreTrend(params: { date_from: string; date_to: string; platforms?: string }): Observable<any> {
+    return this.http.get(`${this.base}/dashboard/score-trend`, { params: params as any });
+  }
 }
