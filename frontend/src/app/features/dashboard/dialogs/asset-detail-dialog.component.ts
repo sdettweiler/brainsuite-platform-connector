@@ -105,6 +105,8 @@ interface AssetDetailResponse {
   is_active: boolean;
   performance: AssetPerformanceDetail | null;
   performer_tag: string | null;
+  ad_account_id: string | null;
+  video_duration?: number | null;
   campaigns_count: number;
   campaigns: Array<{ campaign_name?: string; campaign_id?: string; spend?: number }>;
   timeseries: Record<string, AssetTimeseriesPoint[]> | null;
@@ -159,42 +161,15 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       <mat-tab-group class="detail-tabs" *ngIf="!loading && asset">
         <mat-tab label="Performance">
           <div class="tab-content perf-tab">
-            <div class="perf-layout" #perfLayout>
-              <div class="asset-col">
-                <div class="asset-preview">
-                  <video
-                    *ngIf="asset.asset_format === 'VIDEO' && asset.asset_url"
-                    [src]="asset.asset_url"
-                    controls
-                    class="asset-media"
-                  ></video>
-                  <img
-                    *ngIf="asset.asset_format !== 'VIDEO' || !asset.asset_url"
-                    [src]="asset.asset_url || asset.thumbnail_url || '/assets/images/placeholder.svg'"
-                    class="asset-media"
-                    alt="Creative"
-                  />
-                  <div class="ace-badge" [class]="getAceClass(scoreDetail?.total_score)" *ngIf="scoreDetail?.total_score != null">
-                    ACE: {{ scoreDetail.total_score | number:'1.0-0' }}
-                  </div>
-                </div>
+            <div class="perf-tab-redesign">
 
-                <div class="campaigns-section" *ngIf="detail?.campaigns?.length">
-                  <div class="section-label">Used in {{ detail!.campaigns_count }} Campaign(s)</div>
-                  <div class="campaigns-list">
-                    <div class="campaign-row" *ngFor="let c of detail!.campaigns">
-                      <i class="bi bi-megaphone" style="font-size: 14px;"></i>
-                      <span>{{ c.campaign_name || c.campaign_id }}</span>
-                      <span class="campaign-spend">{{ c.spend | currency:orgCurrency:'symbol':'1.0-0' }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <!-- Top row: KPI chart tile + Creative Asset tile -->
+              <div class="perf-top-row">
 
-              <div class="perf-right">
-                <div class="chart-area">
+                <!-- KPI Trend Chart tile -->
+                <div class="perf-kpi-tile">
                   <div class="chart-controls">
-                    <span class="section-label">Performance Over Time</span>
+                    <h4>Performance Over Time</h4>
                     <div class="kpi-selectors">
                       <select class="kpi-native-select" *ngFor="let idx of [0,1,2]"
                         [ngModel]="selectedKpis[idx]"
@@ -212,23 +187,73 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                   </div>
                 </div>
 
-                <div class="kpi-table">
-                  <div class="section-label">Performance Summary</div>
-                  <div class="kpi-scroll">
-                    <ng-container *ngFor="let cat of kpiCategories">
-                      <div class="kpi-category" *ngIf="cat.rows.length">
-                        <div class="kpi-cat-label">{{ cat.label }}</div>
-                        <table>
-                          <tr *ngFor="let row of cat.rows">
-                            <td class="kpi-name">{{ row.label }}</td>
-                            <td class="kpi-val">{{ row.value }}</td>
-                          </tr>
-                        </table>
-                      </div>
-                    </ng-container>
+                <!-- Creative Asset tile -->
+                <div class="perf-asset-tile">
+                  <div class="perf-asset-header">
+                    <span class="perf-asset-label">Creative Asset</span>
+                    <span *ngIf="detail?.performer_tag" [class]="getPerformerTagClass(detail?.performer_tag ?? null)">
+                      {{ detail?.performer_tag }}
+                    </span>
+                  </div>
+                  <div class="perf-preview">
+                    <img *ngIf="detail?.thumbnail_url" [src]="detail!.thumbnail_url!" [alt]="detail?.ad_name || 'Asset'" />
+                    <video *ngIf="!detail?.thumbnail_url && detail?.asset_url" [src]="detail!.asset_url!" preload="metadata"></video>
+                  </div>
+                  <div class="perf-asset-meta">
+                    <span class="perf-filename">{{ detail?.ad_name || 'Unnamed Asset' }}</span>
+                    <span class="perf-duration" *ngIf="detail?.video_duration">
+                      {{ detail!.video_duration | number:'1.0-0' }}s
+                    </span>
+                  </div>
+                  <div class="perf-mini-tiles">
+                    <div class="perf-mini-tile">
+                      <span class="perf-mini-label">Spend</span>
+                      <span class="perf-mini-value">{{ detail?.performance?.spend !== null && detail?.performance?.spend !== undefined ? ('$' + (detail!.performance!.spend! | number:'1.2-2')) : '$0.00' }}</span>
+                    </div>
+                    <div class="perf-mini-tile">
+                      <span class="perf-mini-label">Impressions</span>
+                      <span class="perf-mini-value">{{ (detail?.performance?.impressions || 0) | number }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
+
+              <!-- Performance Summary -->
+              <div class="perf-summary">
+                <h4>Performance Summary</h4>
+                <ng-container *ngFor="let cat of metricCategories">
+                  <div class="perf-summary-group" *ngIf="hasVisibleMetrics(cat)">
+                    <div class="perf-category-header">
+                      <i class="bi" [class]="cat.icon" [style.color]="cat.color"></i>
+                      <span [style.color]="cat.color">{{ cat.name }}</span>
+                    </div>
+                    <div class="perf-metrics-grid">
+                      <div class="perf-metric-row" *ngFor="let m of getVisibleMetrics(cat)">
+                        <span class="metric-name">{{ m.label }}</span>
+                        <span class="metric-value">{{ formatMetricValue(m.value, m.format) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </ng-container>
+              </div>
+
+              <!-- Campaigns section -->
+              <div class="perf-campaigns" *ngIf="detail?.campaigns?.length">
+                <h4>Used in {{ detail!.campaigns.length }} campaign{{ detail!.campaigns.length !== 1 ? 's' : '' }}</h4>
+                <div class="perf-campaigns-list">
+                  <div class="perf-campaign-row" *ngFor="let campaign of detail!.campaigns">
+                    <span class="campaign-name">{{ campaign.campaign_name || 'Unknown Campaign' }}</span>
+                    <a *ngIf="getCampaignUrl(campaign)"
+                       [href]="getCampaignUrl(campaign)"
+                       target="_blank" rel="noopener noreferrer"
+                       [attr.aria-label]="'Open campaign in ' + detail?.platform + ' Ads Manager'"
+                       class="campaign-link">
+                      <i class="bi bi-box-arrow-up-right"></i>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         </mat-tab>
@@ -527,22 +552,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
 
     .detail-tabs { flex: 1; overflow: hidden; }
     .tab-content { padding: 20px; overflow: hidden; height: calc(92vh - 160px); }
-    .perf-tab { display: flex; flex-direction: column; }
-    .perf-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; flex: 1; min-height: 0; }
-    .asset-col { display: flex; flex-direction: column; }
-    .asset-preview { flex-shrink: 0; }
-    .campaigns-section { margin-top: auto; padding-top: 16px; }
-    .perf-right { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-
-    .asset-preview { position: relative; border-radius: 8px; overflow: hidden; background: var(--bg-hover); }
-    .asset-media { width: 100%; display: block; object-fit: cover; max-height: 320px; }
-    .ace-badge {
-      position: absolute; bottom: 8px; right: 8px;
-      padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;
-    }
-    .ace-badge.ace-high   { background: rgba(46,204,113,0.85); color: white; }
-    .ace-badge.ace-medium { background: rgba(243,156,18,0.85);  color: white; }
-    .ace-badge.ace-low    { background: rgba(231,76,60,0.85);   color: white; }
+    .perf-tab { display: flex; flex-direction: column; overflow-y: auto; }
 
     .section-label {
       font-size: 11px; font-weight: 600; text-transform: uppercase;
@@ -560,39 +570,94 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .kpi-native-select:focus { outline: none; border-color: var(--accent); }
 
     .chart-container { background: var(--bg-hover); border-radius: 8px; overflow: hidden; }
-    .echart-box { width: 100%; height: 260px; }
+    .echart-box { width: 100%; height: 200px; }
 
     .chart-empty {
       background: var(--bg-hover); border-radius: 8px; padding: 40px;
       text-align: center; color: var(--text-muted); font-size: 13px;
     }
 
-    .chart-area { flex-shrink: 0; }
-    .kpi-table { margin-top: 16px; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
-    .kpi-scroll {
-      overflow-y: auto; flex: 1; min-height: 0;
-      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
-    }
-    .kpi-scroll::-webkit-scrollbar { width: 4px; }
-    .kpi-scroll::-webkit-scrollbar-track { background: transparent; }
-    .kpi-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-    .kpi-category { margin-bottom: 8px; }
-    .kpi-cat-label {
-      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
-      color: var(--text-muted); padding: 8px 0 4px; border-bottom: 1px solid var(--border);
-    }
-    .kpi-table table { width: 100%; }
-    .kpi-table tr { border-bottom: 1px solid var(--border); }
-    .kpi-name { padding: 6px 0; font-size: 12px; color: var(--text-secondary); }
-    .kpi-val { padding: 6px 0; font-size: 13px; font-weight: 600; text-align: right; }
+    /* ─── Performance tab redesign ─── */
+    .perf-tab-redesign { padding: 16px 0; }
 
-    .campaigns-list { display: flex; flex-direction: column; gap: 6px; }
-    .campaign-row {
-      display: flex; align-items: center; gap: 8px; padding: 8px;
-      background: var(--bg-hover); border-radius: 6px; font-size: 13px;
+    .perf-top-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;
     }
-    .campaign-row i.bi { font-size: 14px; color: var(--text-muted); }
-    .campaign-spend { margin-left: auto; font-weight: 600; }
+
+    .perf-kpi-tile, .perf-asset-tile {
+      background: var(--bg-card); border-radius: 8px; padding: 16px; border: 1px solid var(--border);
+    }
+    .perf-kpi-tile h4, .perf-asset-tile h4, .perf-summary h4, .perf-campaigns h4 {
+      font-size: 16px; font-weight: 600; margin: 0 0 12px 0;
+    }
+
+    .perf-asset-tile { padding: 12px; }
+    .perf-asset-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+    }
+    .perf-asset-label {
+      font-size: 12px; font-weight: 600; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .perf-asset-header .tile-tag {
+      position: static; font-size: 12px; font-weight: 600;
+      padding: 4px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .perf-asset-header .tag-top { background: rgba(46,204,113,0.15); color: #2ECC71; }
+    .perf-asset-header .tag-below { background: rgba(231,76,60,0.15); color: #E74C3C; }
+
+    .perf-preview { margin-bottom: 8px; }
+    .perf-preview img, .perf-preview video {
+      width: 100%; max-height: 140px; object-fit: cover; border-radius: 4px; display: block;
+    }
+    .perf-asset-meta {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+    }
+    .perf-filename {
+      font-size: 14px; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; max-width: 70%;
+    }
+    .perf-duration { font-size: 12px; color: var(--text-secondary); }
+
+    .perf-mini-tiles { display: flex; gap: 12px; }
+    .perf-mini-tile {
+      flex: 1; background: var(--bg-primary); border-radius: 6px; padding: 8px;
+    }
+    .perf-mini-label {
+      display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary);
+      text-transform: uppercase; margin-bottom: 4px;
+    }
+    .perf-mini-value { font-size: 14px; font-weight: 600; }
+
+    .perf-summary { margin-bottom: 24px; }
+    .perf-summary-group { margin-bottom: 16px; }
+    .perf-category-header {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+    .perf-category-header i { font-size: 16px; }
+    .perf-category-header span {
+      font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .perf-metrics-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    }
+    .perf-metric-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+    }
+    .perf-metric-row .metric-name { font-size: 14px; color: var(--text-secondary); }
+    .perf-metric-row .metric-value { font-size: 14px; font-weight: 600; }
+
+    .perf-campaigns { margin-top: 24px; }
+    .perf-campaign-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+    }
+    .campaign-name { font-size: 14px; }
+    .campaign-link {
+      color: var(--text-secondary); font-size: 14px; text-decoration: none;
+    }
+    .campaign-link:hover { color: var(--accent); }
 
     /* ─── CE tab shell ─── */
     .ce-tab {
@@ -817,6 +882,105 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   asset: AssetDetailResponse | null = null;
   detail: AssetDetailResponse | null = null;
   loading = true;
+
+  readonly metricCategories: {
+    name: string;
+    icon: string;
+    color: string;
+    metrics: { key: string; label: string; format: 'currency' | 'number' | 'percent' | 'decimal' }[];
+  }[] = [
+    {
+      name: 'Delivery',
+      icon: 'bi-send',
+      color: '#4285F4',
+      metrics: [
+        { key: 'spend', label: 'Spend', format: 'currency' },
+        { key: 'impressions', label: 'Impressions', format: 'number' },
+        { key: 'cpm', label: 'CPM', format: 'currency' },
+        { key: 'reach', label: 'Reach', format: 'number' },
+        { key: 'clicks', label: 'Clicks', format: 'number' },
+        { key: 'frequency', label: 'Frequency', format: 'decimal' },
+        { key: 'cpp', label: 'CPP', format: 'currency' },
+        { key: 'cpc', label: 'CPC', format: 'currency' },
+      ],
+    },
+    {
+      name: 'Engagement',
+      icon: 'bi-hand-thumbs-up',
+      color: '#F39C12',
+      metrics: [
+        { key: 'ctr', label: 'CTR', format: 'percent' },
+        { key: 'outbound_ctr', label: 'Outbound CTR', format: 'percent' },
+        { key: 'unique_ctr', label: 'Unique CTR', format: 'percent' },
+        { key: 'inline_link_click_ctr', label: 'Inline Link Click CTR', format: 'percent' },
+        { key: 'outbound_clicks', label: 'Outbound Clicks', format: 'number' },
+        { key: 'unique_clicks', label: 'Unique Clicks', format: 'number' },
+        { key: 'inline_link_clicks', label: 'Inline Link Clicks', format: 'number' },
+        { key: 'post_engagements', label: 'Post Engagements', format: 'number' },
+        { key: 'likes', label: 'Likes', format: 'number' },
+        { key: 'comments', label: 'Comments', format: 'number' },
+        { key: 'shares', label: 'Shares', format: 'number' },
+        { key: 'follows', label: 'Follows', format: 'number' },
+      ],
+    },
+    {
+      name: 'Conversions',
+      icon: 'bi-arrow-repeat',
+      color: '#2ECC71',
+      metrics: [
+        { key: 'roas', label: 'ROAS', format: 'decimal' },
+        { key: 'purchase_roas', label: 'Purchase ROAS', format: 'decimal' },
+        { key: 'cvr', label: 'CVR', format: 'percent' },
+        { key: 'conversions', label: 'Conversions', format: 'number' },
+        { key: 'cost_per_conversion', label: 'Cost per Result', format: 'currency' },
+        { key: 'conversion_value', label: 'Conversion Value', format: 'currency' },
+        { key: 'purchases', label: 'Purchases', format: 'number' },
+        { key: 'purchase_value', label: 'Purchase Value', format: 'currency' },
+        { key: 'leads', label: 'Leads', format: 'number' },
+        { key: 'cost_per_lead', label: 'Cost per Lead', format: 'currency' },
+        { key: 'app_installs', label: 'App Installs', format: 'number' },
+        { key: 'cost_per_install', label: 'Cost per Install', format: 'currency' },
+        { key: 'in_app_purchases', label: 'In-App Purchases', format: 'number' },
+        { key: 'in_app_purchase_value', label: 'In-App Purchase Value', format: 'currency' },
+      ],
+    },
+    {
+      name: 'Video',
+      icon: 'bi-play-circle',
+      color: '#9C27B0',
+      metrics: [
+        { key: 'video_views', label: 'Video Views', format: 'number' },
+        { key: 'vtr', label: 'VTR', format: 'percent' },
+        { key: 'video_plays', label: 'Video Plays', format: 'number' },
+        { key: 'video_3_sec_watched', label: '3-Sec Watched', format: 'number' },
+        { key: 'video_30_sec_watched', label: '30-Sec Watched', format: 'number' },
+        { key: 'video_p25', label: 'Video 25%', format: 'number' },
+        { key: 'video_p50', label: 'Video 50%', format: 'number' },
+        { key: 'video_p75', label: 'Video 75%', format: 'number' },
+        { key: 'video_p100', label: 'Video 100%', format: 'number' },
+        { key: 'video_completion_rate', label: 'Completion Rate', format: 'percent' },
+        { key: 'thruplay', label: 'ThruPlay', format: 'number' },
+        { key: 'cost_per_thruplay', label: 'Cost per ThruPlay', format: 'currency' },
+        { key: 'trueview_views', label: 'TrueView Views', format: 'number' },
+        { key: 'focused_view', label: 'Focused View', format: 'number' },
+        { key: 'cost_per_focused_view', label: 'Cost per Focused View', format: 'currency' },
+        { key: 'cost_per_view', label: 'Cost per View', format: 'currency' },
+      ],
+    },
+    {
+      name: 'Platform-Specific',
+      icon: 'bi-grid',
+      color: 'var(--text-secondary)',
+      metrics: [
+        { key: 'subscribe', label: 'Subscribe', format: 'number' },
+        { key: 'offline_purchases', label: 'Offline Purchases', format: 'number' },
+        { key: 'offline_purchase_value', label: 'Offline Purchase Value', format: 'currency' },
+        { key: 'messaging_conversations_started', label: 'Messaging Conversations', format: 'number' },
+        { key: 'estimated_ad_recallers', label: 'Estimated Ad Recallers', format: 'number' },
+        { key: 'estimated_ad_recall_rate', label: 'Est. Ad Recall Rate', format: 'percent' },
+      ],
+    },
+  ];
 
   scoreDetail: any = null;
   scoreLoading = true;
@@ -1395,5 +1559,60 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     if (score >= 70) return 'ace-high';
     if (score >= 45) return 'ace-medium';
     return 'ace-low';
+  }
+
+  // ── Performance tab redesign helpers ─────────────────────────────────────
+
+  getVisibleMetrics(category: typeof this.metricCategories[0]): { key: string; label: string; format: string; value: any }[] {
+    if (!this.detail?.performance) return [];
+    return category.metrics
+      .map(m => ({ ...m, value: (this.detail!.performance as any)[m.key] }))
+      .filter(m => {
+        if (m.key === 'spend') return m.value !== null && m.value !== undefined;
+        return m.value !== null && m.value !== undefined && m.value !== 0;
+      });
+  }
+
+  hasVisibleMetrics(category: typeof this.metricCategories[0]): boolean {
+    return this.getVisibleMetrics(category).length > 0;
+  }
+
+  formatMetricValue(value: any, format: string): string {
+    if (value === null || value === undefined) return '-';
+    switch (format) {
+      case 'currency':
+        return '$' + Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      case 'number':
+        return Number(value).toLocaleString('en-US');
+      case 'percent':
+        return Number(value).toFixed(1) + '%';
+      case 'decimal':
+        return Number(value).toFixed(2);
+      default:
+        return String(value);
+    }
+  }
+
+  getCampaignUrl(campaign: { campaign_id?: string; campaign_name?: string; spend?: number }): string {
+    const cid = campaign.campaign_id || '';
+    const act = this.detail?.ad_account_id || '';
+    switch ((this.detail?.platform || '').toLowerCase()) {
+      case 'meta':
+        return `https://www.facebook.com/adsmanager/manage/campaigns?act=${act}&campaign_ids=${cid}`;
+      case 'tiktok':
+        return `https://ads.tiktok.com/i18n/account/campaigns?keyword=${cid}`;
+      case 'google_ads':
+        return `https://ads.google.com/aw/campaigns?campaignId=${cid}`;
+      case 'dv360':
+        return `https://displayvideo.google.com/#ng_nav/p/${act}/c/${cid}`;
+      default:
+        return '';
+    }
+  }
+
+  getPerformerTagClass(tag: string | null): string {
+    if (tag === 'Top Performer') return 'tile-tag tag-top';
+    if (tag === 'Below Average') return 'tile-tag tag-below';
+    return '';
   }
 }
