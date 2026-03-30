@@ -186,19 +186,22 @@ interface StatsResponse {
 
       <!-- Score Trend Panel -->
       <div class="score-trend-panel card" *ngIf="!scoreTrendError || scoreTrendLoading">
-        <div class="score-trend-header">
+        <div class="score-trend-header" (click)="scoreTrendCollapsed = !scoreTrendCollapsed" style="cursor:pointer;">
           <h4>Average BrainSuite Score</h4>
+          <i class="bi" [class.bi-chevron-up]="!scoreTrendCollapsed" [class.bi-chevron-down]="scoreTrendCollapsed"></i>
         </div>
-        <!-- Loading skeleton -->
-        <div *ngIf="scoreTrendLoading" class="score-trend-skeleton skeleton" style="height: 200px;"></div>
-        <!-- Chart (2+ data points) -->
-        <div *ngIf="!scoreTrendLoading && scoreTrendDataPoints >= 2"
-             echarts [options]="scoreTrendOptions" class="echart-box" style="height: 200px;"></div>
-        <!-- Empty state (< 2 data points) -->
-        <div *ngIf="!scoreTrendLoading && scoreTrendDataPoints < 2" class="score-trend-empty">
-          <i class="bi bi-graph-up"></i>
-          <p>Not enough data yet</p>
-          <p class="text-sm">Score trend appears after the first two scoring runs</p>
+        <div *ngIf="!scoreTrendCollapsed">
+          <!-- Loading skeleton -->
+          <div *ngIf="scoreTrendLoading" class="score-trend-skeleton skeleton" style="height: 200px;"></div>
+          <!-- Chart (2+ data points) -->
+          <div *ngIf="!scoreTrendLoading && scoreTrendDataPoints >= 2"
+               echarts [options]="scoreTrendOptions" class="echart-box" style="height: 200px;"></div>
+          <!-- Empty state (< 2 data points) -->
+          <div *ngIf="!scoreTrendLoading && scoreTrendDataPoints < 2" class="score-trend-empty">
+            <i class="bi bi-graph-up"></i>
+            <p>Not enough data yet</p>
+            <p class="text-sm">Score trend appears after the first two scoring runs</p>
+          </div>
         </div>
       </div>
       <!-- Error state -->
@@ -748,6 +751,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   scoreTrendLoading = false;
   scoreTrendError = false;
   scoreTrendOptions: EChartsOption = {};
+  scoreTrendCollapsed = false;
 
   private stopPolling$ = new Subject<void>();
   private pollingActive = false;
@@ -958,13 +962,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
             xAxis: {
               type: 'category',
               data: this.scoreTrendData.map(d => d.date),
-              axisLabel: { fontSize: 12 },
+              axisLabel: { fontSize: 11, color: '#999' },
+              axisLine: { lineStyle: { color: 'rgba(128,128,128,0.2)' } },
+              axisTick: { show: false },
+              splitLine: { show: false },
             },
             yAxis: {
               type: 'value',
               min: 0,
               max: 100,
-              axisLabel: { fontSize: 12 },
+              axisLabel: { fontSize: 11, color: '#999' },
+              axisLine: { show: false },
+              axisTick: { show: false },
+              splitLine: { lineStyle: { color: 'rgba(128,128,128,0.15)' } },
             },
             series: [{
               type: 'line',

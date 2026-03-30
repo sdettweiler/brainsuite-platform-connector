@@ -32,13 +32,13 @@ def _compute_performer_tag(pct_rank: Optional[float], total_scored: int) -> Opti
 
     Returns None when:
     - pct_rank is None (asset not scored)
-    - total_scored < 10 (minimum guard — not enough data for relative ranking)
+    - total_scored < 3 (minimum guard — not enough data for relative ranking)
 
     Returns "Top Performer" when pct_rank >= 0.90 (top 10%).
     Returns "Below Average" when pct_rank <= 0.10 (bottom 10%).
     Returns None for the middle 80%.
     """
-    if pct_rank is None or total_scored < 10:
+    if pct_rank is None or total_scored < 3:
         return None
     if pct_rank >= 0.90:
         return "Top Performer"

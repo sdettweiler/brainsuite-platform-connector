@@ -3,7 +3,7 @@ Phase 07 Plan 01 — PERCENT_RANK Performer Tag Tests.
 
 Tests for:
 - _compute_performer_tag() pure function unit tests
-- 10-asset minimum guard: fewer than 10 scored assets = all null tags
+- 3-asset minimum guard: fewer than 3 scored assets = all null tags
 - Boundary conditions: top 10% → "Top Performer", bottom 10% → "Below Average"
 - Middle 80% → None
 - Old _get_performer_tag() function is removed
@@ -40,27 +40,27 @@ def test_old_get_performer_tag_removed():
 
 
 def test_minimum_guard():
-    """Given fewer than 10 scored assets, all performer_tag values are null.
+    """Given fewer than 3 scored assets, all performer_tag values are null.
 
-    _compute_performer_tag(0.95, 5) → None (total_scored < 10 guard applies)
+    _compute_performer_tag(0.95, 1) → None (total_scored < 3 guard applies)
     """
     from app.api.v1.endpoints.dashboard import _compute_performer_tag
-    # Even a very high percentile rank returns None when total_scored < 10
-    assert _compute_performer_tag(0.95, 5) is None
+    # Even a very high percentile rank returns None when total_scored < 3
+    assert _compute_performer_tag(0.95, 1) is None
     assert _compute_performer_tag(0.99, 0) is None
-    assert _compute_performer_tag(1.0, 9) is None
-    assert _compute_performer_tag(0.0, 9) is None
-    assert _compute_performer_tag(0.05, 5) is None
+    assert _compute_performer_tag(1.0, 2) is None
+    assert _compute_performer_tag(0.0, 2) is None
+    assert _compute_performer_tag(0.05, 1) is None
 
 
-def test_minimum_guard_boundary_at_10():
-    """Exactly 10 scored assets: minimum guard does NOT apply — tags ARE assigned."""
+def test_minimum_guard_boundary_at_3():
+    """Exactly 3 scored assets: minimum guard does NOT apply — tags ARE assigned."""
     from app.api.v1.endpoints.dashboard import _compute_performer_tag
-    # With total_scored == 10, the guard is lifted (>= 10 check)
+    # With total_scored == 3, the guard is lifted
     # pct_rank=1.0 (top) → Top Performer
-    assert _compute_performer_tag(1.0, 10) == "Top Performer"
+    assert _compute_performer_tag(1.0, 3) == "Top Performer"
     # pct_rank=0.0 (bottom) → Below Average
-    assert _compute_performer_tag(0.0, 10) == "Below Average"
+    assert _compute_performer_tag(0.0, 3) == "Below Average"
 
 
 def test_percent_rank_top_performer():
