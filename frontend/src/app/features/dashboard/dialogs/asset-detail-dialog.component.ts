@@ -169,7 +169,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                 <!-- KPI Trend Chart tile -->
                 <div class="perf-kpi-tile">
                   <div class="chart-controls">
-                    <h4>Performance Over Time</h4>
+                    <span class="perf-tile-label">Performance Over Time</span>
                     <div class="kpi-selectors">
                       <select class="kpi-native-select" *ngFor="let idx of [0,1,2]"
                         [ngModel]="selectedKpis[idx]"
@@ -223,7 +223,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
 
               <!-- Performance Summary -->
               <div class="perf-summary">
-                <h4>Performance Summary</h4>
+                <span class="perf-tile-label">Performance Summary</span>
                 <ng-container *ngFor="let cat of metricCategories">
                   <div class="perf-summary-group" *ngIf="hasVisibleMetrics(cat)">
                     <div class="perf-category-header">
@@ -242,7 +242,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
 
               <!-- Campaigns section -->
               <div class="perf-campaigns" *ngIf="detail?.campaigns?.length">
-                <h4>Used in {{ detail!.campaigns.length }} campaign{{ detail!.campaigns.length !== 1 ? 's' : '' }}</h4>
+                <span class="perf-tile-label">Used in {{ detail!.campaigns.length }} campaign{{ detail!.campaigns.length !== 1 ? 's' : '' }}</span>
                 <div class="perf-campaigns-list">
                   <div class="perf-campaign-row" *ngFor="let campaign of detail!.campaigns">
                     <span class="campaign-name">{{ campaign.campaign_name || 'Unknown Campaign' }}</span>
@@ -581,17 +581,33 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     }
 
     /* ─── Performance tab redesign ─── */
-    .perf-tab-redesign { padding: 16px 0; }
+    .perf-tab-redesign {
+      display: flex; flex-direction: column; gap: 16px;
+      overflow-y: auto; height: calc(92vh - 160px);
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    }
+    .perf-tab-redesign::-webkit-scrollbar { width: 4px; }
+    .perf-tab-redesign::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* Shared tile base — matches CE pillar card look */
+    .perf-tile {
+      background: var(--bg-hover); border-radius: 10px; padding: 16px;
+    }
+    .perf-tile-label {
+      display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.6px; color: var(--text-muted); margin-bottom: 12px;
+    }
 
     .perf-top-row {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
     }
 
     .perf-kpi-tile, .perf-asset-tile {
-      background: var(--bg-card); border-radius: 8px; padding: 16px; border: 1px solid var(--border);
+      background: var(--bg-hover); border-radius: 10px; padding: 16px;
     }
-    .perf-kpi-tile h4, .perf-asset-tile h4, .perf-summary h4, .perf-campaigns h4 {
-      font-size: 16px; font-weight: 600; margin: 0 0 12px 0;
+    .perf-kpi-tile h4, .perf-asset-tile h4 {
+      font-size: 13px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-muted); margin: 0 0 12px 0;
     }
 
     .perf-asset-tile { padding: 12px; }
@@ -599,8 +615,8 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
     }
     .perf-asset-label {
-      font-size: 12px; font-weight: 600; color: var(--text-secondary);
-      text-transform: uppercase; letter-spacing: 0.5px;
+      font-size: 10px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.6px;
     }
     .perf-asset-header .tile-tag {
       position: static; font-size: 12px; font-weight: 600;
@@ -609,9 +625,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     .perf-asset-header .tag-top { background: rgba(46,204,113,0.15); color: #2ECC71; }
     .perf-asset-header .tag-below { background: rgba(231,76,60,0.15); color: #E74C3C; }
 
-    .perf-preview { margin-bottom: 8px; background: var(--bg-primary); border-radius: 4px; }
+    .perf-preview { margin-bottom: 8px; background: var(--bg-card); border-radius: 6px; }
     .perf-preview img, .perf-preview video {
-      width: 100%; height: 220px; object-fit: contain; border-radius: 4px; display: block;
+      width: 100%; height: 220px; object-fit: contain; border-radius: 6px; display: block;
     }
     .perf-asset-meta {
       display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
@@ -622,40 +638,56 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
     }
     .perf-duration { font-size: 12px; color: var(--text-secondary); }
 
-    .perf-mini-tiles { display: flex; gap: 12px; }
+    .perf-mini-tiles { display: flex; gap: 8px; }
     .perf-mini-tile {
-      flex: 1; background: var(--bg-primary); border-radius: 6px; padding: 8px;
+      flex: 1; background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px;
     }
     .perf-mini-label {
-      display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary);
-      text-transform: uppercase; margin-bottom: 4px;
+      display: block; font-size: 10px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
     }
     .perf-mini-value { font-size: 14px; font-weight: 600; }
 
-    .perf-summary { margin-bottom: 24px; }
-    .perf-summary-group { margin-bottom: 16px; }
+    /* Performance Summary tile */
+    .perf-summary {
+      background: var(--bg-hover); border-radius: 10px; padding: 16px;
+    }
+    .perf-summary > .perf-tile-label { margin-bottom: 12px; }
+    .perf-summary-group {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; margin-bottom: 8px;
+    }
+    .perf-summary-group:last-child { margin-bottom: 0; }
     .perf-category-header {
       display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
     }
-    .perf-category-header i { font-size: 16px; }
+    .perf-category-header i { font-size: 15px; }
     .perf-category-header span {
-      font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
     }
     .perf-metrics-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px;
     }
     .perf-metric-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 8px 0; border-bottom: 1px solid var(--border);
+      padding: 6px 0; border-bottom: 1px solid var(--border);
     }
-    .perf-metric-row .metric-name { font-size: 14px; color: var(--text-secondary); }
-    .perf-metric-row .metric-value { font-size: 14px; font-weight: 600; }
+    .perf-metric-row:last-child { border-bottom: none; }
+    .perf-metric-row .metric-name { font-size: 13px; color: var(--text-secondary); }
+    .perf-metric-row .metric-value { font-size: 13px; font-weight: 600; }
 
-    .perf-campaigns { margin-top: 24px; }
+    /* Campaigns tile */
+    .perf-campaigns {
+      background: var(--bg-hover); border-radius: 10px; padding: 16px;
+    }
+    .perf-campaigns > .perf-tile-label { margin-bottom: 12px; }
     .perf-campaign-row {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 0; border-bottom: 1px solid var(--border);
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; margin-bottom: 6px;
     }
+    .perf-campaign-row:last-child { margin-bottom: 0; }
     .campaign-name { font-size: 14px; }
     .campaign-link {
       color: var(--text-secondary); font-size: 14px; text-decoration: none;
