@@ -1437,32 +1437,48 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     this.ceVizMode = 'original';
   }
 
+  /** Resolve whether a single BrainSuite viz item is a video or image.
+   *  Checks (in order): explicit 'movie' type, URL file extension, explicit 'video' type.
+   *  This handles cases where BrainSuite returns type='image' for a URL that is actually an MP4.
+   */
+  private _resolveVizType(vizItem: any): 'video' | 'image' {
+    if (!vizItem) return 'image';
+    if (vizItem.type === 'movie') return 'video';
+    const url = (vizItem.url || '').toLowerCase().split('?')[0];
+    if (/\.(mp4|webm|mov|avi|mkv)$/.test(url)) return 'video';
+    if (vizItem.type === 'video') return 'video';
+    return 'image';
+  }
+
   /** Returns viz mode descriptors for the currently selected pillar's KPIs.
-   *  Deduplicates by label — if the same label appears twice, only the last entry is kept.
+   *  One entry per KPI: for video assets prefers the movie-type viz; for image assets
+   *  prefers the image-type viz. Falls back to the first viz if no preferred type found.
    */
   getSelectedPillarVizModes(): { key: string; label: string; url: string | null; type: string }[] {
-    const all: { key: string; label: string; url: string | null; type: string }[] = [];
+    const isVideoAsset = this.assetIsVideo();
+    const result: { key: string; label: string; url: string | null; type: string }[] = [];
+
     for (const kpi of this.getSelectedPillarKpiList()) {
+      if (result.length >= 4) break;
       const vizs = kpi?.visualizations;
       if (!Array.isArray(vizs) || vizs.length === 0) continue;
-      for (const vizItem of vizs) {
-        if (all.length >= 8) break;
-        all.push({
-          key: `${kpi.name}_${vizItem?.type ?? 'viz'}_${all.length}`,
-          label: kpi.name ?? 'View',
-          url: vizItem?.url ?? null,
-          type: vizItem?.type === 'movie' ? 'video' : (vizItem?.type ?? 'image'),
-        });
-      }
-      if (all.length >= 8) break;
+
+      // Resolve type for each viz using both type field and URL extension
+      const resolved = vizs.map((v: any) => ({ ...v, resolvedType: this._resolveVizType(v) }));
+
+      // Pick the viz that matches the asset type; fall back to first
+      const preferred = isVideoAsset
+        ? (resolved.find((v: any) => v.resolvedType === 'video') ?? resolved[0])
+        : (resolved.find((v: any) => v.resolvedType === 'image') ?? resolved[0]);
+
+      result.push({
+        key: `${kpi.name}_${preferred?.type ?? 'viz'}_${result.length}`,
+        label: kpi.name ?? 'View',
+        url: preferred?.url ?? null,
+        type: preferred?.resolvedType ?? 'image',
+      });
     }
-    // Deduplicate by label — keep first occurrence (heatmap at index 0, not fogmap at index 1)
-    const seen = new Map<string, { key: string; label: string; url: string | null; type: string }>();
-    for (const item of all) {
-      if (!seen.has(item.label)) seen.set(item.label, item);
-    }
-    const deduped = Array.from(seen.values());
-    return deduped.slice(0, 4);
+    return result;
   }
 
   // ── CE: score color / formatting ───────────────────────────────────────
