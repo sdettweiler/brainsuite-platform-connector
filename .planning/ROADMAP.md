@@ -20,7 +20,7 @@
 ### 🚧 v1.1 Insights + Intelligence
 
 - [x] **Phase 5: BrainSuite Image Scoring** — Production credentials verified; image assets scored alongside video in the existing pipeline (completed 2026-03-27)
-- [ ] **Phase 6: Historical Backfill + Score History Schema** — All pre-v1.1 assets scored; append-only history table seeded
+- [x] **Phase 6: Historical Backfill + Score History Schema** — All pre-v1.1 assets scored; append-only history table seeded (completed 2026-03-30)
 - [ ] **Phase 7: Score Trend, Performer Highlights + Performance Tab** — Score trend chart live; top/bottom badges visible; performance tab redesigned
 - [ ] **Phase 8: Score-to-ROAS Correlation** — Scatter chart with quadrant framing live in dashboard
 - [ ] **Phase 9: AI Metadata Auto-Fill** — Auto-fill button triggers Claude inference with confidence indicators and user confirmation
@@ -54,9 +54,9 @@ Plans:
   1. An admin can call `POST /api/v1/scoring/admin/backfill` and all pre-v1.1 assets without scores are queued for the live pipeline — without duplicating BrainSuite API calls already in flight from the 15-minute scheduler
   2. Backfill runs via BackgroundTasks, not APScheduler, so it does not compete with the live scorer or interfere with `SCHEDULER_ENABLED` multi-worker deployments
   3. TREND-01 (creative_score_history table) intentionally deferred — BrainSuite scores are static (computed once per asset, never change); a trend chart would have at most one data point per asset
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 06-01-PLAN.md — Admin backfill endpoint + run_backfill_task + tests
+- [x] 06-01-PLAN.md — Admin backfill endpoint + run_backfill_task + tests
 
 ### Phase 7: Score Trend, Performer Highlights + Performance Tab
 **Goal**: Users can see how each creative's score has evolved over time, can immediately spot top and bottom performers in the grid, and find performance metrics presented in a cleaner card layout
@@ -116,7 +116,7 @@ Plans:
 | 3. BrainSuite Scoring Pipeline | v1.0 | 6/6 | Complete | 2026-03-24 |
 | 4. Dashboard Polish + Reliability | v1.0 | 4/4 | Complete | 2026-03-25 |
 | 5. BrainSuite Image Scoring | v1.1 | 4/4 | Complete   | 2026-03-27 |
-| 6. Historical Backfill + Score History Schema | v1.1 | 0/1 | Planning complete | - |
+| 6. Historical Backfill + Score History Schema | v1.1 | 1/1 | Complete   | 2026-03-30 |
 | 7. Score Trend, Performer Highlights + Performance Tab | v1.1 | 0/? | Not started | - |
 | 8. Score-to-ROAS Correlation | v1.1 | 0/? | Not started | - |
 | 9. AI Metadata Auto-Fill | v1.1 | 0/? | Not started | - |

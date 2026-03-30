@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
-status: Ready to plan
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-03-27T18:37:46.233Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-30T07:37:53.816Z"
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 2
+  total_plans: 5
+  completed_plans: 5
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 05 — brainsuite-image-scoring
+**Current focus:** Phase 06 — historical-backfill-score-history-schema
 
 ## Current Position
 
-Phase: 6
-Plan: Not started
+Phase: 06 (historical-backfill-score-history-schema) — EXECUTING
+Plan: 1 of 1
 
 ## Accumulated Context
 
@@ -43,6 +43,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase 05]: Static API channel mapping uses substring match ('instagram' in placement) for simplicity; rescore endpoint returns 422 for UNSUPPORTED assets
 - [Phase 05]: Used ngSwitch on scoring_status in dashboard tile to add UNSUPPORTED case alongside existing numeric badge
 - [Phase 05]: Load metadata field definitions at init so imageMetadataFields getter resolves UUID keys synchronously without extra API calls
+- [Phase 06]: TREND-01 deferred: creative_score_history table not created — BrainSuite scores are static per D-09
+- [Phase 06]: BackgroundTasks used for backfill (not APScheduler) to avoid competing with 15-min batch on same UNSCORED queue
 
 ### Pending Todos
 
@@ -58,6 +60,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last session: 2026-03-27T18:28:09.744Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-03-30T07:37:53.814Z
+Stopped at: Completed 06-01-PLAN.md
 Resume: Start Phase 5 with BrainSuite Static API discovery spike, then PROD-01/02 credential verification

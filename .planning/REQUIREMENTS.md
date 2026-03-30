@@ -19,12 +19,12 @@
 
 ### Historical Backfill
 
-- [ ] **BACK-01**: Admin API endpoint `POST /admin/backfill-scoring` queues all pre-v1.1 assets (both IMAGE and VIDEO) without scores for the live scoring pipeline
-- [ ] **BACK-02**: Backfill uses BackgroundTasks — not APScheduler — so it does not conflict with the live 15-minute scorer
+- [x] **BACK-01**: Admin API endpoint `POST /admin/backfill-scoring` queues all pre-v1.1 assets (both IMAGE and VIDEO) without scores for the live scoring pipeline
+- [x] **BACK-02**: Backfill uses BackgroundTasks — not APScheduler — so it does not conflict with the live 15-minute scorer
 
 ### Score Trend Over Time
 
-- [ ] **TREND-01**: Append-only `creative_score_history` table with one row per asset per day, monthly range partitioning, and 90-day retention — schema finalized before first data is written
+- [x] **TREND-01**: Append-only `creative_score_history` table with one row per asset per day, monthly range partitioning, and 90-day retention — schema finalized before first data is written
 - [ ] **TREND-02**: Score history written automatically by the scoring job after every COMPLETE result
 - [ ] **TREND-03**: Asset detail dialog includes a Score Trend tab with an ECharts line chart showing score over time (30-day default window; appropriate empty state when fewer than 2 data points exist)
 
