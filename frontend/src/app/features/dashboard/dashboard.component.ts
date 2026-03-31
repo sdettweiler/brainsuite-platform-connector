@@ -186,7 +186,7 @@ interface CorrelationAsset {
 
       <!-- Aggregate Stats -->
       <div class="agg-stats" *ngIf="stats">
-        <div class="agg-stat" *ngFor="let s of aggStats"
+        <div class="agg-stat" *ngFor="let s of aggStats; trackBy: trackAggStat"
              [class.agg-stat-clickable]="s.clickable"
              (click)="onAggStatClick(s)"
              [matTooltip]="s.clickable ? 'Explore score vs. ROAS correlation' : ''">
@@ -1064,6 +1064,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       a => a.roas !== null && (a.spend ?? 0) >= this.correlationMinSpend
     ).length;
   }
+
+  trackAggStat(_index: number, item: any): string { return item.label; }
 
   onAggStatClick(stat: any): void {
     if (stat.clickable) {
