@@ -188,7 +188,7 @@ interface CorrelationAsset {
       <div class="agg-stats" *ngIf="stats">
         <div class="agg-stat" *ngFor="let s of aggStats"
              [class.agg-stat-clickable]="s.clickable"
-             (click)="s.clickFn && s.clickFn()"
+             (click)="s.clickable ? openCorrelationDrawer() : null"
              [matTooltip]="s.clickable ? 'Explore score vs. ROAS correlation' : ''">
           <div class="agg-value">{{ s.value }}</div>
           <div class="agg-label">
