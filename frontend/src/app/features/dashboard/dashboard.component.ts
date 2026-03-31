@@ -16,16 +16,17 @@ import { Subject, debounceTime, takeUntil, forkJoin, interval, switchMap } from 
 import { NgxSliderModule, Options } from '@angular-slider/ngx-slider';
 import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
 import * as echarts from 'echarts/core';
-import { LineChart } from 'echarts/charts';
-import { GridComponent, TooltipComponent } from 'echarts/components';
+import { LineChart, ScatterChart } from 'echarts/charts';
+import { GridComponent, TooltipComponent, MarkLineComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import type { EChartsOption } from 'echarts';
+import { MatSidenavModule } from '@angular/material/sidenav';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
 import { format, subDays } from 'date-fns';
 
-echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([LineChart, ScatterChart, GridComponent, TooltipComponent, MarkLineComponent, CanvasRenderer]);
 
 interface AssetPerformance {
   spend: number | null;
@@ -78,6 +79,16 @@ interface StatsResponse {
   prev_total_active_assets: number | null;
 }
 
+interface CorrelationAsset {
+  id: string;
+  ad_name: string | null;
+  platform: string;
+  thumbnail_url: string | null;
+  total_score: number;
+  roas: number | null;
+  spend: number | null;
+}
+
 @Component({
   standalone: true,
   imports: [
@@ -87,6 +98,7 @@ interface StatsResponse {
     MatProgressSpinnerModule, MatSnackBarModule,
     NgxSliderModule,
     NgxEchartsDirective,
+    MatSidenavModule,
   ],
   providers: [
     provideEchartsCore({ echarts }),
@@ -174,9 +186,15 @@ interface StatsResponse {
 
       <!-- Aggregate Stats -->
       <div class="agg-stats" *ngIf="stats">
-        <div class="agg-stat" *ngFor="let s of aggStats">
+        <div class="agg-stat" *ngFor="let s of aggStats"
+             [class.agg-stat-clickable]="s.clickable"
+             (click)="s.clickFn && s.clickFn()"
+             [matTooltip]="s.clickable ? 'Explore score vs. ROAS correlation' : ''">
           <div class="agg-value">{{ s.value }}</div>
-          <div class="agg-label">{{ s.label }}</div>
+          <div class="agg-label">
+            {{ s.label }}
+            <i *ngIf="s.icon" [class]="'bi ' + s.icon" style="font-size:12px;color:var(--text-muted);margin-left:4px"></i>
+          </div>
           <div class="agg-change" [class]="s.changeClass" *ngIf="s.change !== null">
             <i class="bi" [ngClass]="s.changeDir === 'arrow_upward' ? 'bi-arrow-up' : 'bi-arrow-down'"></i>
             {{ s.change }}
@@ -362,6 +380,65 @@ interface StatsResponse {
 
       <!-- Backdrop to close context menu -->
       <div class="context-backdrop" *ngIf="contextMenu.visible" (click)="contextMenu.visible = false"></div>
+
+      <!-- Correlation drawer backdrop -->
+      <div class="correlation-backdrop" *ngIf="correlationDrawerOpen" (click)="closeCorrelationDrawer()"></div>
+
+      <!-- Correlation drawer (fixed position overlay) -->
+      <div class="correlation-drawer" [class.correlation-drawer-open]="correlationDrawerOpen">
+        <!-- Drawer header -->
+        <div class="correlation-drawer-header">
+          <h4>Score vs. ROAS</h4>
+          <button mat-icon-button (click)="closeCorrelationDrawer()" aria-label="Close correlation drawer">
+            <i class="bi bi-x" style="font-size:20px"></i>
+          </button>
+        </div>
+
+        <!-- Spend threshold -->
+        <div class="correlation-spend-row">
+          <mat-form-field appearance="outline" class="correlation-spend-field">
+            <mat-label>Min. spend</mat-label>
+            <span matPrefix>$&nbsp;</span>
+            <input matInput type="number" [(ngModel)]="correlationMinSpend"
+                   (ngModelChange)="onCorrelationMinSpendChange()"
+                   placeholder="10" min="0">
+          </mat-form-field>
+        </div>
+
+        <!-- Chart loading -->
+        <div *ngIf="correlationLoading" class="skeleton" style="height:420px;margin:0 24px"></div>
+
+        <!-- Chart error -->
+        <div *ngIf="correlationError && !correlationLoading" class="correlation-empty">
+          <i class="bi bi-exclamation-triangle" style="font-size:48px;color:var(--text-muted)"></i>
+          <p>Could not load correlation data. Refresh to try again.</p>
+        </div>
+
+        <!-- Chart empty state -->
+        <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount === 0" class="correlation-empty">
+          <i class="bi bi-scatter" style="font-size:48px;color:var(--text-muted)"></i>
+          <h4>No qualifying creatives to correlate</h4>
+          <p>No scored creatives with ROAS data meet the current filters. Try lowering the minimum spend threshold or broadening the date range.</p>
+        </div>
+
+        <!-- Chart -->
+        <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount > 0"
+             echarts [options]="scatterOptions" (chartClick)="onScatterClick($event)"
+             class="echart-box" style="height:420px;margin:0 24px"></div>
+
+        <!-- Legend -->
+        <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount > 0"
+             class="correlation-legend">
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#FF7700"></span> Stars</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#F39C12"></span> Workhorses</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#4285F4"></span> Question Marks</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#707070"></span> Laggards</span>
+        </div>
+
+        <!-- 99th pct annotation -->
+        <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount > 0"
+             class="correlation-cap-note">ROAS capped at 99th pct.</div>
+      </div>
     </div>
   `,
   styles: [`
@@ -739,6 +816,104 @@ interface StatsResponse {
     .score-trend-skeleton {
       border-radius: 4px;
     }
+
+    .agg-stat-clickable {
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .agg-stat-clickable:hover {
+      border-color: var(--accent);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .correlation-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 1000;
+    }
+
+    .correlation-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      height: 100vh;
+      width: 560px;
+      background: var(--bg-card);
+      border-left: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
+      z-index: 1001;
+      overflow-y: auto;
+      transform: translateX(100%);
+      transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .correlation-drawer.correlation-drawer-open {
+      transform: translateX(0);
+    }
+
+    .correlation-drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .correlation-drawer-header h4 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .correlation-spend-row {
+      padding: 16px 24px 0;
+    }
+    .correlation-spend-field {
+      width: 140px;
+    }
+
+    .correlation-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 420px;
+      text-align: center;
+      padding: 0 24px;
+      color: var(--text-muted);
+    }
+    .correlation-empty h4 {
+      margin: 16px 0 8px;
+    }
+    .correlation-empty p {
+      max-width: 300px;
+    }
+
+    .correlation-legend {
+      display: flex;
+      gap: 16px;
+      padding: 16px 24px;
+      flex-wrap: wrap;
+    }
+    .correlation-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .correlation-cap-note {
+      text-align: right;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 0 24px 16px;
+    }
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
@@ -797,6 +972,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ];
 
   private destroy$ = new Subject<void>();
+
+  // Correlation drawer state
+  correlationDrawerOpen = false;
+  correlationLoading = false;
+  correlationError = false;
+  correlationAssets: CorrelationAsset[] = [];
+  correlationMinSpend = 10;
+  scatterOptions: EChartsOption = {};
 
   constructor(
     private api: ApiService,
@@ -862,6 +1045,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         change: this.pctChange(s.avg_roas, s.prev_avg_roas),
         changeClass: this.changeClass(s.avg_roas, s.prev_avg_roas),
         changeDir: (s.avg_roas || 0) >= (s.prev_avg_roas || 0) ? 'arrow_upward' : 'arrow_downward',
+        clickable: true,
+        clickFn: () => this.openCorrelationDrawer(),
+        icon: 'bi-bar-chart-line',
       },
       {
         label: 'Active Assets',
@@ -871,6 +1057,156 @@ export class DashboardComponent implements OnInit, OnDestroy {
         changeDir: 'arrow_upward',
       },
     ];
+  }
+
+  get correlationEligibleCount(): number {
+    return this.correlationAssets.filter(
+      a => a.roas !== null && (a.spend ?? 0) >= this.correlationMinSpend
+    ).length;
+  }
+
+  openCorrelationDrawer(): void {
+    this.correlationDrawerOpen = true;
+    this.loadCorrelationData();
+  }
+
+  closeCorrelationDrawer(): void {
+    this.correlationDrawerOpen = false;
+  }
+
+  loadCorrelationData(): void {
+    this.correlationLoading = true;
+    this.correlationError = false;
+    const params: any = {
+      date_from: this.dateFrom,
+      date_to: this.dateTo,
+    };
+    if (this.selectedPlatforms?.size) {
+      params.platforms = [...this.selectedPlatforms].join(',');
+    }
+    this.api.get<CorrelationAsset[]>('/dashboard/correlation-data', params).subscribe({
+      next: (assets) => {
+        this.correlationAssets = assets;
+        this.correlationLoading = false;
+        this.buildScatterChart();
+      },
+      error: () => {
+        this.correlationLoading = false;
+        this.correlationError = true;
+      },
+    });
+  }
+
+  buildScatterChart(): void {
+    const eligible = this.correlationAssets.filter(
+      a => a.roas !== null && (a.spend ?? 0) >= this.correlationMinSpend
+    );
+
+    if (eligible.length === 0) {
+      this.scatterOptions = {};
+      return;
+    }
+
+    const roasValues = eligible.map(a => a.roas as number).sort((x, y) => x - y);
+    const scoreValues = eligible.map(a => a.total_score).sort((x, y) => x - y);
+
+    const roasCap = roasValues[Math.floor(roasValues.length * 0.99)] ?? roasValues[roasValues.length - 1] ?? 1;
+
+    const median = (arr: number[]): number => {
+      const mid = Math.floor(arr.length / 2);
+      return arr.length % 2 !== 0 ? arr[mid] : (arr[mid - 1] + arr[mid]) / 2;
+    };
+
+    const medianScore = eligible.length === 1 ? eligible[0].total_score : median(scoreValues);
+    const medianRoas = eligible.length === 1 ? (eligible[0].roas as number) : median(roasValues);
+
+    const scatterData = eligible.map(a => [
+      a.total_score,
+      Math.min(a.roas as number, roasCap),
+      a,
+    ]);
+
+    this.scatterOptions = {
+      grid: { top: 40, right: 20, bottom: 50, left: 60 },
+      xAxis: {
+        name: 'ACE Score',
+        min: 0,
+        max: 100,
+        nameLocation: 'center',
+        nameGap: 30,
+        axisLine: { lineStyle: { color: '#404040' } },
+        splitLine: { lineStyle: { color: '#404040', opacity: 0.2 } },
+      },
+      yAxis: {
+        name: 'ROAS',
+        min: 0,
+        max: roasCap * 1.05,
+        axisLine: { lineStyle: { color: '#404040' } },
+        splitLine: { lineStyle: { color: '#404040', opacity: 0.2 } },
+      },
+      tooltip: {
+        trigger: 'item',
+        backgroundColor: 'var(--bg-card)',
+        borderColor: 'var(--border)',
+        borderRadius: 8,
+        padding: 12,
+        formatter: (params: any) => {
+          const asset = params.data[2] as CorrelationAsset;
+          const thumb = asset.thumbnail_url || '/assets/images/placeholder.svg';
+          return `<div style="display:flex;gap:10px;align-items:flex-start;max-width:280px">
+            <img src="${thumb}" style="width:48px;height:48px;object-fit:cover;border-radius:4px" />
+            <div>
+              <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">${asset.ad_name || 'Untitled'}</div>
+              <div style="font-size:14px;color:var(--text-secondary);margin-top:4px">
+                Score: ${params.data[0]} &middot; ROAS: ${(params.data[1] as number).toFixed(2)}x &middot; $${((asset.spend ?? 0) as number).toFixed(0)} &middot; ${asset.platform}
+              </div>
+            </div>
+          </div>`;
+        },
+      },
+      graphic: [
+        { type: 'text', right: 30, top: 50, style: { text: 'Stars', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
+        { type: 'text', left: 70, top: 50, style: { text: 'Workhorses', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
+        { type: 'text', right: 30, bottom: 60, style: { text: 'Question Marks', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
+        { type: 'text', left: 70, bottom: 60, style: { text: 'Laggards', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
+      ],
+      series: [{
+        type: 'scatter',
+        symbolSize: 12,
+        data: scatterData,
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          lineStyle: { color: '#404040', type: 'dashed', width: 1 },
+          data: [
+            { xAxis: medianScore },
+            { yAxis: medianRoas },
+            { yAxis: roasCap, lineStyle: { color: 'rgba(255,119,0,0.4)', type: 'dashed' } },
+          ],
+        },
+        itemStyle: {
+          color: (params: any) => {
+            const [score, roas] = params.data;
+            if (score >= medianScore && roas >= medianRoas) return '#FF7700';
+            if (score < medianScore && roas >= medianRoas) return '#F39C12';
+            if (score >= medianScore && roas < medianRoas) return '#4285F4';
+            return '#707070';
+          },
+        },
+        emphasis: { itemStyle: { shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.3)' }, scale: 1.5 },
+      }],
+    } as any;
+  }
+
+  onScatterClick(params: any): void {
+    if (params.componentType !== 'series' || params.componentSubType !== 'scatter') return;
+    const asset = params.data[2] as CorrelationAsset;
+    this.correlationDrawerOpen = false;
+    setTimeout(() => this.openAssetDetail({ ...asset } as any), 200);
+  }
+
+  onCorrelationMinSpendChange(): void {
+    this.buildScatterChart();
   }
 
   private pctChange(curr: number | null, prev: number | null): string | null {
