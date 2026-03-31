@@ -3,13 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
 status: Executing Phase 08
-stopped_at: Phase 8 planned — 2 plans ready
-last_updated: "2026-03-31T13:03:17.441Z"
+stopped_at: "Phase 08 Plan 02 — paused at checkpoint:human-verify (Task 2)"
+last_updated: "2026-03-31T13:15:59.915Z"
+last_activity: "2026-03-31 - Completed quick task 260331-l16: analyze the entire folder structure for legacy/obsolete files. Especially replit leftovers etc. build a clean up plan"
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 10
 ---
 
 # Project State
@@ -53,6 +54,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase 07-score-trend-performer-highlights-performance-tab]: getTagClass() returns full class string 'tile-tag tag-top' because [class] binding replaces base class
 - [Phase 07-03]: Zero spend shows $0.00; all other null/zero metrics omitted — zero is data-absent noise except for spend
 - [Phase 07-03]: getCampaignUrl() uses ad_account_id for Meta/DV360 URL construction; tile styles reuse --bg-card/--border CSS vars for CE tab visual consistency
+- [Phase 08]: Fixed-position overlay drawer instead of MatSidenav — avoids height-propagation issues, explicitly allowed by plan
 
 ### Pending Todos
 
@@ -75,6 +77,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last activity: 2026-03-31 - Completed quick task 260331-l16: analyze the entire folder structure for legacy/obsolete files. Especially replit leftovers etc. build a clean up plan
-Last session: 2026-03-31T08:57:30.972Z
-Stopped at: Phase 8 planned — 2 plans ready
+Last session: 2026-03-31T13:15:50.564Z
+Stopped at: Phase 08 Plan 02 — paused at checkpoint:human-verify (Task 2)
 Resume: Plan Phase 08 (score-to-roas-correlation) — ECharts scatter chart, quadrant framing (Stars/Question Marks/Workhorses/Laggards), tooltip with thumbnail/score/ROAS/spend

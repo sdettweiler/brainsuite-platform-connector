@@ -22,7 +22,7 @@
 - [x] **Phase 5: BrainSuite Image Scoring** — Production credentials verified; image assets scored alongside video in the existing pipeline (completed 2026-03-27)
 - [x] **Phase 6: Historical Backfill + Score History Schema** — All pre-v1.1 assets scored; append-only history table seeded (completed 2026-03-30)
 - [x] **Phase 7: Score Trend, Performer Highlights + Performance Tab** — Score trend chart live; top/bottom badges visible; performance tab redesigned (completed 2026-03-30)
-- [ ] **Phase 8: Score-to-ROAS Correlation** — Scatter chart with quadrant framing live in dashboard
+- [x] **Phase 8: Score-to-ROAS Correlation** — Scatter chart with quadrant framing live in dashboard (completed 2026-03-31)
 - [ ] **Phase 9: AI Metadata Auto-Fill** — Auto-fill button triggers Claude inference with confidence indicators and user confirmation
 - [ ] **Phase 10: In-App Notifications** — Bell icon + unread badge; toasts for high-priority events; 30-second polling
 
@@ -82,10 +82,10 @@ Plans:
   1. The dashboard includes an ECharts scatter panel showing each creative as a point with score on the X-axis and ROAS on the Y-axis, with reference lines dividing the chart into Stars / Question Marks / Workhorses / Laggards quadrants
   2. Hovering a data point shows a tooltip with the creative's thumbnail, score, ROAS, spend, and platform
   3. Assets below a configurable minimum spend threshold (default $10) are excluded from the chart; null and zero ROAS are handled distinctly (neither silently excluded nor plotted together); the Y-axis is capped at the 99th percentile to prevent outlier distortion
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
-- [ ] 08-01-PLAN.md — Backend: TDD correlation-data endpoint (unpaginated, zero-ROAS preserved)
-- [ ] 08-02-PLAN.md — Frontend: scatter chart drawer with quadrant framing + tooltips + spend threshold
+- [x] 08-01-PLAN.md — Backend: TDD correlation-data endpoint (unpaginated, zero-ROAS preserved)
+- [x] 08-02-PLAN.md — Frontend: scatter chart drawer with quadrant framing + tooltips + spend threshold
 **UI hint**: yes
 
 ### Phase 9: AI Metadata Auto-Fill
@@ -125,6 +125,6 @@ Plans:
 | 5. BrainSuite Image Scoring | v1.1 | 4/4 | Complete   | 2026-03-27 |
 | 6. Historical Backfill + Score History Schema | v1.1 | 1/1 | Complete   | 2026-03-30 |
 | 7. Score Trend, Performer Highlights + Performance Tab | v1.1 | 3/3 | Complete   | 2026-03-30 |
-| 8. Score-to-ROAS Correlation | v1.1 | 0/2 | Planned | - |
+| 8. Score-to-ROAS Correlation | v1.1 | 2/2 | Complete   | 2026-03-31 |
 | 9. AI Metadata Auto-Fill | v1.1 | 0/? | Not started | - |
 | 10. In-App Notifications | v1.1 | 0/? | Not started | - |
