@@ -21,7 +21,7 @@ created: 2026-03-31
 | Preset | not applicable |
 | Component library | Angular Material (MDC) |
 | Icon library | Bootstrap Icons (bi-*) |
-| Font | Nunito Sans, 400 / 600 / 700 weights |
+| Font | Nunito Sans, 400 / 600 weights |
 
 Source: `frontend/src/styles.scss` — Angular Material dark theme with orange palette; no tailwind.
 
@@ -54,16 +54,18 @@ Exceptions:
 |------|------|--------|-------------|
 | Body | 14px | 400 | 1.5 |
 | Label | 11px | 600 | 1.4 |
-| Heading | 16px (h4) | 500 | 1.2 |
-| Stat value | 20px | 700 | 1.2 |
+| Heading | 16px (h4) | 600 | 1.2 |
+| Stat value | 20px | 600 | 1.2 |
 
 Source: `styles.scss` lines 99–105 (h1–h4 definitions), line 94 (base 14px / 1.5).
 
 Additional type rules for this phase:
-- Quadrant labels inside chart: 11px, weight 400, color `var(--text-muted)` (#707070 dark / #718096 light), opacity 0.6 — subtle, non-dominant
+- Quadrant labels inside chart: 11px, weight 600, color `var(--text-muted)` (#707070 dark / #718096 light), opacity 0.6 — subtle, non-dominant
 - Tooltip asset name: 14px, weight 600
-- Tooltip metric values: 12px, weight 400, color `var(--text-secondary)`
-- Drawer panel title: 16px (h4), weight 500
+- Tooltip metric values: 14px, weight 400, color `var(--text-secondary)`
+- Drawer panel title: 16px (h4), weight 600
+
+Font weight constraint: two weights only — 400 (body, tooltip metric values) / 600 (all emphasis: labels, headings, stat values, drawer title, tooltip asset name).
 
 ---
 
@@ -103,7 +105,7 @@ Components required for this phase (all from Angular Material or existing projec
 | `MatSidenav` / `MatDrawer` in `"over"` mode | Angular Material | Right-side slide-in drawer triggered by ROAS tile click |
 | `NgxEchartsDirective` + `ScatterChart` | ngx-echarts (already installed) | Scatter chart inside drawer |
 | `MatFormField` (outlined) + `MatInput` | Angular Material (already themed) | Spend threshold number input inside drawer |
-| `MatIconButton` | Angular Material | Drawer close button (bi-x icon) |
+| `MatIconButton` | Angular Material | Drawer close button (bi-x icon, `aria-label="Close correlation drawer"`) |
 | `MatDialog` → `AssetDetailDialogComponent` | Existing project component | Opened on scatter dot click |
 
 ECharts registration: add `ScatterChart` and `MarkLineComponent` to the existing `echarts.use([LineChart, ...])` call in `dashboard.component.ts`.
@@ -129,7 +131,7 @@ ECharts registration: add `ScatterChart` and `MarkLineComponent` to the existing
 - Backdrop: semi-transparent overlay `rgba(0,0,0,0.4)` behind drawer (click to close)
 
 Drawer internal layout (top to bottom):
-1. **Header row** (height 56px): title "Score vs. ROAS" (h4, 16px/500), close button (bi-x, 20px) right-aligned — padding 0 24px
+1. **Header row** (height 56px): title "Score vs. ROAS" (h4, 16px/600), close button (`bi-x`, 20px, `aria-label="Close correlation drawer"`) right-aligned — padding 0 24px
 2. **Spend threshold row** (height 64px): label "Min. spend" + outlined number input with "$" prefix + current value display — padding 0 24px
 3. **Chart area**: `height: 420px`, full drawer width minus 48px (24px padding each side) — `echart-box` class pattern
 4. **Legend row** (height 40px): four quadrant color swatches with labels — padding 0 24px, 16px gap between items
@@ -152,7 +154,7 @@ Container: `var(--bg-card)` background, `border: 1px solid var(--border)`, `bord
 Content layout:
 1. Thumbnail: 48×48px, `object-fit: cover`, `border-radius: 4px`, left-aligned
 2. Asset name: 14px / 600 / `var(--text-primary)`, max 1 line with ellipsis, beside thumbnail
-3. Metric row: Score | ROAS | Spend | Platform — 12px / 400 / `var(--text-secondary)`, inline with `bi-dot` separators
+3. Metric row: Score | ROAS | Spend | Platform — 14px / 400 / `var(--text-secondary)`, inline with `bi-dot` separators
 
 ---
 
@@ -162,7 +164,7 @@ Content layout:
 |---------|----------|
 | Click Avg ROAS stat tile | Open correlation drawer (slide in from right) |
 | Click drawer backdrop | Close drawer |
-| Click bi-x close button | Close drawer |
+| Click bi-x close button (`aria-label="Close correlation drawer"`) | Close drawer |
 | Hover scatter dot | Show ECharts tooltip with thumbnail / score / ROAS / spend / platform |
 | Click scatter dot | Close drawer, open `AssetDetailDialogComponent` with that asset's data |
 | Change spend threshold input | Re-filter scatter data client-side; median reference lines recalculate |
