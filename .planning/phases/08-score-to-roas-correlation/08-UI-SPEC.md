@@ -45,6 +45,7 @@ Exceptions:
 - `agg-stats` grid gap is **12px** (existing pattern — do not change)
 - Drawer inner padding: **24px** (lg) on all sides
 - Spend threshold input top margin inside drawer: **16px** (md)
+- `tooltip-padding`: **12px** — matches agg-stats existing 12px pattern; consistent compact density for tooltip container
 
 ---
 
@@ -149,7 +150,7 @@ Drawer internal layout (top to bottom):
 
 ### Tooltip (hover on dot)
 
-Container: `var(--bg-card)` background, `border: 1px solid var(--border)`, `border-radius: var(--border-radius)` (8px), `padding: 12px`, `box-shadow: var(--shadow-md)`.
+Container: `var(--bg-card)` background, `border: 1px solid var(--border)`, `border-radius: var(--border-radius)` (8px), `padding: 12px` (tooltip-padding exception — see Spacing Scale), `box-shadow: var(--shadow-md)`.
 
 Content layout:
 1. Thumbnail: 48×48px, `object-fit: cover`, `border-radius: 4px`, left-aligned
@@ -180,7 +181,7 @@ Content layout:
 | Avg ROAS tile affordance tooltip | "Explore score vs. ROAS correlation" |
 | Spend threshold label | "Min. spend" |
 | Spend threshold input placeholder | "$10" |
-| Empty state heading | "No data to display" |
+| Empty state heading | "No qualifying creatives to correlate" |
 | Empty state body | "No scored creatives with ROAS data meet the current filters. Try lowering the minimum spend threshold or broadening the date range." |
 | Error state | "Could not load correlation data. Refresh to try again." |
 | Quadrant label — top-right | "Stars" |
