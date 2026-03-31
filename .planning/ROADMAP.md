@@ -21,7 +21,7 @@
 
 - [x] **Phase 5: BrainSuite Image Scoring** — Production credentials verified; image assets scored alongside video in the existing pipeline (completed 2026-03-27)
 - [x] **Phase 6: Historical Backfill + Score History Schema** — All pre-v1.1 assets scored; append-only history table seeded (completed 2026-03-30)
-- [ ] **Phase 7: Score Trend, Performer Highlights + Performance Tab** — Score trend chart live; top/bottom badges visible; performance tab redesigned
+- [x] **Phase 7: Score Trend, Performer Highlights + Performance Tab** — Score trend chart live; top/bottom badges visible; performance tab redesigned (completed 2026-03-30)
 - [ ] **Phase 8: Score-to-ROAS Correlation** — Scatter chart with quadrant framing live in dashboard
 - [ ] **Phase 9: AI Metadata Auto-Fill** — Auto-fill button triggers Claude inference with confidence indicators and user confirmation
 - [ ] **Phase 10: In-App Notifications** — Bell icon + unread badge; toasts for high-priority events; 30-second polling
@@ -67,11 +67,11 @@ Plans:
   2. The asset detail dialog has a Score Trend tab with an ECharts line chart; a 30-day window is shown by default; an appropriate empty state appears when fewer than 2 data points exist
   3. Dashboard grid cards for the top 10% and bottom 10% of scored assets (by relative rank) display a performer badge overlay — and no badges appear when the scored asset pool is fewer than 10 assets
   4. The asset detail dialog performance tab presents metrics in a tile/card grid layout that visually matches the Creative Effectiveness tab style
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 07-01-PLAN.md -- Backend: score trend endpoint + PERCENT_RANK performer tagging + tests
 - [x] 07-02-PLAN.md -- Frontend: score trend panel + performer badge relocation
-- [ ] 07-03-PLAN.md -- Frontend: Performance tab redesign (tile/card grid)
+- [x] 07-03-PLAN.md -- Frontend: Performance tab redesign (tile/card grid)
 **UI hint**: yes
 
 ### Phase 8: Score-to-ROAS Correlation
@@ -82,7 +82,10 @@ Plans:
   1. The dashboard includes an ECharts scatter panel showing each creative as a point with score on the X-axis and ROAS on the Y-axis, with reference lines dividing the chart into Stars / Question Marks / Workhorses / Laggards quadrants
   2. Hovering a data point shows a tooltip with the creative's thumbnail, score, ROAS, spend, and platform
   3. Assets below a configurable minimum spend threshold (default $10) are excluded from the chart; null and zero ROAS are handled distinctly (neither silently excluded nor plotted together); the Y-axis is capped at the 99th percentile to prevent outlier distortion
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 08-01-PLAN.md — Backend: TDD correlation-data endpoint (unpaginated, zero-ROAS preserved)
+- [ ] 08-02-PLAN.md — Frontend: scatter chart drawer with quadrant framing + tooltips + spend threshold
 **UI hint**: yes
 
 ### Phase 9: AI Metadata Auto-Fill
@@ -121,7 +124,7 @@ Plans:
 | 4. Dashboard Polish + Reliability | v1.0 | 4/4 | Complete | 2026-03-25 |
 | 5. BrainSuite Image Scoring | v1.1 | 4/4 | Complete   | 2026-03-27 |
 | 6. Historical Backfill + Score History Schema | v1.1 | 1/1 | Complete   | 2026-03-30 |
-| 7. Score Trend, Performer Highlights + Performance Tab | v1.1 | 2/3 | In Progress|  |
-| 8. Score-to-ROAS Correlation | v1.1 | 0/? | Not started | - |
+| 7. Score Trend, Performer Highlights + Performance Tab | v1.1 | 3/3 | Complete   | 2026-03-30 |
+| 8. Score-to-ROAS Correlation | v1.1 | 0/2 | Planned | - |
 | 9. AI Metadata Auto-Fill | v1.1 | 0/? | Not started | - |
 | 10. In-App Notifications | v1.1 | 0/? | Not started | - |
