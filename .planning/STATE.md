@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
-status: Phase complete — ready for verification
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-03-30T17:47:56.537Z"
+status: Phase 07 complete — ready for Phase 08
+stopped_at: Phase 8 planned — 2 plans ready
+last_updated: "2026-03-31T08:57:30.980Z"
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 8
-  completed_plans: 7
+  completed_phases: 3
+  total_plans: 10
+  completed_plans: 8
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 07 — score-trend-performer-highlights-performance-tab
+**Current focus:** Phase 08 — score-to-roas-correlation
 
 ## Current Position
 
-Phase: 07 (score-trend-performer-highlights-performance-tab) — EXECUTING
-Plan: 3 of 3
+Phase: 07 (score-trend-performer-highlights-performance-tab) — COMPLETE
+Phase: 08 (score-to-roas-correlation) — READY TO PLAN
 
 ## Accumulated Context
 
@@ -50,6 +50,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase 07-score-trend-performer-highlights-performance-tab]: Score trend panel reuses main filter bar date range — no separate DateRangePicker in panel (single source of truth)
 - [Phase 07-score-trend-performer-highlights-performance-tab]: Score trend panel reuses dashboard filter bar date range — no separate DateRangePicker added (single source of truth)
 - [Phase 07-score-trend-performer-highlights-performance-tab]: getTagClass() returns full class string 'tile-tag tag-top' because [class] binding replaces base class
+- [Phase 07-03]: Zero spend shows $0.00; all other null/zero metrics omitted — zero is data-absent noise except for spend
+- [Phase 07-03]: getCampaignUrl() uses ad_account_id for Meta/DV360 URL construction; tile styles reuse --bg-card/--border CSS vars for CE tab visual consistency
 
 ### Pending Todos
 
@@ -65,6 +67,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last session: 2026-03-30T17:47:51.291Z
-Stopped at: Completed 07-02-PLAN.md
-Resume: Start Phase 5 with BrainSuite Static API discovery spike, then PROD-01/02 credential verification
+Last session: 2026-03-31T08:57:30.972Z
+Stopped at: Phase 8 planned — 2 plans ready
+Resume: Plan Phase 08 (score-to-roas-correlation) — ECharts scatter chart, quadrant framing (Stars/Question Marks/Workhorses/Laggards), tooltip with thumbnail/score/ROAS/spend

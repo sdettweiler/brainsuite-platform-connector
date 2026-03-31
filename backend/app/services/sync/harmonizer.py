@@ -894,7 +894,10 @@ class HarmonizationService:
                     organization_id=connection.organization_id,
                     scoring_status=initial_status,
                     endpoint_type=endpoint_type.value,
-                ).on_conflict_do_nothing(index_elements=["creative_asset_id"])
+                ).on_conflict_do_update(
+                    index_elements=["creative_asset_id"],
+                    set_={"endpoint_type": endpoint_type.value},
+                )
                 await db.execute(score_stmt)
         else:
             if kwargs.get("thumbnail_url") and not asset.thumbnail_url:

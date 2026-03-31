@@ -21,31 +21,19 @@ from typing import Optional
 import httpx
 
 from app.core.config import settings
+from app.services.brainsuite_exceptions import (
+    BrainSuiteRateLimitError,
+    BrainSuite5xxError,
+    BrainSuiteJobError,
+)
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Custom exceptions (mirrored from video service)
-# ---------------------------------------------------------------------------
-
-
-class BrainSuiteRateLimitError(Exception):
-    """Raised when BrainSuite API responds with HTTP 429."""
-
-    def __init__(self, reset_at: datetime) -> None:
-        self.reset_at = reset_at
-        super().__init__(f"Rate limited until {reset_at.isoformat()}")
-
-
-class BrainSuite5xxError(Exception):
-    """Raised when BrainSuite API responds with a 5xx error."""
-    pass
-
-
-class BrainSuiteJobError(Exception):
-    """Raised when a BrainSuite job fails, goes stale, or times out."""
-    pass
+# BrainSuiteRateLimitError, BrainSuite5xxError, and BrainSuiteJobError are
+# imported from app.services.brainsuite_exceptions (shared module) so that all
+# BrainSuite service modules raise the same class objects — enabling callers to
+# catch them with a single import regardless of which service raised them.
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +219,8 @@ class BrainSuiteStaticScoreService:
             job_id string.
         """
         url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_STATIC/ACE_STATIC_SOCIAL_STATIC_API/announce"
+        import json as _json
+        logger.info("BrainSuite static _announce_job payload: %s", _json.dumps(announce_payload)[:500])
         resp = await self._api_post_with_retry(url, json_body=announce_payload, log_name="announce")
         job_id = resp.get("id")
         if not job_id:
@@ -279,14 +269,14 @@ class BrainSuiteStaticScoreService:
             )
         logger.info("BrainSuite static S3 upload complete (status=%s)", resp.status_code)
 
-    async def _start_job(self, job_id: str) -> None:
+    async def _start_job(self, job_id: str, announce_payload: dict) -> None:
         """POST /{jobId}/start — transitions job from Announced to Scheduled/Created.
 
-        For the Static API, the start body is EMPTY ({}).
-        Briefing data was already sent in the announce step (D-04).
+        Despite the API docs saying the start body is empty ({}), the staging API
+        requires the same {"input": {...}} briefing payload that was sent in announce.
         """
         url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_STATIC/ACE_STATIC_SOCIAL_STATIC_API/{job_id}/start"
-        await self._api_post_with_retry(url, json_body={}, log_name="start")
+        await self._api_post_with_retry(url, json_body=announce_payload, log_name="start")
 
     async def submit_job_with_upload(
         self, file_bytes: bytes, filename: str, announce_payload: dict
@@ -297,12 +287,12 @@ class BrainSuiteStaticScoreService:
           1. announce(payload with channel/legs/etc.) → job_id
           2. announce_asset(job_id, "leg1", filename) → upload URL + fields
           3. upload file to S3
-          4. start(job_id, body={}) — start body is empty
+          4. start(job_id, announce_payload) — start requires the same input payload
 
         Args:
             file_bytes:       Raw image bytes.
             filename:         Original filename including extension (e.g. "image.jpg").
-            announce_payload: Full payload for the announce step — {"input": {...}}.
+            announce_payload: Full payload for both announce and start steps — {"input": {...}}.
 
         Returns:
             job_id string to pass to poll_job_status().
@@ -317,7 +307,7 @@ class BrainSuiteStaticScoreService:
 
         await self._upload_to_brainsuite_s3(upload_url, s3_fields, file_bytes, filename)
 
-        await self._start_job(job_id)
+        await self._start_job(job_id, announce_payload)
         logger.info(
             "BrainSuite static job started: job_id=%s channel=%s",
             job_id,

@@ -14,31 +14,19 @@ from typing import Optional
 import httpx
 
 from app.core.config import settings
+from app.services.brainsuite_exceptions import (
+    BrainSuiteRateLimitError,
+    BrainSuite5xxError,
+    BrainSuiteJobError,
+)
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Custom exceptions
-# ---------------------------------------------------------------------------
-
-
-class BrainSuiteRateLimitError(Exception):
-    """Raised when BrainSuite API responds with HTTP 429."""
-
-    def __init__(self, reset_at: datetime) -> None:
-        self.reset_at = reset_at
-        super().__init__(f"Rate limited until {reset_at.isoformat()}")
-
-
-class BrainSuite5xxError(Exception):
-    """Raised when BrainSuite API responds with a 5xx error."""
-    pass
-
-
-class BrainSuiteJobError(Exception):
-    """Raised when a BrainSuite job fails, goes stale, or times out."""
-    pass
+# BrainSuiteRateLimitError, BrainSuite5xxError, and BrainSuiteJobError are
+# imported from app.services.brainsuite_exceptions (shared module) so that all
+# BrainSuite service modules raise the same class objects — enabling callers to
+# catch them with a single import regardless of which service raised them.
 
 
 # ---------------------------------------------------------------------------
