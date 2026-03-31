@@ -59,6 +59,12 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - Phase 5 gate: BrainSuite Static API discovery spike must be first deliverable — no implementation before confirmed endpoint URL, payload shape, response schema, and rate limit tier. Document in `BRAINSUITE_API.md`.
 - Phase 9 gate: Targeted spike on Claude tool-use / structured output schema for metadata inference fields + per-field confidence scoring. Validate cost model against real samples. Confirm `OPENAI_API_KEY` optionality.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260331-l16 | analyze the entire folder structure for legacy/obsolete files. Especially replit leftovers etc. build a clean up plan | 2026-03-31 | a6dc5b6 | [260331-l16-analyze-the-entire-folder-structure-for-](.planning/quick/260331-l16-analyze-the-entire-folder-structure-for-/) |
+
 ### Blockers/Concerns
 
 - BrainSuite Static API endpoint/payload: unconfirmed — mandatory discovery spike gates Phase 5 implementation.
@@ -68,6 +74,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
+Last activity: 2026-03-31 - Completed quick task 260331-l16: analyze the entire folder structure for legacy/obsolete files. Especially replit leftovers etc. build a clean up plan
 Last session: 2026-03-31T08:57:30.972Z
 Stopped at: Phase 8 planned — 2 plans ready
 Resume: Plan Phase 08 (score-to-roas-correlation) — ECharts scatter chart, quadrant framing (Stars/Question Marks/Workhorses/Laggards), tooltip with thumbnail/score/ROAS/spend
