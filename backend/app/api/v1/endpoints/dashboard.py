@@ -16,6 +16,7 @@ from app.models.user import User
 from app.models.creative import CreativeAsset, AssetMetadataValue, AssetProjectMapping
 from app.models.performance import HarmonizedPerformance
 from app.models.platform import PlatformConnection
+from app.models.scoring import CreativeScoreResult
 from app.schemas.creative import (
     DashboardFilterParams, DashboardStats, CreativeAssetResponse,
     AssetDetailResponse, ComparisonRequest,
@@ -718,3 +719,91 @@ async def compare_assets(
         })
 
     return {"assets": comparison, "date_from": payload.date_from, "date_to": payload.date_to}
+
+
+# ---------------------------------------------------------------------------
+# Correlation data endpoint — unpaginated for scatter chart
+# ---------------------------------------------------------------------------
+
+def _serialize_correlation_asset(row) -> dict:
+    """Serialize a correlation query row to dict.
+
+    CRITICAL: Use `is not None` check for roas to preserve zero values.
+    The falsy pattern `if row.roas` would coerce 0.0 to None.
+    """
+    return {
+        "id": str(row.id),
+        "ad_name": row.ad_name,
+        "platform": row.platform,
+        "thumbnail_url": row.thumbnail_url,
+        "total_score": float(row.total_score) if row.total_score is not None else None,
+        "roas": float(row.roas) if row.roas is not None else None,
+        "spend": float(row.total_spend) if row.total_spend is not None else None,
+    }
+
+
+@router.get("/correlation-data")
+async def get_correlation_data(
+    date_from: date = Query(default=None),
+    date_to: date = Query(default=None),
+    platforms: Optional[str] = Query(default=None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """All scored assets with performance data for scatter chart.
+
+    No pagination — returns complete dataset for org+filter combination.
+    Zero-ROAS assets preserved (roas=0.0 not coerced to None).
+    Only assets with scoring_status='COMPLETE' and total_score IS NOT NULL.
+    """
+    if not date_from:
+        date_from = date.today() - timedelta(days=30)
+    if not date_to:
+        date_to = date.today() - timedelta(days=1)
+
+    platform_list = [p.strip().upper() for p in platforms.split(",")] if platforms else None
+
+    # Reuse perf_subq aggregation pattern from get_dashboard_assets
+    perf_subq = (
+        select(
+            HarmonizedPerformance.asset_id,
+            func.sum(HarmonizedPerformance.spend).label("total_spend"),
+            (
+                func.sum(HarmonizedPerformance.conversion_value) /
+                func.nullif(func.sum(HarmonizedPerformance.spend), 0)
+            ).label("roas"),
+        )
+        .where(
+            HarmonizedPerformance.report_date >= date_from,
+            HarmonizedPerformance.report_date <= date_to,
+        )
+        .group_by(HarmonizedPerformance.asset_id)
+        .subquery()
+    )
+
+    query = (
+        select(
+            CreativeAsset.id,
+            CreativeAsset.ad_name,
+            CreativeAsset.platform,
+            CreativeAsset.thumbnail_url,
+            CreativeScoreResult.total_score,
+            perf_subq.c.roas,
+            perf_subq.c.total_spend,
+        )
+        .outerjoin(CreativeScoreResult, CreativeScoreResult.creative_asset_id == CreativeAsset.id)
+        .outerjoin(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
+        .where(
+            CreativeAsset.organization_id == current_user.organization_id,
+            CreativeScoreResult.scoring_status == "COMPLETE",
+            CreativeScoreResult.total_score.isnot(None),
+        )
+    )
+
+    if platform_list:
+        query = query.where(CreativeAsset.platform.in_(platform_list))
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    return [_serialize_correlation_asset(row) for row in rows]
