@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-23T14:09:47.955Z"
+status: Ready to execute
+stopped_at: Completed 08-score-to-roas-correlation 08-01-PLAN.md
+last_updated: "2026-03-31T13:08:33.197Z"
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 9
+  total_plans: 15
   completed_plans: 9
 ---
 
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-20)
 ## Current Position
 
 Phase: 02 (security-hardening) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Plan: 2 of 6
 | Phase 02 P04 | 15 | 2 tasks | 6 files |
 | Phase 02 P06 | 25 | 2 tasks | 6 files |
 | Phase 02 P05 | 10 | 2 tasks | 12 files |
+| Phase 08-score-to-roas-correlation P01 | 12 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,8 @@ Recent decisions affecting current work:
 - [Phase 02]: Both /apps/{id} and /brainsuite-apps/{id} DELETE alias routes fixed to return 204 consistently
 - [Phase 02]: Function-name allowlist in AST test for scheduler.py — allows APScheduler job wrapper functions to keep broad catches for job isolation
 - [Phase 02]: OAuth endpoint catches changed to 502 status — upstream platform auth failures are gateway errors, not bad requests
+- [Phase 08-score-to-roas-correlation]: Use row.roas is not None (not if row.roas) in _serialize_correlation_asset — falsy check coerces 0.0 ROAS to None
+- [Phase 08-score-to-roas-correlation]: No pagination on /correlation-data — scatter chart needs full dataset for accurate median and quadrant framing
 
 ### Pending Todos
 
@@ -97,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T14:09:47.947Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-brainsuite-scoring-pipeline/03-CONTEXT.md
+Last session: 2026-03-31T13:08:33.192Z
+Stopped at: Completed 08-score-to-roas-correlation 08-01-PLAN.md
+Resume file: None
