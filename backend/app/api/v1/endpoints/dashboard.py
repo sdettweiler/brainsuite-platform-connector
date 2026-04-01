@@ -844,7 +844,7 @@ async def compare_assets(
 def _serialize_correlation_asset(row) -> dict:
     """Serialize a correlation query row to dict.
 
-    CRITICAL: Use `is not None` check for roas to preserve zero values.
+    CRITICAL: Use `is not None` check for numeric fields to preserve zero values.
     The falsy pattern `if row.roas` would coerce 0.0 to None.
     """
     return {
@@ -855,6 +855,12 @@ def _serialize_correlation_asset(row) -> dict:
         "total_score": float(row.total_score) if row.total_score is not None else None,
         "roas": float(row.roas) if row.roas is not None else None,
         "spend": float(row.total_spend) if row.total_spend is not None else None,
+        "ctr": float(row.ctr) if row.ctr is not None else None,
+        "vtr": float(row.vtr) if row.vtr is not None else None,
+        "cpm": float(row.cpm) if row.cpm is not None else None,
+        "cvr": float(row.cvr) if row.cvr is not None else None,
+        "cpc": float(row.cpc) if row.cpc is not None else None,
+        "conversions": float(row.conversions) if row.conversions is not None else None,
     }
 
 
@@ -888,6 +894,28 @@ async def get_correlation_data(
                 func.sum(HarmonizedPerformance.conversion_value) /
                 func.nullif(func.sum(HarmonizedPerformance.spend), 0)
             ).label("roas"),
+            # Additional metrics — weighted averages re-derived from raw sums
+            (
+                func.sum(HarmonizedPerformance.clicks) /
+                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
+            ).label("ctr"),
+            (
+                func.sum(HarmonizedPerformance.video_views) /
+                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
+            ).label("vtr"),
+            (
+                func.sum(HarmonizedPerformance.spend) /
+                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 1000
+            ).label("cpm"),
+            (
+                func.sum(HarmonizedPerformance.conversions) /
+                func.nullif(func.sum(HarmonizedPerformance.clicks), 0) * 100
+            ).label("cvr"),
+            (
+                func.sum(HarmonizedPerformance.spend) /
+                func.nullif(func.sum(HarmonizedPerformance.clicks), 0)
+            ).label("cpc"),
+            func.sum(HarmonizedPerformance.conversions).label("conversions"),
         )
         .where(
             HarmonizedPerformance.report_date >= date_from,
@@ -906,6 +934,12 @@ async def get_correlation_data(
             CreativeScoreResult.total_score,
             perf_subq.c.roas,
             perf_subq.c.total_spend,
+            perf_subq.c.ctr,
+            perf_subq.c.vtr,
+            perf_subq.c.cpm,
+            perf_subq.c.cvr,
+            perf_subq.c.cpc,
+            perf_subq.c.conversions,
         )
         .outerjoin(CreativeScoreResult, CreativeScoreResult.creative_asset_id == CreativeAsset.id)
         .outerjoin(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
