@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
 status: Phase 08 Complete — Ready for Phase 09
-stopped_at: "Phase 09 — not yet planned"
-last_updated: "2026-04-01T00:00:00.000Z"
-last_activity: "2026-04-01 - Phase 08 verified (partial): drawer mechanics, tile affordance, states, and interactions approved. Scatter chart + spend filter unverifiable due to no ROAS data in DB — data gap, not code issue."
+stopped_at: "Completed quick-260401-qpu: add metric selector dropdown to scatter chart"
+last_updated: "2026-04-01T17:21:52.983Z"
+last_activity: 2026-04-01 - Phase 08 verified (partial) — drawer approved, chart/filter blocked by missing ROAS data
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 4
   total_plans: 10
   completed_plans: 10
 ---
@@ -55,6 +55,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase 07-03]: Zero spend shows $0.00; all other null/zero metrics omitted — zero is data-absent noise except for spend
 - [Phase 07-03]: getCampaignUrl() uses ad_account_id for Meta/DV360 URL construction; tile styles reuse --bg-card/--border CSS vars for CE tab visual consistency
 - [Phase 08]: Fixed-position overlay drawer instead of MatSidenav — avoids height-propagation issues, explicitly allowed by plan
+- [Phase quick]: Quick task 260401-qpu: correlationMetrics config array drives all scatter chart dynamic behavior — label, format fn, suffix — single source of truth
 
 ### Pending Todos
 
@@ -66,6 +67,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260331-l16 | analyze the entire folder structure for legacy/obsolete files. Especially replit leftovers etc. build a clean up plan | 2026-03-31 | a6dc5b6 | [260331-l16-analyze-the-entire-folder-structure-for-](.planning/quick/260331-l16-analyze-the-entire-folder-structure-for-/) |
+| 260401-qpu | Add metric selector dropdown to scatter chart correlation drawer (7 metrics: ROAS, CTR, VTR, CPM, CVR, CPC, Conversions) | 2026-04-01 | 33cceed | [260401-qpu-add-metric-selector-dropdown-to-scatter-](.planning/quick/260401-qpu-add-metric-selector-dropdown-to-scatter-/) |
 
 ### Blockers/Concerns
 
@@ -77,6 +79,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last activity: 2026-04-01 - Phase 08 verified (partial) — drawer approved, chart/filter blocked by missing ROAS data
-Last session: 2026-04-01T00:00:00.000Z
-Stopped at: Phase 08 complete — advancing to Phase 09 (AI Metadata Auto-Fill)
+Last session: 2026-04-01T17:21:46.343Z
+Stopped at: Completed quick-260401-qpu: add metric selector dropdown to scatter chart
 Resume: Discuss or plan Phase 09
