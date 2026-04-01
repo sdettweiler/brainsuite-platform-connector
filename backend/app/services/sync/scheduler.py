@@ -287,16 +287,15 @@ async def run_daily_sync(connection_id: str) -> None:
 
 async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
     from app.services.sync.dv360_sync import dv360_sync
-    from sqlalchemy import select
+    from sqlalchemy import select, text
     from app.models.platform import PlatformConnection
     import uuid
     import traceback
     try:
+        conn_uuid = connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id))
         async with get_session_factory()() as db:
             result = await db.execute(
-                select(PlatformConnection).where(
-                    PlatformConnection.id == (connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id)))
-                )
+                select(PlatformConnection).where(PlatformConnection.id == conn_uuid)
             )
             connection = result.scalar_one_or_none()
             if not connection:
@@ -305,6 +304,35 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
             logger.info("_run_dv360_asset_downloads: calling download_assets_post_commit for %s", connection_id)
             await dv360_sync.download_assets_post_commit(db, connection, asset_queue)
             logger.info("_run_dv360_asset_downloads: done for %s", connection_id)
+
+        # Propagate downloaded asset URLs into creative_assets so the dashboard reflects them
+        async with get_session_factory()() as db:
+            await db.execute(
+                text("""
+                    UPDATE creative_assets ca
+                    SET
+                        asset_url = dr.asset_url,
+                        thumbnail_url = COALESCE(
+                            CASE WHEN dr.thumbnail_url NOT LIKE 'https://img.youtube.com%'
+                                      AND dr.thumbnail_url NOT LIKE 'https://www.youtube.com%'
+                                 THEN dr.thumbnail_url END,
+                            ca.thumbnail_url
+                        )
+                    FROM (
+                        SELECT DISTINCT ON (ad_id) ad_id, asset_url, thumbnail_url
+                        FROM dv360_raw_performance
+                        WHERE platform_connection_id = :conn_id
+                          AND asset_url IS NOT NULL
+                          AND asset_url NOT LIKE 'https://www.youtube.com%'
+                        ORDER BY ad_id, asset_url
+                    ) dr
+                    WHERE ca.platform_connection_id = :conn_id
+                      AND ca.ad_id = dr.ad_id
+                """),
+                {"conn_id": conn_uuid},
+            )
+            await db.commit()
+            logger.info("_run_dv360_asset_downloads: creative_assets propagated for %s", connection_id)
     except Exception as e:
         logger.error("_run_dv360_asset_downloads: FAILED for %s: %s: %s\n%s", connection_id, type(e).__name__, e, traceback.format_exc())
 
