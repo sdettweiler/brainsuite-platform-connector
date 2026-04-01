@@ -66,6 +66,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260331-l16 | analyze the entire folder structure for legacy/obsolete files. Especially replit leftovers etc. build a clean up plan | 2026-03-31 | a6dc5b6 | [260331-l16-analyze-the-entire-folder-structure-for-](.planning/quick/260331-l16-analyze-the-entire-folder-structure-for-/) |
+| 260401-n93 | improve platform sync status display — fix new account showing sync failed, add running sync indicators | 2026-04-01 | 6e34c94 | [260401-n93-improve-platform-sync-status-display-fix](.planning/quick/260401-n93-improve-platform-sync-status-display-fix/) |
 
 ### Blockers/Concerns
 
@@ -76,7 +77,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last activity: 2026-04-01 - Phase 08 verified (partial) — drawer approved, chart/filter blocked by missing ROAS data
+Last activity: 2026-04-01 - Completed quick task 260401-n93: improve platform sync status display — fix new account showing sync failed, add running sync indicators
 Last session: 2026-04-01T00:00:00.000Z
 Stopped at: Phase 08 complete — advancing to Phase 09 (AI Metadata Auto-Fill)
 Resume: Discuss or plan Phase 09
