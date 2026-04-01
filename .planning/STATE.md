@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: Insights + Intelligence
 status: Executing Phase 09
 stopped_at: "Phase 09 Plan 02 — paused at Task 3 checkpoint (human-verify: visual verification of auto-fill UI)"
-last_updated: "2026-04-01T18:05:25.204Z"
+last_updated: "2026-04-01T18:11:01.455Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 6
@@ -25,8 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 ## Current Position
 
 Phase: 09 (ai-metadata-auto-fill) — EXECUTING
-Plan: 1 of 3
-Phase: 08 (score-to-roas-correlation) — READY TO PLAN
+Plan: 2 of 3 (paused at checkpoint)
 
 ## Accumulated Context
 
@@ -58,6 +57,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase quick]: Quick task 260401-qpu: correlationMetrics config array drives all scatter chart dynamic behavior — label, format fn, suffix — single source of truth
 - [Phase 09-ai-metadata-auto-fill]: Auto-fill section added to all expanded field rows (not just SELECT) so every field type can be AI-configured
 - [Phase 09-ai-metadata-auto-fill]: Inference status badge placed in metadata-chips header (always visible) rather than in a tab-specific section, since no dedicated Metadata tab exists in asset detail dialog
+- [Phase 09-ai-metadata-auto-fill]: AsyncOpenAI at module-level import to allow patch() in unit tests; _set_status/_write_values as separate awaitable helpers for test isolation
 
 ### Pending Todos
 
@@ -82,6 +82,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last activity: 2026-04-01
-Last session: 2026-04-01T18:05:12.865Z
+Last session: 2026-04-01T18:11:01.455Z
 Stopped at: Phase 09 Plan 02 — paused at Task 3 checkpoint (human-verify: visual verification of auto-fill UI)
 Resume: Discuss or plan Phase 09

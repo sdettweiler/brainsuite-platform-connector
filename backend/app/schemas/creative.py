@@ -33,6 +33,8 @@ class MetadataFieldCreate(BaseModel):
     is_required: bool = False
     default_value: Optional[str] = None
     allowed_values: List[Dict[str, str]] = []  # [{value, label}]
+    auto_fill_enabled: bool = False
+    auto_fill_type: Optional[str] = None
 
 
 class MetadataFieldResponse(BaseModel):
@@ -44,6 +46,8 @@ class MetadataFieldResponse(BaseModel):
     default_value: Optional[str]
     allowed_values: List[Dict[str, Any]] = []
     created_at: datetime
+    auto_fill_enabled: bool = False
+    auto_fill_type: Optional[str] = None
 
     class Config:
         from_attributes = True
