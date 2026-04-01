@@ -21,6 +21,29 @@ scheduler = AsyncIOScheduler()
 MAX_DEADLOCK_RETRIES = 3
 DEADLOCK_BACKOFF_BASE = 2
 
+# Redis key TTL for in-progress sync tracking: 1 hour safety net prevents zombie keys if process crashes
+SYNC_IN_PROGRESS_TTL = 3600
+
+
+async def _set_sync_in_progress(connection_id: str, label: str = "sync") -> None:
+    """Mark a connection as actively syncing in Redis."""
+    from app.core.redis import get_redis
+    try:
+        redis = get_redis()
+        await redis.setex(f"sync:{connection_id}:in_progress", SYNC_IN_PROGRESS_TTL, label)
+    except Exception as e:
+        logger.warning(f"Failed to set sync-in-progress flag for {connection_id}: {e}")
+
+
+async def _clear_sync_in_progress(connection_id: str) -> None:
+    """Clear the syncing flag for a connection."""
+    from app.core.redis import get_redis
+    try:
+        redis = get_redis()
+        await redis.delete(f"sync:{connection_id}:in_progress")
+    except Exception as e:
+        logger.warning(f"Failed to clear sync-in-progress flag for {connection_id}: {e}")
+
 
 async def _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to):
     for attempt in range(1, MAX_DEADLOCK_RETRIES + 1):
@@ -70,6 +93,8 @@ async def run_daily_sync(connection_id: str) -> None:
         if not connection:
             logger.warning(f"Connection {connection_id} not found for daily sync")
             return
+
+        await _set_sync_in_progress(connection_id, "daily")
 
         platform = connection.platform
         is_dv360 = platform == "DV360"
@@ -131,6 +156,7 @@ async def run_daily_sync(connection_id: str) -> None:
             connection.sync_status = "ERROR"
             db.add(connection)
             await db.commit()
+            await _clear_sync_in_progress(connection_id)
             return
 
         if not is_dv360:
@@ -151,6 +177,7 @@ async def run_daily_sync(connection_id: str) -> None:
 
                 await db.commit()
                 logger.info(f"Daily sync completed for {connection.platform} {connection.ad_account_id}: {result}")
+                await _clear_sync_in_progress(connection_id)
 
             except Exception as e:
                 logger.error(f"Daily sync harmonization failed for connection {connection_id}: {type(e).__name__}: {e}")
@@ -162,6 +189,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 connection.sync_status = "ERROR"
                 db.add(connection)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
 
     if is_dv360 and dv360_info:
         try:
@@ -189,6 +217,7 @@ async def run_daily_sync(connection_id: str) -> None:
                     conn.sync_status = "ERROR"
                     db.add(conn)
                 await db.commit()
+            await _clear_sync_in_progress(connection_id)
             return
 
         async with get_session_factory()() as db:
@@ -201,6 +230,7 @@ async def run_daily_sync(connection_id: str) -> None:
 
             if not conn or not sj:
                 logger.error(f"DV360 daily sync: connection or job disappeared")
+                await _clear_sync_in_progress(connection_id)
                 return
 
             try:
@@ -219,6 +249,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
                 return
 
             dv360_asset_queue = sync_result.get("_asset_queue")
@@ -235,6 +266,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 db.add(sj)
                 await db.commit()
                 logger.info(f"DV360 daily sync completed: {sync_result}")
+                await _clear_sync_in_progress(connection_id)
             except Exception as e:
                 logger.error(f"DV360 daily sync harmonization failed: {type(e).__name__}: {e}")
                 import traceback
@@ -247,6 +279,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
@@ -303,6 +336,8 @@ async def run_full_resync(connection_id: str) -> None:
         if not connection:
             logger.warning(f"Connection {connection_id} not found for full resync")
             return
+
+        await _set_sync_in_progress(connection_id, "resync")
 
         is_dv360 = connection.platform == "DV360"
         if is_dv360:
@@ -371,6 +406,7 @@ async def run_full_resync(connection_id: str) -> None:
             connection.sync_status = "ERROR"
             db.add(connection)
             await db.commit()
+            await _clear_sync_in_progress(connection_id)
             return
 
         if not is_dv360:
@@ -388,6 +424,7 @@ async def run_full_resync(connection_id: str) -> None:
                 db.add(job)
                 await db.commit()
                 logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
+                await _clear_sync_in_progress(connection_id)
             except Exception as e:
                 logger.error(f"Full resync harmonization failed for connection {connection_id}: {type(e).__name__}: {e}")
                 import traceback
@@ -400,6 +437,7 @@ async def run_full_resync(connection_id: str) -> None:
                 connection.sync_status = "ERROR"
                 db.add(connection)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
 
     if is_dv360 and dv360_info:
         try:
@@ -426,6 +464,7 @@ async def run_full_resync(connection_id: str) -> None:
                     conn.sync_status = "ERROR"
                     db.add(conn)
                 await db.commit()
+            await _clear_sync_in_progress(connection_id)
             return
 
         async with get_session_factory()() as db:
@@ -438,6 +477,7 @@ async def run_full_resync(connection_id: str) -> None:
 
             if not conn or not sj:
                 logger.error(f"DV360 full resync: connection or job disappeared")
+                await _clear_sync_in_progress(connection_id)
                 return
 
             try:
@@ -456,6 +496,7 @@ async def run_full_resync(connection_id: str) -> None:
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
                 return
 
             dv360_asset_queue = sync_result.get("_asset_queue")
@@ -472,6 +513,7 @@ async def run_full_resync(connection_id: str) -> None:
                 db.add(sj)
                 await db.commit()
                 logger.info(f"DV360 full resync completed: {sync_result}")
+                await _clear_sync_in_progress(connection_id)
             except Exception as e:
                 logger.error(f"DV360 full resync harmonization failed: {type(e).__name__}: {e}")
                 import traceback
@@ -484,6 +526,7 @@ async def run_full_resync(connection_id: str) -> None:
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
@@ -519,6 +562,8 @@ async def run_initial_sync(connection_id: str) -> None:
         if not connection:
             logger.error(f"Connection {connection_id} not found")
             return
+
+        await _set_sync_in_progress(connection_id, "initial")
 
         logger.info(f"Connection found: platform={connection.platform}, account={connection.ad_account_id}, name={connection.ad_account_name}")
         is_dv360 = connection.platform == "DV360"
@@ -576,6 +621,7 @@ async def run_initial_sync(connection_id: str) -> None:
             job.error_message = f"{type(e).__name__}: {e}"[:4000]
             db.add(job)
             await db.commit()
+            await _clear_sync_in_progress(connection_id)
             return
 
         if not is_dv360:
@@ -593,6 +639,7 @@ async def run_initial_sync(connection_id: str) -> None:
                 db.add(job)
                 await db.commit()
                 trigger_historical = True
+                await _clear_sync_in_progress(connection_id)
             except Exception as e:
                 logger.error(f"Initial sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
                 await db.rollback()
@@ -600,6 +647,7 @@ async def run_initial_sync(connection_id: str) -> None:
                 job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 db.add(job)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
 
     if is_dv360 and dv360_info:
         try:
@@ -621,6 +669,7 @@ async def run_initial_sync(connection_id: str) -> None:
                     sj.completed_at = datetime.utcnow()
                     db.add(sj)
                 await db.commit()
+            await _clear_sync_in_progress(connection_id)
             return
 
         async with get_session_factory()() as db:
@@ -633,6 +682,7 @@ async def run_initial_sync(connection_id: str) -> None:
 
             if not conn or not sj:
                 logger.error(f"DV360 initial sync: connection or job disappeared")
+                await _clear_sync_in_progress(connection_id)
                 return
 
             try:
@@ -649,6 +699,7 @@ async def run_initial_sync(connection_id: str) -> None:
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
                 return
 
             dv360_asset_queue = sync_result.get("_asset_queue")
@@ -666,6 +717,7 @@ async def run_initial_sync(connection_id: str) -> None:
                 await db.commit()
                 trigger_historical = True
                 logger.info(f"DV360 initial sync completed: {sync_result}")
+                await _clear_sync_in_progress(connection_id)
             except Exception as e:
                 logger.error(f"DV360 initial sync harmonization failed: {type(e).__name__}: {e}")
                 import traceback
@@ -676,6 +728,7 @@ async def run_initial_sync(connection_id: str) -> None:
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
 
     if trigger_historical:
         asyncio.create_task(run_historical_sync(connection_id))
@@ -708,6 +761,8 @@ async def run_historical_sync(connection_id: str) -> None:
         connection = result.scalar_one_or_none()
         if not connection:
             return
+
+        await _set_sync_in_progress(connection_id, "historical")
 
         is_dv360 = connection.platform == "DV360"
         date_to = date.today() - timedelta(days=31)
@@ -777,6 +832,7 @@ async def run_historical_sync(connection_id: str) -> None:
             job.error_message = f"{type(e).__name__}: {e}"[:4000]
             db.add(job)
             await db.commit()
+            await _clear_sync_in_progress(connection_id)
             return
 
         if not is_dv360:
@@ -792,6 +848,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 job.records_processed = harmonized
                 db.add(job)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
             except Exception as e:
                 logger.error(f"Historical sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
                 await db.rollback()
@@ -799,6 +856,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 db.add(job)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
 
     if is_dv360 and dv360_info:
         try:
@@ -821,6 +879,7 @@ async def run_historical_sync(connection_id: str) -> None:
                     sj.completed_at = datetime.utcnow()
                     db.add(sj)
                 await db.commit()
+            await _clear_sync_in_progress(connection_id)
             return
 
         async with get_session_factory()() as db:
@@ -833,6 +892,7 @@ async def run_historical_sync(connection_id: str) -> None:
 
             if not conn or not sj:
                 logger.error(f"DV360 historical sync: connection or job disappeared")
+                await _clear_sync_in_progress(connection_id)
                 return
 
             try:
@@ -849,6 +909,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
                 return
 
             dv360_asset_queue = sync_result.get("_asset_queue")
@@ -863,6 +924,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
             except Exception as e:
                 logger.error(f"DV360 historical sync harmonization failed: {type(e).__name__}: {e}")
                 import traceback
@@ -873,6 +935,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
+                await _clear_sync_in_progress(connection_id)
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)

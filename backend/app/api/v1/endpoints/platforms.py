@@ -594,9 +594,24 @@ async def list_connections(
     result = await db.execute(base)
     items = result.scalars().all()
 
+    # Bulk-check Redis for in-progress syncs
+    redis = get_redis()
+    if items:
+        syncing_keys = [f"sync:{str(c.id)}:in_progress" for c in items]
+        syncing_values = await redis.mget(*syncing_keys)
+        syncing_set = {str(items[i].id) for i, v in enumerate(syncing_values) if v is not None}
+    else:
+        syncing_set = set()
+
     from app.schemas.platform import PlatformConnectionResponse
+    items_out = []
+    for c in items:
+        d = PlatformConnectionResponse.model_validate(c).model_dump(mode="json")
+        d["is_syncing"] = str(c.id) in syncing_set
+        items_out.append(d)
+
     return {
-        "items": [PlatformConnectionResponse.model_validate(c) for c in items],
+        "items": items_out,
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -753,10 +768,14 @@ async def connection_status(
     if not conn or conn.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Connection not found")
 
+    redis = get_redis()
+    syncing_value = await redis.get(f"sync:{str(conn.id)}:in_progress")
+
     return {
         "id": str(conn.id),
         "sync_status": conn.sync_status,
         "last_synced_at": conn.last_synced_at,
         "initial_sync_completed": conn.initial_sync_completed,
         "historical_sync_completed": conn.historical_sync_completed,
+        "is_syncing": syncing_value is not None,
     }
