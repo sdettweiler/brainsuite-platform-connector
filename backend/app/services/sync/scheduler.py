@@ -290,6 +290,7 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
     from sqlalchemy import select
     from app.models.platform import PlatformConnection
     import uuid
+    import traceback
     try:
         async with get_session_factory()() as db:
             result = await db.execute(
@@ -299,10 +300,13 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
             )
             connection = result.scalar_one_or_none()
             if not connection:
+                logger.error("_run_dv360_asset_downloads: connection %s not found", connection_id)
                 return
+            logger.info("_run_dv360_asset_downloads: calling download_assets_post_commit for %s", connection_id)
             await dv360_sync.download_assets_post_commit(db, connection, asset_queue)
+            logger.info("_run_dv360_asset_downloads: done for %s", connection_id)
     except Exception as e:
-        logger.warning(f"DV360 asset download failed (non-fatal): {e}")
+        logger.error("_run_dv360_asset_downloads: FAILED for %s: %s: %s\n%s", connection_id, type(e).__name__, e, traceback.format_exc())
 
 
 async def run_full_resync(connection_id: str) -> None:
@@ -939,6 +943,208 @@ async def run_historical_sync(connection_id: str) -> None:
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
+
+
+async def run_fetch_assets(connection_id: str) -> None:
+    """Download missing video/thumbnail assets for an existing connection without re-syncing data."""
+    from app.models.platform import PlatformConnection
+    from app.services.sync.dv360_sync import dv360_sync
+    from app.services.sync.google_ads_sync import google_ads_sync
+    from sqlalchemy import select, text, update as sa_update, or_ as sa_or_
+    import os
+    import traceback
+
+    import uuid
+
+    logger.info("run_fetch_assets: START for connection %s", connection_id)
+    await _set_sync_in_progress(connection_id, "fetch_assets")
+    try:
+        asset_info = None
+        conn_platform = None
+
+        async with get_session_factory()() as db:
+            result = await db.execute(
+                select(PlatformConnection).where(
+                    PlatformConnection.id == uuid.UUID(connection_id),
+                    PlatformConnection.is_active == True,
+                )
+            )
+            conn = result.scalar_one_or_none()
+            if not conn:
+                logger.error("run_fetch_assets: connection %s not found or inactive", connection_id)
+                await _clear_sync_in_progress(connection_id)
+                return
+
+            conn_platform = conn.platform
+            org_id = str(conn.organization_id) if conn.organization_id else None
+            if not org_id:
+                logger.error("run_fetch_assets: connection %s has no organization_id", connection_id)
+                await _clear_sync_in_progress(connection_id)
+                return
+
+            if conn.platform == "DV360":
+                from app.models.performance import Dv360RawPerformance
+
+                rows = (await db.execute(
+                    select(
+                        Dv360RawPerformance.youtube_ad_video_id,
+                        Dv360RawPerformance.ad_id,
+                        Dv360RawPerformance.thumbnail_url,
+                    ).where(
+                        Dv360RawPerformance.platform_connection_id == conn.id,
+                        Dv360RawPerformance.youtube_ad_video_id.isnot(None),
+                        Dv360RawPerformance.youtube_ad_video_id != "",
+                        sa_or_(
+                            Dv360RawPerformance.video_url.is_(None),
+                            Dv360RawPerformance.video_url == "",
+                        ),
+                    ).distinct(Dv360RawPerformance.youtube_ad_video_id)
+                )).all()
+
+                logger.info("run_fetch_assets: DV360 — found %d rows with missing video_url for %s", len(rows), connection_id)
+                if rows:
+                    queue = {
+                        r.youtube_ad_video_id: {
+                            "youtube_video_id": r.youtube_ad_video_id,
+                            "thumbnail_url": r.thumbnail_url or "",
+                        }
+                        for r in rows
+                    }
+                    org_dir = os.path.join(
+                        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "static", "creatives")),
+                        org_id,
+                    )
+                    os.makedirs(org_dir, exist_ok=True)
+                    asset_info = {"org_dir": org_dir, "org_id": org_id, "queue": queue}
+                else:
+                    logger.info("run_fetch_assets: nothing to download for %s — will still propagate existing raw URLs", connection_id)
+
+            elif conn.platform == "GOOGLE_ADS":
+                from app.models.performance import GoogleAdsRawPerformance
+
+                rows = (await db.execute(
+                    select(
+                        GoogleAdsRawPerformance.video_id,
+                        GoogleAdsRawPerformance.ad_id,
+                    ).where(
+                        GoogleAdsRawPerformance.platform_connection_id == conn.id,
+                        GoogleAdsRawPerformance.video_id.isnot(None),
+                        GoogleAdsRawPerformance.video_id != "",
+                        GoogleAdsRawPerformance.video_url.like("https://www.youtube.com/watch%"),
+                    ).distinct(GoogleAdsRawPerformance.video_id)
+                )).all()
+
+                logger.info("run_fetch_assets: Google Ads — found %d rows with fallback URL for %s", len(rows), connection_id)
+                if not rows:
+                    logger.info("run_fetch_assets: nothing to download for %s — will still propagate existing raw URLs", connection_id)
+                else:
+                    org_dir = os.path.join(
+                        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "static", "creatives")),
+                        org_id,
+                    )
+                    os.makedirs(org_dir, exist_ok=True)
+
+                    import asyncio
+                    downloaded = 0
+                    for i, row in enumerate(rows):
+                        if i > 0:
+                            await asyncio.sleep(4)
+                        logger.info("run_fetch_assets: Google Ads downloading video %s (%d/%d)", row.video_id, i + 1, len(rows))
+                        try:
+                            _, thumb_url = await google_ads_sync._download_thumbnail(row.video_id, org_dir, org_id, row.ad_id)
+                            _, video_url = await google_ads_sync._download_video(row.video_id, org_dir, org_id, row.ad_id)
+                            logger.info("run_fetch_assets: Google Ads video %s result: video_url=%s thumb_url=%s", row.video_id, video_url, thumb_url)
+                            if video_url and not video_url.startswith("https://www.youtube.com/watch"):
+                                await db.execute(
+                                    sa_update(GoogleAdsRawPerformance)
+                                    .where(
+                                        GoogleAdsRawPerformance.platform_connection_id == conn.id,
+                                        GoogleAdsRawPerformance.video_id == row.video_id,
+                                    )
+                                    .values(
+                                        video_url=video_url,
+                                        **({"thumbnail_url": thumb_url} if thumb_url else {}),
+                                    )
+                                )
+                                downloaded += 1
+                        except Exception as e:
+                            logger.error("run_fetch_assets: Google Ads video %s FAILED: %s: %s\n%s", row.video_id, type(e).__name__, e, traceback.format_exc())
+                    await db.commit()
+                    logger.info("run_fetch_assets: Google Ads DONE — %d/%d videos downloaded for %s", downloaded, len(rows), connection_id)
+                # Propagate downloaded URLs into creative_assets so the dashboard reflects them
+                await db.execute(
+                    text("""
+                        UPDATE creative_assets ca
+                        SET
+                            asset_url = gr.video_url,
+                            thumbnail_url = COALESCE(
+                                CASE WHEN gr.thumbnail_url NOT LIKE 'https://img.youtube.com%'
+                                          AND gr.thumbnail_url NOT LIKE 'https://www.youtube.com%'
+                                     THEN gr.thumbnail_url END,
+                                ca.thumbnail_url
+                            )
+                        FROM (
+                            SELECT DISTINCT ON (ad_id) ad_id, video_url, thumbnail_url
+                            FROM google_ads_raw_performance
+                            WHERE platform_connection_id = :conn_id
+                              AND video_url IS NOT NULL
+                              AND video_url NOT LIKE 'https://www.youtube.com/watch%'
+                            ORDER BY ad_id, video_url
+                        ) gr
+                        WHERE ca.platform_connection_id = :conn_id
+                          AND ca.ad_id = gr.ad_id
+                    """),
+                    {"conn_id": conn.id},
+                )
+                await db.commit()
+                logger.info("run_fetch_assets: Google Ads — creative_assets propagated for %s", connection_id)
+                await _clear_sync_in_progress(connection_id)
+                return
+
+            else:
+                logger.error("run_fetch_assets: platform %s does not support asset fetch", conn.platform)
+                await _clear_sync_in_progress(connection_id)
+                return
+
+        if conn_platform == "DV360":
+            if asset_info:
+                logger.info("run_fetch_assets: DV360 — starting download of %d videos", len(asset_info.get("queue", {})))
+                await _run_dv360_asset_downloads(connection_id, asset_info)
+                logger.info("run_fetch_assets: DV360 — download pass complete for %s", connection_id)
+            # Propagate downloaded URLs into creative_assets so the dashboard reflects them
+            async with get_session_factory()() as db:
+                conn_uuid = uuid.UUID(connection_id) if isinstance(connection_id, str) else connection_id
+                await db.execute(
+                    text("""
+                        UPDATE creative_assets ca
+                        SET
+                            asset_url = dr.asset_url,
+                            thumbnail_url = COALESCE(
+                                CASE WHEN dr.thumbnail_url NOT LIKE 'https://img.youtube.com%'
+                                          AND dr.thumbnail_url NOT LIKE 'https://www.youtube.com%'
+                                     THEN dr.thumbnail_url END,
+                                ca.thumbnail_url
+                            )
+                        FROM (
+                            SELECT DISTINCT ON (ad_id) ad_id, asset_url, thumbnail_url
+                            FROM dv360_raw_performance
+                            WHERE platform_connection_id = :conn_id
+                              AND asset_url IS NOT NULL
+                              AND asset_url NOT LIKE 'https://www.youtube.com%'
+                            ORDER BY ad_id, asset_url
+                        ) dr
+                        WHERE ca.platform_connection_id = :conn_id
+                          AND ca.ad_id = dr.ad_id
+                    """),
+                    {"conn_id": conn_uuid},
+                )
+                await db.commit()
+                logger.info("run_fetch_assets: DV360 — creative_assets propagated for %s", connection_id)
+        await _clear_sync_in_progress(connection_id)
+
+    except Exception as e:
+        logger.error("run_fetch_assets: UNHANDLED ERROR for connection %s: %s: %s\n%s", connection_id, type(e).__name__, e, traceback.format_exc())
+        await _clear_sync_in_progress(connection_id)
 
 
 def schedule_connection(connection_id: str, timezone: str = "UTC") -> None:

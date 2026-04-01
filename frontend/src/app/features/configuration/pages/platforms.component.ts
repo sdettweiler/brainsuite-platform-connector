@@ -339,17 +339,19 @@ const PLATFORMS: PlatformDef[] = [
                   </mat-form-field>
                 </td>
                 <td class="col-actions">
-                  <button
-                    *ngIf="needsReconnect(conn)"
-                    mat-flat-button
-                    class="reconnect-btn"
-                    (click)="reconnect(conn); $event.stopPropagation()"
-                  >
-                    Reconnect Account
-                  </button>
-                  <button mat-icon-button [matMenuTriggerFor]="rowMenu" [matMenuTriggerData]="{conn: conn}">
-                    <i class="bi bi-three-dots-vertical"></i>
-                  </button>
+                  <div class="actions-cell">
+                    <button
+                      *ngIf="needsReconnect(conn)"
+                      mat-flat-button
+                      class="reconnect-btn"
+                      (click)="reconnect(conn); $event.stopPropagation()"
+                    >
+                      Reconnect Account
+                    </button>
+                    <button mat-icon-button [matMenuTriggerFor]="rowMenu" [matMenuTriggerData]="{conn: conn}">
+                      <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -408,6 +410,9 @@ const PLATFORMS: PlatformDef[] = [
         <ng-template matMenuContent let-conn="conn">
           <button mat-menu-item (click)="resync(conn)">
             <i class="bi bi-arrow-repeat" style="font-size: 18px; margin-right: 12px;"></i> Force Resync
+          </button>
+          <button mat-menu-item *ngIf="conn.platform === 'DV360' || conn.platform === 'GOOGLE_ADS'" (click)="fetchAssets(conn)">
+            <i class="bi bi-cloud-download" style="font-size: 18px; margin-right: 12px;"></i> Fetch Assets
           </button>
           <button mat-menu-item (click)="openMetadataPanel(conn)">
             <i class="bi bi-sliders" style="font-size: 18px; margin-right: 12px;"></i> Default Metadata
@@ -1036,6 +1041,16 @@ export class PlatformsComponent implements OnInit, OnDestroy {
         this.snackBar.open('Resync triggered', '', { duration: 2000 });
         setTimeout(() => this.loadConnections(), 2000);
       },
+    });
+  }
+
+  fetchAssets(conn: PlatformConnection): void {
+    this.api.post(`/platforms/connections/${conn.id}/fetch-assets`, {}).subscribe({
+      next: () => {
+        this.snackBar.open('Asset download started', '', { duration: 2000 });
+        setTimeout(() => this.loadConnections(), 2000);
+      },
+      error: () => { this.snackBar.open('Failed to start asset download', '', { duration: 3000 }); },
     });
   }
 

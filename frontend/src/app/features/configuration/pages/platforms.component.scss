@@ -210,10 +210,13 @@
   .col-tz { width: 140px; }
   .col-sync { width: 120px; }
   .col-app { width: 140px; }
-  .col-actions { width: 180px; text-align: right; }
+  .col-actions { width: 240px; min-width: 240px; text-align: right; overflow: visible; }
 
   td, th {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  td.col-actions, th.col-actions {
+    overflow: visible;
   }
 }
 
@@ -279,6 +282,10 @@
   }
 }
 
+.actions-cell {
+  display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+}
+
 .reconnect-btn {
   background: var(--accent) !important;
   color: white !important;
@@ -288,7 +295,6 @@
   border-radius: 6px;
   min-width: auto;
   line-height: 1.4;
-  margin-right: 4px;
 }
 
 .inline-app-select {

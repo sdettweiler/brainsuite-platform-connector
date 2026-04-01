@@ -291,6 +291,7 @@ class GoogleAdsSyncService:
         def _do_download():
             import yt_dlp
             import tempfile
+            import shutil
 
             class _YDLLogger:
                 def debug(self, msg):
@@ -302,6 +303,7 @@ class GoogleAdsSyncService:
                 def warning(self, msg): logger.warning("yt-dlp: %s", msg)
                 def error(self, msg): logger.warning("yt-dlp error: %s", msg)
 
+            ffmpeg_path = shutil.which("ffmpeg")
             ydl_opts = {
                 "outtmpl": local_path,
                 "format": "bv*+ba/b",
@@ -310,10 +312,11 @@ class GoogleAdsSyncService:
                 "socket_timeout": 30,
                 "merge_output_format": "mp4",
                 "ignore_no_formats_error": True,
-                "js_runtimes": {"node": {}},
-                "remote_components": {"ejs:github": True},
+                "js_runtimes": "deno",
                 "logger": _YDLLogger(),
             }
+            if ffmpeg_path:
+                ydl_opts["ffmpeg_location"] = ffmpeg_path
             cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
             cookie_file = None
             if cookies_data:

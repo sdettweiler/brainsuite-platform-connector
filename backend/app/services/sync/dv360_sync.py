@@ -1109,12 +1109,9 @@ class DV360SyncService:
         def _do_download_with_cookies(env_var_name: str):
             import yt_dlp
             import tempfile
-            ffmpeg_path = None
-            try:
-                import imageio_ffmpeg
-                ffmpeg_path = os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
-            except (ImportError, OSError):
-                pass
+            import shutil
+            # Prefer system ffmpeg (imageio_ffmpeg bundles a binary that yt-dlp cannot use)
+            ffmpeg_path = shutil.which("ffmpeg")
 
             class _YDLLogger:
                 def debug(self, msg):
@@ -1134,7 +1131,6 @@ class DV360SyncService:
                 "no_warnings": True,
                 "socket_timeout": 30,
                 "ignore_no_formats_error": True,
-                "remote_components": {"ejs:github": True},
                 "logger": _YDLLogger(),
             }
             if ffmpeg_path:

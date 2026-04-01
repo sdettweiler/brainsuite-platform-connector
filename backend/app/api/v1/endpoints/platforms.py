@@ -693,6 +693,24 @@ async def manual_resync(
         return {"detail": "Full resync started"}
 
 
+@router.post("/connections/{connection_id}/fetch-assets")
+async def fetch_assets(
+    connection_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    conn = await db.get(PlatformConnection, connection_id)
+    if not conn or conn.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    if conn.platform not in ("DV360", "GOOGLE_ADS"):
+        raise HTTPException(status_code=400, detail="Asset fetch is only supported for DV360 and Google Ads")
+
+    from app.services.sync.scheduler import run_fetch_assets
+    background_tasks.add_task(run_fetch_assets, str(connection_id))
+    return {"detail": "Asset download started"}
+
+
 @router.post("/connections/bulk-action")
 async def bulk_action(
     payload: dict,
