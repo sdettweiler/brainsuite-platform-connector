@@ -270,6 +270,10 @@ input:-webkit-autofill:active {
   }
 }
 
+.cdk-overlay-container {
+  z-index: 1100;
+}
+
 .mat-mdc-select-panel,
 .cdk-overlay-pane .mat-mdc-select-panel {
   background: var(--bg-card) !important;
