@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
-status: Phase 08 Complete — Ready for Phase 09
-stopped_at: "Phase 09 — not yet planned"
-last_updated: "2026-04-01T00:00:00.000Z"
-last_activity: "2026-04-01 - Phase 08 verified (partial): drawer mechanics, tile affordance, states, and interactions approved. Scatter chart + spend filter unverifiable due to no ROAS data in DB — data gap, not code issue."
+status: Ready to execute
+stopped_at: Completed 09-01-PLAN.md — AI metadata auto-fill backend foundation
+last_updated: "2026-04-01T18:11:01.455Z"
+last_activity: 2026-04-01
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 ## Current Position
 
 Phase: 08 (score-to-roas-correlation) — EXECUTING
-Plan: 1 of 2
+Plan: 2 of 2
 Phase: 08 (score-to-roas-correlation) — READY TO PLAN
 
 ## Accumulated Context
@@ -55,6 +55,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase 07-03]: Zero spend shows $0.00; all other null/zero metrics omitted — zero is data-absent noise except for spend
 - [Phase 07-03]: getCampaignUrl() uses ad_account_id for Meta/DV360 URL construction; tile styles reuse --bg-card/--border CSS vars for CE tab visual consistency
 - [Phase 08]: Fixed-position overlay drawer instead of MatSidenav — avoids height-propagation issues, explicitly allowed by plan
+- [Phase 09-ai-metadata-auto-fill]: AsyncOpenAI at module-level import to allow patch() in unit tests; _set_status/_write_values as separate awaitable helpers for test isolation
 
 ### Pending Todos
 
@@ -76,7 +77,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last activity: 2026-04-01 - Phase 08 verified (partial) — drawer approved, chart/filter blocked by missing ROAS data
-Last session: 2026-04-01T00:00:00.000Z
-Stopped at: Phase 08 complete — advancing to Phase 09 (AI Metadata Auto-Fill)
+Last activity: 2026-04-01
+Last session: 2026-04-01T18:11:01.447Z
+Stopped at: Completed 09-01-PLAN.md — AI metadata auto-fill backend foundation
 Resume: Discuss or plan Phase 09
