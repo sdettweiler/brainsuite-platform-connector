@@ -12,7 +12,8 @@ import app.api.v1.endpoints.dashboard as dashboard_module
 
 def _mock_row(roas=None, total_score=75.0, total_spend=100.0,
               platform="META", ad_name="Test Ad", thumbnail_url="/thumb.jpg",
-              asset_id="abc-123"):
+              asset_id="abc-123", ctr=None, vtr=None, cpm=None, cvr=None,
+              cpc=None, conversions=None):
     row = MagicMock()
     row.roas = roas
     row.total_score = total_score
@@ -21,6 +22,12 @@ def _mock_row(roas=None, total_score=75.0, total_spend=100.0,
     row.ad_name = ad_name
     row.thumbnail_url = thumbnail_url
     row.id = asset_id
+    row.ctr = ctr
+    row.vtr = vtr
+    row.cpm = cpm
+    row.cvr = cvr
+    row.cpc = cpc
+    row.conversions = conversions
     return row
 
 
@@ -67,10 +74,13 @@ def test_positive_roas_preserved():
 
 
 def test_serialization_returns_expected_keys():
-    """Output must contain exactly the expected keys for scatter chart."""
+    """Output must contain all expected keys for scatter chart including new metric fields."""
     row = _mock_row(roas=2.0)
     result = dashboard_module._serialize_correlation_asset(row)
-    expected_keys = {"id", "ad_name", "platform", "thumbnail_url", "total_score", "roas", "spend"}
+    expected_keys = {
+        "id", "ad_name", "platform", "thumbnail_url", "total_score",
+        "roas", "spend", "ctr", "vtr", "cpm", "cvr", "cpc", "conversions",
+    }
     assert set(result.keys()) == expected_keys, (
         f"Expected keys {expected_keys}, got {set(result.keys())}"
     )
@@ -91,3 +101,27 @@ def test_spend_field_maps_to_total_spend():
     assert result["spend"] == 500.0, (
         f"Expected spend=500.0 but got {result['spend']!r}"
     )
+
+
+def test_new_metric_fields_returned_as_float():
+    """ctr, vtr, cpm, cvr, cpc, conversions must be returned as floats when present."""
+    row = _mock_row(
+        roas=2.0, ctr=1.5, vtr=10.2, cpm=3.75, cvr=0.8, cpc=0.45, conversions=42.0
+    )
+    result = dashboard_module._serialize_correlation_asset(row)
+    assert result["ctr"] == 1.5, f"Expected ctr=1.5 but got {result['ctr']!r}"
+    assert result["vtr"] == 10.2, f"Expected vtr=10.2 but got {result['vtr']!r}"
+    assert result["cpm"] == 3.75, f"Expected cpm=3.75 but got {result['cpm']!r}"
+    assert result["cvr"] == 0.8, f"Expected cvr=0.8 but got {result['cvr']!r}"
+    assert result["cpc"] == 0.45, f"Expected cpc=0.45 but got {result['cpc']!r}"
+    assert result["conversions"] == 42.0, f"Expected conversions=42.0 but got {result['conversions']!r}"
+
+
+def test_new_metric_fields_null_when_absent():
+    """All new metric fields must return None when row values are None."""
+    row = _mock_row(roas=1.0)  # ctr/vtr/cpm/cvr/cpc/conversions all default to None
+    result = dashboard_module._serialize_correlation_asset(row)
+    for field in ("ctr", "vtr", "cpm", "cvr", "cpc", "conversions"):
+        assert result[field] is None, (
+            f"Expected {field}=None but got {result[field]!r}"
+        )

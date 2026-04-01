@@ -87,6 +87,12 @@ interface CorrelationAsset {
   total_score: number;
   roas: number | null;
   spend: number | null;
+  ctr: number | null;
+  vtr: number | null;
+  cpm: number | null;
+  cvr: number | null;
+  cpc: number | null;
+  conversions: number | null;
 }
 
 @Component({
@@ -388,7 +394,14 @@ interface CorrelationAsset {
       <div class="correlation-drawer" [class.correlation-drawer-open]="correlationDrawerOpen">
         <!-- Drawer header -->
         <div class="correlation-drawer-header">
-          <h4>Score vs. ROAS</h4>
+          <div style="display:flex;align-items:center;gap:12px">
+            <h4 style="margin:0;white-space:nowrap">Score vs.</h4>
+            <mat-form-field appearance="outline" style="width:150px;margin:0" subscriptSizing="dynamic">
+              <mat-select [(value)]="selectedCorrelationMetric" (selectionChange)="buildScatterChart()">
+                <mat-option *ngFor="let m of correlationMetrics" [value]="m.key">{{ m.label }}</mat-option>
+              </mat-select>
+            </mat-form-field>
+          </div>
           <button mat-icon-button (click)="closeCorrelationDrawer()" aria-label="Close correlation drawer">
             <i class="bi bi-x" style="font-size:20px"></i>
           </button>
@@ -420,7 +433,7 @@ interface CorrelationAsset {
         <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount === 0" class="correlation-empty">
           <i class="bi bi-scatter" style="font-size:48px;color:var(--text-muted)"></i>
           <h4>No qualifying creatives to correlate</h4>
-          <p>No scored creatives with ROAS data meet the current filters. Try lowering the minimum spend threshold or broadening the date range.</p>
+          <p>No scored creatives with {{ selectedMetricLabel }} data meet the current filters. Try lowering the minimum spend threshold or broadening the date range.</p>
         </div>
 
         <!-- Chart -->
@@ -439,7 +452,7 @@ interface CorrelationAsset {
 
         <!-- 99th pct annotation -->
         <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount > 0"
-             class="correlation-cap-note">ROAS capped at 99th pct.</div>
+             class="correlation-cap-note">{{ selectedMetricLabel }} capped at 99th pct.</div>
       </div>
     </div>
   `,
@@ -928,6 +941,13 @@ interface CorrelationAsset {
       color: var(--text-muted);
       padding: 0 24px 16px;
     }
+
+    .correlation-drawer-header .mat-mdc-form-field {
+      font-size: 14px;
+    }
+    .correlation-drawer-header .mat-mdc-form-field .mat-mdc-select-value {
+      font-weight: 600;
+    }
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
@@ -1002,6 +1022,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
     hidePointerLabels: true,
   };
   scatterOptions: EChartsOption = {};
+
+  readonly correlationMetrics: { key: string; label: string; format: (v: number) => string; suffix: string }[] = [
+    { key: 'roas', label: 'ROAS', format: (v) => v.toFixed(2) + 'x', suffix: 'x' },
+    { key: 'ctr', label: 'CTR', format: (v) => v.toFixed(2) + '%', suffix: '%' },
+    { key: 'vtr', label: 'VTR', format: (v) => v.toFixed(2) + '%', suffix: '%' },
+    { key: 'cpm', label: 'CPM', format: (v) => '$' + v.toFixed(2), suffix: '' },
+    { key: 'cvr', label: 'CVR', format: (v) => v.toFixed(2) + '%', suffix: '%' },
+    { key: 'cpc', label: 'CPC', format: (v) => '$' + v.toFixed(2), suffix: '' },
+    { key: 'conversions', label: 'Conversions', format: (v) => v.toFixed(0), suffix: '' },
+  ];
+  selectedCorrelationMetric = 'roas';
 
   constructor(
     private api: ApiService,
@@ -1083,8 +1114,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   get correlationEligibleCount(): number {
     return this.correlationAssets.filter(
-      a => a.roas !== null && (a.spend ?? 0) >= this.correlationMinSpend
+      a => (a as any)[this.selectedCorrelationMetric] !== null && (a.spend ?? 0) >= this.correlationMinSpend
     ).length;
+  }
+
+  get selectedMetricLabel(): string {
+    return this.correlationMetrics.find(m => m.key === this.selectedCorrelationMetric)?.label ?? '';
   }
 
   trackAggStat(_index: number, item: any): string { return item.label; }
@@ -1128,8 +1163,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   buildScatterChart(): void {
+    const metric = this.correlationMetrics.find(m => m.key === this.selectedCorrelationMetric)!;
     const eligible = this.correlationAssets.filter(
-      a => a.roas !== null && (a.spend ?? 0) >= this.correlationMinSpend
+      a => (a as any)[metric.key] !== null && (a.spend ?? 0) >= this.correlationMinSpend
     );
 
     if (eligible.length === 0) {
@@ -1137,10 +1173,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const roasValues = eligible.map(a => a.roas as number).sort((x, y) => x - y);
+    const metricValues = eligible.map(a => (a as any)[metric.key] as number).sort((x, y) => x - y);
     const scoreValues = eligible.map(a => a.total_score).sort((x, y) => x - y);
 
-    const roasCap = roasValues[Math.floor(roasValues.length * 0.99)] ?? roasValues[roasValues.length - 1] ?? 1;
+    const metricCap = metricValues[Math.floor(metricValues.length * 0.99)] ?? metricValues[metricValues.length - 1] ?? 1;
 
     const median = (arr: number[]): number => {
       const mid = Math.floor(arr.length / 2);
@@ -1148,11 +1184,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     };
 
     const medianScore = eligible.length === 1 ? eligible[0].total_score : median(scoreValues);
-    const medianRoas = eligible.length === 1 ? (eligible[0].roas as number) : median(roasValues);
+    const medianMetric = eligible.length === 1 ? ((eligible[0] as any)[metric.key] as number) : median(metricValues);
 
     const scatterData = eligible.map(a => [
       a.total_score,
-      Math.min(a.roas as number, roasCap),
+      Math.min((a as any)[metric.key] as number, metricCap),
       a,
     ]);
 
@@ -1168,9 +1204,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         splitLine: { lineStyle: { color: '#404040', opacity: 0.2 } },
       },
       yAxis: {
-        name: 'ROAS',
+        name: metric.label,
         min: 0,
-        max: roasCap * 1.05,
+        max: metricCap * 1.05,
         axisLine: { lineStyle: { color: '#404040' } },
         splitLine: { lineStyle: { color: '#404040', opacity: 0.2 } },
       },
@@ -1188,7 +1224,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
             <div>
               <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">${asset.ad_name || 'Untitled'}</div>
               <div style="font-size:14px;color:var(--text-secondary);margin-top:4px">
-                Score: ${params.data[0]} &middot; ROAS: ${(params.data[1] as number).toFixed(2)}x &middot; $${((asset.spend ?? 0) as number).toFixed(0)} &middot; ${asset.platform}
+                Score: ${params.data[0]} &middot; ${metric.label}: ${metric.format(params.data[1] as number)} &middot; $${((asset.spend ?? 0) as number).toFixed(0)} &middot; ${asset.platform}
               </div>
             </div>
           </div>`;
@@ -1210,16 +1246,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
           lineStyle: { color: '#404040', type: 'dashed', width: 1 },
           data: [
             { xAxis: medianScore },
-            { yAxis: medianRoas },
-            { yAxis: roasCap, lineStyle: { color: 'rgba(255,119,0,0.4)', type: 'dashed' } },
+            { yAxis: medianMetric },
+            { yAxis: metricCap, lineStyle: { color: 'rgba(255,119,0,0.4)', type: 'dashed' } },
           ],
         },
         itemStyle: {
           color: (params: any) => {
-            const [score, roas] = params.data;
-            if (score >= medianScore && roas >= medianRoas) return '#FF7700';
-            if (score < medianScore && roas >= medianRoas) return '#F39C12';
-            if (score >= medianScore && roas < medianRoas) return '#4285F4';
+            const [score, metricVal] = params.data;
+            if (score >= medianScore && metricVal >= medianMetric) return '#FF7700';
+            if (score < medianScore && metricVal >= medianMetric) return '#F39C12';
+            if (score >= medianScore && metricVal < medianMetric) return '#4285F4';
             return '#707070';
           },
         },
