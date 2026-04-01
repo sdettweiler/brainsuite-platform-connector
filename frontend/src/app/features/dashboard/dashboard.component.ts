@@ -1193,7 +1193,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     ]);
 
     this.scatterOptions = {
-      grid: { top: 40, right: 80, bottom: 50, left: 60 },
+      grid: { top: 40, right: 20, bottom: 50, left: 60 },
       xAxis: {
         name: 'ACE Score',
         min: 0,
@@ -1248,7 +1248,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           silent: true,
           symbol: 'none',
           lineStyle: { color: '#404040', type: 'dashed', width: 1 },
-          label: { show: true, color: '#aaaaaa', fontSize: 11, borderWidth: 0, backgroundColor: 'transparent' },
+          label: { show: true, color: '#aaaaaa', fontSize: 11, borderWidth: 0, backgroundColor: 'transparent', position: 'insideStartTop' },
           data: [
             { xAxis: medianScore, label: { formatter: `Median Score: ${medianScore.toFixed(0)}` } },
             { yAxis: medianMetric, label: { formatter: `Median ${metric.label}: ${metric.format(medianMetric)}` } },
