@@ -8,6 +8,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { ApiService } from '../../../core/services/api.service';
 
@@ -20,6 +21,8 @@ interface MetadataField {
   default_value?: string;
   sort_order: number;
   allowed_values?: Array<{ id: string; value: string; label: string; sort_order: number }>;
+  auto_fill_enabled: boolean;
+  auto_fill_type: string | null;
 }
 
 @Component({
@@ -27,7 +30,7 @@ interface MetadataField {
   imports: [
     CommonModule, FormsModule, ReactiveFormsModule, MatButtonModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule,
-    MatProgressSpinnerModule, MatSnackBarModule, DragDropModule,
+    MatProgressSpinnerModule, MatSnackBarModule, MatSlideToggleModule, DragDropModule,
   ],
   template: `
     <div class="page-container">
@@ -55,6 +58,7 @@ interface MetadataField {
               cdkDrag
               class="field-row"
               [class.expanded]="expandedId === field.id"
+              [attr.data-autofill]="field.auto_fill_enabled"
             >
               <div class="field-header" (click)="toggleExpand(field.id)">
                 <i class="bi bi-grip-vertical drag-handle" cdkDragHandle></i>
@@ -79,6 +83,45 @@ interface MetadataField {
                     <i class="bi bi-trash"></i>
                   </button>
                   <i class="bi expand-icon" [ngClass]="expandedId === field.id ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                </div>
+              </div>
+
+              <!-- Expanded: AI Auto-Fill section (all field types) -->
+              <div *ngIf="expandedId === field.id" class="field-options auto-fill-section" style="margin-top: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <span style="font-size: 14px; font-weight: 600;">AI Auto-Fill</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 12px 0;">
+                  Fields are filled automatically during asset sync using AI inference.
+                </p>
+                <mat-slide-toggle
+                  [checked]="field.auto_fill_enabled"
+                  (change)="onAutoFillToggle(field, $event)"
+                  color="primary">
+                  Enable Auto-fill
+                </mat-slide-toggle>
+
+                <div class="auto-fill-type-selector"
+                     [style.opacity]="field.auto_fill_enabled ? '1' : '0'"
+                     [style.display]="field.auto_fill_enabled ? 'block' : 'none'"
+                     style="margin-top: 12px; transition: opacity 0.15s ease;">
+                  <mat-form-field appearance="outline" style="width: 100%;">
+                    <mat-label>Select inference type</mat-label>
+                    <mat-select [(value)]="field.auto_fill_type"
+                                (selectionChange)="onAutoFillTypeChange(field, $event)">
+                      <mat-option value="language">Language (detected from content)</mat-option>
+                      <mat-option value="brand_names">Brand Names (extracted from creative)</mat-option>
+                      <mat-option value="vo_transcript">Voice Over Transcript (Whisper)</mat-option>
+                      <mat-option value="vo_language">Voice Over Language (Whisper)</mat-option>
+                      <mat-option value="campaign_name">Project Name (from campaign data)</mat-option>
+                      <mat-option value="ad_name">Asset Name (from ad data)</mat-option>
+                      <mat-option value="fixed_value">Fixed Value (always use default)</mat-option>
+                    </mat-select>
+                  </mat-form-field>
+                  <p *ngIf="field.auto_fill_enabled && !field.auto_fill_type"
+                     style="font-size: 12px; color: var(--warning); margin: 4px 0 0 0;">
+                    Select an inference type to enable auto-fill for this field.
+                  </p>
                 </div>
               </div>
 
@@ -193,6 +236,13 @@ interface MetadataField {
     .fields-list { }
 
     .field-row { border-bottom: 1px solid var(--border); &:last-child { border-bottom: none; } }
+    .field-row[data-autofill="true"] { border-left: 4px solid var(--accent) !important; }
+    :host ::ng-deep .mat-mdc-slide-toggle.mat-mdc-slide-toggle-checked .mdc-switch__handle::after {
+      background: var(--accent) !important;
+    }
+    :host ::ng-deep .mat-mdc-slide-toggle.mat-mdc-slide-toggle-checked .mdc-switch__track::after {
+      background: rgba(255, 119, 0, 0.38) !important;
+    }
 
     .field-header {
       display: flex; align-items: center; gap: 12px; padding: 14px 20px;
@@ -391,5 +441,32 @@ export class MetadataComponent implements OnInit {
     if (field.allowed_values) {
       moveItemInArray(field.allowed_values, event.previousIndex, event.currentIndex);
     }
+  }
+
+  onAutoFillToggle(field: MetadataField, event: any): void {
+    field.auto_fill_enabled = event.checked;
+    if (!event.checked) {
+      field.auto_fill_type = null;
+    }
+    this.saveAutoFillSettings(field);
+  }
+
+  onAutoFillTypeChange(field: MetadataField, event: any): void {
+    field.auto_fill_type = event.value;
+    this.saveAutoFillSettings(field);
+  }
+
+  saveAutoFillSettings(field: MetadataField): void {
+    this.api.patch(`/assets/metadata/fields/${field.id}`, {
+      auto_fill_enabled: field.auto_fill_enabled,
+      auto_fill_type: field.auto_fill_type
+    }).subscribe({
+      next: () => {
+        this.snackBar.open('Auto-fill settings saved', '', { duration: 2000 });
+      },
+      error: () => {
+        this.snackBar.open('Failed to save — please try again', '', { duration: 4000 });
+      }
+    });
   }
 }
