@@ -1248,10 +1248,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
           silent: true,
           symbol: 'none',
           lineStyle: { color: '#404040', type: 'dashed', width: 1 },
+          label: { show: true, color: '#aaaaaa', fontSize: 11, borderWidth: 0, backgroundColor: 'transparent' },
           data: [
-            { xAxis: medianScore },
-            { yAxis: medianMetric },
-            { yAxis: metricCap, lineStyle: { color: 'rgba(255,119,0,0.4)', type: 'dashed' } },
+            { xAxis: medianScore, label: { formatter: `Median Score: ${medianScore.toFixed(0)}` } },
+            { yAxis: medianMetric, label: { formatter: `Median ${metric.label}: ${metric.format(medianMetric)}` } },
+            { yAxis: metricCap, lineStyle: { color: 'rgba(255,119,0,0.4)', type: 'dashed' }, label: { formatter: `99th pct`, color: 'rgba(255,119,0,0.7)' } },
           ],
         },
         itemStyle: {
