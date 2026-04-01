@@ -1235,10 +1235,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
         },
       },
       graphic: [
-        { type: 'text', right: 30, top: 50, style: { text: 'Stars', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
-        { type: 'text', left: 70, top: 50, style: { text: 'Workhorses', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
-        { type: 'text', right: 30, bottom: 60, style: { text: 'Question Marks', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
-        { type: 'text', left: 70, bottom: 60, style: { text: 'Laggards', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
+        { type: 'text', right: 30, top: 50, style: { text: 'Stars', fill: '#aaaaaa', fontSize: 11, fontWeight: '600' } },
+        { type: 'text', left: 70, top: 50, style: { text: 'Workhorses', fill: '#aaaaaa', fontSize: 11, fontWeight: '600' } },
+        { type: 'text', right: 30, bottom: 60, style: { text: 'Question Marks', fill: '#aaaaaa', fontSize: 11, fontWeight: '600' } },
+        { type: 'text', left: 70, bottom: 60, style: { text: 'Laggards', fill: '#aaaaaa', fontSize: 11, fontWeight: '600' } },
       ],
       series: [{
         type: 'scatter',
