@@ -1,0 +1,17 @@
+{
+  "/api": {
+    "target": "http://brainsuite_backend:8000",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/static": {
+    "target": "http://brainsuite_backend:8000",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/objects": {
+    "target": "http://brainsuite_backend:8000",
+    "secure": false,
+    "changeOrigin": true
+  }
+}

@@ -396,13 +396,15 @@ interface CorrelationAsset {
 
         <!-- Spend threshold -->
         <div class="correlation-spend-row">
-          <mat-form-field appearance="outline" class="correlation-spend-field">
-            <mat-label>Min. spend</mat-label>
-            <span matPrefix>$&nbsp;</span>
-            <input matInput type="number" [(ngModel)]="correlationMinSpend"
-                   (ngModelChange)="onCorrelationMinSpendChange()"
-                   placeholder="10" min="0">
-          </mat-form-field>
+          <div class="correlation-spend-header">
+            <span class="correlation-spend-label">Min. spend</span>
+            <span class="correlation-spend-value">\${{ correlationMinSpend | number }}</span>
+          </div>
+          <ngx-slider
+            [(value)]="correlationMinSpend"
+            [options]="correlationMinSpendOptions"
+            (userChangeEnd)="onCorrelationMinSpendChange()"
+          ></ngx-slider>
         </div>
 
         <!-- Chart loading -->
@@ -865,10 +867,22 @@ interface CorrelationAsset {
     }
 
     .correlation-spend-row {
-      padding: 16px 24px 0;
+      padding: 12px 24px 0;
     }
-    .correlation-spend-field {
-      width: 140px;
+    .correlation-spend-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .correlation-spend-label {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .correlation-spend-value {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary, #fff);
     }
 
     .correlation-empty {
@@ -979,6 +993,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   correlationError = false;
   correlationAssets: CorrelationAsset[] = [];
   correlationMinSpend = 10;
+  correlationMinSpendOptions: Options = {
+    floor: 0,
+    ceil: 1000,
+    step: 10,
+    showTicks: false,
+    hideLimitLabels: true,
+    hidePointerLabels: true,
+  };
   scatterOptions: EChartsOption = {};
 
   constructor(

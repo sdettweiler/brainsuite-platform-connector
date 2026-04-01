@@ -332,16 +332,11 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
   styles: [`
     .page-container { padding: 28px; display: flex; flex-direction: column; gap: 24px; max-width: 900px; }
 
-    .config-section {
-      background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-    }
+    .config-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 
-    .section-header {
-      display: flex; align-items: flex-start; justify-content: space-between;
-      padding: 20px 24px; border-bottom: 1px solid var(--border);
-      h2 { font-size: 16px; font-weight: 600; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
-      p { font-size: 13px; color: var(--text-secondary); margin: 0; }
-    }
+    .section-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+    .section-header h2 { font-size: 16px; font-weight: 600; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+    .section-header p { font-size: 13px; color: var(--text-secondary); margin: 0; }
 
     .pending-header h2 { color: var(--accent); }
     .pending-icon { font-size: 18px !important; color: var(--accent); }
@@ -350,37 +345,13 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
 
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 
-    .slug-display {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 16px;
-      padding: 10px 14px;
-      background: var(--bg-secondary);
-      border-radius: 6px;
-    }
+    .slug-display { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding: 10px 14px; background: var(--bg-secondary); border-radius: 6px; }
 
     .slug-label { font-size: 13px; color: var(--text-secondary); }
 
-    .slug-value {
-      font-family: monospace;
-      font-size: 13px;
-      color: var(--accent);
-      background: rgba(255,119,0,0.1);
-      padding: 2px 8px;
-      border-radius: 4px;
-    }
+    .slug-value { font-family: monospace; font-size: 13px; color: var(--accent); background: rgba(255,119,0,0.1); padding: 2px 8px; border-radius: 4px; }
 
-    .copy-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 2px;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-    }
-
+    .copy-btn { background: none; border: none; cursor: pointer; padding: 2px; color: var(--text-muted); display: flex; align-items: center; }
     .copy-btn i.bi { font-size: 14px; }
     .copy-btn:hover { color: var(--accent); }
 
@@ -391,34 +362,19 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
 
     .users-table { overflow-x: auto; }
 
-    .table-header, .user-row {
-      display: grid; grid-template-columns: 1fr 120px 100px 140px 48px; align-items: center;
-    }
+    .table-header, .user-row { display: grid; grid-template-columns: 1fr 120px 100px 140px 48px; align-items: center; }
 
-    .pending-table-header, .pending-table-header + .user-row,
-    .config-section:has(.pending-header) .user-row {
-      grid-template-columns: 1fr 140px auto;
-    }
+    .pending-table-header, .pending-table-header + .user-row { grid-template-columns: 1fr 140px auto; }
 
-    .table-header {
-      padding: 10px 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border);
-      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-secondary);
-    }
+    .table-header { padding: 10px 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-secondary); }
 
-    .user-row {
-      padding: 12px 24px; border-bottom: 1px solid var(--border);
-      &:last-child { border-bottom: none; }
-      &:hover { background: var(--bg-secondary); }
-    }
+    .user-row { padding: 12px 24px; border-bottom: 1px solid var(--border); }
+    .user-row:last-child { border-bottom: none; }
+    .user-row:hover { background: var(--bg-secondary); }
 
     .col-user { display: flex; align-items: center; gap: 12px; }
 
-    .user-avatar {
-      width: 36px; height: 36px; border-radius: 50%;
-      background: var(--accent); color: white;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 700; flex-shrink: 0;
-    }
+    .user-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
 
     .pending-avatar { background: var(--text-muted); }
 
@@ -427,55 +383,33 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
 
     .col-date { font-size: 13px; color: var(--text-secondary); }
 
-    .col-pending-actions {
-      display: flex; gap: 8px; justify-content: flex-end;
-    }
+    .col-pending-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
-    .approve-btn {
-      background: #34A853 !important; color: white !important;
-      font-size: 12px !important; height: 32px !important;
-      display: flex !important; align-items: center; gap: 4px;
-    }
-
+    .approve-btn { background: #34A853 !important; color: white !important; font-size: 12px !important; height: 32px !important; display: flex !important; align-items: center; gap: 4px; }
     .approve-btn i.bi { font-size: 14px !important; }
 
-    .reject-btn {
-      color: var(--error) !important; border-color: var(--error) !important;
-      font-size: 12px !important; height: 32px !important;
-      display: flex !important; align-items: center; gap: 4px;
-    }
-
+    .reject-btn { color: var(--error) !important; border-color: var(--error) !important; font-size: 12px !important; height: 32px !important; display: flex !important; align-items: center; gap: 4px; }
     .reject-btn i.bi { font-size: 14px !important; }
 
-    .role-badge {
-      padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;
-      &.role-admin { background: var(--accent-light); color: var(--accent); }
-      &.role-standard { background: rgba(52,168,83,0.15); color: #34A853; }
-      &.role-read_only { background: var(--bg-secondary); color: var(--text-secondary); }
-    }
+    .role-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+    .role-badge.role-admin { background: var(--accent-light); color: var(--accent); }
+    .role-badge.role-standard { background: rgba(52,168,83,0.15); color: #34A853; }
+    .role-badge.role-read_only { background: var(--bg-secondary); color: var(--text-secondary); }
 
-    .status-dot {
-      display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); margin-right: 6px;
-      &.active { background: #34A853; }
-    }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); margin-right: 6px; }
+    .status-dot.active { background: #34A853; }
 
     .col-last { font-size: 13px; color: var(--text-secondary); }
 
-    .empty-table {
-      display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px;
-      color: var(--text-muted);
-      i.bi { font-size: 28px; opacity: 0.4; }
-      span { font-size: 13px; }
-    }
+    .empty-table { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px; color: var(--text-muted); }
+    .empty-table i.bi { font-size: 28px; opacity: 0.4; }
+    .empty-table span { font-size: 13px; }
 
     .loading-row { display: flex; justify-content: center; padding: 32px; }
 
-    .invite-note {
-      display: flex; align-items: flex-start; gap: 8px; padding: 12px;
-      background: var(--accent-light); border-radius: 6px; margin-bottom: 16px;
-      i.bi { font-size: 14px; color: var(--accent); margin-top: 1px; }
-      span { font-size: 13px; color: var(--text-secondary); }
-    }
+    .invite-note { display: flex; align-items: flex-start; gap: 8px; padding: 12px; background: var(--accent-light); border-radius: 6px; margin-bottom: 16px; }
+    .invite-note i.bi { font-size: 14px; color: var(--accent); margin-top: 1px; }
+    .invite-note span { font-size: 13px; color: var(--text-secondary); }
   `],
 })
 export class OrganizationComponent implements OnInit {

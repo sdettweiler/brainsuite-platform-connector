@@ -1103,8 +1103,6 @@ class DV360SyncService:
             return local_path if os.path.exists(local_path) else None, obj_storage.served_url(relative_path)
 
         cookie_vars = self._get_cookie_env_vars_to_try()
-        if not cookie_vars:
-            return None, None
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
@@ -1117,20 +1115,31 @@ class DV360SyncService:
                 ffmpeg_path = os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
             except (ImportError, OSError):
                 pass
+
+            class _YDLLogger:
+                def debug(self, msg):
+                    if msg.startswith("[debug] "):
+                        logger.debug("yt-dlp: %s", msg)
+                    else:
+                        logger.info("yt-dlp: %s", msg)
+                def info(self, msg): logger.info("yt-dlp: %s", msg)
+                def warning(self, msg): logger.warning("yt-dlp: %s", msg)
+                def error(self, msg): logger.warning("yt-dlp error: %s", msg)
+
             ydl_opts = {
                 "outtmpl": local_path,
-                "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b",
+                "format": "bv*+ba/b",
                 "merge_output_format": "mp4",
                 "quiet": True,
-                "no_warnings": False,
-                "socket_timeout": 15,
-                "extractor_args": {"youtube": {"player_client": ["web"]}},
-                "compat_opts": set(),
-                "remote_components": {"ejs:github"},
+                "no_warnings": True,
+                "socket_timeout": 30,
+                "ignore_no_formats_error": True,
+                "remote_components": {"ejs:github": True},
+                "logger": _YDLLogger(),
             }
             if ffmpeg_path:
                 ydl_opts["ffmpeg_location"] = ffmpeg_path
-            cookies_data = os.environ.get(env_var_name, "")
+            cookies_data = os.environ.get(env_var_name, "") if env_var_name else ""
             cookie_file = None
             if cookies_data:
                 cleaned = "\n".join(
@@ -1149,32 +1158,34 @@ class DV360SyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
+        # Try with each valid cookie set, then fall back to a cookieless attempt
+        attempts = cookie_vars if cookie_vars else [None]
         loop = asyncio.get_event_loop()
-        for i, env_var in enumerate(cookie_vars):
+        for i, env_var in enumerate(attempts):
+            label = "no cookies" if env_var is None else ("primary" if i == 0 else "backup")
+            logger.info("  Attempting DV360 video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
             try:
                 await loop.run_in_executor(None, lambda ev=env_var: _do_download_with_cookies(ev))
 
                 if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
                     size_mb = os.path.getsize(local_path) / (1024 * 1024)
-                    label = "primary" if i == 0 else "backup"
                     served_url = obj_storage.upload_file(local_path, relative_path, content_type="video/mp4")
-                    logger.info(f"  Downloaded DV360 YouTube video: {filename} ({size_mb:.1f} MB) [{label} cookies]")
+                    logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, label)
                     return local_path, served_url
                 else:
-                    logger.warning(f"  yt-dlp finished but file not found: {local_path}")
-            except (OSError, RuntimeError) as e:
+                    logger.warning("  yt-dlp finished but output file missing: %s", local_path)
+            except Exception as e:
                 if os.path.exists(local_path):
                     os.remove(local_path)
                 err_str = str(e)
                 is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
                 if is_format_error:
-                    logger.warning("No video formats available for %s (format issue) — skipping retries", youtube_video_id)
+                    logger.warning("  No video formats available for %s — skipping", youtube_video_id)
                     break
-                if i < len(cookie_vars) - 1:
-                    label = "primary" if i == 0 else f"cookie set {i}"
-                    logger.info("%s cookies failed for %s, trying next set... (%s)", label, youtube_video_id, e)
+                if i < len(attempts) - 1:
+                    logger.info("  %s cookies failed for %s, trying next... (%s: %s)", label, youtube_video_id, type(e).__name__, e)
                     continue
-                logger.warning("Failed to download DV360 YouTube video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
+                logger.warning("  Failed to download DV360 video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
 
         return None, None
 
@@ -1656,8 +1667,7 @@ class DV360SyncService:
             logger.info(f"  Thumbnails committed: {len(thumb_results)} ads updated")
 
         if not can_download_video:
-            logger.info(f"  Asset downloads complete: 0 videos, {len(thumb_results)} thumbnails")
-            return
+            logger.warning("  No valid cookies — attempting cookieless video downloads (may fail for restricted videos)")
 
         downloaded_videos = set()
         video_results = {}
@@ -1682,7 +1692,7 @@ class DV360SyncService:
                             "video_duration_seconds": self._get_video_duration(vid_path),
                         }
                         downloaded_videos.add(yt_vid)
-                except (OSError, RuntimeError) as e:
+                except Exception as e:
                     video_download_count += 1
                     logger.warning("Video download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
 

@@ -17,7 +17,7 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { DisconnectDialogComponent, DisconnectDialogResult } from '../components/disconnect-dialog.component';
 import { formatDistanceToNow } from 'date-fns';
 
-type HealthState = 'connected' | 'token_expired' | 'sync_failed';
+type HealthState = 'connected' | 'token_expired' | 'sync_failed' | 'syncing';
 
 interface OAuthAccount {
   id: string;
@@ -1050,7 +1050,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
       return 'token_expired';
     }
     if (!conn.last_synced_at) {
-      return 'sync_failed';
+      return conn.sync_status === 'PENDING' ? 'syncing' : 'sync_failed';
     }
     const hoursSinceSync = (now.getTime() - new Date(conn.last_synced_at).getTime()) / 3_600_000;
     if (hoursSinceSync > 48) {
@@ -1064,6 +1064,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
       case 'connected': return 'Connected';
       case 'token_expired': return 'Token expired';
       case 'sync_failed': return 'Sync failed';
+      case 'syncing': return 'Syncing…';
     }
   }
 
@@ -1072,6 +1073,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
       case 'connected': return 'badge badge-success';
       case 'token_expired': return 'badge badge-warning';
       case 'sync_failed': return 'badge badge-error';
+      case 'syncing': return 'badge badge-info';
     }
   }
 

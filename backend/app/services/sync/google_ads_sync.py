@@ -291,6 +291,17 @@ class GoogleAdsSyncService:
         def _do_download():
             import yt_dlp
             import tempfile
+
+            class _YDLLogger:
+                def debug(self, msg):
+                    if msg.startswith("[debug] "):
+                        logger.debug("yt-dlp: %s", msg)
+                    else:
+                        logger.info("yt-dlp: %s", msg)
+                def info(self, msg): logger.info("yt-dlp: %s", msg)
+                def warning(self, msg): logger.warning("yt-dlp: %s", msg)
+                def error(self, msg): logger.warning("yt-dlp error: %s", msg)
+
             ydl_opts = {
                 "outtmpl": local_path,
                 "format": "bv*+ba/b",
@@ -301,6 +312,7 @@ class GoogleAdsSyncService:
                 "ignore_no_formats_error": True,
                 "js_runtimes": {"node": {}},
                 "remote_components": {"ejs:github": True},
+                "logger": _YDLLogger(),
             }
             cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
             cookie_file = None
@@ -321,6 +333,7 @@ class GoogleAdsSyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
+        logger.info("  Attempting Google Ads video download: %s (ad=%s)", youtube_video_id, ad_id)
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, _do_download)
@@ -328,13 +341,13 @@ class GoogleAdsSyncService:
             if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
                 size_mb = os.path.getsize(local_path) / (1024 * 1024)
                 served_url = obj_storage.upload_file(local_path, relative_path, content_type="video/mp4")
-                logger.info(f"  Downloaded YouTube video: {filename} ({size_mb:.1f} MB)")
+                logger.info("  Downloaded Google Ads YouTube video: %s (%.1f MB)", filename, size_mb)
                 return local_path, served_url
             else:
-                logger.warning(f"  yt-dlp finished but file not found: {local_path}")
+                logger.warning("  yt-dlp finished but output file missing: %s", local_path)
                 return None, None
-        except (OSError, RuntimeError) as e:
-            logger.warning("Failed to download YouTube video for ad %s (video %s): %s", ad_id, youtube_video_id, e, exc_info=True)
+        except Exception as e:
+            logger.warning("Failed to download Google Ads video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
             if os.path.exists(local_path):
                 os.remove(local_path)
             return None, None

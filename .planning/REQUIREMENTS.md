@@ -34,8 +34,8 @@
 
 ### Score-to-ROAS Correlation
 
-- [ ] **CORR-01**: Dashboard includes a score-to-ROAS scatter chart (ECharts) with quadrant reference lines (Stars / Question Marks / Workhorses / Laggards) and hover tooltips showing thumbnail, score, ROAS, spend, platform
-- [ ] **CORR-02**: Scatter chart filters out assets below a configurable minimum spend threshold (default $10), treats null and zero ROAS distinctly, and caps Y-axis at the 99th percentile
+- [x] **CORR-01**: Dashboard includes a score-to-ROAS scatter chart (ECharts) with quadrant reference lines (Stars / Question Marks / Workhorses / Laggards) and hover tooltips showing thumbnail, score, ROAS, spend, platform
+- [x] **CORR-02**: Scatter chart filters out assets below a configurable minimum spend threshold (default $10), treats null and zero ROAS distinctly, and caps Y-axis at the 99th percentile
 
 ### AI Metadata Auto-Fill
 
