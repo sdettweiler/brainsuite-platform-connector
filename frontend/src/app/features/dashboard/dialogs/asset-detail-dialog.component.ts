@@ -112,6 +112,7 @@ interface AssetDetailResponse {
   timeseries: Record<string, AssetTimeseriesPoint[]> | null;
   brainsuite_metadata?: AssetBrainsuiteMetadata;
   metadata_values?: Record<string, string>;
+  ai_inference_status?: string | null;
 }
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
@@ -139,6 +140,21 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
           <div class="metadata-chips" *ngIf="asset">
             <span class="chip" *ngFor="let m of assetMetaList">
               <span class="chip-key">{{ m.label }}:</span> {{ m.value }}
+            </span>
+            <span [ngSwitch]="asset.ai_inference_status" style="margin-left: 8px;">
+              <span *ngSwitchCase="'PENDING'" class="badge badge-warning" style="font-size: 12px;">
+                <i class="bi bi-hourglass-split" style="font-size: 12px; margin-right: 4px;"></i>
+                AI analysis running...
+              </span>
+              <span *ngSwitchCase="'COMPLETE'" class="badge badge-success" style="font-size: 12px;">
+                <i class="bi bi-check-circle" style="font-size: 12px; margin-right: 4px;"></i>
+                AI auto-filled
+              </span>
+              <span *ngSwitchCase="'FAILED'" class="badge badge-error" style="font-size: 12px;">
+                <i class="bi bi-exclamation-circle" style="font-size: 12px; margin-right: 4px;"></i>
+                AI analysis failed — will retry on next sync
+              </span>
+              <!-- null/absent: no badge rendered (default case does nothing) -->
             </span>
           </div>
         </div>
@@ -1665,5 +1681,16 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     if (tag === 'Top Performer') return 'tile-tag tag-top';
     if (tag === 'Below Average') return 'tile-tag tag-below';
     return '';
+  }
+
+  saveAssetMetadata(metadata: Record<string, string>): void {
+    this.api.patch<any>(`/assets/${this.data.assetId}/metadata`, { metadata }).subscribe({
+      next: () => {
+        this.snackBar.open('Metadata saved — creative queued for rescoring', '', { duration: 3000 });
+      },
+      error: () => {
+        this.snackBar.open('Failed to save metadata — please try again', '', { duration: 4000 });
+      },
+    });
   }
 }
