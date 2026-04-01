@@ -853,7 +853,7 @@ interface CorrelationAsset {
       top: 0;
       right: 0;
       height: 100vh;
-      width: 560px;
+      width: 728px;
       background: var(--bg-card);
       border-left: 1px solid var(--border);
       box-shadow: var(--shadow-lg);
@@ -1193,7 +1193,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     ]);
 
     this.scatterOptions = {
-      grid: { top: 40, right: 20, bottom: 50, left: 60 },
+      grid: { top: 40, right: 80, bottom: 50, left: 60 },
       xAxis: {
         name: 'ACE Score',
         min: 0,
