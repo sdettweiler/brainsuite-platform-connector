@@ -397,7 +397,7 @@ interface CorrelationAsset {
           <div style="display:flex;align-items:center;gap:12px">
             <h4 style="margin:0;white-space:nowrap">Score vs.</h4>
             <mat-form-field appearance="outline" style="width:150px;margin:0" subscriptSizing="dynamic">
-              <mat-select [(value)]="selectedCorrelationMetric" (selectionChange)="buildScatterChart()">
+              <mat-select [(ngModel)]="selectedCorrelationMetric" (ngModelChange)="buildScatterChart()">
                 <mat-option *ngFor="let m of correlationMetrics" [value]="m.key">{{ m.label }}</mat-option>
               </mat-select>
             </mat-form-field>
