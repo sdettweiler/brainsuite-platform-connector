@@ -35,3 +35,4 @@ Thumbs.db
 
 # Docker volumes (local dev)
 postgres_data/
+frontend/core
