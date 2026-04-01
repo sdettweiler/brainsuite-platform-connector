@@ -497,7 +497,7 @@ async def update_metadata_field_v2(
     field = await db.get(MetadataField, field_id)
     if not field or field.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Field not found")
-    allowed = {"name", "label", "field_type", "is_required", "default_value"}
+    allowed = {"name", "label", "field_type", "is_required", "default_value", "auto_fill_enabled", "auto_fill_type"}
     for k, v in payload.items():
         if k in allowed:
             setattr(field, k, v)
@@ -507,7 +507,9 @@ async def update_metadata_field_v2(
     return MetadataFieldResponse(id=field.id, name=field.name, label=field.label,
                                   field_type=field.field_type, is_required=field.is_required,
                                   default_value=field.default_value, allowed_values=[],
-                                  created_at=field.created_at)
+                                  created_at=field.created_at,
+                                  auto_fill_enabled=field.auto_fill_enabled,
+                                  auto_fill_type=field.auto_fill_type)
 
 
 @router.delete("/metadata/fields/{field_id}")
