@@ -102,7 +102,7 @@ Plans:
 **Plans:** 3 plans
 Plans:
 - [ ] 09-01-PLAN.md — Backend: Alembic migration + models + ai_autofill service + tests
-- [ ] 09-02-PLAN.md — Frontend: auto-fill config toggle + type selector + inference badge + rescore toast
+- [x] 09-02-PLAN.md — Frontend: auto-fill config toggle + type selector + inference badge + rescore toast
 - [ ] 09-03-PLAN.md — Backend: sync service wiring + scoring reset + API response integration
 **UI hint**: yes
 
