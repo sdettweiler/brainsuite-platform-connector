@@ -1,12 +1,13 @@
 # Phase 9: AI Metadata Auto-Fill - Context
 
 **Gathered:** 2026-04-01
+**Updated:** 2026-04-01
 **Status:** Ready for planning
 
 <domain>
 ## Phase Boundary
 
-Pipeline-integrated AI metadata auto-fill. Each `MetadataField` has an `auto_fill_enabled` flag configurable on the metadata config page. When scoring runs, enabled fields are inferred via OpenAI (GPT-4o Vision + Whisper) and written directly to asset metadata — no user confirmation step. Account-level defaults propagate to asset values and serve as fallback if inference fails. Users can overwrite values manually; doing so resets the asset to `UNSCORED` (no immediate rescore — the scheduler picks it up).
+Pipeline-integrated AI metadata auto-fill. Each `MetadataField` has an `auto_fill_enabled` flag and an `auto_fill_type` enum configurable on the metadata config page. Auto-fill triggers **immediately after an asset is downloaded during sync** — not during scoring. By the time the scoring job runs, metadata is already populated. OpenAI (GPT-4o Vision + Whisper) writes values directly to asset metadata — no user confirmation step. Account-level defaults propagate to asset values and serve as fallback if inference fails. Users can overwrite values manually; doing so resets the asset to `UNSCORED` (no immediate rescore — the scheduler picks it up).
 
 **This is NOT a dialog button.** The original AI-04 requirement (Auto-fill button in asset detail dialog) is superseded by the pipeline-integration design.
 
@@ -17,9 +18,11 @@ Pipeline-integrated AI metadata auto-fill. Each `MetadataField` has an `auto_fil
 
 ### Auto-fill Configuration
 
-- **D-01:** `MetadataField` model gets an `auto_fill_enabled` boolean column (default `false`). Org admins toggle it per-field on the Configuration > Metadata page. No schema changes to per-asset value storage — auto-fill writes directly to `AssetMetadataValue`.
-- **D-02:** Auto-fill runs as part of the existing scoring job (`run_scoring_batch()` in `scoring_job.py`), not a separate scheduler or on-demand endpoint. Triggered whenever an asset is scored (batch or immediate rescore).
-- **D-03:** Account-level `default_value` (on `MetadataField`) is propagated to `AssetMetadataValue` at scoring time if no value exists yet. Auto-fill may then overwrite the default. `default_value` is the fallback if inference fails.
+- **D-01:** `MetadataField` model gets two new columns:
+  - `auto_fill_enabled` boolean (default `false`) — org admin toggles on the Configuration > Metadata page
+  - `auto_fill_type` string enum (nullable) — declares what inference to run for this field. Values: `language | brand_names | vo_transcript | vo_language | campaign_name | ad_name | fixed_value`. Null means the field has no auto-fill type assigned (even if `auto_fill_enabled = true`, no inference runs).
+- **D-02:** Auto-fill triggers **immediately after an asset is downloaded during sync** — in the platform sync services (`meta_sync.py`, `tiktok_sync.py`, `google_ads_sync.py`, `dv360_sync.py`), after the asset binary is stored to MinIO. Runs as a `BackgroundTask` or async call so it does not block the sync loop. **Not part of the scoring job.** Metadata is populated before the scoring job ever sees the asset.
+- **D-03:** Account-level `default_value` (on `MetadataField`) is propagated to `AssetMetadataValue` at auto-fill time if no value exists yet. Auto-fill AI inference may then overwrite the default. `default_value` is the fallback if inference fails or `OPENAI_API_KEY` is absent.
 - **D-04:** Auto-fill results are written directly to `AssetMetadataValue` — no intermediate suggestions table for user review and no confirmation step.
 
 ### Field Behavior
@@ -44,7 +47,7 @@ Pipeline-integrated AI metadata auto-fill. Each `MetadataField` has an `auto_fil
 
 ### State Machine
 
-- **D-10:** `ai_metadata_suggestions` table renamed in concept to an **execution tracking table** — one row per asset, used to track inference status. Schema: `(id, asset_id, org_id, ai_inference_status, created_at, updated_at)`. Status: `PENDING | COMPLETE | FAILED`.
+- **D-10:** `ai_metadata_suggestions` table renamed in concept to an **execution tracking table** — one row per asset, used to track inference status and prevent re-running on every sync. Schema: `(id, asset_id, org_id, ai_inference_status, created_at, updated_at)`. Status: `PENDING | COMPLETE | FAILED`. The `COMPLETE` guard prevents re-inference on re-sync. `FAILED` is reset to `PENDING` on the next sync to allow retry.
 - **D-11:** No confidence tracking at any level — skip entirely. If a value is returned by OpenAI, it is written. If not, fallback applies.
 - **D-12:** `FAILED` status is **retried** on the next scoring run (status reset to `PENDING` when the scoring job picks up the asset again). Retry is automatic — no manual trigger needed.
 
@@ -57,8 +60,8 @@ Pipeline-integrated AI metadata auto-fill. Each `MetadataField` has an `auto_fil
 
 - GPT-4o vs GPT-4o-mini for vision: researcher/planner should evaluate cost vs quality for brand name extraction on typical ad creative. Either is acceptable.
 - Whether VO transcript is stored as a full text field or truncated (e.g. 2000-char limit) — planner decides based on `MetadataField` field_type constraints.
-- Exact field name mappings (which `MetadataField.name` values correspond to Language, Brand Names, VO transcript, VO Language, etc.) — researcher should check existing `MetadataField` seed data or configuration conventions.
-- Image/video frame extraction approach for GPT-4o Vision — researcher should confirm best practice for video frames (extract first frame? multiple? thumbnail?).
+- Exact async mechanism for triggering auto-fill from sync services — `BackgroundTasks`, direct `asyncio.create_task()`, or a dedicated queue entry. Researcher should choose the pattern that best fits the existing sync service architecture.
+- Image/video frame extraction approach for GPT-4o Vision — researcher should confirm best practice for video frames (extract first frame? multiple? thumbnail? use MinIO thumbnail if already generated).
 
 </decisions>
 
@@ -71,9 +74,12 @@ Pipeline-integrated AI metadata auto-fill. Each `MetadataField` has an `auto_fil
 - `backend/app/models/metadata.py` — `MetadataField`, `MetadataFieldValue`, `AssetMetadataValue` models; `auto_fill_enabled` column will be added here
 - `backend/app/api/v1/endpoints/assets.py` — existing metadata CRUD endpoints (`PATCH /{asset_id}/metadata`, `GET /metadata/fields`, etc.); Alembic migration pattern to follow
 
-### Scoring pipeline — integration point
-- `backend/app/services/sync/scoring_job.py` — `run_scoring_batch()` — auto-fill hook goes inside this function, after scoring completes
-- `backend/app/api/v1/endpoints/scoring.py` — `rescore_asset()` — immediate rescore path; same auto-fill hook must also run here
+### Sync services — integration point (auto-fill triggers here)
+- `backend/app/services/sync/meta_sync.py` — after asset binary stored to MinIO, trigger auto-fill
+- `backend/app/services/sync/tiktok_sync.py` — same pattern
+- `backend/app/services/sync/google_ads_sync.py` — same pattern
+- `backend/app/services/sync/dv360_sync.py` — same pattern
+- `backend/app/services/sync/scoring_job.py` — **no longer** the auto-fill integration point; scoring runs after metadata is already populated
 
 ### Creative model — sync data for deterministic fields
 - `backend/app/models/creative.py` — check for `campaign_name` and `ad_name` columns (source for Project Name and Asset Name deterministic fill)
@@ -104,15 +110,16 @@ Pipeline-integrated AI metadata auto-fill. Each `MetadataField` has an `auto_fil
 
 ### Established Patterns
 - Session-per-operation: never hold DB session during external HTTP calls (OpenAI/Whisper)
-- `on_conflict_do_nothing` for status tracking inserts (prevents re-sync resetting completed state)
+- `on_conflict_do_nothing` for status tracking inserts (prevents re-sync resetting `COMPLETE` state)
 - String columns with UPPERCASE values for status fields (e.g. `PENDING`, `COMPLETE`, `FAILED`)
 - Alembic migrations for all schema changes
+- `BackgroundTasks` for non-blocking async work triggered from sync services
 
 ### Integration Points
-- `run_scoring_batch()` → add auto-fill after `COMPLETE` scoring result written
-- `MetadataField` → add `auto_fill_enabled` boolean column via Alembic migration
-- `metadata.component.ts` → add `auto_fill_enabled` toggle per field in the config UI
-- MinIO presigned URL → asset must be fetched server-side before passing to OpenAI (same pattern as BrainSuite image scoring in Phase 5)
+- Platform sync services (`*_sync.py`) → trigger auto-fill after asset binary is stored to MinIO
+- `MetadataField` → add `auto_fill_enabled` + `auto_fill_type` columns via Alembic migration
+- `metadata.component.ts` → add `auto_fill_enabled` toggle and `auto_fill_type` selector per field in the config UI
+- MinIO → asset fetched server-side and passed to OpenAI (same pattern as BrainSuite image scoring in Phase 5)
 
 </code_context>
 
