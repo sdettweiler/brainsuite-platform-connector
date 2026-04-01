@@ -29,7 +29,7 @@ created: 2026-04-01
 
 ## Spacing Scale
 
-Declared values (multiples of 4):
+Declared values (multiples of 4, from the standard set {4, 8, 16, 24, 32, 48, 64}):
 
 | Token | Value | Usage |
 |-------|-------|-------|
@@ -37,13 +37,13 @@ Declared values (multiples of 4):
 | sm | 8px | Gap between inline elements, option row gaps |
 | md | 16px | Default element spacing, form field gaps, section body padding unit |
 | lg | 24px | Section padding, `.gap-6`, form row margin |
-| xl | 28px | Page container padding (established by `metadata.component.ts`) |
-| 2xl | 32px | Empty state vertical padding |
-| 3xl | 48px | Empty state full-bleed padding |
+| xl | 32px | Empty state vertical padding |
+| 2xl | 48px | Empty state full-bleed padding |
 
-Exceptions:
-- Drag handles: 12px gap in field-header rows (established pattern — do not change)
-- `.card-sm`: 12px 16px padding (established)
+Layout constants (not spacing tokens — established measurements, not on the scale):
+- Page container padding: 28px (`metadata.component.ts` established value — layout constant, not a token)
+- Drag handle gap in field-header rows: 12px (established pattern — do not change)
+- `.card-sm` padding: 12px 16px (established pattern — do not change)
 - Form field infix min-height: 48px (Angular Material override — do not change)
 - `--sidebar-width: 220px`, `--header-height: 60px` are layout constants — not spacing tokens
 
@@ -53,15 +53,16 @@ Exceptions:
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
+| Label / badge / uppercase utility | 12px | 600 (semibold) | 1.4 |
 | Body | 14px | 400 (regular) | 1.5 |
-| Label / Field label | 13px | 500 (medium) | 1.4 |
 | Section heading | 16px | 600 (semibold) | 1.2 |
 | Page heading (h2) | 20px | 600 (semibold) | 1.2 |
 
 Additional typographic rules established in `styles.scss`:
-- `.text-sm`: 12px, used for tooltips, badge text, monospace field slugs
-- Uppercase labels (options headers, type badges): 10–11px, weight 600, `letter-spacing: 0.4–0.5px`
-- Font family on all `mat-mdc-button` elements: `'Nunito Sans', 'Avenir Next', sans-serif` with `letter-spacing: 0.3px`
+- Tooltips, badge text, and monospace field slugs use the 12px label role (weight 400 for read-only tooltip text, weight 600 for badge text).
+- Uppercase option headers and type badges use 12px, weight 600, `letter-spacing: 0.5px`.
+- Field labels (previously 13px / weight 500) are reclassified to 14px body at weight 600 (semibold) to stay within the two-weight limit.
+- Font family on all `mat-mdc-button` elements: `'Nunito Sans', 'Avenir Next', sans-serif` with `letter-spacing: 0.3px`.
 
 ---
 
@@ -119,6 +120,8 @@ Accent is **not** used on: info text, placeholder text, general icons, borders, 
 ### 1. Metadata Config Page — Auto-Fill Toggle + Type Selector
 
 **Location:** `configuration/pages/metadata.component.ts` — inside each expanded field-row
+
+**Primary focal point:** The expanded field row with the accent left-border and visible auto-fill toggle draws the eye to the AI-enabled configuration state, making the toggle + type selector the visual anchor of the page during Phase 9 configuration.
 
 **States:**
 - `auto_fill_enabled = false` (default): toggle is OFF; `auto_fill_type` selector is hidden
