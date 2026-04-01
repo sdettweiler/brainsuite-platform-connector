@@ -17,7 +17,7 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { DisconnectDialogComponent, DisconnectDialogResult } from '../components/disconnect-dialog.component';
 import { formatDistanceToNow } from 'date-fns';
 
-type HealthState = 'connected' | 'token_expired' | 'sync_failed' | 'syncing';
+type HealthState = 'connected' | 'token_expired' | 'sync_failed' | 'syncing' | 'initial_sync';
 
 interface OAuthAccount {
   id: string;
@@ -51,6 +51,7 @@ interface PlatformConnection {
   last_synced_at?: string;
   token_expiry?: string;
   initial_sync_completed: boolean;
+  is_syncing?: boolean;
   brainsuite_app_id?: string;
   brainsuite_app_id_image?: string;
   brainsuite_app_id_video?: string;
@@ -300,9 +301,9 @@ const PLATFORMS: PlatformDef[] = [
                 </td>
                 <td class="col-health">
                   <span [class]="getHealthBadgeClass(getHealthState(conn))">
+                    <mat-spinner *ngIf="getHealthState(conn) === 'syncing' || getHealthState(conn) === 'initial_sync'" diameter="12" class="inline-spinner"></mat-spinner>
                     {{ getHealthLabel(getHealthState(conn)) }}
                   </span>
-                  <span class="sync-sub" *ngIf="!conn.initial_sync_completed">Syncing...</span>
                 </td>
                 <td class="col-currency">{{ conn.currency }}</td>
                 <td class="col-tz" [matTooltip]="conn.timezone">{{ conn.timezone }}</td>
@@ -620,6 +621,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   private oauthWindow: Window | null = null;
   private oauthPollInterval: any;
+  private syncPollInterval: any = null;
   private boundOAuthMessage = this.onOAuthMessage.bind(this);
 
   constructor(
@@ -643,6 +645,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     window.removeEventListener('message', this.boundOAuthMessage);
     if (this.oauthPollInterval) clearInterval(this.oauthPollInterval);
+    if (this.syncPollInterval) clearInterval(this.syncPollInterval);
     this.searchSubject.complete();
   }
 
@@ -863,6 +866,15 @@ export class PlatformsComponent implements OnInit, OnDestroy {
         this.statusSummary = res.status_summary || {};
         this.loading = false;
         this.applyDefaultApps();
+
+        // Start/stop polling based on whether any connections are actively syncing
+        const hasSyncing = this.connections.some(c => c.is_syncing);
+        if (hasSyncing && !this.syncPollInterval) {
+          this.syncPollInterval = setInterval(() => this.loadConnections(), 15000);
+        } else if (!hasSyncing && this.syncPollInterval) {
+          clearInterval(this.syncPollInterval);
+          this.syncPollInterval = null;
+        }
       },
       error: () => { this.loading = false; },
     });
@@ -1020,7 +1032,10 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   resync(conn: PlatformConnection): void {
     this.api.post(`/platforms/connections/${conn.id}/resync`, {}).subscribe({
-      next: () => { this.snackBar.open('Resync triggered', '', { duration: 2000 }); },
+      next: () => {
+        this.snackBar.open('Resync triggered', '', { duration: 2000 });
+        setTimeout(() => this.loadConnections(), 2000);
+      },
     });
   }
 
@@ -1046,12 +1061,26 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   getHealthState(conn: PlatformConnection): HealthState {
     const now = new Date();
+    // Token expired takes priority
     if (conn.token_expiry && new Date(conn.token_expiry) < now) {
       return 'token_expired';
     }
-    if (!conn.last_synced_at) {
-      return conn.sync_status === 'PENDING' ? 'syncing' : 'sync_failed';
+    // Actively syncing (from Redis flag)
+    if (conn.is_syncing) {
+      return conn.initial_sync_completed ? 'syncing' : 'initial_sync';
     }
+    // Never synced and not actively syncing
+    if (!conn.last_synced_at) {
+      if (!conn.initial_sync_completed) {
+        return 'initial_sync';  // Just connected, waiting for sync to start or complete
+      }
+      return 'sync_failed';
+    }
+    // DB-level error status
+    if (conn.sync_status === 'ERROR') {
+      return 'sync_failed';
+    }
+    // Stale sync (>48h)
     const hoursSinceSync = (now.getTime() - new Date(conn.last_synced_at).getTime()) / 3_600_000;
     if (hoursSinceSync > 48) {
       return 'sync_failed';
@@ -1064,7 +1093,8 @@ export class PlatformsComponent implements OnInit, OnDestroy {
       case 'connected': return 'Connected';
       case 'token_expired': return 'Token expired';
       case 'sync_failed': return 'Sync failed';
-      case 'syncing': return 'Syncing…';
+      case 'syncing': return 'Syncing';
+      case 'initial_sync': return 'Initial Sync';
     }
   }
 
@@ -1073,7 +1103,8 @@ export class PlatformsComponent implements OnInit, OnDestroy {
       case 'connected': return 'badge badge-success';
       case 'token_expired': return 'badge badge-warning';
       case 'sync_failed': return 'badge badge-error';
-      case 'syncing': return 'badge badge-info';
+      case 'syncing': return 'badge badge-syncing';
+      case 'initial_sync': return 'badge badge-syncing';
     }
   }
 

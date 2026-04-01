@@ -4,8 +4,8 @@ milestone: v1.1
 milestone_name: Insights + Intelligence
 status: Phase 08 Complete — Ready for Phase 09
 stopped_at: "Phase 09 — not yet planned"
-last_updated: "2026-04-01T00:00:00.000Z"
-last_activity: "2026-04-01 - Phase 08 verified (partial): drawer mechanics, tile affordance, states, and interactions approved. Scatter chart + spend filter unverifiable due to no ROAS data in DB — data gap, not code issue."
+last_updated: "2026-04-01T14:55:00.000Z"
+last_activity: "2026-04-01 - Quick task 260401-n93: Fixed sync status display — new accounts now show Initial Sync badge, active syncs show spinner with 15s polling via Redis in-progress keys."
 progress:
   total_phases: 6
   completed_phases: 5
