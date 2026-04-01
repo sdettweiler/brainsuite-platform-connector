@@ -57,7 +57,7 @@ interface EditMetadataDialogData {
               <span class="required-mark" *ngIf="field.is_required">*</span>
             </label>
 
-            <mat-form-field appearance="outline" class="field-input" *ngIf="field.field_type === 'SELECT'">
+            <mat-form-field appearance="outline" class="field-input compact-select" *ngIf="field.field_type === 'SELECT'">
               <mat-select [(ngModel)]="values[field.name]" [placeholder]="data.assetIds.length > 1 ? 'Leave blank to keep existing' : ''">
                 <mat-option value="">-- Clear --</mat-option>
                 <mat-option *ngFor="let opt of field.field_values" [value]="opt.value">

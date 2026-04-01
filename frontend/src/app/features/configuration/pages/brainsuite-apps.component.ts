@@ -90,7 +90,7 @@ interface BrainsuiteApp {
                 <mat-label>App Name</mat-label>
                 <input matInput formControlName="name" />
               </mat-form-field>
-              <mat-form-field appearance="outline">
+              <mat-form-field appearance="outline" class="compact-select">
                 <mat-label>App Type</mat-label>
                 <mat-select formControlName="app_type">
                   <mat-option value="VIDEO">Video</mat-option>

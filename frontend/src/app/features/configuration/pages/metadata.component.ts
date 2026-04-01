@@ -105,7 +105,7 @@ interface MetadataField {
                      [style.opacity]="field.auto_fill_enabled ? '1' : '0'"
                      [style.display]="field.auto_fill_enabled ? 'block' : 'none'"
                      style="margin-top: 12px; transition: opacity 0.15s ease;">
-                  <mat-form-field appearance="outline" style="width: 100%;">
+                  <mat-form-field appearance="outline" class="compact-select" style="width: 100%;">
                     <mat-label>Select inference type</mat-label>
                     <mat-select [(value)]="field.auto_fill_type"
                                 (selectionChange)="onAutoFillTypeChange(field, $event)">
@@ -191,7 +191,7 @@ interface MetadataField {
               </mat-form-field>
             </div>
             <div class="form-row">
-              <mat-form-field appearance="outline">
+              <mat-form-field appearance="outline" class="compact-select">
                 <mat-label>Field Type</mat-label>
                 <mat-select formControlName="field_type">
                   <mat-option value="SELECT">Select (dropdown)</mat-option>

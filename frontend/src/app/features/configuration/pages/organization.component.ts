@@ -145,7 +145,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
                 <mat-label>Organization Name</mat-label>
                 <input matInput formControlName="name" />
               </mat-form-field>
-              <mat-form-field appearance="outline">
+              <mat-form-field appearance="outline" class="compact-select">
                 <mat-label>Default Currency</mat-label>
                 <mat-select formControlName="currency">
                   <mat-option *ngFor="let c of currencies" [value]="c">{{ c }}</mat-option>
@@ -306,7 +306,7 @@ const ROLES = ['ADMIN', 'STANDARD', 'READ_ONLY'];
                 <mat-label>Email</mat-label>
                 <input matInput type="email" formControlName="email" />
               </mat-form-field>
-              <mat-form-field appearance="outline">
+              <mat-form-field appearance="outline" class="compact-select">
                 <mat-label>Role</mat-label>
                 <mat-select formControlName="role">
                   <mat-option *ngFor="let r of roles" [value]="r">{{ r }}</mat-option>

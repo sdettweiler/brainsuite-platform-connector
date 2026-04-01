@@ -274,6 +274,33 @@ input:-webkit-autofill:active {
   z-index: 1100;
 }
 
+.compact-select {
+  .mat-mdc-form-field-subscript-wrapper { display: none; }
+  .mdc-text-field--outlined {
+    --mdc-outlined-text-field-container-shape: 6px;
+    --mat-form-field-container-height: 32px;
+    --mat-form-field-container-vertical-padding: 0px;
+  }
+  .mat-mdc-form-field-flex {
+    height: 32px;
+    align-items: center;
+  }
+  .mat-mdc-form-field-infix {
+    min-height: unset !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    display: flex;
+    align-items: center;
+  }
+  .mat-mdc-select,
+  .mat-mdc-select-value {
+    font-size: 13px;
+  }
+  .mat-mdc-text-field-wrapper {
+    padding: 0 12px !important;
+  }
+}
+
 .mat-mdc-select-panel,
 .cdk-overlay-pane .mat-mdc-select-panel {
   background: var(--bg-card) !important;

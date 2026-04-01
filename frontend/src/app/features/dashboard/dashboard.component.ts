@@ -135,7 +135,7 @@ interface CorrelationAsset {
         </div>
 
         <!-- Format filter -->
-        <mat-form-field appearance="outline" class="filter-field">
+        <mat-form-field appearance="outline" class="filter-field compact-select">
           <mat-label>Format</mat-label>
           <mat-select [(ngModel)]="selectedFormat" (selectionChange)="onFilterChange()">
             <mat-option value="">All</mat-option>
@@ -146,7 +146,7 @@ interface CorrelationAsset {
         </mat-form-field>
 
         <!-- Sort -->
-        <mat-form-field appearance="outline" class="filter-field">
+        <mat-form-field appearance="outline" class="filter-field compact-select">
           <mat-label>Sort by</mat-label>
           <mat-select [(ngModel)]="sortBy" (selectionChange)="onFilterChange()">
             <mat-option value="spend">Spend</mat-option>
@@ -353,7 +353,7 @@ interface CorrelationAsset {
           <button mat-icon-button [disabled]="page === totalPages" (click)="changePage(page + 1)">
             <i class="bi bi-chevron-right"></i>
           </button>
-          <mat-form-field appearance="outline" class="page-size-field">
+          <mat-form-field appearance="outline" class="page-size-field compact-select">
             <mat-select [(ngModel)]="pageSize" (selectionChange)="onPageSizeChange()">
               <mat-option [value]="25">25 / page</mat-option>
               <mat-option [value]="50">50 / page</mat-option>
@@ -396,7 +396,7 @@ interface CorrelationAsset {
         <div class="correlation-drawer-header">
           <div style="display:flex;align-items:center;gap:12px">
             <h4 style="margin:0;white-space:nowrap">Score vs.</h4>
-            <mat-form-field appearance="outline" style="width:150px;margin:0" subscriptSizing="dynamic">
+            <mat-form-field appearance="outline" class="compact-select" style="width:150px;margin:0">
               <mat-select [(ngModel)]="selectedCorrelationMetric" (ngModelChange)="buildScatterChart()">
                 <mat-option *ngFor="let m of correlationMetrics" [value]="m.key">{{ m.label }}</mat-option>
               </mat-select>
