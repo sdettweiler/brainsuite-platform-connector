@@ -4,8 +4,8 @@ milestone: v1.1
 milestone_name: Insights + Intelligence
 status: Phase 08 Complete — Ready for Phase 09
 stopped_at: "Phase 09 — not yet planned"
-last_updated: "2026-04-01T00:00:00.000Z"
-last_activity: "2026-04-01 - Phase 08 verified (partial): drawer mechanics, tile affordance, states, and interactions approved. Scatter chart + spend filter unverifiable due to no ROAS data in DB — data gap, not code issue."
+last_updated: "2026-04-01T14:55:00.000Z"
+last_activity: "2026-04-01 - Quick task 260401-n93: Fixed sync status display — new accounts now show Initial Sync badge, active syncs show spinner with 15s polling via Redis in-progress keys."
 progress:
   total_phases: 6
   completed_phases: 5
@@ -66,6 +66,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260331-l16 | analyze the entire folder structure for legacy/obsolete files. Especially replit leftovers etc. build a clean up plan | 2026-03-31 | a6dc5b6 | [260331-l16-analyze-the-entire-folder-structure-for-](.planning/quick/260331-l16-analyze-the-entire-folder-structure-for-/) |
+| 260401-n93 | Fix sync status display: new accounts show "Initial Sync" not "Sync Failed"; active syncs show spinner badge with 15s polling via Redis in-progress keys | 2026-04-01 | 4313649 | [260401-n93-improve-platform-sync-status-display-fix](.planning/quick/260401-n93-improve-platform-sync-status-display-fix/) |
 
 ### Blockers/Concerns
 
