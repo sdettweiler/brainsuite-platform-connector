@@ -77,6 +77,7 @@ async def run_scoring_batch() -> None:
                 "endpoint_type": score_row.endpoint_type,
             })
             score_row.scoring_status = "PENDING"
+            score_row.pending_at = datetime.now(timezone.utc)
 
         await db.commit()
 
@@ -131,6 +132,7 @@ async def score_asset_now(score_id: uuid.UUID) -> None:
         row2 = await db.get(CreativeScoreResult, score_id)
         if row2:
             row2.scoring_status = "PENDING"
+            row2.pending_at = datetime.now(timezone.utc)
             row2.error_reason = None
             await db.commit()
 
@@ -218,6 +220,7 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
             if score_row:
                 score_row.brainsuite_job_id = str(job_id)
                 score_row.scoring_status = "PROCESSING"
+                score_row.submitted_at = datetime.now(timezone.utc)
                 score_row.updated_at = datetime.now(timezone.utc)
             await db.commit()
 
