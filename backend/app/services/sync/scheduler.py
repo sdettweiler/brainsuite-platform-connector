@@ -1272,6 +1272,7 @@ async def startup_scheduler(db_session=None) -> None:
             id="scoring_batch",
             replace_existing=True,
             max_instances=1,
+            misfire_grace_time=None,
         )
         logger.info("Registered scoring_batch job (every %d minutes, adaptive)", SCORING_INTERVAL_NORMAL)
     else:
