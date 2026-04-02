@@ -2,9 +2,9 @@
 Creative asset management: projects, metadata, assignments, export.
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, distinct
 import uuid
 
 from app.db.base import get_db
@@ -168,6 +168,50 @@ async def list_metadata_fields(
             auto_fill_type=f.auto_fill_type,
         ))
     return out
+
+
+@router.get("/metadata-filter-values")
+async def get_metadata_filter_values(
+    field_id: uuid.UUID = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return combined predefined + actual used values for a metadata field, org-scoped.
+
+    Response: List of {value, label, source} where source is "predefined" or "actual".
+    Predefined values take precedence on de-duplication by value string.
+    """
+    # 1. Predefined values from MetadataFieldValue table
+    predefined_result = await db.execute(
+        select(MetadataFieldValue).where(
+            MetadataFieldValue.field_id == field_id
+        ).order_by(MetadataFieldValue.sort_order)
+    )
+    predefined = predefined_result.scalars().all()
+    predefined_map = {v.value: {"value": v.value, "label": v.label, "source": "predefined"} for v in predefined}
+
+    # 2. Actual used values from asset_metadata_values scoped to the org
+    actual_result = await db.execute(
+        select(distinct(AssetMetadataValue.value)).where(
+            AssetMetadataValue.field_id == field_id,
+            AssetMetadataValue.asset_id.in_(
+                select(CreativeAsset.id).where(
+                    CreativeAsset.organization_id == current_user.organization_id
+                )
+            ),
+        ).order_by(AssetMetadataValue.value)
+    )
+    actual_values = [row[0] for row in actual_result.all()]
+
+    # 3. Merge: predefined take precedence; add actual values not already in predefined
+    combined = list(predefined_map.values())
+    seen = set(predefined_map.keys())
+    for v in actual_values:
+        if v not in seen:
+            combined.append({"value": v, "label": v, "source": "actual"})
+            seen.add(v)
+
+    return combined
 
 
 @router.post("/metadata-fields", response_model=MetadataFieldResponse, status_code=201)

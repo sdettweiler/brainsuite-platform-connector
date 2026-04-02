@@ -9,12 +9,13 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, text, case, nullslast, cast
 from sqlalchemy.types import Date
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, aliased
 import uuid
 
 from app.db.base import get_db
 from app.models.user import User
 from app.models.creative import CreativeAsset, AssetMetadataValue, AssetProjectMapping
+from app.models.metadata import MetadataField
 from app.models.performance import HarmonizedPerformance
 from app.models.platform import PlatformConnection
 from app.models.scoring import CreativeScoreResult
@@ -52,6 +53,7 @@ async def get_dashboard_stats(
     date_from: date = Query(default=None),
     date_to: date = Query(default=None),
     platforms: Optional[str] = Query(default=None),
+    meta_filters: Optional[List[str]] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -66,6 +68,32 @@ async def get_dashboard_stats(
     prev_to = date_from - timedelta(days=1)
 
     platform_list = [p.strip().upper() for p in platforms.split(",")] if platforms else None
+
+    # Parse meta_filters: "field_id:value1,value2" -> list of {field_id, values}
+    parsed_meta_filters = []
+    if meta_filters:
+        for mf_str in meta_filters:
+            if ':' not in mf_str:
+                continue
+            field_id_str, values_str = mf_str.split(':', 1)
+            try:
+                mf_field_id = uuid.UUID(field_id_str)
+            except ValueError:
+                continue
+            mf_values = [v.strip() for v in values_str.split(',') if v.strip()]
+            if mf_values:
+                parsed_meta_filters.append({"field_id": mf_field_id, "values": mf_values})
+
+    def _apply_meta_filters(q, i_offset: int = 0):
+        """Apply parsed_meta_filters JOINs to a query. Returns updated query."""
+        for i, mf in enumerate(parsed_meta_filters):
+            mf_alias = aliased(AssetMetadataValue)
+            q = q.join(mf_alias, and_(
+                mf_alias.asset_id == CreativeAsset.id,
+                mf_alias.field_id == mf["field_id"],
+                mf_alias.value.in_(mf["values"]),
+            ))
+        return q
 
     async def get_stats(df: date, dt: date):
         base = select(
@@ -84,6 +112,7 @@ async def get_dashboard_stats(
         )
         if platform_list:
             base = base.where(HarmonizedPerformance.platform.in_(platform_list))
+        base = _apply_meta_filters(base)
         return (await db.execute(base)).one()
 
     async def count_assets(df: date, dt: date):
@@ -94,6 +123,7 @@ async def get_dashboard_stats(
             HarmonizedPerformance.report_date >= df,
             HarmonizedPerformance.report_date <= dt,
         )
+        q = _apply_meta_filters(q)
         return (await db.execute(q)).scalar() or 0
 
     curr = await get_stats(date_from, date_to)
@@ -193,6 +223,7 @@ async def get_dashboard_assets(
     page_size: int = Query(default=50, ge=1, le=250),
     score_min: Optional[float] = Query(default=None, ge=0, le=100),
     score_max: Optional[float] = Query(default=None, ge=0, le=100),
+    meta_filters: Optional[List[str]] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -298,6 +329,26 @@ async def get_dashboard_assets(
     if score_max is not None:
         query = query.where(CreativeScoreResult.total_score <= score_max)
 
+    # Metadata filters: each entry is "field_id:value1,value2" — AND across fields, OR within field
+    if meta_filters:
+        for i, mf_str in enumerate(meta_filters):
+            if ':' not in mf_str:
+                continue
+            field_id_str, values_str = mf_str.split(':', 1)
+            try:
+                mf_field_id = uuid.UUID(field_id_str)
+            except ValueError:
+                continue
+            mf_values = [v.strip() for v in values_str.split(',') if v.strip()]
+            if not mf_values:
+                continue
+            mf_alias = aliased(AssetMetadataValue)
+            query = query.join(mf_alias, and_(
+                mf_alias.asset_id == CreativeAsset.id,
+                mf_alias.field_id == mf_field_id,
+                mf_alias.value.in_(mf_values),
+            ))
+
     # Only assets with performance in period
     query = query.where(perf_subq.c.total_spend.isnot(None))
 
@@ -397,7 +448,25 @@ async def get_asset_detail(
 
     # Get metadata values — start from connection defaults, overlay asset-specific values
     connection = await db.get(PlatformConnection, asset.platform_connection_id)
-    meta_values: dict = dict(connection.default_metadata_values or {}) if connection else {}
+    raw_defaults: dict = dict(connection.default_metadata_values or {}) if connection else {}
+
+    # Normalize connection defaults: support both name-keyed and UUID-keyed formats
+    if raw_defaults:
+        fields_result = await db.execute(
+            select(MetadataField.id, MetadataField.name).where(
+                MetadataField.organization_id == current_user.organization_id,
+                MetadataField.is_active == True,
+            )
+        )
+        name_to_uuid = {row.name: str(row.id) for row in fields_result.all()}
+        valid_uuids = set(name_to_uuid.values())
+        meta_values: dict = {}
+        for k, v in raw_defaults.items():
+            key = k if k in valid_uuids else name_to_uuid.get(k, k)
+            meta_values[key] = v
+    else:
+        meta_values: dict = {}
+
     asset_meta_result = await db.execute(
         select(AssetMetadataValue).where(AssetMetadataValue.asset_id == asset_id)
     )

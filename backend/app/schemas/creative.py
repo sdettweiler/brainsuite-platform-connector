@@ -113,7 +113,7 @@ class DashboardFilterParams(BaseModel):
     formats: Optional[List[str]] = None
     objectives: Optional[List[str]] = None
     project_ids: Optional[List[uuid.UUID]] = None
-    metadata_filters: Optional[Dict[str, str]] = None
+    metadata_filters: Optional[Dict[str, List[str]]] = None
     spend_min: Optional[float] = None
     spend_max: Optional[float] = None
     cpm_min: Optional[float] = None
