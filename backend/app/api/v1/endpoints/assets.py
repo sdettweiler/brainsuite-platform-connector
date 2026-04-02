@@ -164,6 +164,8 @@ async def list_metadata_fields(
             default_value=f.default_value,
             allowed_values=vals,
             created_at=f.created_at,
+            auto_fill_enabled=f.auto_fill_enabled,
+            auto_fill_type=f.auto_fill_type,
         ))
     return out
 
@@ -462,6 +464,8 @@ async def list_metadata_fields_v2(
             id=f.id, name=f.name, label=f.label, field_type=f.field_type,
             is_required=f.is_required, default_value=f.default_value,
             allowed_values=vals, created_at=f.created_at,
+            auto_fill_enabled=f.auto_fill_enabled,
+            auto_fill_type=f.auto_fill_type,
         ))
     return out
 
