@@ -1560,6 +1560,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         date_to: this.dateTo,
       }).subscribe({
         next: (detail) => {
+          console.log('[EditMetadata] asset detail response:', detail);
+          console.log('[EditMetadata] metadata_values:', detail.metadata_values);
           this.dialog.open(EditMetadataDialogComponent, {
             width: '480px',
             data: {
