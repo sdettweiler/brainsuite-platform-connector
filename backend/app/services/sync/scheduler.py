@@ -1229,15 +1229,51 @@ async def startup_scheduler(db_session=None) -> None:
     from app.core.config import settings as _settings
     from app.services.sync.scoring_job import run_scoring_batch
 
+    SCORING_INTERVAL_NORMAL = 15  # minutes — used when queue is empty
+    SCORING_INTERVAL_FAST = 5     # minutes — used when queue has remaining assets
+
+    async def run_scoring_batch_adaptive() -> None:
+        """Wrapper around run_scoring_batch that adapts the scheduling interval.
+
+        If the batch finds remaining UNSCORED assets after processing, it
+        reschedules itself to run again in SCORING_INTERVAL_FAST minutes so
+        large bulk imports drain quickly. Once the queue is empty it returns
+        to the normal SCORING_INTERVAL_NORMAL cadence.
+        """
+        remaining = await run_scoring_batch()
+
+        job = scheduler.get_job("scoring_batch")
+        if not job:
+            return
+
+        if remaining > 0:
+            scheduler.reschedule_job(
+                "scoring_batch",
+                trigger=IntervalTrigger(minutes=SCORING_INTERVAL_FAST),
+            )
+            logger.info(
+                "Scoring queue non-empty (%d remaining) — fast mode: next run in %d min",
+                remaining, SCORING_INTERVAL_FAST,
+            )
+        else:
+            scheduler.reschedule_job(
+                "scoring_batch",
+                trigger=IntervalTrigger(minutes=SCORING_INTERVAL_NORMAL),
+            )
+            logger.info(
+                "Scoring queue drained — normal mode: next run in %d min",
+                SCORING_INTERVAL_NORMAL,
+            )
+
     if _settings.SCHEDULER_ENABLED:
         scheduler.add_job(
-            run_scoring_batch,
-            trigger=IntervalTrigger(minutes=15),
+            run_scoring_batch_adaptive,
+            trigger=IntervalTrigger(minutes=SCORING_INTERVAL_NORMAL),
             id="scoring_batch",
             replace_existing=True,
             max_instances=1,
         )
-        logger.info("Registered scoring_batch job (every 15 minutes)")
+        logger.info("Registered scoring_batch job (every %d minutes, adaptive)", SCORING_INTERVAL_NORMAL)
     else:
         logger.info("SCHEDULER_ENABLED=False — skipping scoring_batch registration")
 

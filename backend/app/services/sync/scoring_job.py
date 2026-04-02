@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 20
 
 
-async def run_scoring_batch() -> None:
+async def run_scoring_batch() -> int:
     """Process up to BATCH_SIZE UNSCORED VIDEO and IMAGE assets and submit to BrainSuite.
 
     Routes each asset to the correct BrainSuite service based on endpoint_type:
@@ -45,6 +45,11 @@ async def run_scoring_batch() -> None:
     Phase 2: For each asset, download from internal storage, submit via the
              announce→upload→start flow, poll, store result.
              NO DB session is held during HTTP calls.
+    Phase 3: Count remaining UNSCORED assets and return the count so the
+             scheduler can adapt its interval (fast mode when queue is non-empty).
+
+    Returns:
+        Number of UNSCORED assets remaining after this batch (0 = queue drained).
     """
     logger.info("Starting scoring batch run")
 
@@ -67,7 +72,7 @@ async def run_scoring_batch() -> None:
 
         if not rows:
             logger.info("Scoring batch: no UNSCORED VIDEO or STATIC_IMAGE assets found, exiting")
-            return
+            return 0
 
         for score_row, asset_row in rows:
             batch.append({
@@ -88,6 +93,22 @@ async def run_scoring_batch() -> None:
     # -----------------------------------------------------------------------
     for item in batch:
         await _process_asset(item["score_id"], item["asset"], item["endpoint_type"])
+
+    # -----------------------------------------------------------------------
+    # Phase 3: Count remaining UNSCORED assets for adaptive scheduling
+    # -----------------------------------------------------------------------
+    from sqlalchemy import func as sa_func
+    async with get_session_factory()() as db:
+        remaining_result = await db.execute(
+            select(sa_func.count()).select_from(CreativeScoreResult).where(
+                CreativeScoreResult.scoring_status == "UNSCORED",
+                CreativeScoreResult.endpoint_type.in_(["VIDEO", "STATIC_IMAGE"]),
+            )
+        )
+        remaining = remaining_result.scalar() or 0
+
+    logger.info("Scoring batch complete: %d UNSCORED assets remaining in queue", remaining)
+    return remaining
 
 
 async def score_asset_now(score_id: uuid.UUID) -> None:
