@@ -95,8 +95,8 @@ interface MetadataField {
                   Fields are filled automatically during asset sync using AI inference.
                 </p>
                 <mat-slide-toggle
-                  [checked]="field.auto_fill_enabled"
-                  (change)="onAutoFillToggle(field, $event)"
+                  [(ngModel)]="field.auto_fill_enabled"
+                  (ngModelChange)="onAutoFillToggle(field)"
                   color="primary">
                   Enable Auto-fill
                 </mat-slide-toggle>
@@ -443,9 +443,8 @@ export class MetadataComponent implements OnInit {
     }
   }
 
-  onAutoFillToggle(field: MetadataField, event: any): void {
-    field.auto_fill_enabled = event.checked;
-    if (!event.checked) {
+  onAutoFillToggle(field: MetadataField): void {
+    if (!field.auto_fill_enabled) {
       field.auto_fill_type = null;
     }
     this.saveAutoFillSettings(field);
