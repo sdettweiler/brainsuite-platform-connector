@@ -1,50 +1,44 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-02T10:01:04.465Z",
+  "timestamp": "2026-04-02T10:31:18.054Z",
   "phase": "09",
   "phase_name": "ai-metadata-auto-fill",
   "phase_dir": ".planning/phases/09-ai-metadata-auto-fill",
-  "plan": 2,
-  "task": 3,
-  "total_tasks": 3,
+  "plan": 3,
+  "task": 1,
+  "total_tasks": 2,
   "status": "paused",
   "completed_tasks": [
     {"id": "09-01", "name": "Backend foundation (model, migration, service, tests)", "status": "done", "commit": "f6ddfa5"},
     {"id": "09-02-t1", "name": "Metadata config auto-fill toggle + type selector", "status": "done", "commit": "e27a78a"},
     {"id": "09-02-t2", "name": "Asset detail dialog inference badge + rescore toast", "status": "done", "commit": "911ca77"},
-    {"id": "09-02-t3", "name": "Visual verification checkpoint", "status": "done", "progress": "User approved after bug fixes"}
+    {"id": "09-02-t3", "name": "Visual verification checkpoint", "status": "done", "progress": "User approved after bug fixes"},
+    {"id": "09-session-fixes", "name": "Fix default_metadata_values name->UUID normalization (backend + frontend)", "status": "done", "commit": "uncommitted - 4 files modified"}
   ],
   "remaining_tasks": [
-    {"id": "09-03", "name": "Wire auto-fill into 4 sync services + scoring reset + ai_inference_status in API", "status": "not_started"}
+    {"id": "09-03-t1", "name": "Wire auto-fill into harmonizer._ensure_asset + scheduler fires tasks after commit", "status": "in_progress", "progress": "harmonizer.py: added import uuid + Tuple only. All method changes pending."},
+    {"id": "09-03-t2", "name": "Scoring reset on metadata PATCH + ai_inference_status in asset detail response", "status": "not_started"}
   ],
-  "blockers": [
-    {
-      "description": "Edit Metadata dialog (dashboard right-click) shows empty values despite connection.default_metadata_values being set",
-      "type": "technical",
-      "workaround": "Console.log added (uncommitted) to diagnose — user needs to share browser DevTools output of [EditMetadata] metadata_values:"
-    }
-  ],
+  "blockers": [],
   "human_actions_pending": [
     {
-      "action": "Run `docker-compose exec backend alembic upgrade head` to apply Phase 09 DB migration",
-      "context": "Migration adds auto_fill_enabled, auto_fill_type to metadata_fields, widens asset_metadata_values.value to Text, creates ai_inference_tracking table",
-      "blocking": true
-    },
-    {
-      "action": "Share browser DevTools console output after right-clicking asset → Edit Metadata",
-      "context": "Looking for [EditMetadata] metadata_values: log to diagnose why values are empty",
-      "blocking": true
+      "action": "Run docker-compose exec backend alembic upgrade head if not already done",
+      "context": "Phase 09 migration: auto_fill_enabled/auto_fill_type on metadata_fields, ai_inference_tracking table",
+      "blocking": false
     }
   ],
   "decisions": [
-    {"decision": "mat-slide-toggle: use [(ngModel)]+(ngModelChange) not [checked]+(change)", "rationale": "MDC re-fires change on [checked] update → infinite CD loop → OOM/SIGKILL", "phase": "09"},
-    {"decision": "edit-metadata-dialog values keyed by field.id (UUID)", "rationale": "Backend PATCH endpoint calls uuid.UUID(field_id_str) — field names would throw", "phase": "09"},
-    {"decision": "Colima memory: 8GB required", "rationale": "Angular dev server needs 2-3GB; 2GB Colima default causes SIGKILL during compilation", "phase": "09"},
-    {"decision": "Asset metadata inheritance: connection.default_metadata_values merged in dashboard.py", "rationale": "Per-account defaults set in Config→Platform Connections→Default Metadata must flow to assets", "phase": "09"}
+    {"decision": "Auto-fill hook goes in harmonizer._ensure_asset NOT sync services", "rationale": "CreativeAsset created in harmonizer only; sync services write raw perf tables", "phase": "09"},
+    {"decision": "Thread _new_asset_ids list through call chain; fire tasks in scheduler.py AFTER db.commit()", "rationale": "ai_autofill.py opens own session via get_session_factory() - needs committed data", "phase": "09"},
+    {"decision": "_harmonize_with_deadlock_retry creates new_assets=[], returns (count, new_assets)", "rationale": "8 call sites in scheduler.py unpack and fire tasks after commit", "phase": "09"},
+    {"decision": "Fix default_metadata_values: normalize name->UUID on read in dashboard.py", "rationale": "Existing DB data name-keyed due to platforms UI bug; read-time fix needs no migration", "phase": "09"}
   ],
   "uncommitted_files": [
-    "frontend/src/app/features/dashboard/dashboard.component.ts (2 console.log lines added for debugging — remove after diagnosis)"
+    "backend/app/api/v1/endpoints/dashboard.py - default_metadata_values name->UUID normalization",
+    "backend/app/services/sync/harmonizer.py - partial: import uuid + Tuple added only",
+    "frontend/src/app/features/configuration/pages/platforms.component.ts - key defaults by field.id",
+    "frontend/src/app/features/dashboard/dashboard.component.ts - removed debug console.logs"
   ],
-  "next_action": "User shares [EditMetadata] metadata_values: console output → fix key format → remove console.log → run alembic upgrade head → execute /gsd:execute-phase 9",
-  "context_notes": "Phase 09 is 2/3 plans done. The remaining bug is likely that default_metadata_values JSONB in PlatformConnection uses field names as keys instead of UUIDs, or the values are simply empty/null in the DB. Once that's diagnosed and fixed, Plan 03 (sync pipeline wiring) can be executed to complete the phase."
+  "next_action": "Complete harmonizer.py: add _new_asset_ids: Optional[List[Tuple[uuid.UUID, uuid.UUID]]] = None to harmonize_connection, all _harmonize_* methods, and _ensure_asset. In _ensure_asset new-asset branch after db.flush(), append (asset.id, asset.organization_id) if _new_asset_ids is not None. Thread param through. Then scheduler.py: update _harmonize_with_deadlock_retry to return (count, new_assets); update 8 call sites to unpack + fire run_autofill_for_asset tasks after db.commit(). Then assets.py Task 2.",
+  "context_notes": "CreativeAsset created in harmonizer._ensure_asset (flush only, no commit). Commit is in scheduler.py. ai_autofill.py uses own session so must run after commit. harmonizer.py only has import changes applied - all signature/body changes still needed. 4 session-fix files uncommitted - commit with 09-03 work."
 }
