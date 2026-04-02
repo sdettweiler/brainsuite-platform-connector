@@ -21,6 +21,8 @@ import { GridComponent, TooltipComponent, MarkLineComponent } from 'echarts/comp
 import { CanvasRenderer } from 'echarts/renderers';
 import type { EChartsOption } from 'echarts';
 import { MatSidenavModule } from '@angular/material/sidenav';
+import { MatIconModule } from '@angular/material/icon';
+import { OverlayModule } from '@angular/cdk/overlay';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
@@ -105,6 +107,8 @@ interface CorrelationAsset {
     NgxSliderModule,
     NgxEchartsDirective,
     MatSidenavModule,
+    MatIconModule,
+    OverlayModule,
   ],
   providers: [
     provideEchartsCore({ echarts }),
@@ -181,6 +185,65 @@ interface CorrelationAsset {
           <span class="slider-values">{{ scoreMin }} - {{ scoreMax }}</span>
         </div>
 
+        <!-- Metadata filter -->
+        <div class="metadata-filter-trigger" cdkOverlayOrigin #filterOrigin="cdkOverlayOrigin">
+          <button mat-stroked-button class="add-filter-btn" (click)="openFilterPopover()">
+            <i class="bi bi-funnel"></i> Add Filter
+            <span *ngIf="activeMetadataFilters.size > 0" class="filter-badge">{{ activeMetadataFilters.size }}</span>
+          </button>
+        </div>
+
+        <!-- Filter popover (connected overlay) -->
+        <ng-template cdkConnectedOverlay
+          [cdkConnectedOverlayOrigin]="filterOrigin"
+          [cdkConnectedOverlayOpen]="filterPopoverOpen"
+          (overlayOutsideClick)="filterPopoverOpen = false"
+          [cdkConnectedOverlayHasBackdrop]="true"
+          cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop">
+          <div class="filter-popover">
+            <!-- Step 1: Pick field -->
+            <div *ngIf="filterPopoverStep === 'field'" class="filter-step">
+              <div class="filter-step-header">Select metadata field</div>
+              <button *ngFor="let field of metadataFields"
+                class="filter-field-option"
+                (click)="selectFilterField(field)">
+                {{ field.label }}
+                <span *ngIf="activeMetadataFilters.has(field.id)" class="filter-active-dot"></span>
+              </button>
+              <div *ngIf="metadataFields.length === 0" class="filter-empty">No metadata fields configured</div>
+            </div>
+
+            <!-- Step 2: Search/select values -->
+            <div *ngIf="filterPopoverStep === 'value'" class="filter-step">
+              <div class="filter-step-header">
+                <button mat-icon-button (click)="filterPopoverStep = 'field'" class="filter-back-btn">
+                  <i class="bi bi-arrow-left"></i>
+                </button>
+                {{ selectedFilterField?.label }}
+              </div>
+              <input class="filter-search-input"
+                placeholder="Search values..."
+                [(ngModel)]="filterValueSearch"
+                (ngModelChange)="onFilterValueSearch($event)" />
+              <div class="filter-values-list">
+                <label *ngFor="let v of filteredFilterValues" class="filter-value-option">
+                  <mat-checkbox
+                    [checked]="pendingFilterSelections.has(v.value)"
+                    (change)="toggleFilterValue(v.value)">
+                    {{ v.label || v.value }}
+                  </mat-checkbox>
+                </label>
+                <div *ngIf="filteredFilterValues.length === 0" class="filter-empty">No matching values</div>
+              </div>
+              <button mat-flat-button color="primary" class="filter-apply-btn"
+                [disabled]="pendingFilterSelections.size === 0"
+                (click)="confirmFilterSelection()">
+                Apply ({{ pendingFilterSelections.size }})
+              </button>
+            </div>
+          </div>
+        </ng-template>
+
         <div class="toolbar-spacer"></div>
 
         <!-- Export button -->
@@ -188,6 +251,17 @@ interface CorrelationAsset {
           <i class="bi bi-download"></i>
           Export
         </button>
+      </div>
+
+      <!-- Active metadata filter chips -->
+      <div class="metadata-filter-chips" *ngIf="activeMetadataFilters.size > 0">
+        <span *ngFor="let entry of activeMetadataFilters | keyvalue" class="metadata-filter-chip">
+          {{ entry.value.fieldLabel }}: {{ entry.value.values.join(', ') }}
+          <button class="chip-remove" (click)="removeMetadataFilter(entry.key)">
+            <i class="bi bi-x"></i>
+          </button>
+        </span>
+        <a class="clear-all-link" (click)="clearAllMetadataFilters()">Clear all</a>
       </div>
 
       <!-- Aggregate Stats -->
@@ -948,6 +1022,76 @@ interface CorrelationAsset {
     .correlation-drawer-header .mat-mdc-form-field .mat-mdc-select-value {
       font-weight: 600;
     }
+
+    .add-filter-btn {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 13px; height: 36px;
+      border-color: var(--border); color: var(--text-secondary);
+    }
+    .add-filter-btn .filter-badge {
+      background: var(--accent); color: #fff; border-radius: 50%;
+      width: 18px; height: 18px; font-size: 11px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .filter-popover {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+      width: 280px; max-height: 400px; overflow: hidden;
+    }
+    .filter-step { display: flex; flex-direction: column; }
+    .filter-step-header {
+      padding: 12px 16px; font-weight: 600; font-size: 13px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .filter-back-btn { width: 28px; height: 28px; }
+    .filter-field-option {
+      padding: 10px 16px; border: none; background: none;
+      text-align: left; cursor: pointer; font-size: 13px;
+      color: var(--text-primary); display: flex; align-items: center; justify-content: space-between;
+    }
+    .filter-field-option:hover { background: var(--bg-hover); }
+    .filter-active-dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+    }
+    .filter-search-input {
+      margin: 8px 12px; padding: 8px 12px;
+      border: 1px solid var(--border); border-radius: 6px;
+      font-size: 13px; background: var(--bg-input, var(--bg-card));
+      color: var(--text-primary); outline: none;
+    }
+    .filter-search-input:focus { border-color: var(--accent); }
+    .filter-values-list {
+      max-height: 240px; overflow-y: auto; padding: 4px 0;
+    }
+    .filter-value-option {
+      display: block; padding: 4px 16px; font-size: 13px; cursor: pointer;
+    }
+    .filter-value-option:hover { background: var(--bg-hover); }
+    .filter-apply-btn { margin: 8px 12px 12px; }
+    .filter-empty { padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+    .metadata-filter-chips {
+      display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 24px 0;
+      align-items: center;
+    }
+    .metadata-filter-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: var(--bg-hover, rgba(255,255,255,.06));
+      border: 1px solid var(--border); border-radius: 16px;
+      padding: 4px 8px 4px 12px; font-size: 12px; color: var(--text-secondary);
+    }
+    .chip-remove {
+      border: none; background: none; cursor: pointer;
+      color: var(--text-muted); padding: 0; line-height: 1;
+      display: inline-flex; align-items: center;
+    }
+    .chip-remove:hover { color: var(--text-primary); }
+    .clear-all-link {
+      font-size: 12px; color: var(--accent); cursor: pointer;
+      text-decoration: none;
+    }
+    .clear-all-link:hover { text-decoration: underline; }
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
@@ -977,6 +1121,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
   pageSize = 50;
   total = 0;
   totalPages = 1;
+
+  // Metadata filter state
+  metadataFields: any[] = [];
+  activeMetadataFilters: Map<string, { fieldLabel: string; values: string[] }> = new Map();
+  // Popover state
+  filterPopoverOpen = false;
+  filterPopoverStep: 'field' | 'value' = 'field';
+  selectedFilterField: any = null;
+  filterValues: { value: string; label: string; source: string }[] = [];
+  filteredFilterValues: { value: string; label: string; source: string }[] = [];
+  filterValueSearch = '';
+  pendingFilterSelections: Set<string> = new Set();
 
   scoreMin = 0;
   scoreMax = 100;
@@ -1048,6 +1204,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Load metadata fields for filter popover
+    this.api.get<any[]>('/assets/metadata-fields').subscribe({
+      next: (fields) => this.metadataFields = fields,
+    });
+
     // Debounced score filter
     this.scoreChange$.pipe(
       debounceTime(400),
@@ -1305,6 +1466,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.selectedFormat) params.formats = this.selectedFormat;
     if (this.scoreMin > 0) params['score_min'] = this.scoreMin;
     if (this.scoreMax < 100) params['score_max'] = this.scoreMax;
+    if (this.activeMetadataFilters.size > 0) {
+      params['meta_filters'] = [];
+      this.activeMetadataFilters.forEach((filter, fieldId) => {
+        params['meta_filters'].push(`${fieldId}:${filter.values.join(',')}`);
+      });
+    }
 
     this.api.get<DashboardAssetsResponse>('/dashboard/assets', params).subscribe({
       next: (d) => {
@@ -1334,6 +1501,73 @@ export class DashboardComponent implements OnInit, OnDestroy {
   onFilterChange(): void {
     this.page = 1;
     this.loadData();
+  }
+
+  openFilterPopover(): void {
+    this.filterPopoverOpen = true;
+    this.filterPopoverStep = 'field';
+    this.filterValueSearch = '';
+    this.pendingFilterSelections = new Set();
+    this.selectedFilterField = null;
+  }
+
+  selectFilterField(field: any): void {
+    this.selectedFilterField = field;
+    this.filterPopoverStep = 'value';
+    this.filterValueSearch = '';
+    // Pre-check values already active for this field
+    const existing = this.activeMetadataFilters.get(field.id);
+    this.pendingFilterSelections = existing ? new Set(existing.values) : new Set();
+    // Load combined predefined + actual values
+    this.api.get<{ value: string; label: string; source: string }[]>(
+      '/assets/metadata-filter-values',
+      { field_id: field.id }
+    ).subscribe({
+      next: (vals) => {
+        this.filterValues = vals;
+        this.filteredFilterValues = vals;
+      },
+    });
+  }
+
+  onFilterValueSearch(term: string): void {
+    const t = term.toLowerCase();
+    this.filteredFilterValues = this.filterValues.filter(
+      v => v.label.toLowerCase().includes(t) || v.value.toLowerCase().includes(t)
+    );
+  }
+
+  toggleFilterValue(value: string): void {
+    if (this.pendingFilterSelections.has(value)) {
+      this.pendingFilterSelections.delete(value);
+    } else {
+      this.pendingFilterSelections.add(value);
+    }
+    // Trigger change detection
+    this.pendingFilterSelections = new Set(this.pendingFilterSelections);
+  }
+
+  confirmFilterSelection(): void {
+    if (this.pendingFilterSelections.size > 0) {
+      this.activeMetadataFilters.set(this.selectedFilterField.id, {
+        fieldLabel: this.selectedFilterField.label,
+        values: [...this.pendingFilterSelections],
+      });
+      this.activeMetadataFilters = new Map(this.activeMetadataFilters);
+    }
+    this.filterPopoverOpen = false;
+    this.onFilterChange();
+  }
+
+  removeMetadataFilter(fieldId: string): void {
+    this.activeMetadataFilters.delete(fieldId);
+    this.activeMetadataFilters = new Map(this.activeMetadataFilters);
+    this.onFilterChange();
+  }
+
+  clearAllMetadataFilters(): void {
+    this.activeMetadataFilters = new Map();
+    this.onFilterChange();
   }
 
   onScoreChange(): void {
@@ -1560,8 +1794,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
         date_to: this.dateTo,
       }).subscribe({
         next: (detail) => {
-          console.log('[EditMetadata] asset detail response:', detail);
-          console.log('[EditMetadata] metadata_values:', detail.metadata_values);
           this.dialog.open(EditMetadataDialogComponent, {
             width: '480px',
             data: {
