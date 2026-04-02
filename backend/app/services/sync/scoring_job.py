@@ -3,7 +3,15 @@
 Public API:
   run_scoring_batch()   — batch scheduler entry point (called by APScheduler)
   score_asset_now(score_id) — score a single asset immediately (called by rescore endpoint)
+
+Batch execution model:
+  Phase 1 — fetch up to BATCH_SIZE UNSCORED assets, mark PENDING (single DB session).
+  Phase 2 — submit all assets to BrainSuite concurrently via asyncio.gather.
+  Phase 3 — poll all submitted jobs concurrently via asyncio.gather.
+             Each job polls indefinitely: 30s interval for the first 30 min,
+             then 90s until BrainSuite returns a terminal status (Succeeded/Failed/Stale).
 """
+import asyncio
 import logging
 import os
 import uuid
@@ -89,10 +97,31 @@ async def run_scoring_batch() -> int:
     logger.info("Scoring batch: found %d assets to score, marked PENDING", len(batch))
 
     # -----------------------------------------------------------------------
-    # Phase 2: Process each asset — NO session held during HTTP calls
+    # Phase 2: Submit all assets to BrainSuite concurrently
     # -----------------------------------------------------------------------
-    for item in batch:
-        await _process_asset(item["score_id"], item["asset"], item["endpoint_type"])
+    submit_results = await asyncio.gather(
+        *[_submit_asset(item["score_id"], item["asset"], item["endpoint_type"]) for item in batch],
+        return_exceptions=False,
+    )
+
+    # Build poll list — only assets that were successfully submitted (job_id not None)
+    poll_items = [
+        (item["score_id"], job_id, item["endpoint_type"])
+        for item, job_id in zip(batch, submit_results)
+        if job_id is not None
+    ]
+    logger.info(
+        "Scoring batch: %d/%d assets submitted successfully, starting concurrent polling",
+        len(poll_items), len(batch),
+    )
+
+    # -----------------------------------------------------------------------
+    # Phase 3: Poll all submitted jobs concurrently
+    # -----------------------------------------------------------------------
+    if poll_items:
+        await asyncio.gather(
+            *[_poll_asset(score_id, job_id, endpoint_type) for score_id, job_id, endpoint_type in poll_items],
+        )
 
     # -----------------------------------------------------------------------
     # Phase 3: Count remaining UNSCORED assets for adaptive scheduling
@@ -157,20 +186,15 @@ async def score_asset_now(score_id: uuid.UUID) -> None:
             row2.error_reason = None
             await db.commit()
 
-    await _process_asset(score_id, asset, endpoint_type)
+    job_id = await _submit_asset(score_id, asset, endpoint_type)
+    if job_id is not None:
+        await _poll_asset(score_id, job_id, endpoint_type)
 
 
-async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> None:
-    """Core per-asset scoring logic — shared by batch and immediate paths."""
+async def _submit_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> str | None:
+    """Download asset and submit to BrainSuite. Returns job_id string on success, None on failure."""
     asset_id = asset.id
-
-    logger.info(
-        "Scoring asset %s: endpoint_type=%s platform=%s format=%s",
-        asset_id,
-        endpoint_type,
-        getattr(asset, "platform", "?"),
-        getattr(asset, "asset_format", "?"),
-    )
+    logger.info("Submitting asset %s: endpoint_type=%s platform=%s", asset_id, endpoint_type, getattr(asset, "platform", "?"))
     try:
         asset_url = asset.asset_url
         if not asset_url:
@@ -179,62 +203,37 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
         s3_key = asset_url.lstrip("/")
         if s3_key.startswith("objects/"):
             s3_key = s3_key[len("objects/"):]
-        logger.info("Scoring asset %s: downloading from s3_key=%s", asset_id, s3_key)
 
         file_bytes, _ = get_object_storage().download_blob(s3_key)
         if not file_bytes:
             raise ValueError(f"Asset not found in object storage: {s3_key}")
-        logger.info("Scoring asset %s: downloaded %d bytes", asset_id, len(file_bytes))
+        logger.info("Asset %s: downloaded %d bytes", asset_id, len(file_bytes))
 
         metadata_dict: dict[str, str] = {}
         async with get_session_factory()() as db:
             meta_result = await db.execute(
                 select(MetadataField.name, AssetMetadataValue.value)
                 .join(AssetMetadataValue, AssetMetadataValue.field_id == MetadataField.id)
-                .where(
-                    AssetMetadataValue.asset_id == asset_id,
-                    MetadataField.name.like("brainsuite_%"),
-                )
+                .where(AssetMetadataValue.asset_id == asset_id, MetadataField.name.like("brainsuite_%"))
             )
             for field_name, field_value in meta_result.all():
                 if field_value is not None:
                     metadata_dict[field_name] = field_value
 
         filename = os.path.basename(s3_key) or (asset.ad_name or f"{asset_id}")
-        logger.info(
-            "Scoring asset %s: filename=%s metadata_keys=%s",
-            asset_id,
-            filename,
-            list(metadata_dict.keys()),
-        )
 
         if endpoint_type == "VIDEO":
-            briefing_data = build_scoring_payload(
-                asset_name=filename,
-                platform=asset.platform,
-                placement=asset.placement,
-                metadata=metadata_dict,
-            )
             job_id = await brainsuite_score_service.submit_job_with_upload(
                 file_bytes=file_bytes,
                 filename=filename,
-                briefing_data=briefing_data,
+                briefing_data=build_scoring_payload(asset_name=filename, platform=asset.platform, placement=asset.placement, metadata=metadata_dict),
             )
-        elif endpoint_type == "STATIC_IMAGE":
-            announce_payload = build_static_scoring_payload(
-                asset_name=filename,
-                platform=asset.platform,
-                placement=asset.placement,
-                metadata=metadata_dict,
-            )
+        else:
             job_id = await brainsuite_static_score_service.submit_job_with_upload(
                 file_bytes=file_bytes,
                 filename=filename,
-                announce_payload=announce_payload,
+                announce_payload=build_static_scoring_payload(asset_name=filename, platform=asset.platform, placement=asset.placement, metadata=metadata_dict),
             )
-        else:
-            logger.warning("Unexpected endpoint_type %s for asset %s, skipping", endpoint_type, asset_id)
-            return
 
         async with get_session_factory()() as db:
             score_row = await db.get(CreativeScoreResult, score_id)
@@ -245,18 +244,34 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 score_row.updated_at = datetime.now(timezone.utc)
             await db.commit()
 
-        logger.info("Scoring job submitted for asset %s, job_id=%s endpoint_type=%s", asset_id, job_id, endpoint_type)
+        logger.info("Asset %s submitted: job_id=%s", asset_id, job_id)
+        return str(job_id)
 
+    except BrainSuiteJobError as exc:
+        logger.warning("Submit failed for asset %s: %s", asset_id, exc)
+        await _mark_failed(score_id, str(exc)[:500])
+        return None
+    except Exception as exc:
+        error_reason = f"{type(exc).__name__}: {str(exc)[:500]}"
+        logger.error("Unexpected submit error for asset %s: %s", asset_id, error_reason, exc_info=True)
+        await _mark_failed(score_id, error_reason)
+        return None
+
+
+async def _poll_asset(score_id, job_id: str, endpoint_type: str) -> None:
+    """Poll a submitted BrainSuite job to completion and persist the result."""
+    logger.info("Polling job_id=%s (score_id=%s)", job_id, score_id)
+    try:
         if endpoint_type == "VIDEO":
-            result_data = await brainsuite_score_service.poll_job_status(str(job_id))
+            result_data = await brainsuite_score_service.poll_job_status(job_id)
+            asset_id_result = await _get_asset_id(score_id)
         else:
-            result_data = await brainsuite_static_score_service.poll_job_status(str(job_id))
+            result_data = await brainsuite_static_score_service.poll_job_status(job_id)
+            asset_id_result = await _get_asset_id(score_id)
 
         raw_output = result_data.get("output", {})
-        stored_output = await persist_and_replace_visualizations(raw_output, str(asset_id))
-        result_data = {**result_data, "output": stored_output}
-
-        score_data = extract_score_data(result_data, strip_viz=False)
+        stored_output = await persist_and_replace_visualizations(raw_output, str(asset_id_result))
+        score_data = extract_score_data({**result_data, "output": stored_output}, strip_viz=False)
 
         async with get_session_factory()() as db:
             score_row = await db.get(CreativeScoreResult, score_id)
@@ -269,26 +284,24 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 score_row.updated_at = datetime.now(timezone.utc)
             await db.commit()
 
-        logger.info(
-            "Scoring complete for asset %s: score=%.1f rating=%s",
-            asset_id,
-            score_data["total_score"],
-            score_data["total_rating"],
-        )
+        logger.info("Scoring complete for job_id=%s: score=%.1f rating=%s", job_id, score_data["total_score"], score_data["total_rating"])
 
     except BrainSuiteJobError as exc:
         error_reason = str(exc)[:500]
-        logger.warning("BrainSuite job error for asset %s (endpoint_type=%s): %s", asset_id, endpoint_type, error_reason)
+        logger.warning("BrainSuite job error for job_id=%s: %s", job_id, error_reason)
         await _mark_failed(score_id, error_reason)
 
     except Exception as exc:
         error_reason = f"{type(exc).__name__}: {str(exc)[:500]}"
-        logger.error(
-            "Unexpected error scoring asset %s (endpoint_type=%s): %s",
-            asset_id, endpoint_type, error_reason,
-            exc_info=True,
-        )
+        logger.error("Unexpected poll error for job_id=%s: %s", job_id, error_reason, exc_info=True)
         await _mark_failed(score_id, error_reason)
+
+
+async def _get_asset_id(score_id) -> uuid.UUID:
+    """Fetch the creative_asset_id for a score record."""
+    async with get_session_factory()() as db:
+        row = await db.get(CreativeScoreResult, score_id)
+        return row.creative_asset_id
 
 
 async def run_backfill_task() -> None:

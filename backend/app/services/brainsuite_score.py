@@ -280,22 +280,29 @@ class BrainSuiteScoreService:
     async def poll_job_status(
         self,
         job_id: str,
-        max_polls: int = 60,
-        poll_interval: int = 30,
+        fast_polls: int = 60,
+        fast_interval: int = 30,
+        slow_interval: int = 90,
     ) -> dict:
         """Poll the BrainSuite job status endpoint until a terminal status.
 
-        Terminal statuses:
+        Polls indefinitely — never times out. Only stops on a terminal status:
             Succeeded — returns the full response JSON
             Failed / Stale — raises BrainSuiteJobError
 
+        Interval strategy:
+            First fast_polls attempts: fast_interval seconds between polls.
+            After that: slow_interval seconds (job is taking unusually long but
+            BrainSuite will eventually return a terminal status).
+
         Raises:
-            BrainSuiteJobError: if job fails, goes stale, or max_polls is exhausted.
+            BrainSuiteJobError: if BrainSuite reports Failed or Stale.
         """
         url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/ACE_VIDEO_SMV_API/{job_id}"
         in_progress = {"Announced", "Scheduled", "Created", "Started"}
+        poll_num = 0
 
-        for poll_num in range(max_polls):
+        while True:
             token = await self._get_token()
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
@@ -305,18 +312,17 @@ class BrainSuiteScoreService:
 
             if resp.status_code == 401:
                 self._invalidate_token()
+                poll_num += 1
                 continue
 
             resp.raise_for_status()
             data = resp.json()
             status = data.get("status", "")
+            interval = fast_interval if poll_num < fast_polls else slow_interval
 
             logger.info(
-                "BrainSuite job %s — status=%s (poll %d/%d)",
-                job_id,
-                status,
-                poll_num + 1,
-                max_polls,
+                "BrainSuite job %s — status=%s (poll %d, next in %ds)",
+                job_id, status, poll_num + 1, interval,
             )
 
             if status == "Succeeded":
@@ -328,15 +334,17 @@ class BrainSuiteScoreService:
                     f"BrainSuite job {job_id} ended with status={status}: {error_detail}"
                 )
 
-            if status in in_progress:
-                await asyncio.sleep(poll_interval)
-                continue
+            if poll_num == fast_polls:
+                logger.warning(
+                    "BrainSuite job %s still in progress after %d polls — switching to %ds interval",
+                    job_id, fast_polls, slow_interval,
+                )
 
-            # Unexpected status — treat as transient, keep polling
-            logger.warning("BrainSuite job %s — unexpected status=%s", job_id, status)
-            await asyncio.sleep(poll_interval)
+            if status not in in_progress:
+                logger.warning("BrainSuite job %s — unexpected status=%s, continuing", job_id, status)
 
-        raise BrainSuiteJobError(f"Job polling timed out for job_id={job_id} after {max_polls} polls")
+            await asyncio.sleep(interval)
+            poll_num += 1
 
 
 # ---------------------------------------------------------------------------
