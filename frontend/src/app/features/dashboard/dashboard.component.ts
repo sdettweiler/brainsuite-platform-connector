@@ -1553,10 +1553,35 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.contextMenu.visible = false;
     const { EditMetadataDialogComponent } = await import('../dashboard/dialogs/edit-metadata-dialog.component');
     const assetIds = this.selectedAssets.length > 0 ? this.selectedAssets : [asset.id];
-    this.dialog.open(EditMetadataDialogComponent, {
-      width: '480px',
-      data: { assetIds },
-    });
+
+    if (assetIds.length === 1) {
+      this.api.get<{ metadata_values?: Record<string, string> }>(`/dashboard/assets/${assetIds[0]}`, {
+        date_from: this.dateFrom,
+        date_to: this.dateTo,
+      }).subscribe({
+        next: (detail) => {
+          this.dialog.open(EditMetadataDialogComponent, {
+            width: '480px',
+            data: {
+              assetIds,
+              singleAssetName: asset.ad_name || undefined,
+              existingValues: detail.metadata_values || {},
+            },
+          });
+        },
+        error: () => {
+          this.dialog.open(EditMetadataDialogComponent, {
+            width: '480px',
+            data: { assetIds, singleAssetName: asset.ad_name || undefined },
+          });
+        },
+      });
+    } else {
+      this.dialog.open(EditMetadataDialogComponent, {
+        width: '480px',
+        data: { assetIds },
+      });
+    }
   }
 
   compareSelected(): void {
