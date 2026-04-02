@@ -387,9 +387,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                 </div>
               </div>
 
-              <!-- ── Image-only metadata ── -->
+              <!-- ── Asset metadata ── -->
               <div class="ce-image-meta" *ngIf="imageMetadataFields.length > 0">
-                <span class="ce-panel-label">Image Metadata</span>
+                <span class="ce-panel-label">Metadata</span>
                 <div class="ce-image-meta-fields">
                   <div class="ce-image-meta-field" *ngFor="let f of imageMetadataFields">
                     <span class="ce-image-meta-label">{{ f.label }}</span>
@@ -1283,15 +1283,13 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   }
 
   get imageMetadataFields(): { label: string; value: string }[] {
-    if (!this.asset || this.asset.asset_format !== 'IMAGE') return [];
+    if (!this.asset) return [];
     const mv = this.asset.metadata_values;
     if (!mv) return [];
 
-    const imageFieldNames = ['brainsuite_intended_messages', 'brainsuite_iconic_color_scheme'];
     const result: { label: string; value: string }[] = [];
-
     for (const field of this.allMetadataFields) {
-      if (imageFieldNames.includes(field.name) && mv[field.id]) {
+      if (mv[field.id]) {
         result.push({ label: field.label, value: mv[field.id] });
       }
     }
