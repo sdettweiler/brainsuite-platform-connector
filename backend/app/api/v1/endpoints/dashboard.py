@@ -395,11 +395,14 @@ async def get_asset_detail(
     if not asset or asset.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    # Get metadata values
-    meta_result = await db.execute(
+    # Get metadata values — start from connection defaults, overlay asset-specific values
+    connection = await db.get(PlatformConnection, asset.platform_connection_id)
+    meta_values: dict = dict(connection.default_metadata_values or {}) if connection else {}
+    asset_meta_result = await db.execute(
         select(AssetMetadataValue).where(AssetMetadataValue.asset_id == asset_id)
     )
-    meta_values = {str(v.field_id): v.value for v in meta_result.scalars().all()}
+    for v in asset_meta_result.scalars().all():
+        meta_values[str(v.field_id)] = v.value
 
     # Get projects
     proj_result = await db.execute(
