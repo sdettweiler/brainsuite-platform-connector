@@ -136,7 +136,12 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
             <img [src]="getPlatformIconUrl(asset!.platform)" [alt]="asset?.platform" class="platform-icon-img" *ngIf="asset?.platform" />
             <span>{{ asset?.platform }}</span>
           </div>
-          <h2>{{ asset?.ad_name || 'Unnamed Ad' }}</h2>
+          <div class="detail-title-row">
+            <h2>{{ asset?.ad_name || 'Unnamed Ad' }}</h2>
+            <button class="copy-id-btn" (click)="copyAssetId()" matTooltip="Copy Asset ID">
+              <i class="bi bi-clipboard"></i>
+            </button>
+          </div>
           <div class="metadata-chips" *ngIf="asset">
             <span class="chip" *ngFor="let m of assetMetaList">
               <span class="chip-key">{{ m.label }}:</span> {{ m.value }}
@@ -554,7 +559,15 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;
     }
     .platform-icon-img { width: 18px; height: 18px; object-fit: contain; }
-    .detail-title-area h2 { margin-bottom: 8px; }
+    .detail-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .detail-title-row h2 { margin-bottom: 0; }
+    .copy-id-btn {
+      background: none; border: none; cursor: pointer; padding: 4px;
+      color: var(--text-muted); display: flex; align-items: center;
+      border-radius: 4px; transition: color var(--transition), background var(--transition);
+    }
+    .copy-id-btn i.bi { font-size: 14px; }
+    .copy-id-btn:hover { color: var(--accent); background: var(--bg-hover); }
 
     .metadata-chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip { background: var(--bg-hover); padding: 2px 10px; border-radius: 20px; font-size: 11px; color: var(--text-secondary); }
@@ -1559,6 +1572,12 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   getMiniDashOffset(score: number | null): number {
     const s = score ?? 0;
     return 150.8 * (1 - Math.min(Math.max(s, 0), 100) / 100);
+  }
+
+  copyAssetId(): void {
+    const id = this.data.assetId;
+    navigator.clipboard.writeText(id);
+    this.snackBar.open('Asset ID copied to clipboard', '', { duration: 2000 });
   }
 
   // ── CE: actions ────────────────────────────────────────────────────────
