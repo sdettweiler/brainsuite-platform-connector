@@ -185,6 +185,19 @@ interface CorrelationAsset {
           <span class="slider-values">{{ scoreMin }} - {{ scoreMax }}</span>
         </div>
 
+        <!-- Duration range filter -->
+        <div class="duration-slider-wrapper" *ngIf="hasAnyVideo"
+             matTooltip="Filter by video duration">
+          <span class="slider-label">Duration</span>
+          <ngx-slider
+            [(value)]="durationMin"
+            [(highValue)]="durationMax"
+            [options]="durationSliderOptions"
+            (userChangeEnd)="onDurationChange()"
+          ></ngx-slider>
+          <span class="slider-values">{{ formatDuration(durationMin) }} - {{ formatDuration(durationMax) }}</span>
+        </div>
+
         <!-- Metadata filter -->
         <div class="metadata-filter-trigger" cdkOverlayOrigin #filterOrigin="cdkOverlayOrigin">
           <button mat-stroked-button class="add-filter-btn" (click)="openFilterPopover()">
@@ -800,6 +813,35 @@ interface CorrelationAsset {
       }
     }
 
+    .duration-slider-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 260px;
+      max-width: 340px;
+      padding: 0 8px;
+
+      .slider-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+
+      .slider-values {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        min-width: 60px;
+        text-align: center;
+      }
+
+      ngx-slider {
+        flex: 1;
+      }
+    }
+
     ::ng-deep .ngx-slider {
       .ngx-slider-pointer {
         width: 14px !important;
@@ -1150,6 +1192,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private hasAnyScored = false;
   private scoreChange$ = new Subject<void>();
 
+  durationMin = 0;
+  durationMax = 120;
+  durationSliderOptions: Options = {
+    floor: 0,
+    ceil: 120,
+    step: 1,
+    noSwitching: true,
+    translate: (value: number): string => {
+      if (value >= 60) {
+        const m = Math.floor(value / 60);
+        const s = value % 60;
+        return s > 0 ? `${m}m${s}s` : `${m}m`;
+      }
+      return `${value}s`;
+    },
+  };
+  private hasAnyVideo = false;
+  private durationChange$ = new Subject<void>();
+
   selectedAssets: string[] = [];
   lastSelectedId: string | null = null;
 
@@ -1214,6 +1275,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     // Debounced score filter
     this.scoreChange$.pipe(
+      debounceTime(400),
+      takeUntil(this.destroy$)
+    ).subscribe(() => this.onFilterChange());
+
+    // Debounced duration filter
+    this.durationChange$.pipe(
       debounceTime(400),
       takeUntil(this.destroy$)
     ).subscribe(() => this.onFilterChange());
@@ -1469,6 +1536,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.selectedFormat) params.formats = this.selectedFormat;
     if (this.scoreMin > 0) params['score_min'] = this.scoreMin;
     if (this.scoreMax < 100) params['score_max'] = this.scoreMax;
+    if (this.durationMin > 0) params['duration_min'] = this.durationMin;
+    if (this.durationMax < 120) params['duration_max'] = this.durationMax;
     if (this.activeMetadataFilters.size > 0) {
       params['meta_filters'] = [];
       this.activeMetadataFilters.forEach((filter, fieldId) => {
@@ -1488,6 +1557,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
         }
         this.sliderDisabled = !this.hasAnyScored;
         this.sliderOptions = { ...this.sliderOptions, disabled: !this.hasAnyScored };
+        // Duration slider: show when any video exists (sticky — never hides once shown)
+        const videoAssets = d.items.filter((a: any) => a.asset_format === 'VIDEO');
+        if (videoAssets.length > 0) {
+          this.hasAnyVideo = true;
+        }
         this.preloadAssetDetails();
         this.stopPolling$.next();
         this.pollingActive = false;
@@ -1575,6 +1649,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   onScoreChange(): void {
     this.scoreChange$.next();
+  }
+
+  onDurationChange(): void {
+    this.durationChange$.next();
+  }
+
+  formatDuration(seconds: number): string {
+    if (seconds >= 60) {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return s > 0 ? `${m}m${s}s` : `${m}m`;
+    }
+    return `${seconds}s`;
   }
 
   onDateRangeChange(event: DateRangeChange): void {
