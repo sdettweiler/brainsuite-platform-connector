@@ -74,6 +74,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 260401-n93 | improve platform sync status display — fix new account showing sync failed, add running sync indicators | 2026-04-01 | 6e34c94 | [260401-n93-improve-platform-sync-status-display-fix](.planning/quick/260401-n93-improve-platform-sync-status-display-fix/) |
 | 260401-qpu | Add metric selector dropdown to scatter chart correlation drawer (7 metrics: ROAS, CTR, VTR, CPM, CVR, CPC, Conversions) | 2026-04-01 | 33cceed | [260401-qpu-add-metric-selector-dropdown-to-scatter-](.planning/quick/260401-qpu-add-metric-selector-dropdown-to-scatter-/) |
 | 260407-eip | copy asset ID feature — right-click context menu and detail dialog copy icon | 2026-04-07 | f7242e4 | [260407-eip-copy-asset-id-feature-right-click-contex](.planning/quick/260407-eip-copy-asset-id-feature-right-click-contex/) |
+| 260407-lxk | fix missing asset media metrics — add width/height columns, wire all 4 platform harmonizers, backfill endpoint, dashboard display | 2026-04-07 | f07b9ba | [260407-lxk-fix-missing-asset-media-metrics-add-dura](.planning/quick/260407-lxk-fix-missing-asset-media-metrics-add-dura/) |
 
 ### Blockers/Concerns
 
