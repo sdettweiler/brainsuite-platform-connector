@@ -2,6 +2,7 @@
 Creative asset management: projects, metadata, assignments, export.
 """
 from typing import List, Optional
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, distinct
@@ -20,6 +21,7 @@ from app.schemas.creative import (
 )
 from app.api.v1.deps import get_current_user, get_current_admin
 from app.services.export_service import export_service
+from app.services.ai_autofill import run_autofill_for_asset
 
 router = APIRouter()
 
@@ -629,3 +631,37 @@ async def reorder_metadata_fields(
             db.add(field)
     await db.commit()
     return {"detail": "Order updated"}
+
+
+@router.post("/debug/autofill/{asset_id}")
+async def debug_trigger_autofill(
+    asset_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Debug endpoint: trigger auto-fill synchronously for a single asset and return the result."""
+    result = await db.execute(
+        select(CreativeAsset).where(CreativeAsset.id == asset_id)
+    )
+    asset = result.scalar_one_or_none()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Asset not in your organization")
+
+    # Run synchronously (not via create_task) so we can return the outcome
+    await run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id)
+
+    # Return updated tracking row
+    tracking_result = await db.execute(
+        select(AIInferenceTracking).where(AIInferenceTracking.asset_id == asset_id)
+    )
+    tracking = tracking_result.scalar_one_or_none()
+
+    return {
+        "asset_id": str(asset_id),
+        "platform": asset.platform,
+        "asset_url": asset.asset_url,
+        "ai_inference_status": tracking.ai_inference_status if tracking else None,
+        "updated_at": tracking.updated_at.isoformat() if tracking else None,
+    }

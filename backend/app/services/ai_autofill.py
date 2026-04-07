@@ -410,20 +410,28 @@ def _extract_first_frame(video_bytes: bytes) -> Optional[bytes]:
 
     Returns JPEG bytes or None on failure.
     """
+    import tempfile
+    import os
+
     try:
         import imageio_ffmpeg
         from PIL import Image
 
-        reader = imageio_ffmpeg.read_frames(
-            io.BytesIO(video_bytes), input_params=["-frames:v", "1"]
-        )
-        meta = next(reader)  # First item is metadata dict
-        frame_bytes = next(reader)  # First actual frame (raw RGB)
-        w, h = meta["size"]
-        img = Image.frombytes("RGB", (w, h), frame_bytes)
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85)
-        return buf.getvalue()
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp.write(video_bytes)
+            tmp_path = tmp.name
+
+        try:
+            reader = imageio_ffmpeg.read_frames(tmp_path)
+            meta = next(reader)  # First item is metadata dict
+            frame_bytes = next(reader)  # First actual frame (raw RGB)
+            w, h = meta["size"]
+            img = Image.frombytes("RGB", (w, h), frame_bytes)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            return buf.getvalue()
+        finally:
+            os.unlink(tmp_path)
     except Exception as exc:
-        logger.debug("First frame extraction failed: %s", exc)
+        logger.warning("First frame extraction failed: %s", exc)
         return None
