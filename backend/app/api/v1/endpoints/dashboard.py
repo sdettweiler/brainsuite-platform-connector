@@ -649,6 +649,8 @@ async def get_asset_detail(
         "thumbnail_url": asset.thumbnail_url,
         "asset_url": asset.asset_url,
         "video_duration": asset.video_duration,
+        "width": asset.width,
+        "height": asset.height,
         "ad_account_id": str(asset.ad_account_id) if asset.ad_account_id else None,
         "scoring_status": None,
         "total_score": None,

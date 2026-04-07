@@ -107,6 +107,8 @@ interface AssetDetailResponse {
   performer_tag: string | null;
   ad_account_id: string | null;
   video_duration?: number | null;
+  width?: number | null;
+  height?: number | null;
   campaigns_count: number;
   campaigns: Array<{ campaign_name?: string; campaign_id?: string; spend?: number }>;
   timeseries: Record<string, AssetTimeseriesPoint[]> | null;
@@ -227,6 +229,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                     <span class="perf-filename">{{ detail?.ad_name || 'Unnamed Asset' }}</span>
                     <span class="perf-duration" *ngIf="detail?.video_duration">
                       {{ detail!.video_duration | number:'1.0-0' }}s
+                    </span>
+                    <span class="perf-dimension" *ngIf="detail?.width && detail?.height">
+                      {{ detail!.width }}x{{ detail!.height }}
                     </span>
                   </div>
                   <div class="perf-mini-tiles">
@@ -666,6 +671,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       white-space: nowrap; max-width: 70%;
     }
     .perf-duration { font-size: 12px; color: var(--text-secondary); }
+    .perf-dimension { font-size: 12px; color: var(--text-secondary); }
 
     .perf-mini-tiles { display: flex; gap: 8px; }
     .perf-mini-tile {

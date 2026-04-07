@@ -1,23 +1,30 @@
 """BrainSuite scoring batch job — runs via APScheduler every 15 minutes.
 
 Public API:
-  run_scoring_batch()   — batch scheduler entry point (called by APScheduler)
-  score_asset_now(score_id) — score a single asset immediately (called by rescore endpoint)
+  run_scoring_batch()             — batch scheduler entry point (called by APScheduler)
+  score_asset_now(score_id)       — score a single asset immediately (called by rescore endpoint)
+  reset_stuck_scoring_assets()    — reset orphaned PENDING records back to UNSCORED
 
 Batch execution model:
+  Phase 0 — reset any stuck PENDING assets back to UNSCORED (self-healing).
   Phase 1 — fetch up to BATCH_SIZE UNSCORED assets, mark PENDING (single DB session).
   Phase 2 — submit all assets to BrainSuite concurrently via asyncio.gather.
   Phase 3 — poll all submitted jobs concurrently via asyncio.gather.
              Each job polls indefinitely: 30s interval for the first 30 min,
              then 90s until BrainSuite returns a terminal status (Succeeded/Failed/Stale).
+
+Stuck asset thresholds:
+  PENDING_STUCK_MINUTES = 30  — PENDING with no submitted_at older than this → UNSCORED
+  PROCESSING assets are never auto-reset — they remain PROCESSING until BrainSuite
+  returns Succeeded or Failed/Stale.
 """
 import asyncio
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.db.base import get_session_factory
 from app.models.creative import CreativeAsset, AssetMetadataValue
@@ -39,6 +46,92 @@ from app.services.object_storage import get_object_storage
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20
+PENDING_STUCK_MINUTES = 30    # PENDING with no submitted_at older than this → UNSCORED
+PROCESSING_REFETCH_HOURS = 1  # PROCESSING with no scored_at older than this → re-poll BrainSuite
+
+
+async def reset_stuck_scoring_assets() -> int:
+    """Reset orphaned PENDING score records back to UNSCORED.
+
+    Assets get orphaned when the server restarts (or the batch job is killed) between
+    Phase 1 (mark PENDING) and Phase 2 (submit to BrainSuite). Because the batch only
+    queries UNSCORED assets, these records are never retried without this reset.
+
+    Only PENDING assets with no submitted_at are reset — PROCESSING assets remain
+    untouched because they have an active BrainSuite job and must stay in PROCESSING
+    until BrainSuite returns Succeeded or Failed/Stale.
+
+    Returns:
+        Number of PENDING records reset to UNSCORED.
+    """
+    now = datetime.now(timezone.utc)
+    pending_cutoff = now - timedelta(minutes=PENDING_STUCK_MINUTES)
+
+    async with get_session_factory()() as db:
+        result = await db.execute(
+            select(CreativeScoreResult).where(
+                CreativeScoreResult.scoring_status == "PENDING",
+                CreativeScoreResult.submitted_at.is_(None),
+                CreativeScoreResult.pending_at < pending_cutoff,
+            )
+        )
+        rows = result.scalars().all()
+        for row in rows:
+            row.scoring_status = "UNSCORED"
+            row.pending_at = None
+            row.error_reason = "Reset: stuck in PENDING (never submitted)"
+            row.updated_at = now
+
+        if rows:
+            await db.commit()
+
+    if rows:
+        logger.info("Stuck asset reset: %d PENDING → UNSCORED", len(rows))
+    return len(rows)
+
+
+async def refetch_processing_assets() -> int:
+    """Re-poll BrainSuite for PROCESSING assets whose polling was dropped.
+
+    When the server restarts mid-batch, submitted jobs stay in PROCESSING because
+    the polling coroutines are lost. This function finds those orphaned records and
+    re-initiates polling so scores are imported without re-submitting the asset.
+
+    Targets: PROCESSING assets with submitted_at older than PROCESSING_REFETCH_HOURS
+    and no scored_at (i.e. still waiting for a result).
+
+    Each job is re-polled via _poll_asset() — if BrainSuite already completed the job
+    it returns immediately with the result; if Failed/Stale it marks the record FAILED.
+
+    Returns:
+        Number of PROCESSING assets re-polled.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=PROCESSING_REFETCH_HOURS)
+
+    async with get_session_factory()() as db:
+        result = await db.execute(
+            select(
+                CreativeScoreResult.id,
+                CreativeScoreResult.brainsuite_job_id,
+                CreativeScoreResult.endpoint_type,
+            ).where(
+                CreativeScoreResult.scoring_status == "PROCESSING",
+                CreativeScoreResult.scored_at.is_(None),
+                CreativeScoreResult.submitted_at < cutoff,
+            )
+        )
+        rows = result.all()
+
+    if not rows:
+        return 0
+
+    logger.info(
+        "Refetching %d PROCESSING asset(s) whose polling was dropped", len(rows)
+    )
+    await asyncio.gather(
+        *[_poll_asset(score_id, job_id, endpoint_type) for score_id, job_id, endpoint_type in rows]
+    )
+    return len(rows)
 
 
 async def run_scoring_batch() -> int:
@@ -60,6 +153,12 @@ async def run_scoring_batch() -> int:
         Number of UNSCORED assets remaining after this batch (0 = queue drained).
     """
     logger.info("Starting scoring batch run")
+
+    # -----------------------------------------------------------------------
+    # Phase 0: Self-healing — reset stuck PENDING, refetch dropped PROCESSING
+    # -----------------------------------------------------------------------
+    await reset_stuck_scoring_assets()
+    await refetch_processing_assets()
 
     # -----------------------------------------------------------------------
     # Phase 1: Fetch batch and mark PENDING (single DB session, then release)
@@ -347,6 +446,169 @@ async def run_backfill_task() -> None:
         scored,
         failed,
         len(score_ids),
+    )
+
+
+async def run_media_metrics_backfill() -> None:
+    """Backfill width/height/video_duration for existing assets that lack them.
+
+    Reads assets from object storage (internal S3/MinIO URL) and extracts
+    dimensions using Pillow (images) or imageio_ffmpeg (videos).  Assets with
+    no asset_url, external/expired CDN URLs, or extraction errors are skipped
+    gracefully.
+
+    Designed to run as a FastAPI BackgroundTask.
+    """
+    import io
+    import tempfile
+    import os as _os
+
+    from sqlalchemy import or_
+
+    logger.info("Media metrics backfill started")
+
+    asset_ids: list[uuid.UUID] = []
+    async with get_session_factory()() as db:
+        result = await db.execute(
+            select(CreativeAsset.id)
+            .where(
+                or_(
+                    CreativeAsset.width.is_(None),
+                    CreativeAsset.height.is_(None),
+                )
+            )
+            .order_by(CreativeAsset.created_at.asc())
+        )
+        asset_ids = list(result.scalars().all())
+
+    logger.info("Media metrics backfill: found %d assets with missing width/height", len(asset_ids))
+
+    storage = get_object_storage()
+    updated = 0
+    skipped = 0
+    failed = 0
+    BATCH_COMMIT_SIZE = 50
+
+    pending_updates: list[tuple[uuid.UUID, int | None, int | None, float | None]] = []  # (id, w, h, dur)
+
+    for asset_id in asset_ids:
+        try:
+            async with get_session_factory()() as db:
+                asset = await db.get(CreativeAsset, asset_id)
+                if not asset:
+                    skipped += 1
+                    continue
+
+                asset_url = asset.asset_url
+                asset_format = (asset.asset_format or "").upper()
+                existing_duration = asset.video_duration
+
+            if not asset_url:
+                skipped += 1
+                continue
+
+            # Only process internal S3/MinIO URLs — skip external CDN URLs
+            s3_key = asset_url.lstrip("/")
+            if s3_key.startswith("objects/"):
+                s3_key = s3_key[len("objects/"):]
+
+            # Heuristic: internal URLs start with "creatives/" or don't contain "://"
+            is_internal = "://" not in asset_url or (
+                "creatives/" in s3_key and not s3_key.startswith("http")
+            )
+            if not is_internal:
+                skipped += 1
+                continue
+
+            file_bytes, content_type = storage.download_blob(s3_key)
+            if not file_bytes:
+                skipped += 1
+                continue
+
+            w: int | None = None
+            h: int | None = None
+            duration: float | None = None
+
+            if asset_format == "IMAGE" or (content_type and "image" in content_type):
+                try:
+                    from PIL import Image
+                    img = Image.open(io.BytesIO(file_bytes))
+                    w, h = img.size
+                except Exception as exc:
+                    logger.debug("Image dimension extraction failed for asset %s: %s", asset_id, exc)
+
+            elif asset_format == "VIDEO" or (content_type and "video" in content_type):
+                tmp_path = None
+                reader = None
+                try:
+                    import imageio_ffmpeg
+                    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+                        tmp.write(file_bytes)
+                        tmp_path = tmp.name
+                    reader = imageio_ffmpeg.read_frames(tmp_path)
+                    meta = next(reader)
+                    w, h = meta["size"]
+                    duration = meta.get("duration")
+                except Exception as exc:
+                    logger.debug("Video dimension extraction failed for asset %s: %s", asset_id, exc)
+                finally:
+                    if reader is not None:
+                        try:
+                            reader.close()
+                        except Exception:
+                            pass
+                    if tmp_path and _os.path.exists(tmp_path):
+                        try:
+                            _os.unlink(tmp_path)
+                        except OSError:
+                            pass
+
+            if w is None and h is None:
+                skipped += 1
+                continue
+
+            pending_updates.append((asset_id, w, h, duration if not existing_duration else None))
+            updated += 1
+
+            if len(pending_updates) >= BATCH_COMMIT_SIZE:
+                async with get_session_factory()() as db:
+                    for aid, aw, ah, adur in pending_updates:
+                        a = await db.get(CreativeAsset, aid)
+                        if a:
+                            if aw is not None:
+                                a.width = aw
+                            if ah is not None:
+                                a.height = ah
+                            if adur is not None and not a.video_duration:
+                                a.video_duration = adur
+                    await db.commit()
+                pending_updates.clear()
+
+        except Exception as exc:
+            failed += 1
+            logger.warning("Media metrics backfill: error processing asset %s: %s", asset_id, exc)
+
+    # Commit remaining
+    if pending_updates:
+        async with get_session_factory()() as db:
+            for aid, aw, ah, adur in pending_updates:
+                a = await db.get(CreativeAsset, aid)
+                if a:
+                    if aw is not None:
+                        a.width = aw
+                    if ah is not None:
+                        a.height = ah
+                    if adur is not None and not a.video_duration:
+                        a.video_duration = adur
+            await db.commit()
+        pending_updates.clear()
+
+    logger.info(
+        "Media metrics backfill complete: %d updated, %d skipped, %d failed out of %d total",
+        updated,
+        skipped,
+        failed,
+        len(asset_ids),
     )
 
 

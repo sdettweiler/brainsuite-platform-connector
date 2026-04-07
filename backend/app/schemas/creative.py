@@ -96,6 +96,8 @@ class CreativeAssetResponse(CreativeAssetSummary):
     creative_id: Optional[str]
     asset_url: Optional[str]
     video_duration: Optional[float]
+    width: Optional[int] = None
+    height: Optional[int] = None
     placement: Optional[str]
     platform_metadata: Dict[str, Any] = {}
     metadata_values: Dict[str, Optional[str]] = {}
