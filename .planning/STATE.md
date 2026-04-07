@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
-status: Executing Phase 09
-stopped_at: "Phase 09 Plan 02 — paused at Task 3 checkpoint (human-verify: visual verification of auto-fill UI)"
-last_updated: "2026-04-01T18:11:01.455Z"
-last_activity: 2026-04-01
+status: Ready to execute
+stopped_at: Completed 09-03-PLAN.md (wire auto-fill into sync pipeline)
+last_updated: "2026-04-07T07:51:48.639Z"
+last_activity: 2026-04-07
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 13
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 ## Current Position
 
 Phase: 09 (ai-metadata-auto-fill) — EXECUTING
-Plan: 2 of 3 (paused at checkpoint)
+Plan: 2 of 3
 
 ## Accumulated Context
 
@@ -58,6 +58,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase 09-ai-metadata-auto-fill]: Auto-fill section added to all expanded field rows (not just SELECT) so every field type can be AI-configured
 - [Phase 09-ai-metadata-auto-fill]: Inference status badge placed in metadata-chips header (always visible) rather than in a tab-specific section, since no dedicated Metadata tab exists in asset detail dialog
 - [Phase 09-ai-metadata-auto-fill]: AsyncOpenAI at module-level import to allow patch() in unit tests; _set_status/_write_values as separate awaitable helpers for test isolation
+- [Phase 09-03]: Auto-fill triggered via scheduler/harmonizer path (not per sync-service file) — fires once per new asset after db.commit, all 4 platforms covered
+- [Phase 09-03]: ai_inference_status exposed in dashboard.py get_asset_detail (actual GET /assets/{id}) not assets.py
 
 ### Pending Todos
 
@@ -81,7 +83,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last activity: 2026-04-01
-Last session: 2026-04-01T18:11:01.455Z
-Stopped at: Phase 09 Plan 02 — paused at Task 3 checkpoint (human-verify: visual verification of auto-fill UI)
+Last activity: 2026-04-07
+Last session: 2026-04-07T07:51:48.637Z
+Stopped at: Completed 09-03-PLAN.md (wire auto-fill into sync pipeline)
 Resume: Discuss or plan Phase 09

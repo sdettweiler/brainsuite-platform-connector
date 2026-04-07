@@ -23,7 +23,7 @@
 - [x] **Phase 6: Historical Backfill + Score History Schema** — All pre-v1.1 assets scored; append-only history table seeded (completed 2026-03-30)
 - [x] **Phase 7: Score Trend, Performer Highlights + Performance Tab** — Score trend chart live; top/bottom badges visible; performance tab redesigned (completed 2026-03-30)
 - [x] **Phase 8: Score-to-ROAS Correlation** — Scatter chart with quadrant framing live in dashboard (completed 2026-03-31)
-- [ ] **Phase 9: AI Metadata Auto-Fill** — Pipeline-integrated auto-fill via OpenAI (GPT-4o Vision + Whisper) with per-field config and inference status tracking
+- [x] **Phase 9: AI Metadata Auto-Fill** — Pipeline-integrated auto-fill via OpenAI (GPT-4o Vision + Whisper) with per-field config and inference status tracking (completed 2026-04-07)
 - [ ] **Phase 10: In-App Notifications** — Bell icon + unread badge; toasts for high-priority events; 30-second polling
 
 ## Phase Details
@@ -99,11 +99,11 @@ Plans:
   4. `ai_inference_status = COMPLETE` guard prevents re-inference on already-processed assets; FAILED resets to PENDING on next sync
   5. Images over 4 MB are downsampled server-side to 1568px longest edge before base64 encoding; OPENAI_API_KEY absence causes graceful no-op with default_value fallback
   6. Metadata config page has per-field auto-fill toggle + type selector; asset detail dialog shows inference status badge; manual metadata edit resets scoring_status to UNSCORED
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 Plans:
-- [ ] 09-01-PLAN.md — Backend: Alembic migration + models + ai_autofill service + tests
+- [x] 09-01-PLAN.md — Backend: Alembic migration + models + ai_autofill service + tests
 - [x] 09-02-PLAN.md — Frontend: auto-fill config toggle + type selector + inference badge + rescore toast
-- [ ] 09-03-PLAN.md — Backend: sync service wiring + scoring reset + API response integration
+- [x] 09-03-PLAN.md — Backend: sync service wiring + scoring reset + API response integration
 **UI hint**: yes
 
 ### Phase 10: In-App Notifications
@@ -131,5 +131,5 @@ Plans:
 | 6. Historical Backfill + Score History Schema | v1.1 | 1/1 | Complete   | 2026-03-30 |
 | 7. Score Trend, Performer Highlights + Performance Tab | v1.1 | 3/3 | Complete   | 2026-03-30 |
 | 8. Score-to-ROAS Correlation | v1.1 | 2/2 | Complete   | 2026-03-31 |
-| 9. AI Metadata Auto-Fill | v1.1 | 0/3 | Planned | - |
+| 9. AI Metadata Auto-Fill | v1.1 | 3/3 | Complete   | 2026-04-07 |
 | 10. In-App Notifications | v1.1 | 0/? | Not started | - |
