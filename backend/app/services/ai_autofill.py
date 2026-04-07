@@ -39,6 +39,51 @@ AUTO_FILL_TYPE_FIXED = {"fixed_value"}
 
 TRANSCRIPT_MAX_CHARS = 2000
 
+# ---------------------------------------------------------------------------
+# Language → locale code normalization
+# Maps full names, lowercase names, and ISO 639-1 codes to BCP 47 locale codes.
+# ---------------------------------------------------------------------------
+
+_LANGUAGE_TO_LOCALE: dict[str, str] = {
+    # Full names (from GPT-4o)
+    "arabic": "ar_SA", "bulgarian": "bg_BG", "chinese": "zh_CN",
+    "croatian": "hr_HR", "czech": "cs_CZ", "danish": "da_DK",
+    "dutch": "nl_NL", "english": "en_US", "finnish": "fi_FI",
+    "french": "fr_FR", "german": "de_DE", "greek": "el_GR",
+    "hebrew": "he_IL", "hindi": "hi_IN", "hungarian": "hu_HU",
+    "indonesian": "id_ID", "italian": "it_IT", "japanese": "ja_JP",
+    "korean": "ko_KR", "malay": "ms_MY", "norwegian": "no_NO",
+    "polish": "pl_PL", "portuguese": "pt_BR", "romanian": "ro_RO",
+    "russian": "ru_RU", "slovak": "sk_SK", "slovenian": "sl_SI",
+    "spanish": "es_ES", "swedish": "sv_SE", "thai": "th_TH",
+    "turkish": "tr_TR", "vietnamese": "vi_VN",
+    # ISO 639-1 codes (legacy stored values / Whisper short codes)
+    "ar": "ar_SA", "bg": "bg_BG", "zh": "zh_CN", "hr": "hr_HR",
+    "cs": "cs_CZ", "da": "da_DK", "nl": "nl_NL", "en": "en_US",
+    "fi": "fi_FI", "fr": "fr_FR", "de": "de_DE", "el": "el_GR",
+    "he": "he_IL", "hi": "hi_IN", "hu": "hu_HU", "id": "id_ID",
+    "it": "it_IT", "ja": "ja_JP", "ko": "ko_KR", "ms": "ms_MY",
+    "no": "no_NO", "pl": "pl_PL", "pt": "pt_BR", "ro": "ro_RO",
+    "ru": "ru_RU", "sk": "sk_SK", "sl": "sl_SI", "es": "es_ES",
+    "sv": "sv_SE", "th": "th_TH", "tr": "tr_TR", "vi": "vi_VN",
+}
+
+
+def _to_locale(lang: Optional[str]) -> Optional[str]:
+    """Normalize any language representation to a BCP 47 locale code (e.g. en_US).
+
+    Accepts full names ('English', 'indonesian'), ISO 639-1 codes ('en', 'id'),
+    and already-normalized locale codes ('en_US'). Returns None if unrecognized.
+    """
+    if not lang:
+        return None
+    normalized = lang.strip().lower().replace("-", "_")
+    # Already a locale code (e.g. 'en_US' → 'en_us' after lower)
+    if "_" in normalized:
+        parts = normalized.split("_")
+        return f"{parts[0]}_{parts[1].upper()}"
+    return _LANGUAGE_TO_LOCALE.get(normalized)
+
 
 # ---------------------------------------------------------------------------
 # Pydantic model for GPT-4o Vision structured output
@@ -299,9 +344,17 @@ async def _run_vision(
                         {
                             "type": "text",
                             "text": (
-                                "Analyze this ad creative. "
-                                "Return: language (primary content language, e.g. 'English'), "
-                                "brand_names (list of brand names visible, empty list if none)."
+                                "Analyze this ad creative image (which may be a frame from a video ad).\n\n"
+                                "Return:\n"
+                                "- language: The PRIMARY language of the ad's TARGET AUDIENCE — "
+                                "i.e. the language used in the voiceover, body copy, and majority of "
+                                "the ad's textual content. Ignore incidental English words (brand names, "
+                                "product names, hashtags, or short English phrases that appear in "
+                                "otherwise non-English ads). If the ad is Indonesian, Thai, Arabic, etc., "
+                                "return that language even if some English text is visible. "
+                                "Return the full English language name (e.g. 'Indonesian', 'German', 'English').\n"
+                                "- brand_names: List of brand names visually present in the ad "
+                                "(logos, product packaging, watermarks). Empty list if none."
                             ),
                         },
                         {
@@ -316,7 +369,10 @@ async def _run_vision(
         parsed = response.choices[0].message.parsed
         if parsed is None:
             return {}
-        return {"language": parsed.language, "brand_names": parsed.brand_names}
+        return {
+            "language": _to_locale(parsed.language),
+            "brand_names": parsed.brand_names,
+        }
     except Exception as exc:
         logger.warning("GPT-4o Vision call failed: %s", exc)
         return {}
@@ -372,7 +428,7 @@ async def _run_whisper(audio_bytes: bytes) -> dict:
         )
         return {
             "text": transcript.text or "",
-            "language": getattr(transcript, "language", "") or "",
+            "language": _to_locale(getattr(transcript, "language", "") or "") or "",
         }
     except Exception as exc:
         logger.warning("Whisper API call failed: %s", exc)
