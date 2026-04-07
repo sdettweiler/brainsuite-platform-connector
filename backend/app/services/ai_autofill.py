@@ -211,7 +211,9 @@ async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> None:
 
     if settings.OPENAI_API_KEY:
         if needs_vision and asset_bytes:
-            vision_result = await _run_vision(asset_bytes, content_type, asset_format)
+            key_frames = _extract_key_frames(asset_bytes, asset_format)
+            if key_frames:
+                vision_result = await _run_vision(key_frames)
 
         if needs_audio and asset_bytes:
             audio_bytes = await _extract_audio_bytes(asset_bytes)
@@ -306,32 +308,20 @@ async def _set_status(asset_id: uuid.UUID, status: str) -> None:
 # Vision inference
 # ---------------------------------------------------------------------------
 
-async def _run_vision(
-    asset_bytes: bytes,
-    content_type: str,
-    asset_format: str,
-) -> dict:
-    """Call GPT-4o Vision and return {language, brand_names}.
+async def _run_vision(key_frames: list[bytes]) -> dict:
+    """Call GPT-4o Vision with multiple key frames and return {language, brand_names}.
 
-    For VIDEO assets, extract the first frame as JPEG.
-    Downsamples images over 4 MB before base64 encoding (AI-05).
+    Sends up to 20 evenly-sampled JPEG frames in a single API call so the model
+    can assess the primary audience language across the full video, not just the
+    first frame.
     """
-    image_bytes = asset_bytes
-    image_content_type = content_type
-
-    if asset_format == "VIDEO":
-        frame = _extract_first_frame(asset_bytes)
-        if frame is None:
-            return {}
-        image_bytes = frame
-        image_content_type = "image/jpeg"
-
-    # Downsample if > 4 MB
-    image_bytes = _downsample_image(image_bytes, image_content_type)
-
-    # Build base64 data URI
-    b64 = base64.b64encode(image_bytes).decode("utf-8")
-    mime = image_content_type if image_content_type.startswith("image/") else "image/jpeg"
+    frame_content = [
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(f).decode()}"},
+        }
+        for f in key_frames
+    ]
 
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     try:
@@ -344,23 +334,19 @@ async def _run_vision(
                         {
                             "type": "text",
                             "text": (
-                                "Analyze this ad creative image (which may be a frame from a video ad).\n\n"
+                                f"These are {len(key_frames)} evenly-sampled frames from a video ad creative.\n\n"
                                 "Return:\n"
                                 "- language: The PRIMARY language of the ad's TARGET AUDIENCE — "
-                                "i.e. the language used in the voiceover, body copy, and majority of "
-                                "the ad's textual content. Ignore incidental English words (brand names, "
-                                "product names, hashtags, or short English phrases that appear in "
-                                "otherwise non-English ads). If the ad is Indonesian, Thai, Arabic, etc., "
-                                "return that language even if some English text is visible. "
+                                "the language used in body copy, subtitles, and the majority of on-screen text "
+                                "across all frames. Ignore incidental English (brand names, product names, "
+                                "hashtags, or short English phrases in otherwise non-English ads). "
+                                "Base your answer on the overall video, not just the first frame. "
                                 "Return the full English language name (e.g. 'Indonesian', 'German', 'English').\n"
-                                "- brand_names: List of brand names visually present in the ad "
+                                "- brand_names: List of brand names visually present across the frames "
                                 "(logos, product packaging, watermarks). Empty list if none."
                             ),
                         },
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{mime};base64,{b64}"},
-                        },
+                        *frame_content,
                     ],
                 }
             ],
@@ -461,33 +447,60 @@ def _downsample_image(image_bytes: bytes, content_type: str) -> bytes:
         return image_bytes
 
 
-def _extract_first_frame(video_bytes: bytes) -> Optional[bytes]:
-    """Extract first frame from video as JPEG bytes via imageio-ffmpeg.
+def _extract_key_frames(
+    asset_bytes: bytes,
+    asset_format: str,
+    target_frames: int = 20,
+) -> list[bytes]:
+    """Extract evenly-spaced key frames from a video or return the image as a single frame.
 
-    Returns JPEG bytes or None on failure.
+    For VIDEO: samples ~target_frames frames spread across the full duration.
+    For IMAGE: downsamples if needed and returns as a single-element list.
+    Returns a list of JPEG bytes (may be empty on failure).
     """
     import tempfile
     import os
+
+    if asset_format != "VIDEO":
+        frame = _downsample_image(asset_bytes, "image/jpeg")
+        return [frame]
 
     try:
         import imageio_ffmpeg
         from PIL import Image
 
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-            tmp.write(video_bytes)
+            tmp.write(asset_bytes)
             tmp_path = tmp.name
 
         try:
             reader = imageio_ffmpeg.read_frames(tmp_path)
-            meta = next(reader)  # First item is metadata dict
-            frame_bytes = next(reader)  # First actual frame (raw RGB)
+            meta = next(reader)
             w, h = meta["size"]
-            img = Image.frombytes("RGB", (w, h), frame_bytes)
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=85)
-            return buf.getvalue()
+            fps = meta.get("fps", 25) or 25
+            duration = meta.get("duration") or 0
+            total_estimated = int(fps * duration) if duration else None
+
+            # Stride: spread target_frames evenly; fall back to every 25th frame
+            stride = max(1, int(total_estimated / target_frames)) if total_estimated else 25
+
+            frames: list[bytes] = []
+            for i, raw in enumerate(reader):
+                if i % stride == 0:
+                    img = Image.frombytes("RGB", (w, h), raw)
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG", quality=75)
+                    frames.append(buf.getvalue())
+                    if len(frames) >= target_frames:
+                        break
+
+            logger.debug(
+                "Extracted %d key frames from video (fps=%.1f duration=%.1fs stride=%d)",
+                len(frames), fps, duration, stride,
+            )
+            return frames
         finally:
             os.unlink(tmp_path)
     except Exception as exc:
-        logger.warning("First frame extraction failed: %s", exc)
-        return None
+        logger.warning("Key frame extraction failed: %s", exc)
+        return []
