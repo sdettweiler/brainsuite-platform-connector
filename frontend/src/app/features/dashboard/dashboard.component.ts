@@ -1208,7 +1208,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return `${value}s`;
     },
   };
-  private hasAnyVideo = false;
+  hasAnyVideo = false;
   private durationChange$ = new Subject<void>();
 
   selectedAssets: string[] = [];
