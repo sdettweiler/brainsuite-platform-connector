@@ -524,6 +524,8 @@ class DV360SyncService:
                         "thumbnail_url": thumbnail,
                         "asset_format": asset_format,
                         "landing_url": landing_url,
+                        "width_pixels": int(w) if w else None,
+                        "height_pixels": int(h) if h else None,
                     }
 
             page_token = data.get("nextPageToken")

@@ -150,6 +150,9 @@ class HarmonizationService:
                     asset_url=raw.asset_url,
                     creative_id=raw.creative_id,
                     placement=raw.placement,
+                    width=raw.creative_width_px,
+                    height=raw.creative_height_px,
+                    video_duration=raw.video_length_sec,
                     first_seen_at=report_date,
                     _new_asset_ids=_new_asset_ids,
                 )
@@ -370,6 +373,7 @@ class HarmonizationService:
                     asset_format=raw.ad_format,
                     thumbnail_url=raw.thumbnail_url,
                     asset_url=raw.creative_url or raw.asset_url,
+                    video_duration=raw.video_duration_sec,
                     first_seen_at=raw.report_date,
                     _new_asset_ids=_new_asset_ids,
                 )
@@ -683,6 +687,17 @@ class HarmonizationService:
         for row in rows:
             try:
                 async with db.begin_nested():
+                    # Parse width/height from asset_format string (e.g. "640x480")
+                    dv360_width = None
+                    dv360_height = None
+                    if row.asset_format and "x" in row.asset_format:
+                        try:
+                            parts = row.asset_format.split("x", 1)
+                            dv360_width = int(parts[0])
+                            dv360_height = int(parts[1])
+                        except (ValueError, IndexError):
+                            pass
+
                     asset = await self._ensure_asset(
                         db,
                         connection=connection,
@@ -695,6 +710,8 @@ class HarmonizationService:
                         asset_url=row.asset_url,
                         video_duration=row.video_duration_seconds,
                         asset_format=row.asset_format or ("VIDEO" if row.youtube_ad_video_id else "DISPLAY"),
+                        width=dv360_width,
+                        height=dv360_height,
                         first_seen_at=row.report_date,
                         _new_asset_ids=_new_asset_ids,
                     )
@@ -885,6 +902,8 @@ class HarmonizationService:
                 creative_id=kwargs.get("creative_id"),
                 placement=kwargs.get("placement"),
                 video_duration=kwargs.get("video_duration"),
+                width=kwargs.get("width"),
+                height=kwargs.get("height"),
                 first_seen_at=first_seen,
                 last_seen_at=first_seen,
             )
@@ -923,6 +942,12 @@ class HarmonizationService:
                 asset.creative_id = kwargs.get("creative_id")
             if kwargs.get("asset_format") and not asset.asset_format:
                 asset.asset_format = kwargs.get("asset_format")
+            if kwargs.get("width") and not asset.width:
+                asset.width = kwargs["width"]
+            if kwargs.get("height") and not asset.height:
+                asset.height = kwargs["height"]
+            if kwargs.get("video_duration") and not asset.video_duration:
+                asset.video_duration = kwargs["video_duration"]
             if kwargs.get("first_seen_at"):
                 first_seen = kwargs.get("first_seen_at")
                 if isinstance(first_seen, str):
