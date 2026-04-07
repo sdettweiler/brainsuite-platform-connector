@@ -224,6 +224,8 @@ async def get_dashboard_assets(
     page_size: int = Query(default=50, ge=1, le=250),
     score_min: Optional[float] = Query(default=None, ge=0, le=100),
     score_max: Optional[float] = Query(default=None, ge=0, le=100),
+    duration_min: Optional[float] = Query(default=None, ge=0, description="Minimum video duration in seconds"),
+    duration_max: Optional[float] = Query(default=None, ge=0, description="Maximum video duration in seconds"),
     meta_filters: Optional[List[str]] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -329,6 +331,11 @@ async def get_dashboard_assets(
         query = query.where(CreativeScoreResult.total_score >= score_min)
     if score_max is not None:
         query = query.where(CreativeScoreResult.total_score <= score_max)
+
+    if duration_min is not None:
+        query = query.where(CreativeAsset.video_duration >= duration_min)
+    if duration_max is not None:
+        query = query.where(CreativeAsset.video_duration <= duration_max)
 
     # Metadata filters: each entry is "field_id:value1,value2" — AND across fields, OR within field
     if meta_filters:
