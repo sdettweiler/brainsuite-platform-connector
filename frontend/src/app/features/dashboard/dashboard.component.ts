@@ -452,6 +452,9 @@ interface CorrelationAsset {
         <button (click)="openEditMetadata(contextMenu.asset!)">
           <i class="bi bi-tag"></i> Edit Metadata
         </button>
+        <button (click)="copyAssetId(contextMenu.asset!)">
+          <i class="bi bi-clipboard"></i> Copy Asset ID
+        </button>
         <hr class="context-divider" />
         <button (click)="rescoreAsset(contextMenu.asset)">
           <i class="bi bi-lightning-charge"></i> Score now
@@ -1072,7 +1075,7 @@ interface CorrelationAsset {
     .filter-empty { padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
 
     .metadata-filter-chips {
-      display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 24px 0;
+      display: flex; flex-wrap: wrap; gap: 8px; padding: 0 24px 16px;
       align-items: center;
     }
     .metadata-filter-chip {
@@ -1816,6 +1819,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
         data: { assetIds },
       });
     }
+  }
+
+  copyAssetId(asset: DashboardAsset): void {
+    navigator.clipboard.writeText(asset.id);
+    this.snackBar.open('Asset ID copied to clipboard', '', { duration: 2000 });
+    this.contextMenu.visible = false;
   }
 
   compareSelected(): void {
