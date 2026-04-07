@@ -73,6 +73,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 260331-l16 | analyze the entire folder structure for legacy/obsolete files. Especially replit leftovers etc. build a clean up plan | 2026-03-31 | a6dc5b6 | [260331-l16-analyze-the-entire-folder-structure-for-](.planning/quick/260331-l16-analyze-the-entire-folder-structure-for-/) |
 | 260401-n93 | improve platform sync status display — fix new account showing sync failed, add running sync indicators | 2026-04-01 | 6e34c94 | [260401-n93-improve-platform-sync-status-display-fix](.planning/quick/260401-n93-improve-platform-sync-status-display-fix/) |
 | 260401-qpu | Add metric selector dropdown to scatter chart correlation drawer (7 metrics: ROAS, CTR, VTR, CPM, CVR, CPC, Conversions) | 2026-04-01 | 33cceed | [260401-qpu-add-metric-selector-dropdown-to-scatter-](.planning/quick/260401-qpu-add-metric-selector-dropdown-to-scatter-/) |
+| 260407-eip | copy asset ID feature — right-click context menu and detail dialog copy icon | 2026-04-07 | f7242e4 | [260407-eip-copy-asset-id-feature-right-click-contex](.planning/quick/260407-eip-copy-asset-id-feature-right-click-contex/) |
 
 ### Blockers/Concerns
 
@@ -83,7 +84,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last activity: 2026-04-07
+Last activity: 2026-04-07 - Completed quick task 260407-eip: copy asset ID feature — right-click context menu and detail dialog copy icon
 Last session: 2026-04-07T07:51:48.637Z
 Stopped at: Completed 09-03-PLAN.md (wire auto-fill into sync pipeline)
 Resume: Discuss or plan Phase 09
