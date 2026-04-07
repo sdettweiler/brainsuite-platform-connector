@@ -39,6 +39,7 @@ A user can connect all their ad accounts, see every creative's performance metri
 - Dashboard: score badge, Creative Effectiveness dimension tab, sort/filter by score/ROAS/CTR/spend, score range slider
 - Platform health monitoring: sync time, health badges, reconnect prompts
 - Production security: httpOnly cookie auth, Redis OAuth sessions, typed DTOs
+- AI metadata auto-fill: OpenAI vision/whisper populates metadata fields post-sync via fire-and-forget asyncio task; scoring reset on metadata edit (D-14); inference status exposed in asset detail API (Phase 9 complete 2026-04-07)
 
 **Known gaps / tech debt carrying into v1.1:**
 - BrainSuite image scoring not yet wired up (different endpoint/payload from video)
@@ -123,4 +124,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-30
+*Last updated: 2026-04-07
