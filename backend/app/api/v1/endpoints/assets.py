@@ -11,6 +11,8 @@ from app.db.base import get_db
 from app.models.user import User
 from app.models.creative import CreativeAsset, Project, AssetProjectMapping, AssetMetadataValue
 from app.models.metadata import MetadataField, MetadataFieldValue
+from app.models.scoring import CreativeScoreResult
+from app.models.ai_inference import AIInferenceTracking
 from app.schemas.creative import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
     MetadataFieldCreate, MetadataFieldResponse,
@@ -293,6 +295,17 @@ async def update_asset_metadata(
             db.add(rec)
         else:
             db.add(AssetMetadataValue(asset_id=asset_id, field_id=field_id, value=value))
+
+    # D-14: Reset scoring status so 15-min batch rescores with updated metadata
+    score_result = await db.execute(
+        select(CreativeScoreResult).where(
+            CreativeScoreResult.creative_asset_id == asset_id
+        )
+    )
+    score_row = score_result.scalar_one_or_none()
+    if score_row and score_row.scoring_status != "UNSCORED":
+        score_row.scoring_status = "UNSCORED"
+        db.add(score_row)
 
     await db.commit()
     return {"detail": "Metadata updated"}
