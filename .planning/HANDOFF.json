@@ -1,44 +1,44 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-02T10:31:18.054Z",
+  "timestamp": "2026-04-07T12:27:56.665Z",
   "phase": "09",
   "phase_name": "ai-metadata-auto-fill",
   "phase_dir": ".planning/phases/09-ai-metadata-auto-fill",
-  "plan": 3,
-  "task": 1,
-  "total_tasks": 2,
-  "status": "paused",
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
+  "status": "phase_complete_post_debug",
   "completed_tasks": [
     {"id": "09-01", "name": "Backend foundation (model, migration, service, tests)", "status": "done", "commit": "f6ddfa5"},
-    {"id": "09-02-t1", "name": "Metadata config auto-fill toggle + type selector", "status": "done", "commit": "e27a78a"},
-    {"id": "09-02-t2", "name": "Asset detail dialog inference badge + rescore toast", "status": "done", "commit": "911ca77"},
-    {"id": "09-02-t3", "name": "Visual verification checkpoint", "status": "done", "progress": "User approved after bug fixes"},
-    {"id": "09-session-fixes", "name": "Fix default_metadata_values name->UUID normalization (backend + frontend)", "status": "done", "commit": "uncommitted - 4 files modified"}
+    {"id": "09-02", "name": "Frontend UI: auto-fill toggle, inference badge, rescore toast", "status": "done", "commit": "911ca77"},
+    {"id": "09-03", "name": "Wire auto-fill into sync pipeline + scoring reset", "status": "done", "commit": "568956e"},
+    {"id": "post-01", "name": "Fix frame extraction: BytesIO→tempfile, remove bad -frames:v flag", "status": "done", "commit": "ed419ab"},
+    {"id": "post-02", "name": "Wire OPENAI_API_KEY into docker-compose.yml backend env block", "status": "done", "commit": "ed419ab"},
+    {"id": "post-03", "name": "Add POST /assets/debug/autofill/{asset_id} debug endpoint", "status": "done", "commit": "ed419ab"},
+    {"id": "post-04", "name": "Locale normalization en→en_US, smarter vision prompt, DB migration", "status": "done", "commit": "56a5691"},
+    {"id": "post-05", "name": "Key frame extraction: ~20 frames across full video for vision", "status": "done", "commit": "1a6c893"}
   ],
   "remaining_tasks": [
-    {"id": "09-03-t1", "name": "Wire auto-fill into harmonizer._ensure_asset + scheduler fires tasks after commit", "status": "in_progress", "progress": "harmonizer.py: added import uuid + Tuple only. All method changes pending."},
-    {"id": "09-03-t2", "name": "Scoring reset on metadata PATCH + ai_inference_status in asset detail response", "status": "not_started"}
+    {"id": "open-01", "name": "Verify UAT #2: inference status badge (needs assets synced with OPENAI_API_KEY active)", "status": "blocked_external"},
+    {"id": "open-02", "name": "Consider removing/restricting debug autofill endpoint before production", "status": "open"},
+    {"id": "next", "name": "Phase 10: in-app-notifications — not yet started", "status": "not_started"}
   ],
   "blockers": [],
   "human_actions_pending": [
-    {
-      "action": "Run docker-compose exec backend alembic upgrade head if not already done",
-      "context": "Phase 09 migration: auto_fill_enabled/auto_fill_type on metadata_fields, ai_inference_tracking table",
-      "blocking": false
-    }
+    {"action": "Verify UAT #2 inference status badge after next full sync run", "context": "No auto-filled assets existed at UAT time. OPENAI_API_KEY now wired. Next sync will populate ai_inference_tracking rows.", "blocking": false}
   ],
   "decisions": [
-    {"decision": "Auto-fill hook goes in harmonizer._ensure_asset NOT sync services", "rationale": "CreativeAsset created in harmonizer only; sync services write raw perf tables", "phase": "09"},
-    {"decision": "Thread _new_asset_ids list through call chain; fire tasks in scheduler.py AFTER db.commit()", "rationale": "ai_autofill.py opens own session via get_session_factory() - needs committed data", "phase": "09"},
-    {"decision": "_harmonize_with_deadlock_retry creates new_assets=[], returns (count, new_assets)", "rationale": "8 call sites in scheduler.py unpack and fire tasks after commit", "phase": "09"},
-    {"decision": "Fix default_metadata_values: normalize name->UUID on read in dashboard.py", "rationale": "Existing DB data name-keyed due to platforms UI bug; read-time fix needs no migration", "phase": "09"}
+    {"decision": "Use imageio_ffmpeg not OpenCV for frame extraction", "rationale": "OpenCV not installed; imageio_ffmpeg already present and working", "phase": "09"},
+    {"decision": "Sample ~20 evenly-spaced key frames across full video", "rationale": "Single first-frame was misleading for ads with English intro + non-English body", "phase": "09"},
+    {"decision": "All language values normalized to BCP 47 locale codes (en_US, id_ID)", "rationale": "BrainSuite API expects locale format; migrated existing ISO 639-1 DB values", "phase": "09"},
+    {"decision": "debug autofill endpoint uses get_current_user not get_current_admin", "rationale": "Convenience for testing; should be restricted before production", "phase": "09"}
   ],
   "uncommitted_files": [
-    "backend/app/api/v1/endpoints/dashboard.py - default_metadata_values name->UUID normalization",
-    "backend/app/services/sync/harmonizer.py - partial: import uuid + Tuple added only",
-    "frontend/src/app/features/configuration/pages/platforms.component.ts - key defaults by field.id",
-    "frontend/src/app/features/dashboard/dashboard.component.ts - removed debug console.logs"
+    "backend/app/api/v1/endpoints/scoring.py (pre-existing, not from this session)",
+    "backend/app/services/sync/scheduler.py (pre-existing, not from this session)",
+    "backend/app/services/sync/scoring_job.py (pre-existing, not from this session)",
+    "frontend/src/app/features/configuration/pages/platforms.component.ts (pre-existing)"
   ],
-  "next_action": "Complete harmonizer.py: add _new_asset_ids: Optional[List[Tuple[uuid.UUID, uuid.UUID]]] = None to harmonize_connection, all _harmonize_* methods, and _ensure_asset. In _ensure_asset new-asset branch after db.flush(), append (asset.id, asset.organization_id) if _new_asset_ids is not None. Thread param through. Then scheduler.py: update _harmonize_with_deadlock_retry to return (count, new_assets); update 8 call sites to unpack + fire run_autofill_for_asset tasks after db.commit(). Then assets.py Task 2.",
-  "context_notes": "CreativeAsset created in harmonizer._ensure_asset (flush only, no commit). Commit is in scheduler.py. ai_autofill.py uses own session so must run after commit. harmonizer.py only has import changes applied - all signature/body changes still needed. 4 session-fix files uncommitted - commit with 09-03 work."
+  "next_action": "Run /gsd:plan-phase 10 to plan in-app-notifications phase. Before shipping, restrict or remove the debug autofill endpoint.",
+  "context_notes": "Phase 09 fully complete and verified (3/3 plans, 2/3 UAT items confirmed). Post-phase session fixed 3 bugs in the autofill pipeline: ffmpeg frame extraction, missing OPENAI_API_KEY env injection, and single-frame vision replaced with multi-frame key-frame sampling. Language values now consistently use BCP 47 locale codes (en_US, id_ID). Pipeline tested and working on real DV360 assets."
 }
