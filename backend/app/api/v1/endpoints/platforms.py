@@ -7,7 +7,7 @@ import logging
 import secrets
 import asyncio
 import httpx
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -400,7 +400,7 @@ async def connect_accounts(
             if tokens.get("refresh_token"):
                 existing_conn.refresh_token_encrypted = encrypt_token(tokens["refresh_token"])
             if tokens.get("expires_in"):
-                existing_conn.token_expiry = datetime.utcnow() + timedelta(seconds=tokens["expires_in"])
+                existing_conn.token_expiry = datetime.now(timezone.utc) + timedelta(seconds=tokens["expires_in"])
             existing_conn.sync_status = "ACTIVE"
             db.add(existing_conn)
             conn = existing_conn
@@ -416,7 +416,7 @@ async def connect_accounts(
                 timezone=account_info.get("timezone", "UTC"),
                 access_token_encrypted=encrypt_token(tokens.get("access_token", "")),
                 refresh_token_encrypted=encrypt_token(tokens.get("refresh_token", "")) if tokens.get("refresh_token") else None,
-                token_expiry=datetime.utcnow() + timedelta(seconds=tokens.get("expires_in", 3600)) if tokens.get("expires_in") else None,
+                token_expiry=datetime.now(timezone.utc) + timedelta(seconds=tokens.get("expires_in", 3600)) if tokens.get("expires_in") else None,
                 brainsuite_app_id=uuid.UUID(brainsuite_app_id) if brainsuite_app_id else None,
                 default_metadata_values=default_metadata,
                 sync_status="ACTIVE",

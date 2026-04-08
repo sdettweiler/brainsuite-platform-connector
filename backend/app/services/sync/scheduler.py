@@ -5,7 +5,7 @@ Schedules daily data syncs at 00:10 in each ad account's local timezone.
 import logging
 import asyncio
 import os
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, timezone
 from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -107,7 +107,7 @@ async def run_daily_sync(connection_id: str) -> None:
             platform_connection_id=connection.id,
             job_type="DAILY",
             status="RUNNING",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
             date_from=date_from,
             date_to=date_to,
         )
@@ -155,9 +155,18 @@ async def run_daily_sync(connection_id: str) -> None:
             await db.rollback()
             job.status = "FAILED"
             job.error_message = f"{type(e).__name__}: {e}"[:4000]
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
             db.add(job)
-            connection.sync_status = "ERROR"
+            err_str = str(e).lower()
+            is_auth_failure = (
+                "401" in err_str
+                or "403" in err_str
+                or ("token" in err_str and ("expired" in err_str or "invalid" in err_str or "revoked" in err_str))
+                or "unauthorized" in err_str
+                or "authentication" in err_str
+                or (isinstance(e, ValueError) and "refresh" in err_str)
+            )
+            connection.sync_status = "EXPIRED" if is_auth_failure else "ERROR"
             db.add(connection)
             await db.commit()
             await _clear_sync_in_progress(connection_id)
@@ -170,12 +179,12 @@ async def run_daily_sync(connection_id: str) -> None:
             try:
                 harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
 
-                connection.last_synced_at = datetime.utcnow()
+                connection.last_synced_at = datetime.now(timezone.utc)
                 connection.sync_status = "ACTIVE"
                 db.add(connection)
 
                 job.status = "COMPLETED"
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 job.records_processed = harmonized
                 db.add(job)
 
@@ -190,7 +199,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 await db.rollback()
                 job.status = "FAILED"
                 job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 db.add(job)
                 connection.sync_status = "ERROR"
                 db.add(connection)
@@ -217,7 +226,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 if sj:
                     sj.status = "FAILED"
                     sj.error_message = f"{type(e).__name__}: {e}"[:4000]
-                    sj.completed_at = datetime.utcnow()
+                    sj.completed_at = datetime.now(timezone.utc)
                     db.add(sj)
                 if conn:
                     conn.sync_status = "ERROR"
@@ -250,7 +259,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 await db.rollback()
                 sj.status = "FAILED"
                 sj.error_message = f"{type(e).__name__}: {e}"[:4000]
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 db.add(sj)
                 conn.sync_status = "ERROR"
                 db.add(conn)
@@ -263,11 +272,11 @@ async def run_daily_sync(connection_id: str) -> None:
 
             try:
                 harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, conn, date_from, date_to)
-                conn.last_synced_at = datetime.utcnow()
+                conn.last_synced_at = datetime.now(timezone.utc)
                 conn.sync_status = "ACTIVE"
                 db.add(conn)
                 sj.status = "COMPLETED"
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
@@ -282,7 +291,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 await db.rollback()
                 sj.status = "FAILED"
                 sj.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 db.add(sj)
                 conn.sync_status = "ERROR"
                 db.add(conn)
@@ -390,7 +399,7 @@ async def run_full_resync(connection_id: str) -> None:
             platform_connection_id=connection.id,
             job_type="FULL_RESYNC",
             status="RUNNING",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
             date_from=date_from,
             date_to=date_to,
         )
@@ -441,7 +450,7 @@ async def run_full_resync(connection_id: str) -> None:
             await db.rollback()
             job.status = "FAILED"
             job.error_message = f"{type(e).__name__}: {e}"[:4000]
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
             db.add(job)
             connection.sync_status = "ERROR"
             db.add(connection)
@@ -455,11 +464,11 @@ async def run_full_resync(connection_id: str) -> None:
 
             try:
                 harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
-                connection.last_synced_at = datetime.utcnow()
+                connection.last_synced_at = datetime.now(timezone.utc)
                 connection.sync_status = "ACTIVE"
                 db.add(connection)
                 job.status = "COMPLETED"
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 job.records_processed = harmonized
                 db.add(job)
                 await db.commit()
@@ -474,7 +483,7 @@ async def run_full_resync(connection_id: str) -> None:
                 await db.rollback()
                 job.status = "FAILED"
                 job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 db.add(job)
                 connection.sync_status = "ERROR"
                 db.add(connection)
@@ -500,7 +509,7 @@ async def run_full_resync(connection_id: str) -> None:
                 if sj:
                     sj.status = "FAILED"
                     sj.error_message = f"{type(e).__name__}: {e}"[:4000]
-                    sj.completed_at = datetime.utcnow()
+                    sj.completed_at = datetime.now(timezone.utc)
                     db.add(sj)
                 if conn:
                     conn.sync_status = "ERROR"
@@ -533,7 +542,7 @@ async def run_full_resync(connection_id: str) -> None:
                 await db.rollback()
                 sj.status = "FAILED"
                 sj.error_message = f"{type(e).__name__}: {e}"[:4000]
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 db.add(sj)
                 conn.sync_status = "ERROR"
                 db.add(conn)
@@ -546,11 +555,11 @@ async def run_full_resync(connection_id: str) -> None:
 
             try:
                 harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, conn, dv360_info["date_from"], dv360_info["date_to"])
-                conn.last_synced_at = datetime.utcnow()
+                conn.last_synced_at = datetime.now(timezone.utc)
                 conn.sync_status = "ACTIVE"
                 db.add(conn)
                 sj.status = "COMPLETED"
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
@@ -565,7 +574,7 @@ async def run_full_resync(connection_id: str) -> None:
                 await db.rollback()
                 sj.status = "FAILED"
                 sj.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 db.add(sj)
                 conn.sync_status = "ERROR"
                 db.add(conn)
@@ -616,7 +625,7 @@ async def run_initial_sync(connection_id: str) -> None:
             platform_connection_id=connection.id,
             job_type="INITIAL_30D",
             status="RUNNING",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
             date_from=date_from,
             date_to=date_to,
         )
@@ -675,10 +684,10 @@ async def run_initial_sync(connection_id: str) -> None:
             try:
                 harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.initial_sync_completed = True
-                connection.last_synced_at = datetime.utcnow()
+                connection.last_synced_at = datetime.now(timezone.utc)
                 db.add(connection)
                 job.status = "COMPLETED"
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 job.records_processed = harmonized
                 db.add(job)
                 await db.commit()
@@ -710,7 +719,7 @@ async def run_initial_sync(connection_id: str) -> None:
                 if sj:
                     sj.status = "FAILED"
                     sj.error_message = f"{type(e).__name__}: {e}"[:4000]
-                    sj.completed_at = datetime.utcnow()
+                    sj.completed_at = datetime.now(timezone.utc)
                     db.add(sj)
                 await db.commit()
             await _clear_sync_in_progress(connection_id)
@@ -740,7 +749,7 @@ async def run_initial_sync(connection_id: str) -> None:
                 await db.rollback()
                 sj.status = "FAILED"
                 sj.error_message = f"{type(e).__name__}: {e}"[:4000]
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 db.add(sj)
                 await db.commit()
                 await _clear_sync_in_progress(connection_id)
@@ -752,10 +761,10 @@ async def run_initial_sync(connection_id: str) -> None:
             try:
                 harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, date_from, date_to)
                 conn.initial_sync_completed = True
-                conn.last_synced_at = datetime.utcnow()
+                conn.last_synced_at = datetime.now(timezone.utc)
                 db.add(conn)
                 sj.status = "COMPLETED"
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
@@ -769,7 +778,7 @@ async def run_initial_sync(connection_id: str) -> None:
                 await db.rollback()
                 sj.status = "FAILED"
                 sj.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 db.add(sj)
                 await db.commit()
                 await _clear_sync_in_progress(connection_id)
@@ -821,7 +830,7 @@ async def run_historical_sync(connection_id: str) -> None:
             platform_connection_id=connection.id,
             job_type="HISTORICAL",
             status="RUNNING",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
             date_from=date_from,
             date_to=date_to,
         )
@@ -829,7 +838,7 @@ async def run_historical_sync(connection_id: str) -> None:
         await db.flush()
         job_id = str(job.id)
 
-        connection.historical_sync_started_at = datetime.utcnow()
+        connection.historical_sync_started_at = datetime.now(timezone.utc)
         db.add(connection)
         await db.flush()
 
@@ -888,7 +897,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 connection.historical_sync_completed = True
                 db.add(connection)
                 job.status = "COMPLETED"
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 job.records_processed = harmonized
                 db.add(job)
                 await db.commit()
@@ -920,7 +929,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 if sj:
                     sj.status = "FAILED"
                     sj.error_message = f"{type(e).__name__}: {e}"[:4000]
-                    sj.completed_at = datetime.utcnow()
+                    sj.completed_at = datetime.now(timezone.utc)
                     db.add(sj)
                 await db.commit()
             await _clear_sync_in_progress(connection_id)
@@ -950,7 +959,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 await db.rollback()
                 sj.status = "FAILED"
                 sj.error_message = f"{type(e).__name__}: {e}"[:4000]
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 db.add(sj)
                 await db.commit()
                 await _clear_sync_in_progress(connection_id)
@@ -964,7 +973,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 conn.historical_sync_completed = True
                 db.add(conn)
                 sj.status = "COMPLETED"
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
@@ -976,7 +985,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 await db.rollback()
                 sj.status = "FAILED"
                 sj.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
-                sj.completed_at = datetime.utcnow()
+                sj.completed_at = datetime.now(timezone.utc)
                 db.add(sj)
                 await db.commit()
                 await _clear_sync_in_progress(connection_id)

@@ -17,7 +17,7 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { DisconnectDialogComponent, DisconnectDialogResult } from '../components/disconnect-dialog.component';
 import { formatDistanceToNow } from 'date-fns';
 
-type HealthState = 'connected' | 'token_expired' | 'sync_failed' | 'syncing' | 'initial_sync';
+type HealthState = 'connected' | 'token_expired' | 'expired' | 'sync_failed' | 'syncing' | 'initial_sync';
 
 interface OAuthAccount {
   id: string;
@@ -1076,22 +1076,22 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   getHealthState(conn: PlatformConnection): HealthState {
     const now = new Date();
-    // Token expired takes priority
-    if (conn.token_expiry && new Date(conn.token_expiry) < now) {
-      return 'token_expired';
-    }
-    // Actively syncing (from Redis flag)
-    if (conn.is_syncing) {
+    // Actively syncing (PENDING = initial sync in progress)
+    if (conn.sync_status === 'PENDING') {
       return conn.initial_sync_completed ? 'syncing' : 'initial_sync';
     }
-    // Never synced and not actively syncing
+    // Never synced
     if (!conn.last_synced_at) {
       if (!conn.initial_sync_completed) {
-        return 'initial_sync';  // Just connected, waiting for sync to start or complete
+        return 'initial_sync';
       }
       return 'sync_failed';
     }
-    // DB-level error status
+    // Backend says token needs reconnect
+    if (conn.sync_status === 'EXPIRED') {
+      return 'expired';
+    }
+    // DB-level error status (non-auth)
     if (conn.sync_status === 'ERROR') {
       return 'sync_failed';
     }
@@ -1107,6 +1107,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     switch (state) {
       case 'connected': return 'Connected';
       case 'token_expired': return 'Token expired';
+      case 'expired': return 'Reconnect needed';
       case 'sync_failed': return 'Sync failed';
       case 'syncing': return 'Syncing';
       case 'initial_sync': return 'Initial Sync';
@@ -1117,6 +1118,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     switch (state) {
       case 'connected': return 'badge badge-success';
       case 'token_expired': return 'badge badge-warning';
+      case 'expired': return 'badge badge-warning';
       case 'sync_failed': return 'badge badge-error';
       case 'syncing': return 'badge badge-syncing';
       case 'initial_sync': return 'badge badge-syncing';
@@ -1130,7 +1132,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   needsReconnect(conn: PlatformConnection): boolean {
     const state = this.getHealthState(conn);
-    return state === 'token_expired' || state === 'sync_failed';
+    return state === 'token_expired' || state === 'expired' || state === 'sync_failed';
   }
 
   reconnect(conn: PlatformConnection): void {
