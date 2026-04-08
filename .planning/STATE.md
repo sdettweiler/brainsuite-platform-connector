@@ -78,6 +78,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 260408-fb9 | Playwright screen recording POC as yt-dlp fallback for YouTube videos — YT Data API viewport sizing, fullscreen playback capture, ffmpeg .webm→.mp4 conversion, timing/quality report | 2026-04-08 | 185846c | [260408-fb9-downloading-assets-with-yt-dlp-is-not-ve](.planning/quick/260408-fb9-downloading-assets-with-yt-dlp-is-not-ve/) |
 | 260408-gmo | fix top/low performer badge legibility in Dashboard | 2026-04-08 | 2253e21 | [260408-gmo-fix-top-low-performer-badge-legibility-i](.planning/quick/260408-gmo-fix-top-low-performer-badge-legibility-i/) |
 | 260408-h0s | fix platform connection issues — timezone-aware token_expiry, TikTok token refresh, EXPIRED sync_status classification, frontend health state from backend | 2026-04-08 | bb6acec | [260408-h0s-investigate-and-fix-platform-connection-](.planning/quick/260408-h0s-investigate-and-fix-platform-connection-/) |
+| 260408-qr4 | replace scatter chart quadrant coloring with ACE score RAG (≥67 green, 34–66 amber, <34 red); fix language locale format for BrainSuite API | 2026-04-08 | a3814b1 | [260408-qr4-add-ace-score-rag-coloring-to-scatter-ch](.planning/quick/260408-qr4-add-ace-score-rag-coloring-to-scatter-ch/) |
 
 ### Blockers/Concerns
 
