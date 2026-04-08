@@ -75,6 +75,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 260401-qpu | Add metric selector dropdown to scatter chart correlation drawer (7 metrics: ROAS, CTR, VTR, CPM, CVR, CPC, Conversions) | 2026-04-01 | 33cceed | [260401-qpu-add-metric-selector-dropdown-to-scatter-](.planning/quick/260401-qpu-add-metric-selector-dropdown-to-scatter-/) |
 | 260407-eip | copy asset ID feature — right-click context menu and detail dialog copy icon | 2026-04-07 | f7242e4 | [260407-eip-copy-asset-id-feature-right-click-contex](.planning/quick/260407-eip-copy-asset-id-feature-right-click-contex/) |
 | 260407-lxk | fix missing asset media metrics — add width/height columns, wire all 4 platform harmonizers, backfill endpoint, dashboard display | 2026-04-07 | f07b9ba | [260407-lxk-fix-missing-asset-media-metrics-add-dura](.planning/quick/260407-lxk-fix-missing-asset-media-metrics-add-dura/) |
+| 260408-fb9 | Playwright screen recording POC as yt-dlp fallback for YouTube videos — YT Data API viewport sizing, fullscreen playback capture, ffmpeg .webm→.mp4 conversion, timing/quality report | 2026-04-08 | 185846c | [260408-fb9-downloading-assets-with-yt-dlp-is-not-ve](.planning/quick/260408-fb9-downloading-assets-with-yt-dlp-is-not-ve/) |
 
 ### Blockers/Concerns
 
@@ -85,7 +86,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last activity: 2026-04-07 - Completed quick task 260407-eip: copy asset ID feature — right-click context menu and detail dialog copy icon
+Last activity: 2026-04-08 - Completed quick task 260408-fb9: Playwright screen recording POC as yt-dlp fallback for YouTube videos
 Last session: 2026-04-07T07:51:48.637Z
 Stopped at: Completed 09-03-PLAN.md (wire auto-fill into sync pipeline)
 Resume: Discuss or plan Phase 09
