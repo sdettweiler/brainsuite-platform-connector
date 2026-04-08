@@ -186,7 +186,7 @@ interface CorrelationAsset {
         </div>
 
         <!-- Duration range filter -->
-        <div class="duration-slider-wrapper" *ngIf="hasAnyVideo"
+        <div class="duration-slider-wrapper" [hidden]="!hasAnyVideo"
              matTooltip="Filter by video duration">
           <span class="slider-label">Duration</span>
           <ngx-slider
@@ -1558,9 +1558,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.sliderDisabled = !this.hasAnyScored;
         this.sliderOptions = { ...this.sliderOptions, disabled: !this.hasAnyScored };
         // Duration slider: show when any video exists (sticky — never hides once shown)
-        const videoAssets = d.items.filter((a: any) => a.asset_format === 'VIDEO');
+        const videoAssets = d.items.filter((a: any) => a.asset_format === 'VIDEO' && a.video_duration != null);
         if (videoAssets.length > 0) {
           this.hasAnyVideo = true;
+          const maxDur = Math.ceil(Math.max(...videoAssets.map((a: any) => a.video_duration)));
+          const oldCeil = this.durationSliderOptions.ceil ?? 120;
+          const newCeil = Math.max(maxDur, oldCeil);
+          if (newCeil !== oldCeil) {
+            // If durationMax was pinned to old ceil (meaning "no upper limit"), keep it pinned to new ceil
+            if (this.durationMax === oldCeil) this.durationMax = newCeil;
+            this.durationSliderOptions = { ...this.durationSliderOptions, ceil: newCeil };
+          }
         }
         this.preloadAssetDetails();
         this.stopPolling$.next();
