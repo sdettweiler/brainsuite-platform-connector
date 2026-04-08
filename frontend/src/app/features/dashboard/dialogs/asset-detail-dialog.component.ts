@@ -656,8 +656,8 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       position: static; font-size: 12px; font-weight: 600;
       padding: 4px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;
     }
-    .perf-asset-header .tag-top { background: rgba(46,204,113,0.15); color: #2ECC71; }
-    .perf-asset-header .tag-below { background: rgba(231,76,60,0.15); color: #E74C3C; }
+    .perf-asset-header .tag-top { background: rgba(46,204,113,0.55); color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+    .perf-asset-header .tag-below { background: rgba(231,76,60,0.55); color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
 
     .perf-preview { margin-bottom: 8px; background: var(--bg-card); border-radius: 6px; }
     .perf-preview img, .perf-preview video {

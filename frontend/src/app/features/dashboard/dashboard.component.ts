@@ -735,12 +735,14 @@ interface CorrelationAsset {
       letter-spacing: 0.5px;
       z-index: 2;
       &.tag-top {
-        background: rgba(46, 204, 113, 0.15);
-        color: #2ECC71;
+        background: rgba(46, 204, 113, 0.55);
+        color: #ffffff;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
       }
       &.tag-below {
-        background: rgba(231, 76, 60, 0.15);
-        color: #E74C3C;
+        background: rgba(231, 76, 60, 0.55);
+        color: #ffffff;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
       }
     }
 
