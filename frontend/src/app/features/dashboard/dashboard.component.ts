@@ -1468,10 +1468,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         },
       },
       graphic: [
-        { type: 'text', right: 30, top: 50, style: { text: 'Stars', fill: '#aaaaaa', fontSize: 11, fontWeight: '600' } },
-        { type: 'text', left: 70, top: 50, style: { text: 'Workhorses', fill: '#aaaaaa', fontSize: 11, fontWeight: '600' } },
-        { type: 'text', right: 30, bottom: 60, style: { text: 'Question Marks', fill: '#aaaaaa', fontSize: 11, fontWeight: '600' } },
-        { type: 'text', left: 70, bottom: 60, style: { text: 'Laggards', fill: '#aaaaaa', fontSize: 11, fontWeight: '600' } },
+        { type: 'text', left: 65, top: 10, style: { text: '● Strong (≥67)', fill: '#2ECC71', fontSize: 11 } },
+        { type: 'text', left: 175, top: 10, style: { text: '● Average (34–66)', fill: '#F39C12', fontSize: 11 } },
+        { type: 'text', left: 300, top: 10, style: { text: '● Needs work (<34)', fill: '#E74C3C', fontSize: 11 } },
       ],
       series: [{
         type: 'scatter',
@@ -1490,11 +1489,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
         },
         itemStyle: {
           color: (params: any) => {
-            const [score, metricVal] = params.data;
-            if (score >= medianScore && metricVal >= medianMetric) return '#FF7700';
-            if (score < medianScore && metricVal >= medianMetric) return '#F39C12';
-            if (score >= medianScore && metricVal < medianMetric) return '#4285F4';
-            return '#707070';
+            const score = params.data[0];
+            if (score >= 67) return '#2ECC71';
+            if (score >= 34) return '#F39C12';
+            return '#E74C3C';
           },
         },
         emphasis: { itemStyle: { shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.3)' }, scale: 1.5 },

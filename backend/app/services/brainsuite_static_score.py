@@ -453,7 +453,7 @@ def build_static_scoring_payload(
     input_obj: dict = {
         "channel": channel,
         "projectName": metadata.get("brainsuite_project_name") or "Default Project",
-        "assetLanguage": metadata.get("brainsuite_asset_language", "en-US"),
+        "assetLanguage": (metadata.get("brainsuite_asset_language", "en-US") or "en-US").replace("_", "-"),
         "iconicColorScheme": iconic_color_scheme,
         "legs": [
             {
@@ -465,9 +465,9 @@ def build_static_scoring_payload(
 
     if intended_messages:
         input_obj["intendedMessages"] = intended_messages
-        input_obj["intendedMessagesLanguage"] = metadata.get(
+        input_obj["intendedMessagesLanguage"] = (metadata.get(
             "brainsuite_asset_language", "en-US"
-        )
+        ) or "en-US").replace("_", "-")
 
     return {"input": input_obj}
 

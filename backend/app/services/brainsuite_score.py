@@ -437,7 +437,7 @@ def build_scoring_payload(
 
     input_obj: dict = {
         "channel": channel,
-        "assetLanguage": metadata.get("brainsuite_asset_language", "en-US"),
+        "assetLanguage": (metadata.get("brainsuite_asset_language", "en-US") or "en-US").replace("_", "-"),
         "brandNames": brand_names if brand_names else ["Brand"],
         "projectName": metadata.get("brainsuite_project_name") or "Spring Campaign 2026",
         "assetName": metadata.get("brainsuite_asset_name") or "asset_name",
@@ -447,7 +447,7 @@ def build_scoring_payload(
     voice_over = metadata.get("brainsuite_voice_over")
     if voice_over:
         input_obj["voiceOver"] = voice_over
-        input_obj["voiceOverLanguage"] = metadata.get("brainsuite_voice_over_language") or "en"
+        input_obj["voiceOverLanguage"] = (metadata.get("brainsuite_voice_over_language") or "en").replace("_", "-")
 
     # Assets reference the uploaded file by assetId — no URL needed
     assets = [{"assetId": "video", "name": asset_name}]
