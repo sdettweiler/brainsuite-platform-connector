@@ -87,6 +87,7 @@ interface CorrelationAsset {
   platform: string;
   thumbnail_url: string | null;
   total_score: number;
+  total_rating: string | null;
   roas: number | null;
   spend: number | null;
   ctr: number | null;
@@ -1489,10 +1490,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
         },
         itemStyle: {
           color: (params: any) => {
-            const score = params.data[0];
-            if (score >= 67) return '#2ECC71';
-            if (score >= 34) return '#F39C12';
-            return '#E74C3C';
+            const asset = params.data[2] as CorrelationAsset;
+            const r = (asset.total_rating || '').toLowerCase();
+            if (r === 'positive') return '#2ECC71';
+            if (r === 'medium')   return '#F39C12';
+            if (r === 'negative') return '#E74C3C';
+            return '#888888';
           },
         },
         emphasis: { itemStyle: { shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.3)' }, scale: 1.5 },
