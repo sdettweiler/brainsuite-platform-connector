@@ -535,10 +535,10 @@ interface CorrelationAsset {
         <!-- Legend -->
         <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount > 0"
              class="correlation-legend">
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#FF7700"></span> Stars</span>
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#F39C12"></span> Workhorses</span>
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#4285F4"></span> Question Marks</span>
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#707070"></span> Laggards</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#2ECC71"></span> Strong</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#F39C12"></span> Average</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#E74C3C"></span> Needs work</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#888888"></span> Unrated</span>
         </div>
 
         <!-- 99th pct annotation -->
@@ -1468,11 +1468,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
           </div>`;
         },
       },
-      graphic: [
-        { type: 'text', left: 65, top: 10, style: { text: '● Strong (≥67)', fill: '#2ECC71', fontSize: 11 } },
-        { type: 'text', left: 175, top: 10, style: { text: '● Average (34–66)', fill: '#F39C12', fontSize: 11 } },
-        { type: 'text', left: 300, top: 10, style: { text: '● Needs work (<34)', fill: '#E74C3C', fontSize: 11 } },
-      ],
       series: [{
         type: 'scatter',
         symbolSize: 12,
