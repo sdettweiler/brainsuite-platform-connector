@@ -682,7 +682,7 @@ async def run_initial_sync(connection_id: str) -> None:
             conn_id_for_assets = connection.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
+                harmonized, _ = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.initial_sync_completed = True
                 connection.last_synced_at = datetime.now(timezone.utc)
                 db.add(connection)
@@ -759,7 +759,7 @@ async def run_initial_sync(connection_id: str) -> None:
             conn_id_for_assets = conn.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, date_from, date_to)
+                harmonized, _ = await _harmonize_with_deadlock_retry(harmonizer, db, conn, date_from, date_to)
                 conn.initial_sync_completed = True
                 conn.last_synced_at = datetime.now(timezone.utc)
                 db.add(conn)
@@ -893,7 +893,7 @@ async def run_historical_sync(connection_id: str) -> None:
             conn_id_for_assets = connection.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
+                harmonized, _ = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.historical_sync_completed = True
                 db.add(connection)
                 job.status = "COMPLETED"
@@ -969,7 +969,7 @@ async def run_historical_sync(connection_id: str) -> None:
             conn_id_for_assets = conn.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, dv360_info["date_from"], dv360_info["date_to"])
+                harmonized, _ = await _harmonize_with_deadlock_retry(harmonizer, db, conn, dv360_info["date_from"], dv360_info["date_to"])
                 conn.historical_sync_completed = True
                 db.add(conn)
                 sj.status = "COMPLETED"
