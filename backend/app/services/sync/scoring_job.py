@@ -4,9 +4,11 @@ Public API:
   run_scoring_batch()   — batch scheduler entry point (called by APScheduler)
   score_asset_now(score_id) — score a single asset immediately (called by rescore endpoint)
 """
+import asyncio
 import logging
 import os
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -45,6 +47,7 @@ async def run_scoring_batch() -> None:
     Phase 2: For each asset, download from internal storage, submit via the
              announce→upload→start flow, poll, store result.
              NO DB session is held during HTTP calls.
+    Phase 3.5: Emit per-org SCORING_BATCH_COMPLETE notifications.
     """
     logger.info("Starting scoring batch run")
 
@@ -87,6 +90,27 @@ async def run_scoring_batch() -> None:
     # -----------------------------------------------------------------------
     for item in batch:
         await _process_asset(item["score_id"], item["asset"], item["endpoint_type"])
+
+    # -----------------------------------------------------------------------
+    # Phase 3.5: Emit per-org SCORING_BATCH_COMPLETE notifications
+    # -----------------------------------------------------------------------
+    from app.services.notifications import create_org_notification
+
+    org_scored_counts: Counter = Counter()
+    for item in batch:
+        asset = item["asset"]
+        org_scored_counts[str(asset.organization_id)] += 1
+
+    if org_scored_counts:
+        for org_id, count in org_scored_counts.items():
+            s_suffix = "s" if count != 1 else ""
+            asyncio.create_task(create_org_notification(
+                org_id=org_id,
+                type="SCORING_BATCH_COMPLETE",
+                title="Scoring Complete",
+                message=f"{count} creative{s_suffix} scored in this batch.",
+                data={"scored_count": count},
+            ))
 
 
 async def score_asset_now(score_id: uuid.UUID) -> None:

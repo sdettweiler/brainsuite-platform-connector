@@ -13,10 +13,23 @@ from apscheduler.triggers.interval import IntervalTrigger
 import pytz
 
 from app.db.base import get_session_factory
+from app.services.notifications import create_org_notification
 
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
+
+# Platform display names used in notification messages
+PLATFORM_DISPLAY = {
+    "meta": "Meta",
+    "META": "Meta",
+    "tiktok": "TikTok",
+    "TIKTOK": "TikTok",
+    "google_ads": "Google Ads",
+    "GOOGLE_ADS": "Google Ads",
+    "dv360": "DV360",
+    "DV360": "DV360",
+}
 
 MAX_DEADLOCK_RETRIES = 3
 DEADLOCK_BACKOFF_BASE = 2
@@ -35,6 +48,34 @@ async def _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, 
             logger.warning(f"Deadlock detected during harmonization (attempt {attempt}/{MAX_DEADLOCK_RETRIES}), retrying in {wait}s: {exc_name}: {exc}")
             await db.rollback()
             await asyncio.sleep(wait)
+
+
+async def _notify_connection_status(connection, new_status: str) -> None:
+    """Emit a notification if the connection is transitioning INTO a new error status.
+
+    Only fires when the connection's current sync_status differs from the target status.
+    Per D-06: prevents duplicate notifications on repeated sync failures.
+    """
+    platform_name = PLATFORM_DISPLAY.get(connection.platform, str(connection.platform).title())
+    org_id = str(connection.organization_id)
+    conn_data = {"platform": connection.platform, "connection_id": str(connection.id)}
+
+    if new_status == "ERROR" and connection.sync_status != "ERROR":
+        asyncio.create_task(create_org_notification(
+            org_id=org_id,
+            type="SYNC_FAILED",
+            title=f"{platform_name} Sync Failed",
+            message=f"Sync failed for your {platform_name} account. Check your connection settings.",
+            data=conn_data,
+        ))
+    elif new_status == "EXPIRED" and connection.sync_status != "EXPIRED":
+        asyncio.create_task(create_org_notification(
+            org_id=org_id,
+            type="TOKEN_EXPIRED",
+            title=f"{platform_name} Token Expired",
+            message=f"Your {platform_name} access token has expired. Reconnect to resume syncing.",
+            data=conn_data,
+        ))
 
 
 async def run_daily_sync(connection_id: str) -> None:
@@ -128,6 +169,7 @@ async def run_daily_sync(connection_id: str) -> None:
             job.error_message = f"{type(e).__name__}: {e}"[:4000]
             job.completed_at = datetime.utcnow()
             db.add(job)
+            await _notify_connection_status(connection, "ERROR")
             connection.sync_status = "ERROR"
             db.add(connection)
             await db.commit()
@@ -159,6 +201,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 job.completed_at = datetime.utcnow()
                 db.add(job)
+                await _notify_connection_status(connection, "ERROR")
                 connection.sync_status = "ERROR"
                 db.add(connection)
                 await db.commit()
@@ -186,6 +229,7 @@ async def run_daily_sync(connection_id: str) -> None:
                     sj.completed_at = datetime.utcnow()
                     db.add(sj)
                 if conn:
+                    await _notify_connection_status(conn, "ERROR")
                     conn.sync_status = "ERROR"
                     db.add(conn)
                 await db.commit()
@@ -216,6 +260,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 sj.error_message = f"{type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
+                await _notify_connection_status(conn, "ERROR")
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
@@ -244,6 +289,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 sj.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
+                await _notify_connection_status(conn, "ERROR")
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
@@ -368,6 +414,7 @@ async def run_full_resync(connection_id: str) -> None:
             job.error_message = f"{type(e).__name__}: {e}"[:4000]
             job.completed_at = datetime.utcnow()
             db.add(job)
+            await _notify_connection_status(connection, "ERROR")
             connection.sync_status = "ERROR"
             db.add(connection)
             await db.commit()
@@ -397,6 +444,7 @@ async def run_full_resync(connection_id: str) -> None:
                 job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 job.completed_at = datetime.utcnow()
                 db.add(job)
+                await _notify_connection_status(connection, "ERROR")
                 connection.sync_status = "ERROR"
                 db.add(connection)
                 await db.commit()
@@ -423,6 +471,7 @@ async def run_full_resync(connection_id: str) -> None:
                     sj.completed_at = datetime.utcnow()
                     db.add(sj)
                 if conn:
+                    await _notify_connection_status(conn, "ERROR")
                     conn.sync_status = "ERROR"
                     db.add(conn)
                 await db.commit()
@@ -453,6 +502,7 @@ async def run_full_resync(connection_id: str) -> None:
                 sj.error_message = f"{type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
+                await _notify_connection_status(conn, "ERROR")
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
@@ -481,6 +531,7 @@ async def run_full_resync(connection_id: str) -> None:
                 sj.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
+                await _notify_connection_status(conn, "ERROR")
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
@@ -591,6 +642,13 @@ async def run_initial_sync(connection_id: str) -> None:
                 job.completed_at = datetime.utcnow()
                 job.records_processed = harmonized
                 db.add(job)
+                asyncio.create_task(create_org_notification(
+                    org_id=str(connection.organization_id),
+                    type="SYNC_COMPLETE",
+                    title=f"{PLATFORM_DISPLAY.get(connection.platform, str(connection.platform).title())} Sync Complete",
+                    message=f"Initial sync complete. Your {PLATFORM_DISPLAY.get(connection.platform, str(connection.platform).title())} creatives are now available.",
+                    data={"platform": connection.platform, "connection_id": str(connection.id)},
+                ))
                 await db.commit()
                 trigger_historical = True
             except Exception as e:
@@ -663,6 +721,13 @@ async def run_initial_sync(connection_id: str) -> None:
                 sj.completed_at = datetime.utcnow()
                 sj.records_processed = harmonized
                 db.add(sj)
+                asyncio.create_task(create_org_notification(
+                    org_id=str(conn.organization_id),
+                    type="SYNC_COMPLETE",
+                    title=f"{PLATFORM_DISPLAY.get(conn.platform, str(conn.platform).title())} Sync Complete",
+                    message=f"Initial sync complete. Your {PLATFORM_DISPLAY.get(conn.platform, str(conn.platform).title())} creatives are now available.",
+                    data={"platform": conn.platform, "connection_id": str(conn.id)},
+                ))
                 await db.commit()
                 trigger_historical = True
                 logger.info(f"DV360 initial sync completed: {sync_result}")
@@ -906,7 +971,6 @@ def remove_connection_schedule(connection_id: str) -> None:
     job_id = f"daily_sync_{connection_id}"
     if scheduler.get_job(job_id):
         scheduler.remove_job(job_id)
-
 
 
 async def startup_scheduler(db_session=None) -> None:
