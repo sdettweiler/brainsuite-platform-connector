@@ -1052,8 +1052,11 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     if (conn.sync_status === 'EXPIRED') {
       return 'token_expired';
     }
+    if (conn.sync_status === 'PENDING') {
+      return 'syncing';
+    }
     if (!conn.last_synced_at) {
-      return conn.sync_status === 'PENDING' ? 'syncing' : 'sync_failed';
+      return 'sync_failed';
     }
     const hoursSinceSync = (now.getTime() - new Date(conn.last_synced_at).getTime()) / 3_600_000;
     if (hoursSinceSync > 48) {
