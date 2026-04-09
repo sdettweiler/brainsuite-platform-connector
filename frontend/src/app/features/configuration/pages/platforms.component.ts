@@ -1032,10 +1032,12 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   private startSyncStatusPolling(): void {
     if (this.syncStatusPollInterval) return;
+    let ticks = 0;
     this.syncStatusPollInterval = setInterval(() => {
+      ticks++;
       this.loadConnections();
       const stillPending = this.connections.some(c => c.sync_status === 'PENDING');
-      if (!stillPending) {
+      if (!stillPending || ticks >= 120) {
         clearInterval(this.syncStatusPollInterval);
         this.syncStatusPollInterval = null;
       }

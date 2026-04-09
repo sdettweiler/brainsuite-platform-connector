@@ -199,7 +199,9 @@ class MetaSyncService:
                     data = resp.json()
 
                     if "error" in data:
-                        logger.error(f"Meta API error: {data['error']}")
+                        error_info = data["error"]
+                        logger.error(f"Meta API error: {error_info}")
+                        api_errors.append(str(error_info.get("message", error_info)))
                         break
 
                     records.extend(data.get("data", []))
