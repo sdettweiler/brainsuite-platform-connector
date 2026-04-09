@@ -96,6 +96,12 @@ AD_ENRICHMENT_FIELDS = [
 class MetaAPIError(Exception):
     pass
 
+class MetaTokenError(MetaAPIError):
+    """Raised when Meta returns an OAuth token error — token is invalid/expired/revoked."""
+    pass
+
+_META_TOKEN_ERROR_CODES = {190, 102, 463, 467}
+
 
 class MetaSyncService:
 
@@ -126,6 +132,8 @@ class MetaSyncService:
                 records = await self._fetch_insights(
                     access_token, account_id, chunk_start, chunk_end
                 )
+            except MetaTokenError:
+                raise
             except MetaAPIError as e:
                 api_errors.append(str(e))
                 chunk_start = chunk_end + timedelta(days=1)
@@ -201,6 +209,8 @@ class MetaSyncService:
                     if "error" in data:
                         error_info = data["error"]
                         logger.error(f"Meta API error: {error_info}")
+                        if error_info.get("code") in _META_TOKEN_ERROR_CODES:
+                            raise MetaTokenError(str(error_info.get("message", error_info)))
                         api_errors.append(str(error_info.get("message", error_info)))
                         break
 

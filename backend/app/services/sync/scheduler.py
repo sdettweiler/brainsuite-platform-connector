@@ -83,7 +83,7 @@ async def run_daily_sync(connection_id: str) -> None:
     from sqlalchemy import select
     from app.models.platform import PlatformConnection
     from app.models.performance import SyncJob
-    from app.services.sync.meta_sync import meta_sync
+    from app.services.sync.meta_sync import meta_sync, MetaTokenError
     from app.services.sync.tiktok_sync import tiktok_sync
     from app.services.sync.google_ads_sync import google_ads_sync
     from app.services.sync.dv360_sync import dv360_sync
@@ -162,6 +162,18 @@ async def run_daily_sync(connection_id: str) -> None:
                 result = {"fetched": 0, "upserted": 0}
                 await db.commit()
 
+        except MetaTokenError as e:
+            logger.error(f"Daily sync token error for connection {connection_id}: {e}")
+            await db.rollback()
+            job.status = "FAILED"
+            job.error_message = f"TokenError: {e}"[:4000]
+            job.completed_at = datetime.utcnow()
+            db.add(job)
+            await _notify_connection_status(connection, "EXPIRED")
+            connection.sync_status = "EXPIRED"
+            db.add(connection)
+            await db.commit()
+            return
         except Exception as e:
             logger.error(f"Daily sync fetch failed for connection {connection_id}: {type(e).__name__}: {e}")
             await db.rollback()
@@ -323,7 +335,7 @@ async def run_full_resync(connection_id: str) -> None:
     from sqlalchemy import select
     from app.models.platform import PlatformConnection
     from app.models.performance import SyncJob
-    from app.services.sync.meta_sync import meta_sync
+    from app.services.sync.meta_sync import meta_sync, MetaTokenError
     from app.services.sync.tiktok_sync import tiktok_sync
     from app.services.sync.google_ads_sync import google_ads_sync
     from app.services.sync.dv360_sync import dv360_sync
@@ -405,6 +417,18 @@ async def run_full_resync(connection_id: str) -> None:
                 sync_result = {"fetched": 0}
                 await db.commit()
 
+        except MetaTokenError as e:
+            logger.error(f"Full resync token error for connection {connection_id}: {e}")
+            await db.rollback()
+            job.status = "FAILED"
+            job.error_message = f"TokenError: {e}"[:4000]
+            job.completed_at = datetime.utcnow()
+            db.add(job)
+            await _notify_connection_status(connection, "EXPIRED")
+            connection.sync_status = "EXPIRED"
+            db.add(connection)
+            await db.commit()
+            return
         except Exception as e:
             logger.error(f"Full resync fetch failed for connection {connection_id}: {type(e).__name__}: {e}")
             import traceback
