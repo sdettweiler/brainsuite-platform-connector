@@ -349,6 +349,11 @@ async def run_full_resync(connection_id: str) -> None:
     dv360_info = None
     dv360_asset_queue = None
     conn_id_for_assets = None
+    _token_err: Optional[MetaTokenError] = None
+    _terr_conn_id = None
+    _terr_job_id = None
+    _terr_org_id = None
+    _terr_platform = None
 
     async with get_session_factory()() as db:
         result = await db.execute(
@@ -420,21 +425,15 @@ async def run_full_resync(connection_id: str) -> None:
 
         except MetaTokenError as e:
             logger.error(f"Full resync token error for connection {connection_id}: {e}")
+            _token_err = e
+            _terr_conn_id = connection.id
+            _terr_job_id = job.id
+            _terr_org_id = str(connection.organization_id)
+            _terr_platform = connection.platform
             try:
                 await db.rollback()
             except Exception:
                 pass
-            try:
-                from sqlalchemy import update as _upd
-                async with get_session_factory()() as fresh_db:
-                    await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == connection.id).values(sync_status="EXPIRED"))
-                    await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == job.id).values(status="FAILED", error_message=f"TokenError: {e}"[:4000], completed_at=datetime.utcnow()))
-                    await fresh_db.commit()
-                logger.info(f"Full resync: persisted EXPIRED status for connection {connection_id}")
-            except Exception as write_err:
-                logger.error(f"Full resync: failed to persist EXPIRED status: {write_err}")
-            await _notify_connection_status(connection, "EXPIRED")
-            return
         except Exception as e:
             logger.error(f"Full resync fetch failed for connection {connection_id}: {type(e).__name__}: {e}")
             import traceback
@@ -579,6 +578,16 @@ async def run_full_resync(connection_id: str) -> None:
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
+
+    if _token_err and _terr_conn_id:
+        from sqlalchemy import update as _upd
+        async with get_session_factory()() as fresh_db:
+            await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == _terr_conn_id).values(sync_status="EXPIRED"))
+            await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == _terr_job_id).values(status="FAILED", error_message=f"TokenError: {_token_err}"[:4000], completed_at=datetime.utcnow()))
+            await fresh_db.commit()
+        platform_name = PLATFORM_DISPLAY.get(_terr_platform, str(_terr_platform).title())
+        asyncio.create_task(create_org_notification(org_id=_terr_org_id, type="TOKEN_EXPIRED", title=f"{platform_name} Token Expired", message=f"Your {platform_name} access token has expired. Reconnect to resume syncing.", data={"platform": _terr_platform, "connection_id": str(_terr_conn_id)}))
+        return
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
