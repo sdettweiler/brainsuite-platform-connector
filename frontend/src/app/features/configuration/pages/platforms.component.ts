@@ -620,6 +620,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   private oauthWindow: Window | null = null;
   private oauthPollInterval: any;
+  private syncStatusPollInterval: any;
   private boundOAuthMessage = this.onOAuthMessage.bind(this);
 
   constructor(
@@ -643,6 +644,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     window.removeEventListener('message', this.boundOAuthMessage);
     if (this.oauthPollInterval) clearInterval(this.oauthPollInterval);
+    if (this.syncStatusPollInterval) clearInterval(this.syncStatusPollInterval);
     this.searchSubject.complete();
   }
 
@@ -1023,8 +1025,21 @@ export class PlatformsComponent implements OnInit, OnDestroy {
       next: () => {
         conn.sync_status = 'PENDING';
         this.snackBar.open('Resync triggered', '', { duration: 2000 });
+        this.startSyncStatusPolling();
       },
     });
+  }
+
+  private startSyncStatusPolling(): void {
+    if (this.syncStatusPollInterval) return;
+    this.syncStatusPollInterval = setInterval(() => {
+      this.loadConnections();
+      const stillPending = this.connections.some(c => c.sync_status === 'PENDING');
+      if (!stillPending) {
+        clearInterval(this.syncStatusPollInterval);
+        this.syncStatusPollInterval = null;
+      }
+    }, 5000);
   }
 
   deleteConnection(conn: PlatformConnection): void {
