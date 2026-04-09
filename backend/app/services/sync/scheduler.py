@@ -164,11 +164,15 @@ async def run_daily_sync(connection_id: str) -> None:
 
         except MetaTokenError as e:
             logger.error(f"Daily sync token error for connection {connection_id}: {e}")
-            from sqlalchemy import update as _update
-            await db.rollback()
-            await db.execute(_update(PlatformConnection).where(PlatformConnection.id == connection.id).values(sync_status="EXPIRED"))
-            await db.execute(_update(SyncJob).where(SyncJob.id == job.id).values(status="FAILED", error_message=f"TokenError: {e}"[:4000], completed_at=datetime.utcnow()))
-            await db.commit()
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            async with get_session_factory()() as fresh_db:
+                from sqlalchemy import update as _upd
+                await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == connection.id).values(sync_status="EXPIRED"))
+                await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == job.id).values(status="FAILED", error_message=f"TokenError: {e}"[:4000], completed_at=datetime.utcnow()))
+                await fresh_db.commit()
             await _notify_connection_status(connection, "EXPIRED")
             return
         except Exception as e:
@@ -417,10 +421,15 @@ async def run_full_resync(connection_id: str) -> None:
         except MetaTokenError as e:
             logger.error(f"Full resync token error for connection {connection_id}: {e}")
             from sqlalchemy import update as _update
-            await db.rollback()
-            await db.execute(_update(PlatformConnection).where(PlatformConnection.id == connection.id).values(sync_status="EXPIRED"))
-            await db.execute(_update(SyncJob).where(SyncJob.id == job.id).values(status="FAILED", error_message=f"TokenError: {e}"[:4000], completed_at=datetime.utcnow()))
-            await db.commit()
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            async with get_session_factory()() as fresh_db:
+                from sqlalchemy import update as _upd
+                await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == connection.id).values(sync_status="EXPIRED"))
+                await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == job.id).values(status="FAILED", error_message=f"TokenError: {e}"[:4000], completed_at=datetime.utcnow()))
+                await fresh_db.commit()
             await _notify_connection_status(connection, "EXPIRED")
             return
         except Exception as e:
