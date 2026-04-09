@@ -238,13 +238,17 @@ class MetaSyncService:
                         await asyncio.sleep(60)
                     else:
                         error_msg = ""
+                        error_code = None
                         try:
                             error_body = e.response.json()
+                            error_code = error_body.get("error", {}).get("code")
                             error_msg = str(error_body.get("error", {}).get("message", error_body))
                             logger.error(f"Meta API error {e.response.status_code}: {error_body}")
                         except (ValueError, KeyError):
                             error_msg = e.response.text[:500]
                             logger.error("Meta HTTP error %s: %s", e.response.status_code, error_msg)
+                        if error_code in _META_TOKEN_ERROR_CODES:
+                            raise MetaTokenError(error_msg)
                         raise MetaAPIError(f"HTTP {e.response.status_code}: {error_msg}")
 
         return records
