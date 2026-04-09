@@ -433,6 +433,13 @@ async def run_full_resync(connection_id: str) -> None:
                 job.completed_at = datetime.utcnow()
                 job.records_processed = harmonized
                 db.add(job)
+                asyncio.create_task(create_org_notification(
+                    org_id=str(connection.organization_id),
+                    type="SYNC_COMPLETE",
+                    title=f"{PLATFORM_DISPLAY.get(connection.platform, str(connection.platform).title())} Sync Complete",
+                    message=f"Full resync complete for {connection.ad_account_name}.",
+                    data={"platform": connection.platform, "connection_id": str(connection.id)},
+                ))
                 await db.commit()
                 logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
             except Exception as e:
@@ -520,6 +527,13 @@ async def run_full_resync(connection_id: str) -> None:
                 sj.completed_at = datetime.utcnow()
                 sj.records_processed = harmonized
                 db.add(sj)
+                asyncio.create_task(create_org_notification(
+                    org_id=str(conn.organization_id),
+                    type="SYNC_COMPLETE",
+                    title=f"{PLATFORM_DISPLAY.get(conn.platform, str(conn.platform).title())} Sync Complete",
+                    message=f"Full resync complete for {conn.ad_account_name}.",
+                    data={"platform": conn.platform, "connection_id": str(conn.id)},
+                ))
                 await db.commit()
                 logger.info(f"DV360 full resync completed: {sync_result}")
             except Exception as e:
