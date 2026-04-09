@@ -36,19 +36,14 @@ Declared values (must be multiples of 4):
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Icon gaps, unread badge padding, `notif-btn` badge offsets |
-| sm | 8px | Compact button padding, notification item column gap (`gap: 2px` for text stack), `header-right` gap |
+| sm | 8px | Compact button padding, notification item column gap, `header-right` gap |
 | md | 16px | Notification item horizontal padding, menu panel padding |
 | lg | 24px | Empty state padding (vertical), header horizontal padding |
 | xl | 32px | — |
 | 2xl | 48px | — |
 | 3xl | 64px | — |
 
-Exceptions:
-- Notification unread badge: 18px height, 10px border-radius (pill shape) — matches existing `.custom-badge` in `header.component.ts`
-- Notification item min-height: 56px (multi-line content row) — matches existing `.notif-item`
-- Notification item gap between icon and content: 10px — matches existing `.notif-item` gap
-- Notification icon-wrap top margin: 2px (optical alignment with text) — matches existing `.notif-icon-wrap`
-- Toast duration: 8000ms (per D-04, `CONTEXT.md`)
+Toast duration: 8000ms (per D-04, `CONTEXT.md`).
 
 Source: `header.component.ts` existing styles + `CONTEXT.md` D-04
 
@@ -116,8 +111,10 @@ All components are already present in the project. No new installs required.
 |-----------|--------|---------------|
 | `MatSnackBar` | `MatSnackBarModule` | Toast for `SYNC_FAILED` / `TOKEN_EXPIRED` high-priority events (D-03, D-04) |
 | `MatMenuTrigger` | `MatMenuModule` (already imported) | `@ViewChild(MatMenuTrigger)` reference to programmatically call `openMenu()` on 'View' toast action |
-| Bell `<button mat-icon-button>` | `MatButtonModule` (already imported) | Existing — no change to DOM structure |
-| `.custom-badge` | custom CSS (existing) | Existing — no change needed |
+| Bell `<button mat-icon-button>` (primary focal point) | `MatButtonModule` (already imported) | Existing — no change to DOM structure. `aria-label="Notifications"` must be present on this button. |
+| `.custom-badge` | custom CSS (existing) | Existing — no change needed. Component-specific dimensions: 18px height, 10px border-radius (pill shape). |
+| `.notif-item` | custom CSS (existing) | Existing — no change needed. Component-specific dimensions: 56px min-height (multi-line content row), 10px gap between icon and content columns. |
+| `.notif-icon-wrap` | custom CSS (existing) | Existing — no change needed. Component-specific: 2px top margin for optical alignment with first text line. |
 | `.notif-unread-dot` | custom CSS (existing) | Existing — no change needed |
 
 New icons to add to `getNotifIcon()` switch:
@@ -135,7 +132,9 @@ Source: `RESEARCH.md` Pattern 6, `CONTEXT.md` Claude's Discretion (icons)
 
 ## Interaction Contract
 
-### Bell icon state machine
+### Bell icon state machine (primary focal point)
+
+The bell `<button mat-icon-button aria-label="Notifications">` is the primary focal point of this phase.
 
 | State | Visual |
 |-------|--------|
@@ -152,13 +151,14 @@ Badge position: `top: 4px; right: 4px` (absolute, inside `.notif-btn`).
 - `xPosition="before"` — panel opens leftward of bell
 - Max visible items: no hard limit; scrollable via MatMenu default overflow
 - Empty state: `bi-bell` icon at 24px + opacity 0.4, text "No notifications"
+- Network error state: display "Couldn't load notifications. Try again." in place of notification list when `GET /notifications` fails
 
 ### Toast (MatSnackBar)
 
 - Triggered by: `SYNC_FAILED` or `TOKEN_EXPIRED` notification with `created_at > lastToastCheckAt`
 - One toast per matched notification (no batching)
 - Duration: 8000ms
-- Action label: "View"
+- Action label: "View Notifications"
 - Action effect: calls `notifMenuTrigger?.openMenu()` then `loadNotifications()`
 - `lastToastCheckAt` updated on every poll tick regardless of whether a toast fired
 
@@ -182,8 +182,9 @@ Badge position: `top: 4px; right: 4px` (absolute, inside `.notif-btn`).
 | Menu panel heading | Notifications |
 | Empty state heading | No notifications |
 | Empty state body | (none — icon only with heading, matches existing pattern) |
+| Network error state | Couldn't load notifications. Try again. |
 | Mark all read CTA | Mark all read |
-| Toast action label | View |
+| Toast action label | View Notifications |
 | `SYNC_COMPLETE` title | {PLATFORM} Sync Complete |
 | `SYNC_COMPLETE` message | Initial sync complete. Your {platform} creatives are now available. |
 | `SYNC_FAILED` title | {PLATFORM} Sync Failed |
