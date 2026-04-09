@@ -2,18 +2,15 @@
 Creative asset management: projects, metadata, assignments, export.
 """
 from typing import List, Optional
-import asyncio
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, distinct
+from sqlalchemy import select, delete
 import uuid
 
 from app.db.base import get_db
 from app.models.user import User
 from app.models.creative import CreativeAsset, Project, AssetProjectMapping, AssetMetadataValue
 from app.models.metadata import MetadataField, MetadataFieldValue
-from app.models.scoring import CreativeScoreResult
-from app.models.ai_inference import AIInferenceTracking
 from app.schemas.creative import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
     MetadataFieldCreate, MetadataFieldResponse,
@@ -21,7 +18,6 @@ from app.schemas.creative import (
 )
 from app.api.v1.deps import get_current_user, get_current_admin
 from app.services.export_service import export_service
-from app.services.ai_autofill import run_autofill_for_asset
 
 router = APIRouter()
 
@@ -168,54 +164,8 @@ async def list_metadata_fields(
             default_value=f.default_value,
             allowed_values=vals,
             created_at=f.created_at,
-            auto_fill_enabled=f.auto_fill_enabled,
-            auto_fill_type=f.auto_fill_type,
         ))
     return out
-
-
-@router.get("/metadata-filter-values")
-async def get_metadata_filter_values(
-    field_id: uuid.UUID = Query(...),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Return combined predefined + actual used values for a metadata field, org-scoped.
-
-    Response: List of {value, label, source} where source is "predefined" or "actual".
-    Predefined values take precedence on de-duplication by value string.
-    """
-    # 1. Predefined values from MetadataFieldValue table
-    predefined_result = await db.execute(
-        select(MetadataFieldValue).where(
-            MetadataFieldValue.field_id == field_id
-        ).order_by(MetadataFieldValue.sort_order)
-    )
-    predefined = predefined_result.scalars().all()
-    predefined_map = {v.value: {"value": v.value, "label": v.label, "source": "predefined"} for v in predefined}
-
-    # 2. Actual used values from asset_metadata_values scoped to the org
-    actual_result = await db.execute(
-        select(distinct(AssetMetadataValue.value)).where(
-            AssetMetadataValue.field_id == field_id,
-            AssetMetadataValue.asset_id.in_(
-                select(CreativeAsset.id).where(
-                    CreativeAsset.organization_id == current_user.organization_id
-                )
-            ),
-        ).order_by(AssetMetadataValue.value)
-    )
-    actual_values = [row[0] for row in actual_result.all()]
-
-    # 3. Merge: predefined take precedence; add actual values not already in predefined
-    combined = list(predefined_map.values())
-    seen = set(predefined_map.keys())
-    for v in actual_values:
-        if v not in seen:
-            combined.append({"value": v, "label": v, "source": "actual"})
-            seen.add(v)
-
-    return combined
 
 
 @router.post("/metadata-fields", response_model=MetadataFieldResponse, status_code=201)
@@ -297,17 +247,6 @@ async def update_asset_metadata(
             db.add(rec)
         else:
             db.add(AssetMetadataValue(asset_id=asset_id, field_id=field_id, value=value))
-
-    # D-14: Reset scoring status so 15-min batch rescores with updated metadata
-    score_result = await db.execute(
-        select(CreativeScoreResult).where(
-            CreativeScoreResult.creative_asset_id == asset_id
-        )
-    )
-    score_row = score_result.scalar_one_or_none()
-    if score_row and score_row.scoring_status != "UNSCORED":
-        score_row.scoring_status = "UNSCORED"
-        db.add(score_row)
 
     await db.commit()
     return {"detail": "Metadata updated"}
@@ -523,8 +462,6 @@ async def list_metadata_fields_v2(
             id=f.id, name=f.name, label=f.label, field_type=f.field_type,
             is_required=f.is_required, default_value=f.default_value,
             allowed_values=vals, created_at=f.created_at,
-            auto_fill_enabled=f.auto_fill_enabled,
-            auto_fill_type=f.auto_fill_type,
         ))
     return out
 
@@ -560,7 +497,7 @@ async def update_metadata_field_v2(
     field = await db.get(MetadataField, field_id)
     if not field or field.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Field not found")
-    allowed = {"name", "label", "field_type", "is_required", "default_value", "auto_fill_enabled", "auto_fill_type"}
+    allowed = {"name", "label", "field_type", "is_required", "default_value"}
     for k, v in payload.items():
         if k in allowed:
             setattr(field, k, v)
@@ -570,9 +507,7 @@ async def update_metadata_field_v2(
     return MetadataFieldResponse(id=field.id, name=field.name, label=field.label,
                                   field_type=field.field_type, is_required=field.is_required,
                                   default_value=field.default_value, allowed_values=[],
-                                  created_at=field.created_at,
-                                  auto_fill_enabled=field.auto_fill_enabled,
-                                  auto_fill_type=field.auto_fill_type)
+                                  created_at=field.created_at)
 
 
 @router.delete("/metadata/fields/{field_id}")
@@ -631,37 +566,3 @@ async def reorder_metadata_fields(
             db.add(field)
     await db.commit()
     return {"detail": "Order updated"}
-
-
-@router.post("/debug/autofill/{asset_id}")
-async def debug_trigger_autofill(
-    asset_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Debug endpoint: trigger auto-fill synchronously for a single asset and return the result."""
-    result = await db.execute(
-        select(CreativeAsset).where(CreativeAsset.id == asset_id)
-    )
-    asset = result.scalar_one_or_none()
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    if asset.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=403, detail="Asset not in your organization")
-
-    # Run synchronously (not via create_task) so we can return the outcome
-    await run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id)
-
-    # Return updated tracking row
-    tracking_result = await db.execute(
-        select(AIInferenceTracking).where(AIInferenceTracking.asset_id == asset_id)
-    )
-    tracking = tracking_result.scalar_one_or_none()
-
-    return {
-        "asset_id": str(asset_id),
-        "platform": asset.platform,
-        "asset_url": asset.asset_url,
-        "ai_inference_status": tracking.ai_inference_status if tracking else None,
-        "updated_at": tracking.updated_at.isoformat() if tracking else None,
-    }

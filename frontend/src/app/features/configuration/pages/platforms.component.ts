@@ -17,7 +17,7 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { DisconnectDialogComponent, DisconnectDialogResult } from '../components/disconnect-dialog.component';
 import { formatDistanceToNow } from 'date-fns';
 
-type HealthState = 'connected' | 'token_expired' | 'expired' | 'sync_failed' | 'syncing' | 'initial_sync';
+type HealthState = 'connected' | 'token_expired' | 'sync_failed' | 'syncing';
 
 interface OAuthAccount {
   id: string;
@@ -51,7 +51,6 @@ interface PlatformConnection {
   last_synced_at?: string;
   token_expiry?: string;
   initial_sync_completed: boolean;
-  is_syncing?: boolean;
   brainsuite_app_id?: string;
   brainsuite_app_id_image?: string;
   brainsuite_app_id_video?: string;
@@ -301,9 +300,9 @@ const PLATFORMS: PlatformDef[] = [
                 </td>
                 <td class="col-health">
                   <span [class]="getHealthBadgeClass(getHealthState(conn))">
-                    <mat-spinner *ngIf="getHealthState(conn) === 'syncing' || getHealthState(conn) === 'initial_sync'" diameter="12" class="inline-spinner"></mat-spinner>
                     {{ getHealthLabel(getHealthState(conn)) }}
                   </span>
+                  <span class="sync-sub" *ngIf="!conn.initial_sync_completed">Syncing...</span>
                 </td>
                 <td class="col-currency">{{ conn.currency }}</td>
                 <td class="col-tz" [matTooltip]="conn.timezone">{{ conn.timezone }}</td>
@@ -339,19 +338,17 @@ const PLATFORMS: PlatformDef[] = [
                   </mat-form-field>
                 </td>
                 <td class="col-actions">
-                  <div class="actions-cell">
-                    <button
-                      *ngIf="needsReconnect(conn)"
-                      mat-flat-button
-                      class="reconnect-btn"
-                      (click)="reconnect(conn); $event.stopPropagation()"
-                    >
-                      Reconnect Account
-                    </button>
-                    <button mat-icon-button [matMenuTriggerFor]="rowMenu" [matMenuTriggerData]="{conn: conn}">
-                      <i class="bi bi-three-dots-vertical"></i>
-                    </button>
-                  </div>
+                  <button
+                    *ngIf="needsReconnect(conn)"
+                    mat-flat-button
+                    class="reconnect-btn"
+                    (click)="reconnect(conn); $event.stopPropagation()"
+                  >
+                    Reconnect Account
+                  </button>
+                  <button mat-icon-button [matMenuTriggerFor]="rowMenu" [matMenuTriggerData]="{conn: conn}">
+                    <i class="bi bi-three-dots-vertical"></i>
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -410,9 +407,6 @@ const PLATFORMS: PlatformDef[] = [
         <ng-template matMenuContent let-conn="conn">
           <button mat-menu-item (click)="resync(conn)">
             <i class="bi bi-arrow-repeat" style="font-size: 18px; margin-right: 12px;"></i> Force Resync
-          </button>
-          <button mat-menu-item *ngIf="conn.platform === 'DV360' || conn.platform === 'GOOGLE_ADS'" (click)="fetchAssets(conn)">
-            <i class="bi bi-cloud-download" style="font-size: 18px; margin-right: 12px;"></i> Fetch Assets
           </button>
           <button mat-menu-item (click)="openMetadataPanel(conn)">
             <i class="bi bi-sliders" style="font-size: 18px; margin-right: 12px;"></i> Default Metadata
@@ -626,7 +620,6 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   private oauthWindow: Window | null = null;
   private oauthPollInterval: any;
-  private syncPollInterval: any = null;
   private boundOAuthMessage = this.onOAuthMessage.bind(this);
 
   constructor(
@@ -650,7 +643,6 @@ export class PlatformsComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     window.removeEventListener('message', this.boundOAuthMessage);
     if (this.oauthPollInterval) clearInterval(this.oauthPollInterval);
-    if (this.syncPollInterval) clearInterval(this.syncPollInterval);
     this.searchSubject.complete();
   }
 
@@ -871,15 +863,6 @@ export class PlatformsComponent implements OnInit, OnDestroy {
         this.statusSummary = res.status_summary || {};
         this.loading = false;
         this.applyDefaultApps();
-
-        // Start/stop polling based on whether any connections are actively syncing
-        const hasSyncing = this.connections.some(c => c.is_syncing);
-        if (hasSyncing && !this.syncPollInterval) {
-          this.syncPollInterval = setInterval(() => this.loadConnections(), 15000);
-        } else if (!hasSyncing && this.syncPollInterval) {
-          clearInterval(this.syncPollInterval);
-          this.syncPollInterval = null;
-        }
       },
       error: () => { this.loading = false; },
     });
@@ -1037,20 +1020,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   resync(conn: PlatformConnection): void {
     this.api.post(`/platforms/connections/${conn.id}/resync`, {}).subscribe({
-      next: () => {
-        this.snackBar.open('Resync triggered', '', { duration: 2000 });
-        setTimeout(() => this.loadConnections(), 2000);
-      },
-    });
-  }
-
-  fetchAssets(conn: PlatformConnection): void {
-    this.api.post(`/platforms/connections/${conn.id}/fetch-assets`, {}).subscribe({
-      next: () => {
-        this.snackBar.open('Asset download started', '', { duration: 2000 });
-        setTimeout(() => this.loadConnections(), 2000);
-      },
-      error: () => { this.snackBar.open('Failed to start asset download', '', { duration: 3000 }); },
+      next: () => { this.snackBar.open('Resync triggered', '', { duration: 2000 }); },
     });
   }
 
@@ -1076,26 +1046,12 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   getHealthState(conn: PlatformConnection): HealthState {
     const now = new Date();
-    // Actively syncing (PENDING = initial sync in progress)
-    if (conn.sync_status === 'PENDING') {
-      return conn.initial_sync_completed ? 'syncing' : 'initial_sync';
+    if (conn.token_expiry && new Date(conn.token_expiry) < now) {
+      return 'token_expired';
     }
-    // Never synced
     if (!conn.last_synced_at) {
-      if (!conn.initial_sync_completed) {
-        return 'initial_sync';
-      }
-      return 'sync_failed';
+      return conn.sync_status === 'PENDING' ? 'syncing' : 'sync_failed';
     }
-    // Backend says token needs reconnect
-    if (conn.sync_status === 'EXPIRED') {
-      return 'expired';
-    }
-    // DB-level error status (non-auth)
-    if (conn.sync_status === 'ERROR') {
-      return 'sync_failed';
-    }
-    // Stale sync (>48h)
     const hoursSinceSync = (now.getTime() - new Date(conn.last_synced_at).getTime()) / 3_600_000;
     if (hoursSinceSync > 48) {
       return 'sync_failed';
@@ -1107,10 +1063,8 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     switch (state) {
       case 'connected': return 'Connected';
       case 'token_expired': return 'Token expired';
-      case 'expired': return 'Reconnect needed';
       case 'sync_failed': return 'Sync failed';
-      case 'syncing': return 'Syncing';
-      case 'initial_sync': return 'Initial Sync';
+      case 'syncing': return 'Syncing…';
     }
   }
 
@@ -1118,10 +1072,8 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     switch (state) {
       case 'connected': return 'badge badge-success';
       case 'token_expired': return 'badge badge-warning';
-      case 'expired': return 'badge badge-warning';
       case 'sync_failed': return 'badge badge-error';
-      case 'syncing': return 'badge badge-syncing';
-      case 'initial_sync': return 'badge badge-syncing';
+      case 'syncing': return 'badge badge-info';
     }
   }
 
@@ -1132,7 +1084,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   needsReconnect(conn: PlatformConnection): boolean {
     const state = this.getHealthState(conn);
-    return state === 'token_expired' || state === 'expired' || state === 'sync_failed';
+    return state === 'token_expired' || state === 'sync_failed';
   }
 
   reconnect(conn: PlatformConnection): void {

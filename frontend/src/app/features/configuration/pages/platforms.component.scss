@@ -115,6 +115,41 @@
   }
 }
 
+.compact-select {
+  ::ng-deep {
+    .mat-mdc-form-field-subscript-wrapper { display: none; }
+    .mdc-text-field--outlined {
+      --mdc-outlined-text-field-container-shape: 6px;
+      --mat-form-field-container-height: 32px;
+      --mat-form-field-container-vertical-padding: 0px;
+    }
+    .mat-mdc-form-field-flex {
+      height: 32px;
+      align-items: center;
+    }
+    .mat-mdc-form-field-infix {
+      min-height: unset !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      display: flex;
+      align-items: center;
+    }
+    .mat-mdc-select {
+      font-family: 'Nunito Sans', sans-serif;
+      font-size: 13px;
+    }
+    .mat-mdc-select-value {
+      font-size: 13px;
+    }
+    .mdc-floating-label {
+      font-size: 13px;
+      font-family: 'Nunito Sans', sans-serif;
+    }
+    .mat-mdc-text-field-wrapper {
+      padding: 0 12px !important;
+    }
+  }
+}
 
 .sort-select { width: 130px; }
 
@@ -175,13 +210,10 @@
   .col-tz { width: 140px; }
   .col-sync { width: 120px; }
   .col-app { width: 140px; }
-  .col-actions { width: 240px; min-width: 240px; text-align: right; overflow: visible; }
+  .col-actions { width: 180px; text-align: right; }
 
   td, th {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  td.col-actions, th.col-actions {
-    overflow: visible;
   }
 }
 
@@ -230,27 +262,6 @@
   color: var(--error, #E74C3C);
 }
 
-.badge-syncing {
-  background: rgba(66, 133, 244, 0.15);
-  color: #4285F4;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.inline-spinner {
-  display: inline-block;
-  vertical-align: middle;
-
-  ::ng-deep circle {
-    stroke: currentColor !important;
-  }
-}
-
-.actions-cell {
-  display: flex; align-items: center; justify-content: flex-end; gap: 4px;
-}
-
 .reconnect-btn {
   background: var(--accent) !important;
   color: white !important;
@@ -260,6 +271,7 @@
   border-radius: 6px;
   min-width: auto;
   line-height: 1.4;
+  margin-right: 4px;
 }
 
 .inline-app-select {

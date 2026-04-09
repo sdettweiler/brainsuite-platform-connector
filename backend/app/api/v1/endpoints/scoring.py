@@ -17,7 +17,7 @@ from app.services.brainsuite_score import (
     extract_score_data,
     persist_and_replace_visualizations,
 )
-from app.services.sync.scoring_job import score_asset_now, run_backfill_task, refetch_processing_assets, run_media_metrics_backfill
+from app.services.sync.scoring_job import score_asset_now, run_backfill_task
 
 logger = logging.getLogger(__name__)
 
@@ -51,59 +51,6 @@ async def admin_backfill_scoring(
         current_admin.id,
     )
     return {"status": "backfill_started", "assets_queued": assets_queued}
-
-
-@router.post("/admin/backfill-media-metrics", status_code=202)
-async def admin_backfill_media_metrics(
-    background_tasks: BackgroundTasks,
-    current_admin: User = Depends(get_current_admin),
-):
-    """Queue a background job to backfill width/height/video_duration for existing assets.
-
-    Reads stored files from object storage and extracts dimensions using Pillow
-    (images) or imageio_ffmpeg (videos).  Assets with external/expired CDN URLs
-    are skipped gracefully.
-    """
-    background_tasks.add_task(run_media_metrics_backfill)
-    logger.info(
-        "admin_backfill_media_metrics: queued media metrics backfill (requested by user %s)",
-        current_admin.id,
-    )
-    return {"status": "queued", "message": "Media metrics backfill started"}
-
-
-@router.post("/admin/refetch-processing", status_code=202)
-async def admin_refetch_processing(
-    background_tasks: BackgroundTasks,
-    current_admin: User = Depends(get_current_admin),
-):
-    """Re-poll BrainSuite for all PROCESSING assets whose polling was dropped.
-
-    Targets assets that have been in PROCESSING for more than PROCESSING_REFETCH_HOURS
-    with no scored_at. Does not re-submit — uses the existing brainsuite_job_id.
-    Returns immediately; polling runs in the background.
-    """
-    async with get_session_factory()() as db:
-        from datetime import timedelta
-        from app.services.sync.scoring_job import PROCESSING_REFETCH_HOURS
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=PROCESSING_REFETCH_HOURS)
-        result = await db.execute(
-            select(func.count(CreativeScoreResult.id))
-            .where(
-                CreativeScoreResult.scoring_status == "PROCESSING",
-                CreativeScoreResult.scored_at.is_(None),
-                CreativeScoreResult.submitted_at < cutoff,
-            )
-        )
-        assets_queued = result.scalar_one()
-
-    background_tasks.add_task(refetch_processing_assets)
-    logger.info(
-        "admin_refetch_processing: re-polling %d PROCESSING assets (requested by user %s)",
-        assets_queued,
-        current_admin.id,
-    )
-    return {"status": "refetch_started", "assets_queued": assets_queued}
 
 
 @router.post("/{asset_id}/rescore")

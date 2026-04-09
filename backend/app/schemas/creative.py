@@ -33,8 +33,6 @@ class MetadataFieldCreate(BaseModel):
     is_required: bool = False
     default_value: Optional[str] = None
     allowed_values: List[Dict[str, str]] = []  # [{value, label}]
-    auto_fill_enabled: bool = False
-    auto_fill_type: Optional[str] = None
 
 
 class MetadataFieldResponse(BaseModel):
@@ -46,8 +44,6 @@ class MetadataFieldResponse(BaseModel):
     default_value: Optional[str]
     allowed_values: List[Dict[str, Any]] = []
     created_at: datetime
-    auto_fill_enabled: bool = False
-    auto_fill_type: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -96,8 +92,6 @@ class CreativeAssetResponse(CreativeAssetSummary):
     creative_id: Optional[str]
     asset_url: Optional[str]
     video_duration: Optional[float]
-    width: Optional[int] = None
-    height: Optional[int] = None
     placement: Optional[str]
     platform_metadata: Dict[str, Any] = {}
     metadata_values: Dict[str, Optional[str]] = {}
@@ -115,7 +109,7 @@ class DashboardFilterParams(BaseModel):
     formats: Optional[List[str]] = None
     objectives: Optional[List[str]] = None
     project_ids: Optional[List[uuid.UUID]] = None
-    metadata_filters: Optional[Dict[str, List[str]]] = None
+    metadata_filters: Optional[Dict[str, str]] = None
     spend_min: Optional[float] = None
     spend_max: Optional[float] = None
     cpm_min: Optional[float] = None

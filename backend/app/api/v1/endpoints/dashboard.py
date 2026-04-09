@@ -9,17 +9,15 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, text, case, nullslast, cast
 from sqlalchemy.types import Date
-from sqlalchemy.orm import selectinload, aliased
+from sqlalchemy.orm import selectinload
 import uuid
 
 from app.db.base import get_db
 from app.models.user import User
 from app.models.creative import CreativeAsset, AssetMetadataValue, AssetProjectMapping
-from app.models.metadata import MetadataField
 from app.models.performance import HarmonizedPerformance
 from app.models.platform import PlatformConnection
 from app.models.scoring import CreativeScoreResult
-from app.models.ai_inference import AIInferenceTracking
 from app.schemas.creative import (
     DashboardFilterParams, DashboardStats, CreativeAssetResponse,
     AssetDetailResponse, ComparisonRequest,
@@ -54,7 +52,6 @@ async def get_dashboard_stats(
     date_from: date = Query(default=None),
     date_to: date = Query(default=None),
     platforms: Optional[str] = Query(default=None),
-    meta_filters: Optional[List[str]] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -69,32 +66,6 @@ async def get_dashboard_stats(
     prev_to = date_from - timedelta(days=1)
 
     platform_list = [p.strip().upper() for p in platforms.split(",")] if platforms else None
-
-    # Parse meta_filters: "field_id:value1,value2" -> list of {field_id, values}
-    parsed_meta_filters = []
-    if meta_filters:
-        for mf_str in meta_filters:
-            if ':' not in mf_str:
-                continue
-            field_id_str, values_str = mf_str.split(':', 1)
-            try:
-                mf_field_id = uuid.UUID(field_id_str)
-            except ValueError:
-                continue
-            mf_values = [v.strip() for v in values_str.split(',') if v.strip()]
-            if mf_values:
-                parsed_meta_filters.append({"field_id": mf_field_id, "values": mf_values})
-
-    def _apply_meta_filters(q, i_offset: int = 0):
-        """Apply parsed_meta_filters JOINs to a query. Returns updated query."""
-        for i, mf in enumerate(parsed_meta_filters):
-            mf_alias = aliased(AssetMetadataValue)
-            q = q.join(mf_alias, and_(
-                mf_alias.asset_id == CreativeAsset.id,
-                mf_alias.field_id == mf["field_id"],
-                mf_alias.value.in_(mf["values"]),
-            ))
-        return q
 
     async def get_stats(df: date, dt: date):
         base = select(
@@ -113,7 +84,6 @@ async def get_dashboard_stats(
         )
         if platform_list:
             base = base.where(HarmonizedPerformance.platform.in_(platform_list))
-        base = _apply_meta_filters(base)
         return (await db.execute(base)).one()
 
     async def count_assets(df: date, dt: date):
@@ -124,7 +94,6 @@ async def get_dashboard_stats(
             HarmonizedPerformance.report_date >= df,
             HarmonizedPerformance.report_date <= dt,
         )
-        q = _apply_meta_filters(q)
         return (await db.execute(q)).scalar() or 0
 
     curr = await get_stats(date_from, date_to)
@@ -224,9 +193,6 @@ async def get_dashboard_assets(
     page_size: int = Query(default=50, ge=1, le=250),
     score_min: Optional[float] = Query(default=None, ge=0, le=100),
     score_max: Optional[float] = Query(default=None, ge=0, le=100),
-    duration_min: Optional[float] = Query(default=None, ge=0, description="Minimum video duration in seconds"),
-    duration_max: Optional[float] = Query(default=None, ge=0, description="Maximum video duration in seconds"),
-    meta_filters: Optional[List[str]] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -332,31 +298,6 @@ async def get_dashboard_assets(
     if score_max is not None:
         query = query.where(CreativeScoreResult.total_score <= score_max)
 
-    if duration_min is not None:
-        query = query.where(CreativeAsset.video_duration >= duration_min)
-    if duration_max is not None:
-        query = query.where(CreativeAsset.video_duration <= duration_max)
-
-    # Metadata filters: each entry is "field_id:value1,value2" — AND across fields, OR within field
-    if meta_filters:
-        for i, mf_str in enumerate(meta_filters):
-            if ':' not in mf_str:
-                continue
-            field_id_str, values_str = mf_str.split(':', 1)
-            try:
-                mf_field_id = uuid.UUID(field_id_str)
-            except ValueError:
-                continue
-            mf_values = [v.strip() for v in values_str.split(',') if v.strip()]
-            if not mf_values:
-                continue
-            mf_alias = aliased(AssetMetadataValue)
-            query = query.join(mf_alias, and_(
-                mf_alias.asset_id == CreativeAsset.id,
-                mf_alias.field_id == mf_field_id,
-                mf_alias.value.in_(mf_values),
-            ))
-
     # Only assets with performance in period
     query = query.where(perf_subq.c.total_spend.isnot(None))
 
@@ -454,40 +395,11 @@ async def get_asset_detail(
     if not asset or asset.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    # Get AI inference status
-    tracking_result = await db.execute(
-        select(AIInferenceTracking.ai_inference_status).where(
-            AIInferenceTracking.asset_id == asset_id
-        )
-    )
-    ai_inference_status = tracking_result.scalar_one_or_none()
-
-    # Get metadata values — start from connection defaults, overlay asset-specific values
-    connection = await db.get(PlatformConnection, asset.platform_connection_id)
-    raw_defaults: dict = dict(connection.default_metadata_values or {}) if connection else {}
-
-    # Normalize connection defaults: support both name-keyed and UUID-keyed formats
-    if raw_defaults:
-        fields_result = await db.execute(
-            select(MetadataField.id, MetadataField.name).where(
-                MetadataField.organization_id == current_user.organization_id,
-                MetadataField.is_active == True,
-            )
-        )
-        name_to_uuid = {row.name: str(row.id) for row in fields_result.all()}
-        valid_uuids = set(name_to_uuid.values())
-        meta_values: dict = {}
-        for k, v in raw_defaults.items():
-            key = k if k in valid_uuids else name_to_uuid.get(k, k)
-            meta_values[key] = v
-    else:
-        meta_values: dict = {}
-
-    asset_meta_result = await db.execute(
+    # Get metadata values
+    meta_result = await db.execute(
         select(AssetMetadataValue).where(AssetMetadataValue.asset_id == asset_id)
     )
-    for v in asset_meta_result.scalars().all():
-        meta_values[str(v.field_id)] = v.value
+    meta_values = {str(v.field_id): v.value for v in meta_result.scalars().all()}
 
     # Get projects
     proj_result = await db.execute(
@@ -656,13 +568,10 @@ async def get_asset_detail(
         "thumbnail_url": asset.thumbnail_url,
         "asset_url": asset.asset_url,
         "video_duration": asset.video_duration,
-        "width": asset.width,
-        "height": asset.height,
         "ad_account_id": str(asset.ad_account_id) if asset.ad_account_id else None,
         "scoring_status": None,
         "total_score": None,
         "total_rating": None,
-        "ai_inference_status": ai_inference_status,
         "metadata_values": meta_values,
         "projects": project_ids,
         "campaigns_count": int(perf.campaigns_count or 0),
@@ -935,7 +844,7 @@ async def compare_assets(
 def _serialize_correlation_asset(row) -> dict:
     """Serialize a correlation query row to dict.
 
-    CRITICAL: Use `is not None` check for numeric fields to preserve zero values.
+    CRITICAL: Use `is not None` check for roas to preserve zero values.
     The falsy pattern `if row.roas` would coerce 0.0 to None.
     """
     return {
@@ -944,15 +853,8 @@ def _serialize_correlation_asset(row) -> dict:
         "platform": row.platform,
         "thumbnail_url": row.thumbnail_url,
         "total_score": float(row.total_score) if row.total_score is not None else None,
-        "total_rating": row.total_rating,
         "roas": float(row.roas) if row.roas is not None else None,
         "spend": float(row.total_spend) if row.total_spend is not None else None,
-        "ctr": float(row.ctr) if row.ctr is not None else None,
-        "vtr": float(row.vtr) if row.vtr is not None else None,
-        "cpm": float(row.cpm) if row.cpm is not None else None,
-        "cvr": float(row.cvr) if row.cvr is not None else None,
-        "cpc": float(row.cpc) if row.cpc is not None else None,
-        "conversions": float(row.conversions) if row.conversions is not None else None,
     }
 
 
@@ -986,28 +888,6 @@ async def get_correlation_data(
                 func.sum(HarmonizedPerformance.conversion_value) /
                 func.nullif(func.sum(HarmonizedPerformance.spend), 0)
             ).label("roas"),
-            # Additional metrics — weighted averages re-derived from raw sums
-            (
-                func.sum(HarmonizedPerformance.clicks) /
-                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
-            ).label("ctr"),
-            (
-                func.sum(HarmonizedPerformance.video_views) /
-                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 100
-            ).label("vtr"),
-            (
-                func.sum(HarmonizedPerformance.spend) /
-                func.nullif(func.sum(HarmonizedPerformance.impressions), 0) * 1000
-            ).label("cpm"),
-            (
-                func.sum(HarmonizedPerformance.conversions) /
-                func.nullif(func.sum(HarmonizedPerformance.clicks), 0) * 100
-            ).label("cvr"),
-            (
-                func.sum(HarmonizedPerformance.spend) /
-                func.nullif(func.sum(HarmonizedPerformance.clicks), 0)
-            ).label("cpc"),
-            func.sum(HarmonizedPerformance.conversions).label("conversions"),
         )
         .where(
             HarmonizedPerformance.report_date >= date_from,
@@ -1024,15 +904,8 @@ async def get_correlation_data(
             CreativeAsset.platform,
             CreativeAsset.thumbnail_url,
             CreativeScoreResult.total_score,
-            CreativeScoreResult.total_rating,
             perf_subq.c.roas,
             perf_subq.c.total_spend,
-            perf_subq.c.ctr,
-            perf_subq.c.vtr,
-            perf_subq.c.cpm,
-            perf_subq.c.cvr,
-            perf_subq.c.cpc,
-            perf_subq.c.conversions,
         )
         .outerjoin(CreativeScoreResult, CreativeScoreResult.creative_asset_id == CreativeAsset.id)
         .outerjoin(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)

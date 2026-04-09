@@ -12,7 +12,6 @@ from app.models.performance import (
     SyncJob,
 )
 from app.models.scoring import CreativeScoreResult
-from app.models.ai_inference import AIInferenceTracking
 
 __all__ = [
     "User", "Organization", "OrganizationRole", "RefreshToken",
@@ -23,5 +22,4 @@ __all__ = [
     "Dv360RawPerformance",
     "HarmonizedPerformance", "CurrencyRate", "SyncJob",
     "CreativeScoreResult",
-    "AIInferenceTracking",
 ]

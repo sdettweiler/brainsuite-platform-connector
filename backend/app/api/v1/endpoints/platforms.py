@@ -7,7 +7,7 @@ import logging
 import secrets
 import asyncio
 import httpx
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -400,7 +400,7 @@ async def connect_accounts(
             if tokens.get("refresh_token"):
                 existing_conn.refresh_token_encrypted = encrypt_token(tokens["refresh_token"])
             if tokens.get("expires_in"):
-                existing_conn.token_expiry = datetime.now(timezone.utc) + timedelta(seconds=tokens["expires_in"])
+                existing_conn.token_expiry = datetime.utcnow() + timedelta(seconds=tokens["expires_in"])
             existing_conn.sync_status = "ACTIVE"
             db.add(existing_conn)
             conn = existing_conn
@@ -416,7 +416,7 @@ async def connect_accounts(
                 timezone=account_info.get("timezone", "UTC"),
                 access_token_encrypted=encrypt_token(tokens.get("access_token", "")),
                 refresh_token_encrypted=encrypt_token(tokens.get("refresh_token", "")) if tokens.get("refresh_token") else None,
-                token_expiry=datetime.now(timezone.utc) + timedelta(seconds=tokens.get("expires_in", 3600)) if tokens.get("expires_in") else None,
+                token_expiry=datetime.utcnow() + timedelta(seconds=tokens.get("expires_in", 3600)) if tokens.get("expires_in") else None,
                 brainsuite_app_id=uuid.UUID(brainsuite_app_id) if brainsuite_app_id else None,
                 default_metadata_values=default_metadata,
                 sync_status="ACTIVE",
@@ -594,24 +594,9 @@ async def list_connections(
     result = await db.execute(base)
     items = result.scalars().all()
 
-    # Bulk-check Redis for in-progress syncs
-    redis = get_redis()
-    if items:
-        syncing_keys = [f"sync:{str(c.id)}:in_progress" for c in items]
-        syncing_values = await redis.mget(*syncing_keys)
-        syncing_set = {str(items[i].id) for i, v in enumerate(syncing_values) if v is not None}
-    else:
-        syncing_set = set()
-
     from app.schemas.platform import PlatformConnectionResponse
-    items_out = []
-    for c in items:
-        d = PlatformConnectionResponse.model_validate(c).model_dump(mode="json")
-        d["is_syncing"] = str(c.id) in syncing_set
-        items_out.append(d)
-
     return {
-        "items": items_out,
+        "items": [PlatformConnectionResponse.model_validate(c) for c in items],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -693,24 +678,6 @@ async def manual_resync(
         return {"detail": "Full resync started"}
 
 
-@router.post("/connections/{connection_id}/fetch-assets")
-async def fetch_assets(
-    connection_id: uuid.UUID,
-    background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    conn = await db.get(PlatformConnection, connection_id)
-    if not conn or conn.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=404, detail="Connection not found")
-    if conn.platform not in ("DV360", "GOOGLE_ADS"):
-        raise HTTPException(status_code=400, detail="Asset fetch is only supported for DV360 and Google Ads")
-
-    from app.services.sync.scheduler import run_fetch_assets
-    background_tasks.add_task(run_fetch_assets, str(connection_id))
-    return {"detail": "Asset download started"}
-
-
 @router.post("/connections/bulk-action")
 async def bulk_action(
     payload: dict,
@@ -786,14 +753,10 @@ async def connection_status(
     if not conn or conn.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    redis = get_redis()
-    syncing_value = await redis.get(f"sync:{str(conn.id)}:in_progress")
-
     return {
         "id": str(conn.id),
         "sync_status": conn.sync_status,
         "last_synced_at": conn.last_synced_at,
         "initial_sync_completed": conn.initial_sync_completed,
         "historical_sync_completed": conn.historical_sync_completed,
-        "is_syncing": syncing_value is not None,
     }

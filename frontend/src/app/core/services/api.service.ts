@@ -28,13 +28,7 @@ export class ApiService {
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
         if (v !== null && v !== undefined) {
-          if (Array.isArray(v)) {
-            v.forEach(item => {
-              httpParams = httpParams.append(k, String(item));
-            });
-          } else {
-            httpParams = httpParams.set(k, String(v));
-          }
+          httpParams = httpParams.set(k, String(v));
         }
       });
     }

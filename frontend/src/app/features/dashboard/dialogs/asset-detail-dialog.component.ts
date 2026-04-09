@@ -107,14 +107,11 @@ interface AssetDetailResponse {
   performer_tag: string | null;
   ad_account_id: string | null;
   video_duration?: number | null;
-  width?: number | null;
-  height?: number | null;
   campaigns_count: number;
   campaigns: Array<{ campaign_name?: string; campaign_id?: string; spend?: number }>;
   timeseries: Record<string, AssetTimeseriesPoint[]> | null;
   brainsuite_metadata?: AssetBrainsuiteMetadata;
   metadata_values?: Record<string, string>;
-  ai_inference_status?: string | null;
 }
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
@@ -138,30 +135,10 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
             <img [src]="getPlatformIconUrl(asset!.platform)" [alt]="asset?.platform" class="platform-icon-img" *ngIf="asset?.platform" />
             <span>{{ asset?.platform }}</span>
           </div>
-          <div class="detail-title-row">
-            <h2>{{ asset?.ad_name || 'Unnamed Ad' }}</h2>
-            <button class="copy-id-btn" (click)="copyAssetId()" matTooltip="Copy Asset ID">
-              <i class="bi bi-clipboard"></i>
-            </button>
-          </div>
+          <h2>{{ asset?.ad_name || 'Unnamed Ad' }}</h2>
           <div class="metadata-chips" *ngIf="asset">
             <span class="chip" *ngFor="let m of assetMetaList">
               <span class="chip-key">{{ m.label }}:</span> {{ m.value }}
-            </span>
-            <span [ngSwitch]="asset.ai_inference_status" style="margin-left: 8px;">
-              <span *ngSwitchCase="'PENDING'" class="badge badge-warning" style="font-size: 12px;">
-                <i class="bi bi-hourglass-split" style="font-size: 12px; margin-right: 4px;"></i>
-                AI analysis running...
-              </span>
-              <span *ngSwitchCase="'COMPLETE'" class="badge badge-success" style="font-size: 12px;">
-                <i class="bi bi-check-circle" style="font-size: 12px; margin-right: 4px;"></i>
-                AI auto-filled
-              </span>
-              <span *ngSwitchCase="'FAILED'" class="badge badge-error" style="font-size: 12px;">
-                <i class="bi bi-exclamation-circle" style="font-size: 12px; margin-right: 4px;"></i>
-                AI analysis failed — will retry on next sync
-              </span>
-              <!-- null/absent: no badge rendered (default case does nothing) -->
             </span>
           </div>
         </div>
@@ -229,9 +206,6 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                     <span class="perf-filename">{{ detail?.ad_name || 'Unnamed Asset' }}</span>
                     <span class="perf-duration" *ngIf="detail?.video_duration">
                       {{ detail!.video_duration | number:'1.0-0' }}s
-                    </span>
-                    <span class="perf-dimension" *ngIf="detail?.width && detail?.height">
-                      {{ detail!.width }}x{{ detail!.height }}
                     </span>
                   </div>
                   <div class="perf-mini-tiles">
@@ -397,9 +371,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                 </div>
               </div>
 
-              <!-- ── Asset metadata ── -->
+              <!-- ── Image-only metadata ── -->
               <div class="ce-image-meta" *ngIf="imageMetadataFields.length > 0">
-                <span class="ce-panel-label">Metadata</span>
+                <span class="ce-panel-label">Image Metadata</span>
                 <div class="ce-image-meta-fields">
                   <div class="ce-image-meta-field" *ngFor="let f of imageMetadataFields">
                     <span class="ce-image-meta-label">{{ f.label }}</span>
@@ -564,15 +538,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;
     }
     .platform-icon-img { width: 18px; height: 18px; object-fit: contain; }
-    .detail-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-    .detail-title-row h2 { margin-bottom: 0; }
-    .copy-id-btn {
-      background: none; border: none; cursor: pointer; padding: 4px;
-      color: var(--text-muted); display: flex; align-items: center;
-      border-radius: 4px; transition: color var(--transition), background var(--transition);
-    }
-    .copy-id-btn i.bi { font-size: 14px; }
-    .copy-id-btn:hover { color: var(--accent); background: var(--bg-hover); }
+    .detail-title-area h2 { margin-bottom: 8px; }
 
     .metadata-chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip { background: var(--bg-hover); padding: 2px 10px; border-radius: 20px; font-size: 11px; color: var(--text-secondary); }
@@ -656,8 +622,8 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       position: static; font-size: 12px; font-weight: 600;
       padding: 4px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;
     }
-    .perf-asset-header .tag-top { background: rgba(46,204,113,0.55); color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
-    .perf-asset-header .tag-below { background: rgba(231,76,60,0.55); color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+    .perf-asset-header .tag-top { background: rgba(46,204,113,0.15); color: #2ECC71; }
+    .perf-asset-header .tag-below { background: rgba(231,76,60,0.15); color: #E74C3C; }
 
     .perf-preview { margin-bottom: 8px; background: var(--bg-card); border-radius: 6px; }
     .perf-preview img, .perf-preview video {
@@ -671,7 +637,6 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
       white-space: nowrap; max-width: 70%;
     }
     .perf-duration { font-size: 12px; color: var(--text-secondary); }
-    .perf-dimension { font-size: 12px; color: var(--text-secondary); }
 
     .perf-mini-tiles { display: flex; gap: 8px; }
     .perf-mini-tile {
@@ -1302,13 +1267,15 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
   }
 
   get imageMetadataFields(): { label: string; value: string }[] {
-    if (!this.asset) return [];
+    if (!this.asset || this.asset.asset_format !== 'IMAGE') return [];
     const mv = this.asset.metadata_values;
     if (!mv) return [];
 
+    const imageFieldNames = ['brainsuite_intended_messages', 'brainsuite_iconic_color_scheme'];
     const result: { label: string; value: string }[] = [];
+
     for (const field of this.allMetadataFields) {
-      if (mv[field.id]) {
+      if (imageFieldNames.includes(field.name) && mv[field.id]) {
         result.push({ label: field.label, value: mv[field.id] });
       }
     }
@@ -1580,12 +1547,6 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     return 150.8 * (1 - Math.min(Math.max(s, 0), 100) / 100);
   }
 
-  copyAssetId(): void {
-    const id = this.data.assetId;
-    navigator.clipboard.writeText(id);
-    this.snackBar.open('Asset ID copied to clipboard', '', { duration: 2000 });
-  }
-
   // ── CE: actions ────────────────────────────────────────────────────────
 
   rescoreFromDialog(): void {
@@ -1704,16 +1665,5 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
     if (tag === 'Top Performer') return 'tile-tag tag-top';
     if (tag === 'Below Average') return 'tile-tag tag-below';
     return '';
-  }
-
-  saveAssetMetadata(metadata: Record<string, string>): void {
-    this.api.patch<any>(`/assets/${this.data.assetId}/metadata`, { metadata }).subscribe({
-      next: () => {
-        this.snackBar.open('Metadata saved — creative queued for rescoring', '', { duration: 3000 });
-      },
-      error: () => {
-        this.snackBar.open('Failed to save metadata — please try again', '', { duration: 4000 });
-      },
-    });
   }
 }

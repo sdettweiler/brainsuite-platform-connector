@@ -323,29 +323,22 @@ class BrainSuiteStaticScoreService:
     async def poll_job_status(
         self,
         job_id: str,
-        fast_polls: int = 60,
-        fast_interval: int = 30,
-        slow_interval: int = 90,
+        max_polls: int = 60,
+        poll_interval: int = 30,
     ) -> dict:
         """Poll the BrainSuite static job status endpoint until a terminal status.
 
-        Polls indefinitely — never times out. Only stops on a terminal status:
+        Terminal statuses:
             Succeeded — returns the full response JSON
             Failed / Stale — raises BrainSuiteJobError
 
-        Interval strategy:
-            First fast_polls attempts: fast_interval seconds between polls.
-            After that: slow_interval seconds (job is taking unusually long but
-            BrainSuite will eventually return a terminal status).
-
         Raises:
-            BrainSuiteJobError: if BrainSuite reports Failed or Stale.
+            BrainSuiteJobError: if job fails, goes stale, or max_polls is exhausted.
         """
         url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_STATIC/ACE_STATIC_SOCIAL_STATIC_API/{job_id}"
         in_progress = {"Announced", "Scheduled", "Created", "Started"}
-        poll_num = 0
 
-        while True:
+        for poll_num in range(max_polls):
             token = await self._get_token()
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
@@ -355,17 +348,18 @@ class BrainSuiteStaticScoreService:
 
             if resp.status_code == 401:
                 self._invalidate_token()
-                poll_num += 1
                 continue
 
             resp.raise_for_status()
             data = resp.json()
             status = data.get("status", "")
-            interval = fast_interval if poll_num < fast_polls else slow_interval
 
             logger.info(
-                "BrainSuite static job %s — status=%s (poll %d, next in %ds)",
-                job_id, status, poll_num + 1, interval,
+                "BrainSuite static job %s — status=%s (poll %d/%d)",
+                job_id,
+                status,
+                poll_num + 1,
+                max_polls,
             )
 
             if status == "Succeeded":
@@ -377,17 +371,17 @@ class BrainSuiteStaticScoreService:
                     f"BrainSuite static job {job_id} ended with status={status}: {error_detail}"
                 )
 
-            if poll_num == fast_polls:
-                logger.warning(
-                    "BrainSuite static job %s still in progress after %d polls — switching to %ds interval",
-                    job_id, fast_polls, slow_interval,
-                )
+            if status in in_progress:
+                await asyncio.sleep(poll_interval)
+                continue
 
-            if status not in in_progress:
-                logger.warning("BrainSuite static job %s — unexpected status=%s, continuing", job_id, status)
+            # Unexpected status — treat as transient, keep polling
+            logger.warning("BrainSuite static job %s — unexpected status=%s", job_id, status)
+            await asyncio.sleep(poll_interval)
 
-            await asyncio.sleep(interval)
-            poll_num += 1
+        raise BrainSuiteJobError(
+            f"Static job polling timed out for job_id={job_id} after {max_polls} polls"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -453,7 +447,7 @@ def build_static_scoring_payload(
     input_obj: dict = {
         "channel": channel,
         "projectName": metadata.get("brainsuite_project_name") or "Default Project",
-        "assetLanguage": (metadata.get("brainsuite_asset_language", "en-US") or "en-US").replace("_", "-"),
+        "assetLanguage": metadata.get("brainsuite_asset_language", "en-US"),
         "iconicColorScheme": iconic_color_scheme,
         "legs": [
             {
@@ -465,9 +459,9 @@ def build_static_scoring_payload(
 
     if intended_messages:
         input_obj["intendedMessages"] = intended_messages
-        input_obj["intendedMessagesLanguage"] = (metadata.get(
+        input_obj["intendedMessagesLanguage"] = metadata.get(
             "brainsuite_asset_language", "en-US"
-        ) or "en-US").replace("_", "-")
+        )
 
     return {"input": input_obj}
 

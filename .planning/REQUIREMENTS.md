@@ -39,12 +39,12 @@
 
 ### AI Metadata Auto-Fill
 
-- [x] **AI-01**: `ai_metadata_suggestions` table with `ai_inference_status` state machine (`PENDING | COMPLETE | FAILED`) — one row per asset; never writes to live metadata columns directly
-- [x] **AI-02**: `POST /assets/{id}/ai-suggest` triggers async Claude vision analysis and (if audio present) Whisper transcription; returns 202; client polls GET endpoint for status
-- [x] **AI-03**: Inference covers: Voice Over (yes/no), Voice Over Language, Language/Market, Asset Name — auto-applied when high confidence; Brand Names and Asset Stage — surfaced as suggestions requiring user review; Project Name — left empty (not inferable from creative content)
-- [x] **AI-04**: Asset detail dialog includes an "Auto-fill" button; clicking it triggers inference and shows pre-populated metadata fields with per-field confidence indicators; user explicitly confirms before any field is saved
-- [x] **AI-05**: Images fetched server-side and passed to Claude as base64 (MinIO presigned URLs not reachable by Claude API); images downsampled to 1568px max if over 4 MB before encoding
-- [x] **AI-06**: `ai_inference_status` guard prevents re-triggering inference on already-processed assets (prevents cost blowout)
+- [ ] **AI-01**: `ai_metadata_suggestions` table with `ai_inference_status` state machine (`PENDING | COMPLETE | FAILED`) — one row per asset; never writes to live metadata columns directly
+- [ ] **AI-02**: `POST /assets/{id}/ai-suggest` triggers async Claude vision analysis and (if audio present) Whisper transcription; returns 202; client polls GET endpoint for status
+- [ ] **AI-03**: Inference covers: Voice Over (yes/no), Voice Over Language, Language/Market, Asset Name — auto-applied when high confidence; Brand Names and Asset Stage — surfaced as suggestions requiring user review; Project Name — left empty (not inferable from creative content)
+- [ ] **AI-04**: Asset detail dialog includes an "Auto-fill" button; clicking it triggers inference and shows pre-populated metadata fields with per-field confidence indicators; user explicitly confirms before any field is saved
+- [ ] **AI-05**: Images fetched server-side and passed to Claude as base64 (MinIO presigned URLs not reachable by Claude API); images downsampled to 1568px max if over 4 MB before encoding
+- [ ] **AI-06**: `ai_inference_status` guard prevents re-triggering inference on already-processed assets (prevents cost blowout)
 
 ### Performance Tab Redesign
 

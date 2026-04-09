@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Insights + Intelligence
-status: Ready to execute
-stopped_at: Phase 10 UI-SPEC approved
-last_updated: "2026-04-09T12:25:49.369Z"
-last_activity: 2026-04-09
+status: Phase 08 Complete — Ready for Phase 09
+stopped_at: "Phase 09 — not yet planned"
+last_updated: "2026-04-01T00:00:00.000Z"
+last_activity: "2026-04-01 - Phase 08 verified (partial): drawer mechanics, tile affordance, states, and interactions approved. Scatter chart + spend filter unverifiable due to no ROAS data in DB — data gap, not code issue."
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 15
-  completed_plans: 13
-  percent: 87
+  total_plans: 10
+  completed_plans: 10
 ---
 
 # Project State
@@ -21,12 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25 — v1.1 started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 09 — ai-metadata-auto-fill
+**Current focus:** Phase 08 — score-to-roas-correlation
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
+Phase: 08 (score-to-roas-correlation) — EXECUTING
+Plan: 1 of 2
+Phase: 08 (score-to-roas-correlation) — READY TO PLAN
 
 ## Accumulated Context
 
@@ -55,12 +55,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - [Phase 07-03]: Zero spend shows $0.00; all other null/zero metrics omitted — zero is data-absent noise except for spend
 - [Phase 07-03]: getCampaignUrl() uses ad_account_id for Meta/DV360 URL construction; tile styles reuse --bg-card/--border CSS vars for CE tab visual consistency
 - [Phase 08]: Fixed-position overlay drawer instead of MatSidenav — avoids height-propagation issues, explicitly allowed by plan
-- [Phase quick]: Quick task 260401-qpu: correlationMetrics config array drives all scatter chart dynamic behavior — label, format fn, suffix — single source of truth
-- [Phase 09-ai-metadata-auto-fill]: Auto-fill section added to all expanded field rows (not just SELECT) so every field type can be AI-configured
-- [Phase 09-ai-metadata-auto-fill]: Inference status badge placed in metadata-chips header (always visible) rather than in a tab-specific section, since no dedicated Metadata tab exists in asset detail dialog
-- [Phase 09-ai-metadata-auto-fill]: AsyncOpenAI at module-level import to allow patch() in unit tests; _set_status/_write_values as separate awaitable helpers for test isolation
-- [Phase 09-03]: Auto-fill triggered via scheduler/harmonizer path (not per sync-service file) — fires once per new asset after db.commit, all 4 platforms covered
-- [Phase 09-03]: ai_inference_status exposed in dashboard.py get_asset_detail (actual GET /assets/{id}) not assets.py
 
 ### Pending Todos
 
@@ -72,14 +66,6 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260331-l16 | analyze the entire folder structure for legacy/obsolete files. Especially replit leftovers etc. build a clean up plan | 2026-03-31 | a6dc5b6 | [260331-l16-analyze-the-entire-folder-structure-for-](.planning/quick/260331-l16-analyze-the-entire-folder-structure-for-/) |
-| 260401-n93 | improve platform sync status display — fix new account showing sync failed, add running sync indicators | 2026-04-01 | 6e34c94 | [260401-n93-improve-platform-sync-status-display-fix](.planning/quick/260401-n93-improve-platform-sync-status-display-fix/) |
-| 260401-qpu | Add metric selector dropdown to scatter chart correlation drawer (7 metrics: ROAS, CTR, VTR, CPM, CVR, CPC, Conversions) | 2026-04-01 | 33cceed | [260401-qpu-add-metric-selector-dropdown-to-scatter-](.planning/quick/260401-qpu-add-metric-selector-dropdown-to-scatter-/) |
-| 260407-eip | copy asset ID feature — right-click context menu and detail dialog copy icon | 2026-04-07 | f7242e4 | [260407-eip-copy-asset-id-feature-right-click-contex](.planning/quick/260407-eip-copy-asset-id-feature-right-click-contex/) |
-| 260407-lxk | fix missing asset media metrics — add width/height columns, wire all 4 platform harmonizers, backfill endpoint, dashboard display | 2026-04-07 | f07b9ba | [260407-lxk-fix-missing-asset-media-metrics-add-dura](.planning/quick/260407-lxk-fix-missing-asset-media-metrics-add-dura/) |
-| 260408-fb9 | Playwright screen recording POC as yt-dlp fallback for YouTube videos — YT Data API viewport sizing, fullscreen playback capture, ffmpeg .webm→.mp4 conversion, timing/quality report | 2026-04-08 | 185846c | [260408-fb9-downloading-assets-with-yt-dlp-is-not-ve](.planning/quick/260408-fb9-downloading-assets-with-yt-dlp-is-not-ve/) |
-| 260408-gmo | fix top/low performer badge legibility in Dashboard | 2026-04-08 | 2253e21 | [260408-gmo-fix-top-low-performer-badge-legibility-i](.planning/quick/260408-gmo-fix-top-low-performer-badge-legibility-i/) |
-| 260408-h0s | fix platform connection issues — timezone-aware token_expiry, TikTok token refresh, EXPIRED sync_status classification, frontend health state from backend | 2026-04-08 | bb6acec | [260408-h0s-investigate-and-fix-platform-connection-](.planning/quick/260408-h0s-investigate-and-fix-platform-connection-/) |
-| 260408-qr4 | replace scatter chart quadrant coloring with ACE score RAG (≥67 green, 34–66 amber, <34 red); fix language locale format for BrainSuite API | 2026-04-08 | a3814b1 | [260408-qr4-add-ace-score-rag-coloring-to-scatter-ch](.planning/quick/260408-qr4-add-ace-score-rag-coloring-to-scatter-ch/) |
 
 ### Blockers/Concerns
 
@@ -90,7 +76,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ## Session Continuity
 
-Last activity: 2026-04-09
-Last session: 2026-04-09T10:27:06.486Z
-Stopped at: Phase 10 UI-SPEC approved
+Last activity: 2026-04-01 - Phase 08 verified (partial) — drawer approved, chart/filter blocked by missing ROAS data
+Last session: 2026-04-01T00:00:00.000Z
+Stopped at: Phase 08 complete — advancing to Phase 09 (AI Metadata Auto-Fill)
 Resume: Discuss or plan Phase 09

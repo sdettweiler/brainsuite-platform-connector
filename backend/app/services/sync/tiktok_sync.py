@@ -117,35 +117,6 @@ AD_INFO_FIELDS = [
 
 class TikTokSyncService:
 
-    async def _get_valid_token(self, db: AsyncSession, connection: PlatformConnection) -> str:
-        """Refresh TikTok access token if expired, mirroring google_ads_sync pattern."""
-        from datetime import datetime, timezone, timedelta
-        now = datetime.now(timezone.utc)
-
-        if connection.token_expiry and connection.token_expiry > now:
-            return decrypt_token(connection.access_token_encrypted)
-
-        if not connection.refresh_token_encrypted:
-            raise ValueError("TikTok connection has no refresh token -- must reconnect")
-
-        refresh_token = decrypt_token(connection.refresh_token_encrypted)
-        from app.services.platform.tiktok_oauth import TikTokOAuthHandler
-        handler = TikTokOAuthHandler()
-        new_tokens = await handler.refresh_access_token(refresh_token)
-        new_access = new_tokens.get("access_token")
-        if not new_access:
-            raise ValueError("TikTok token refresh returned no access_token")
-
-        from app.core.security import encrypt_token
-        connection.access_token_encrypted = encrypt_token(new_access)
-        connection.token_expiry = now + timedelta(seconds=new_tokens.get("expires_in", 86400))
-        if new_tokens.get("refresh_token"):
-            connection.refresh_token_encrypted = encrypt_token(new_tokens["refresh_token"])
-        db.add(connection)
-        await db.flush()
-
-        return new_access
-
     async def sync_date_range(
         self,
         db: AsyncSession,
@@ -154,7 +125,7 @@ class TikTokSyncService:
         date_to: date,
         sync_job_id: Optional[str] = None,
     ) -> Dict[str, int]:
-        access_token = await self._get_valid_token(db, connection)
+        access_token = decrypt_token(connection.access_token_encrypted)
         advertiser_id = connection.ad_account_id
 
         total_fetched = 0

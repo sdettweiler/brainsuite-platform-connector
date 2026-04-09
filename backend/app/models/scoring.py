@@ -22,11 +22,6 @@ class CreativeScoreResult(Base):
         VIDEO        – ACE_VIDEO_SMV_API (video creatives)
         STATIC_IMAGE – ACE_STATIC_SOCIAL_STATIC_API (META image creatives)
         UNSUPPORTED  – no scoring endpoint available; asset excluded from scoring batch
-
-    Diagnostic timestamps:
-        pending_at   – set when status transitions to PENDING (batch claim time)
-        submitted_at – set when brainsuite_job_id is written (job successfully submitted)
-        scored_at    – set when status transitions to COMPLETE
     """
     __tablename__ = "creative_score_results"
 
@@ -48,8 +43,6 @@ class CreativeScoreResult(Base):
     total_rating: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     score_dimensions: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     error_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    pending_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     scored_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

@@ -21,8 +21,6 @@ import { GridComponent, TooltipComponent, MarkLineComponent } from 'echarts/comp
 import { CanvasRenderer } from 'echarts/renderers';
 import type { EChartsOption } from 'echarts';
 import { MatSidenavModule } from '@angular/material/sidenav';
-import { MatIconModule } from '@angular/material/icon';
-import { OverlayModule } from '@angular/cdk/overlay';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
@@ -87,15 +85,8 @@ interface CorrelationAsset {
   platform: string;
   thumbnail_url: string | null;
   total_score: number;
-  total_rating: string | null;
   roas: number | null;
   spend: number | null;
-  ctr: number | null;
-  vtr: number | null;
-  cpm: number | null;
-  cvr: number | null;
-  cpc: number | null;
-  conversions: number | null;
 }
 
 @Component({
@@ -108,8 +99,6 @@ interface CorrelationAsset {
     NgxSliderModule,
     NgxEchartsDirective,
     MatSidenavModule,
-    MatIconModule,
-    OverlayModule,
   ],
   providers: [
     provideEchartsCore({ echarts }),
@@ -140,7 +129,7 @@ interface CorrelationAsset {
         </div>
 
         <!-- Format filter -->
-        <mat-form-field appearance="outline" class="filter-field compact-select">
+        <mat-form-field appearance="outline" class="filter-field">
           <mat-label>Format</mat-label>
           <mat-select [(ngModel)]="selectedFormat" (selectionChange)="onFilterChange()">
             <mat-option value="">All</mat-option>
@@ -151,7 +140,7 @@ interface CorrelationAsset {
         </mat-form-field>
 
         <!-- Sort -->
-        <mat-form-field appearance="outline" class="filter-field compact-select">
+        <mat-form-field appearance="outline" class="filter-field">
           <mat-label>Sort by</mat-label>
           <mat-select [(ngModel)]="sortBy" (selectionChange)="onFilterChange()">
             <mat-option value="spend">Spend</mat-option>
@@ -186,78 +175,6 @@ interface CorrelationAsset {
           <span class="slider-values">{{ scoreMin }} - {{ scoreMax }}</span>
         </div>
 
-        <!-- Duration range filter -->
-        <div class="duration-slider-wrapper" [hidden]="!hasAnyVideo"
-             matTooltip="Filter by video duration">
-          <span class="slider-label">Duration</span>
-          <ngx-slider
-            [(value)]="durationMin"
-            [(highValue)]="durationMax"
-            [options]="durationSliderOptions"
-            (userChangeEnd)="onDurationChange()"
-          ></ngx-slider>
-          <span class="slider-values">{{ formatDuration(durationMin) }} - {{ formatDuration(durationMax) }}</span>
-        </div>
-
-        <!-- Metadata filter -->
-        <div class="metadata-filter-trigger" cdkOverlayOrigin #filterOrigin="cdkOverlayOrigin">
-          <button mat-stroked-button class="add-filter-btn" (click)="openFilterPopover()">
-            <i class="bi bi-funnel"></i> Add Filter
-            <span *ngIf="activeMetadataFilters.size > 0" class="filter-badge">{{ activeMetadataFilters.size }}</span>
-          </button>
-        </div>
-
-        <!-- Filter popover (connected overlay) -->
-        <ng-template cdkConnectedOverlay
-          [cdkConnectedOverlayOrigin]="filterOrigin"
-          [cdkConnectedOverlayOpen]="filterPopoverOpen"
-          (overlayOutsideClick)="filterPopoverOpen = false"
-          [cdkConnectedOverlayHasBackdrop]="true"
-          cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop">
-          <div class="filter-popover">
-            <!-- Step 1: Pick field -->
-            <div *ngIf="filterPopoverStep === 'field'" class="filter-step">
-              <div class="filter-step-header">Select metadata field</div>
-              <button *ngFor="let field of metadataFields"
-                class="filter-field-option"
-                (click)="selectFilterField(field)">
-                {{ field.label }}
-                <span *ngIf="activeMetadataFilters.has(field.id)" class="filter-active-dot"></span>
-              </button>
-              <div *ngIf="metadataFields.length === 0" class="filter-empty">No metadata fields configured</div>
-            </div>
-
-            <!-- Step 2: Search/select values -->
-            <div *ngIf="filterPopoverStep === 'value'" class="filter-step">
-              <div class="filter-step-header">
-                <button mat-icon-button (click)="filterPopoverStep = 'field'" class="filter-back-btn">
-                  <i class="bi bi-arrow-left"></i>
-                </button>
-                {{ selectedFilterField?.label }}
-              </div>
-              <input class="filter-search-input"
-                placeholder="Search values..."
-                [(ngModel)]="filterValueSearch"
-                (ngModelChange)="onFilterValueSearch($event)" />
-              <div class="filter-values-list">
-                <label *ngFor="let v of filteredFilterValues" class="filter-value-option">
-                  <mat-checkbox
-                    [checked]="pendingFilterSelections.has(v.value)"
-                    (change)="toggleFilterValue(v.value)">
-                    {{ v.label || v.value }}
-                  </mat-checkbox>
-                </label>
-                <div *ngIf="filteredFilterValues.length === 0" class="filter-empty">No matching values</div>
-              </div>
-              <button mat-flat-button color="primary" class="filter-apply-btn"
-                [disabled]="pendingFilterSelections.size === 0"
-                (click)="confirmFilterSelection()">
-                Apply ({{ pendingFilterSelections.size }})
-              </button>
-            </div>
-          </div>
-        </ng-template>
-
         <div class="toolbar-spacer"></div>
 
         <!-- Export button -->
@@ -265,17 +182,6 @@ interface CorrelationAsset {
           <i class="bi bi-download"></i>
           Export
         </button>
-      </div>
-
-      <!-- Active metadata filter chips -->
-      <div class="metadata-filter-chips" *ngIf="activeMetadataFilters.size > 0">
-        <span *ngFor="let entry of activeMetadataFilters | keyvalue" class="metadata-filter-chip">
-          {{ entry.value.fieldLabel }}: {{ entry.value.values.join(', ') }}
-          <button class="chip-remove" (click)="removeMetadataFilter(entry.key)">
-            <i class="bi bi-x"></i>
-          </button>
-        </span>
-        <a class="clear-all-link" (click)="clearAllMetadataFilters()">Clear all</a>
       </div>
 
       <!-- Aggregate Stats -->
@@ -441,7 +347,7 @@ interface CorrelationAsset {
           <button mat-icon-button [disabled]="page === totalPages" (click)="changePage(page + 1)">
             <i class="bi bi-chevron-right"></i>
           </button>
-          <mat-form-field appearance="outline" class="page-size-field compact-select">
+          <mat-form-field appearance="outline" class="page-size-field">
             <mat-select [(ngModel)]="pageSize" (selectionChange)="onPageSizeChange()">
               <mat-option [value]="25">25 / page</mat-option>
               <mat-option [value]="50">50 / page</mat-option>
@@ -466,9 +372,6 @@ interface CorrelationAsset {
         <button (click)="openEditMetadata(contextMenu.asset!)">
           <i class="bi bi-tag"></i> Edit Metadata
         </button>
-        <button (click)="copyAssetId(contextMenu.asset!)">
-          <i class="bi bi-clipboard"></i> Copy Asset ID
-        </button>
         <hr class="context-divider" />
         <button (click)="rescoreAsset(contextMenu.asset)">
           <i class="bi bi-lightning-charge"></i> Score now
@@ -485,14 +388,7 @@ interface CorrelationAsset {
       <div class="correlation-drawer" [class.correlation-drawer-open]="correlationDrawerOpen">
         <!-- Drawer header -->
         <div class="correlation-drawer-header">
-          <div style="display:flex;align-items:center;gap:12px">
-            <h4 style="margin:0;white-space:nowrap">Score vs.</h4>
-            <mat-form-field appearance="outline" class="compact-select" style="width:150px;margin:0">
-              <mat-select [(ngModel)]="selectedCorrelationMetric" (ngModelChange)="buildScatterChart()">
-                <mat-option *ngFor="let m of correlationMetrics" [value]="m.key">{{ m.label }}</mat-option>
-              </mat-select>
-            </mat-form-field>
-          </div>
+          <h4>Score vs. ROAS</h4>
           <button mat-icon-button (click)="closeCorrelationDrawer()" aria-label="Close correlation drawer">
             <i class="bi bi-x" style="font-size:20px"></i>
           </button>
@@ -524,7 +420,7 @@ interface CorrelationAsset {
         <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount === 0" class="correlation-empty">
           <i class="bi bi-scatter" style="font-size:48px;color:var(--text-muted)"></i>
           <h4>No qualifying creatives to correlate</h4>
-          <p>No scored creatives with {{ selectedMetricLabel }} data meet the current filters. Try lowering the minimum spend threshold or broadening the date range.</p>
+          <p>No scored creatives with ROAS data meet the current filters. Try lowering the minimum spend threshold or broadening the date range.</p>
         </div>
 
         <!-- Chart -->
@@ -535,15 +431,15 @@ interface CorrelationAsset {
         <!-- Legend -->
         <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount > 0"
              class="correlation-legend">
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#2ECC71"></span> Strong</span>
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#F39C12"></span> Average</span>
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#E74C3C"></span> Needs work</span>
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#888888"></span> Unrated</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#FF7700"></span> Stars</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#F39C12"></span> Workhorses</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#4285F4"></span> Question Marks</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#707070"></span> Laggards</span>
         </div>
 
         <!-- 99th pct annotation -->
         <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount > 0"
-             class="correlation-cap-note">{{ selectedMetricLabel }} capped at 99th pct.</div>
+             class="correlation-cap-note">ROAS capped at 99th pct.</div>
       </div>
     </div>
   `,
@@ -736,14 +632,12 @@ interface CorrelationAsset {
       letter-spacing: 0.5px;
       z-index: 2;
       &.tag-top {
-        background: rgba(46, 204, 113, 0.55);
-        color: #ffffff;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        background: rgba(46, 204, 113, 0.15);
+        color: #2ECC71;
       }
       &.tag-below {
-        background: rgba(231, 76, 60, 0.55);
-        color: #ffffff;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        background: rgba(231, 76, 60, 0.15);
+        color: #E74C3C;
       }
     }
 
@@ -808,35 +702,6 @@ interface CorrelationAsset {
         color: var(--text-secondary);
         white-space: nowrap;
         min-width: 50px;
-        text-align: center;
-      }
-
-      ngx-slider {
-        flex: 1;
-      }
-    }
-
-    .duration-slider-wrapper {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 260px;
-      max-width: 340px;
-      padding: 0 8px;
-
-      .slider-label {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--text-muted);
-        white-space: nowrap;
-      }
-
-      .slider-values {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--text-secondary);
-        white-space: nowrap;
-        min-width: 60px;
         text-align: center;
       }
 
@@ -975,7 +840,7 @@ interface CorrelationAsset {
       top: 0;
       right: 0;
       height: 100vh;
-      width: 728px;
+      width: 560px;
       background: var(--bg-card);
       border-left: 1px solid var(--border);
       box-shadow: var(--shadow-lg);
@@ -1063,83 +928,6 @@ interface CorrelationAsset {
       color: var(--text-muted);
       padding: 0 24px 16px;
     }
-
-    .correlation-drawer-header .mat-mdc-form-field {
-      font-size: 14px;
-    }
-    .correlation-drawer-header .mat-mdc-form-field .mat-mdc-select-value {
-      font-weight: 600;
-    }
-
-    .add-filter-btn {
-      display: flex; align-items: center; gap: 4px;
-      font-size: 13px; height: 36px;
-      border-color: var(--border); color: var(--text-secondary);
-    }
-    .add-filter-btn .filter-badge {
-      background: var(--accent); color: #fff; border-radius: 50%;
-      width: 18px; height: 18px; font-size: 11px;
-      display: inline-flex; align-items: center; justify-content: center;
-    }
-    .filter-popover {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
-      width: 280px; max-height: 400px; overflow: hidden;
-    }
-    .filter-step { display: flex; flex-direction: column; }
-    .filter-step-header {
-      padding: 12px 16px; font-weight: 600; font-size: 13px;
-      border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; gap: 8px;
-    }
-    .filter-back-btn { width: 28px; height: 28px; }
-    .filter-field-option {
-      padding: 10px 16px; border: none; background: none;
-      text-align: left; cursor: pointer; font-size: 13px;
-      color: var(--text-primary); display: flex; align-items: center; justify-content: space-between;
-    }
-    .filter-field-option:hover { background: var(--bg-hover); }
-    .filter-active-dot {
-      width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
-    }
-    .filter-search-input {
-      margin: 8px 12px; padding: 8px 12px;
-      border: 1px solid var(--border); border-radius: 6px;
-      font-size: 13px; background: var(--bg-input, var(--bg-card));
-      color: var(--text-primary); outline: none;
-    }
-    .filter-search-input:focus { border-color: var(--accent); }
-    .filter-values-list {
-      max-height: 240px; overflow-y: auto; padding: 4px 0;
-    }
-    .filter-value-option {
-      display: block; padding: 4px 16px; font-size: 13px; cursor: pointer;
-    }
-    .filter-value-option:hover { background: var(--bg-hover); }
-    .filter-apply-btn { margin: 8px 12px 12px; }
-    .filter-empty { padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
-
-    .metadata-filter-chips {
-      display: flex; flex-wrap: wrap; gap: 8px; padding: 0 24px 16px;
-      align-items: center;
-    }
-    .metadata-filter-chip {
-      display: inline-flex; align-items: center; gap: 4px;
-      background: var(--bg-hover, rgba(255,255,255,.06));
-      border: 1px solid var(--border); border-radius: 16px;
-      padding: 4px 8px 4px 12px; font-size: 12px; color: var(--text-secondary);
-    }
-    .chip-remove {
-      border: none; background: none; cursor: pointer;
-      color: var(--text-muted); padding: 0; line-height: 1;
-      display: inline-flex; align-items: center;
-    }
-    .chip-remove:hover { color: var(--text-primary); }
-    .clear-all-link {
-      font-size: 12px; color: var(--accent); cursor: pointer;
-      text-decoration: none;
-    }
-    .clear-all-link:hover { text-decoration: underline; }
   `],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
@@ -1170,18 +958,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   total = 0;
   totalPages = 1;
 
-  // Metadata filter state
-  metadataFields: any[] = [];
-  activeMetadataFilters: Map<string, { fieldLabel: string; values: string[] }> = new Map();
-  // Popover state
-  filterPopoverOpen = false;
-  filterPopoverStep: 'field' | 'value' = 'field';
-  selectedFilterField: any = null;
-  filterValues: { value: string; label: string; source: string }[] = [];
-  filteredFilterValues: { value: string; label: string; source: string }[] = [];
-  filterValueSearch = '';
-  pendingFilterSelections: Set<string> = new Set();
-
   scoreMin = 0;
   scoreMax = 100;
   sliderOptions: Options = {
@@ -1194,25 +970,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   sliderDisabled = true;
   private hasAnyScored = false;
   private scoreChange$ = new Subject<void>();
-
-  durationMin = 0;
-  durationMax = 120;
-  durationSliderOptions: Options = {
-    floor: 0,
-    ceil: 120,
-    step: 1,
-    noSwitching: true,
-    translate: (value: number): string => {
-      if (value >= 60) {
-        const m = Math.floor(value / 60);
-        const s = value % 60;
-        return s > 0 ? `${m}m${s}s` : `${m}m`;
-      }
-      return `${value}s`;
-    },
-  };
-  hasAnyVideo = false;
-  private durationChange$ = new Subject<void>();
 
   selectedAssets: string[] = [];
   lastSelectedId: string | null = null;
@@ -1246,17 +1003,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   };
   scatterOptions: EChartsOption = {};
 
-  readonly correlationMetrics: { key: string; label: string; format: (v: number) => string; suffix: string }[] = [
-    { key: 'roas', label: 'ROAS', format: (v) => v.toFixed(2) + 'x', suffix: 'x' },
-    { key: 'ctr', label: 'CTR', format: (v) => v.toFixed(2) + '%', suffix: '%' },
-    { key: 'vtr', label: 'VTR', format: (v) => v.toFixed(2) + '%', suffix: '%' },
-    { key: 'cpm', label: 'CPM', format: (v) => '$' + v.toFixed(2), suffix: '' },
-    { key: 'cvr', label: 'CVR', format: (v) => v.toFixed(2) + '%', suffix: '%' },
-    { key: 'cpc', label: 'CPC', format: (v) => '$' + v.toFixed(2), suffix: '' },
-    { key: 'conversions', label: 'Conversions', format: (v) => v.toFixed(0), suffix: '' },
-  ];
-  selectedCorrelationMetric = 'roas';
-
   constructor(
     private api: ApiService,
     private auth: AuthService,
@@ -1271,19 +1017,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    // Load metadata fields for filter popover
-    this.api.get<any[]>('/assets/metadata-fields').subscribe({
-      next: (fields) => this.metadataFields = fields,
-    });
-
     // Debounced score filter
     this.scoreChange$.pipe(
-      debounceTime(400),
-      takeUntil(this.destroy$)
-    ).subscribe(() => this.onFilterChange());
-
-    // Debounced duration filter
-    this.durationChange$.pipe(
       debounceTime(400),
       takeUntil(this.destroy$)
     ).subscribe(() => this.onFilterChange());
@@ -1348,12 +1083,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   get correlationEligibleCount(): number {
     return this.correlationAssets.filter(
-      a => (a as any)[this.selectedCorrelationMetric] !== null && (a.spend ?? 0) >= this.correlationMinSpend
+      a => a.roas !== null && (a.spend ?? 0) >= this.correlationMinSpend
     ).length;
-  }
-
-  get selectedMetricLabel(): string {
-    return this.correlationMetrics.find(m => m.key === this.selectedCorrelationMetric)?.label ?? '';
   }
 
   trackAggStat(_index: number, item: any): string { return item.label; }
@@ -1397,9 +1128,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   buildScatterChart(): void {
-    const metric = this.correlationMetrics.find(m => m.key === this.selectedCorrelationMetric)!;
     const eligible = this.correlationAssets.filter(
-      a => (a as any)[metric.key] !== null && (a.spend ?? 0) >= this.correlationMinSpend
+      a => a.roas !== null && (a.spend ?? 0) >= this.correlationMinSpend
     );
 
     if (eligible.length === 0) {
@@ -1407,10 +1137,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const metricValues = eligible.map(a => (a as any)[metric.key] as number).sort((x, y) => x - y);
+    const roasValues = eligible.map(a => a.roas as number).sort((x, y) => x - y);
     const scoreValues = eligible.map(a => a.total_score).sort((x, y) => x - y);
 
-    const metricCap = metricValues[Math.floor(metricValues.length * 0.99)] ?? metricValues[metricValues.length - 1] ?? 1;
+    const roasCap = roasValues[Math.floor(roasValues.length * 0.99)] ?? roasValues[roasValues.length - 1] ?? 1;
 
     const median = (arr: number[]): number => {
       const mid = Math.floor(arr.length / 2);
@@ -1418,11 +1148,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     };
 
     const medianScore = eligible.length === 1 ? eligible[0].total_score : median(scoreValues);
-    const medianMetric = eligible.length === 1 ? ((eligible[0] as any)[metric.key] as number) : median(metricValues);
+    const medianRoas = eligible.length === 1 ? (eligible[0].roas as number) : median(roasValues);
 
     const scatterData = eligible.map(a => [
       a.total_score,
-      Math.min((a as any)[metric.key] as number, metricCap),
+      Math.min(a.roas as number, roasCap),
       a,
     ]);
 
@@ -1434,19 +1164,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
         max: 100,
         nameLocation: 'center',
         nameGap: 30,
-        axisLine: { lineStyle: { color: '#666666' } },
-        axisTick: { lineStyle: { color: '#666666' } },
-        axisLabel: { color: '#999999' },
-        splitLine: { lineStyle: { color: '#555555', opacity: 0.5 } },
+        axisLine: { lineStyle: { color: '#404040' } },
+        splitLine: { lineStyle: { color: '#404040', opacity: 0.2 } },
       },
       yAxis: {
-        name: metric.label,
+        name: 'ROAS',
         min: 0,
-        max: metricCap * 1.05,
-        axisLine: { lineStyle: { color: '#666666' } },
-        axisTick: { lineStyle: { color: '#666666' } },
-        axisLabel: { color: '#999999' },
-        splitLine: { lineStyle: { color: '#555555', opacity: 0.5 } },
+        max: roasCap * 1.05,
+        axisLine: { lineStyle: { color: '#404040' } },
+        splitLine: { lineStyle: { color: '#404040', opacity: 0.2 } },
       },
       tooltip: {
         trigger: 'item',
@@ -1462,12 +1188,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
             <div>
               <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">${asset.ad_name || 'Untitled'}</div>
               <div style="font-size:14px;color:var(--text-secondary);margin-top:4px">
-                Score: ${params.data[0]} &middot; ${metric.label}: ${metric.format(params.data[1] as number)} &middot; $${((asset.spend ?? 0) as number).toFixed(0)} &middot; ${asset.platform}
+                Score: ${params.data[0]} &middot; ROAS: ${(params.data[1] as number).toFixed(2)}x &middot; $${((asset.spend ?? 0) as number).toFixed(0)} &middot; ${asset.platform}
               </div>
             </div>
           </div>`;
         },
       },
+      graphic: [
+        { type: 'text', right: 30, top: 50, style: { text: 'Stars', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
+        { type: 'text', left: 70, top: 50, style: { text: 'Workhorses', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
+        { type: 'text', right: 30, bottom: 60, style: { text: 'Question Marks', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
+        { type: 'text', left: 70, bottom: 60, style: { text: 'Laggards', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
+      ],
       series: [{
         type: 'scatter',
         symbolSize: 12,
@@ -1476,21 +1208,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
           silent: true,
           symbol: 'none',
           lineStyle: { color: '#404040', type: 'dashed', width: 1 },
-          label: { show: true, color: '#aaaaaa', fontSize: 11, borderWidth: 0, backgroundColor: 'transparent', position: 'insideStartTop' },
           data: [
-            { xAxis: medianScore, label: { formatter: `Median Score: ${medianScore.toFixed(0)}` } },
-            { yAxis: medianMetric, label: { formatter: `Median ${metric.label}: ${metric.format(medianMetric)}` } },
-            { yAxis: metricCap, lineStyle: { color: 'rgba(255,119,0,0.4)', type: 'dashed' }, label: { formatter: `99th pct`, color: 'rgba(255,119,0,0.7)' } },
+            { xAxis: medianScore },
+            { yAxis: medianRoas },
+            { yAxis: roasCap, lineStyle: { color: 'rgba(255,119,0,0.4)', type: 'dashed' } },
           ],
         },
         itemStyle: {
           color: (params: any) => {
-            const asset = params.data[2] as CorrelationAsset;
-            const r = (asset.total_rating || '').toLowerCase();
-            if (r === 'positive') return '#2ECC71';
-            if (r === 'medium')   return '#F39C12';
-            if (r === 'negative') return '#E74C3C';
-            return '#888888';
+            const [score, roas] = params.data;
+            if (score >= medianScore && roas >= medianRoas) return '#FF7700';
+            if (score < medianScore && roas >= medianRoas) return '#F39C12';
+            if (score >= medianScore && roas < medianRoas) return '#4285F4';
+            return '#707070';
           },
         },
         emphasis: { itemStyle: { shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.3)' }, scale: 1.5 },
@@ -1534,14 +1264,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.selectedFormat) params.formats = this.selectedFormat;
     if (this.scoreMin > 0) params['score_min'] = this.scoreMin;
     if (this.scoreMax < 100) params['score_max'] = this.scoreMax;
-    if (this.durationMin > 0) params['duration_min'] = this.durationMin;
-    if (this.durationMax < 120) params['duration_max'] = this.durationMax;
-    if (this.activeMetadataFilters.size > 0) {
-      params['meta_filters'] = [];
-      this.activeMetadataFilters.forEach((filter, fieldId) => {
-        params['meta_filters'].push(`${fieldId}:${filter.values.join(',')}`);
-      });
-    }
 
     this.api.get<DashboardAssetsResponse>('/dashboard/assets', params).subscribe({
       next: (d) => {
@@ -1555,19 +1277,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
         }
         this.sliderDisabled = !this.hasAnyScored;
         this.sliderOptions = { ...this.sliderOptions, disabled: !this.hasAnyScored };
-        // Duration slider: show when any video exists (sticky — never hides once shown)
-        const videoAssets = d.items.filter((a: any) => a.asset_format === 'VIDEO' && a.video_duration != null);
-        if (videoAssets.length > 0) {
-          this.hasAnyVideo = true;
-          const maxDur = Math.ceil(Math.max(...videoAssets.map((a: any) => a.video_duration)));
-          const oldCeil = this.durationSliderOptions.ceil ?? 120;
-          const newCeil = Math.max(maxDur, oldCeil);
-          if (newCeil !== oldCeil) {
-            // If durationMax was pinned to old ceil (meaning "no upper limit"), keep it pinned to new ceil
-            if (this.durationMax === oldCeil) this.durationMax = newCeil;
-            this.durationSliderOptions = { ...this.durationSliderOptions, ceil: newCeil };
-          }
-        }
         this.preloadAssetDetails();
         this.stopPolling$.next();
         this.pollingActive = false;
@@ -1586,88 +1295,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadData();
   }
 
-  openFilterPopover(): void {
-    this.filterPopoverOpen = true;
-    this.filterPopoverStep = 'field';
-    this.filterValueSearch = '';
-    this.pendingFilterSelections = new Set();
-    this.selectedFilterField = null;
-  }
-
-  selectFilterField(field: any): void {
-    this.selectedFilterField = field;
-    this.filterPopoverStep = 'value';
-    this.filterValueSearch = '';
-    // Pre-check values already active for this field
-    const existing = this.activeMetadataFilters.get(field.id);
-    this.pendingFilterSelections = existing ? new Set(existing.values) : new Set();
-    // Load combined predefined + actual values
-    this.api.get<{ value: string; label: string; source: string }[]>(
-      '/assets/metadata-filter-values',
-      { field_id: field.id }
-    ).subscribe({
-      next: (vals) => {
-        this.filterValues = vals;
-        this.filteredFilterValues = vals;
-      },
-    });
-  }
-
-  onFilterValueSearch(term: string): void {
-    const t = term.toLowerCase();
-    this.filteredFilterValues = this.filterValues.filter(
-      v => v.label.toLowerCase().includes(t) || v.value.toLowerCase().includes(t)
-    );
-  }
-
-  toggleFilterValue(value: string): void {
-    if (this.pendingFilterSelections.has(value)) {
-      this.pendingFilterSelections.delete(value);
-    } else {
-      this.pendingFilterSelections.add(value);
-    }
-    // Trigger change detection
-    this.pendingFilterSelections = new Set(this.pendingFilterSelections);
-  }
-
-  confirmFilterSelection(): void {
-    if (this.pendingFilterSelections.size > 0) {
-      this.activeMetadataFilters.set(this.selectedFilterField.id, {
-        fieldLabel: this.selectedFilterField.label,
-        values: [...this.pendingFilterSelections],
-      });
-      this.activeMetadataFilters = new Map(this.activeMetadataFilters);
-    }
-    this.filterPopoverOpen = false;
-    this.onFilterChange();
-  }
-
-  removeMetadataFilter(fieldId: string): void {
-    this.activeMetadataFilters.delete(fieldId);
-    this.activeMetadataFilters = new Map(this.activeMetadataFilters);
-    this.onFilterChange();
-  }
-
-  clearAllMetadataFilters(): void {
-    this.activeMetadataFilters = new Map();
-    this.onFilterChange();
-  }
-
   onScoreChange(): void {
     this.scoreChange$.next();
-  }
-
-  onDurationChange(): void {
-    this.durationChange$.next();
-  }
-
-  formatDuration(seconds: number): string {
-    if (seconds >= 60) {
-      const m = Math.floor(seconds / 60);
-      const s = seconds % 60;
-      return s > 0 ? `${m}m${s}s` : `${m}m`;
-    }
-    return `${seconds}s`;
   }
 
   onDateRangeChange(event: DateRangeChange): void {
@@ -1883,41 +1512,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.contextMenu.visible = false;
     const { EditMetadataDialogComponent } = await import('../dashboard/dialogs/edit-metadata-dialog.component');
     const assetIds = this.selectedAssets.length > 0 ? this.selectedAssets : [asset.id];
-
-    if (assetIds.length === 1) {
-      this.api.get<{ metadata_values?: Record<string, string> }>(`/dashboard/assets/${assetIds[0]}`, {
-        date_from: this.dateFrom,
-        date_to: this.dateTo,
-      }).subscribe({
-        next: (detail) => {
-          this.dialog.open(EditMetadataDialogComponent, {
-            width: '480px',
-            data: {
-              assetIds,
-              singleAssetName: asset.ad_name || undefined,
-              existingValues: detail.metadata_values || {},
-            },
-          });
-        },
-        error: () => {
-          this.dialog.open(EditMetadataDialogComponent, {
-            width: '480px',
-            data: { assetIds, singleAssetName: asset.ad_name || undefined },
-          });
-        },
-      });
-    } else {
-      this.dialog.open(EditMetadataDialogComponent, {
-        width: '480px',
-        data: { assetIds },
-      });
-    }
-  }
-
-  copyAssetId(asset: DashboardAsset): void {
-    navigator.clipboard.writeText(asset.id);
-    this.snackBar.open('Asset ID copied to clipboard', '', { duration: 2000 });
-    this.contextMenu.visible = false;
+    this.dialog.open(EditMetadataDialogComponent, {
+      width: '480px',
+      data: { assetIds },
+    });
   }
 
   compareSelected(): void {
