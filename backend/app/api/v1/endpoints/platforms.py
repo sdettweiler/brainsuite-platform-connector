@@ -666,6 +666,9 @@ async def manual_resync(
     if not conn or conn.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Connection not found")
 
+    conn.sync_status = "PENDING"
+    await db.commit()
+
     from app.services.sync.scheduler import run_initial_sync, run_historical_sync, run_daily_sync, run_full_resync
     if not conn.initial_sync_completed:
         background_tasks.add_task(run_initial_sync, str(connection_id))

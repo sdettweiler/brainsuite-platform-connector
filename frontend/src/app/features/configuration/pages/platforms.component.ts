@@ -1020,7 +1020,10 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   resync(conn: PlatformConnection): void {
     this.api.post(`/platforms/connections/${conn.id}/resync`, {}).subscribe({
-      next: () => { this.snackBar.open('Resync triggered', '', { duration: 2000 }); },
+      next: () => {
+        conn.sync_status = 'PENDING';
+        this.snackBar.open('Resync triggered', '', { duration: 2000 });
+      },
     });
   }
 
@@ -1046,7 +1049,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
 
   getHealthState(conn: PlatformConnection): HealthState {
     const now = new Date();
-    if (conn.token_expiry && new Date(conn.token_expiry) < now) {
+    if (conn.sync_status === 'EXPIRED') {
       return 'token_expired';
     }
     if (!conn.last_synced_at) {
