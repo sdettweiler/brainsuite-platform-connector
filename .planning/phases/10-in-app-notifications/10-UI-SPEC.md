@@ -110,10 +110,10 @@ All components are already present in the project. No new installs required.
 | Component | Module | Phase 10 Usage |
 |-----------|--------|---------------|
 | `MatSnackBar` | `MatSnackBarModule` | Toast for `SYNC_FAILED` / `TOKEN_EXPIRED` high-priority events (D-03, D-04) |
-| `MatMenuTrigger` | `MatMenuModule` (already imported) | `@ViewChild(MatMenuTrigger)` reference to programmatically call `openMenu()` on 'View' toast action |
+| `MatMenuTrigger` | `MatMenuModule` (already imported) | `@ViewChild(MatMenuTrigger)` reference to programmatically call `openMenu()` on 'View Notifications' toast action |
 | Bell `<button mat-icon-button>` (primary focal point) | `MatButtonModule` (already imported) | Existing — no change to DOM structure. `aria-label="Notifications"` must be present on this button. |
 | `.custom-badge` | custom CSS (existing) | Existing — no change needed. Component-specific dimensions: 18px height, 10px border-radius (pill shape). |
-| `.notif-item` | custom CSS (existing) | Existing — no change needed. Component-specific dimensions: 56px min-height (multi-line content row), 10px gap between icon and content columns. |
+| `.notif-item` | custom CSS (existing) | Existing — no change needed. Component-specific dimensions: 56px min-height (multi-line content row), 8px gap (sm token) between icon and content columns. |
 | `.notif-icon-wrap` | custom CSS (existing) | Existing — no change needed. Component-specific: 2px top margin for optical alignment with first text line. |
 | `.notif-unread-dot` | custom CSS (existing) | Existing — no change needed |
 
@@ -147,7 +147,7 @@ Badge position: `top: 4px; right: 4px` (absolute, inside `.notif-btn`).
 ### Notification menu (MatMenu `#notifMenu`)
 
 - Opens on bell button click (`[matMenuTriggerFor]="notifMenu"`)
-- Also opens programmatically via `MatMenuTrigger.openMenu()` when user clicks 'View' on a toast
+- Also opens programmatically via `MatMenuTrigger.openMenu()` when user clicks 'View Notifications' on a toast
 - `xPosition="before"` — panel opens leftward of bell
 - Max visible items: no hard limit; scrollable via MatMenu default overflow
 - Empty state: `bi-bell` icon at 24px + opacity 0.4, text "No notifications"
@@ -158,7 +158,7 @@ Badge position: `top: 4px; right: 4px` (absolute, inside `.notif-btn`).
 - Triggered by: `SYNC_FAILED` or `TOKEN_EXPIRED` notification with `created_at > lastToastCheckAt`
 - One toast per matched notification (no batching)
 - Duration: 8000ms
-- Action label: "View Notifications"
+- Action label: "View Notifications" — note: D-04 specified the terse label `'View'`; this spec intentionally uses the more descriptive label for clarity. Executor must use "View Notifications".
 - Action effect: calls `notifMenuTrigger?.openMenu()` then `loadNotifications()`
 - `lastToastCheckAt` updated on every poll tick regardless of whether a toast fired
 
