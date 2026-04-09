@@ -1,11 +1,12 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { MatMenuModule } from '@angular/material/menu';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService, CurrentUser } from '../../services/auth.service';
 import { ThemeService } from '../../services/theme.service';
 import { ApiService } from '../../services/api.service';
@@ -25,6 +26,7 @@ interface NotificationItem {
   imports: [
     CommonModule, RouterLink, MatMenuModule,
     MatButtonModule, MatDialogModule, MatTooltipModule, MatDividerModule,
+    MatSnackBarModule,
   ],
   template: `
     <header class="header">
@@ -317,17 +319,21 @@ interface NotificationItem {
   `],
 })
 export class HeaderComponent implements OnInit, OnDestroy {
+  @ViewChild(MatMenuTrigger) notifMenuTrigger!: MatMenuTrigger;
+
   user: CurrentUser | null = null;
   isDark = true;
   notifications: NotificationItem[] = [];
   unreadCount = 0;
   private pollInterval: any;
+  private lastToastCheckAt: Date = new Date();
 
   constructor(
     private auth: AuthService,
     private theme: ThemeService,
     private dialog: MatDialog,
     private api: ApiService,
+    private snackBar: MatSnackBar,
   ) {}
 
   ngOnInit(): void {
@@ -335,6 +341,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
       this.user = u;
       if (u) {
         this.loadNotifications();
+        this.lastToastCheckAt = new Date();
         this.pollInterval = setInterval(() => this.loadUnreadCount(), 30000);
       }
     });
@@ -355,8 +362,35 @@ export class HeaderComponent implements OnInit, OnDestroy {
   }
 
   loadUnreadCount(): void {
+    const checkTime = new Date();
     this.api.get<{count: number}>('/users/notifications/unread-count').subscribe({
-      next: (res) => { this.unreadCount = res.count; },
+      next: (res) => {
+        const newCount = res.count;
+        if (newCount > this.unreadCount) {
+          this.api.get<NotificationItem[]>('/users/notifications').subscribe({
+            next: (notifs) => {
+              const threshold = this.lastToastCheckAt;
+              const highPriority = notifs.filter(n =>
+                !n.is_read &&
+                ['SYNC_FAILED', 'TOKEN_EXPIRED'].includes(n.type) &&
+                new Date(n.created_at) > threshold
+              );
+              highPriority.forEach(n => this.showToastForNotification(n));
+              this.notifications = notifs;
+            },
+          });
+        }
+        this.unreadCount = newCount;
+        this.lastToastCheckAt = checkTime;
+      },
+    });
+  }
+
+  private showToastForNotification(n: NotificationItem): void {
+    const ref = this.snackBar.open(n.title, 'View Notifications', { duration: 8000 });
+    ref.onAction().subscribe(() => {
+      this.notifMenuTrigger?.openMenu();
+      this.loadNotifications();
     });
   }
 
@@ -382,18 +416,26 @@ export class HeaderComponent implements OnInit, OnDestroy {
 
   getNotifIcon(n: NotificationItem): string {
     switch (n.type) {
-      case 'JOIN_REQUEST': return 'bi-person-plus';
-      case 'JOIN_APPROVED': return 'bi-check-circle-fill';
-      case 'JOIN_REJECTED': return 'bi-slash-circle';
+      case 'JOIN_REQUEST':   return 'bi-person-plus';
+      case 'JOIN_APPROVED':  return 'bi-check-circle-fill';
+      case 'JOIN_REJECTED':  return 'bi-slash-circle';
+      case 'SYNC_COMPLETE':  return 'bi-check2-circle';
+      case 'SYNC_FAILED':    return 'bi-exclamation-triangle-fill';
+      case 'TOKEN_EXPIRED':  return 'bi-shield-exclamation';
+      case 'SCORING_BATCH_COMPLETE': return 'bi-bar-chart-fill';
       default: return 'bi-bell';
     }
   }
 
   getNotifIconClass(n: NotificationItem): string {
     switch (n.type) {
-      case 'JOIN_REQUEST': return 'icon-join';
-      case 'JOIN_APPROVED': return 'icon-approved';
-      case 'JOIN_REJECTED': return 'icon-rejected';
+      case 'JOIN_REQUEST':   return 'icon-join';
+      case 'JOIN_APPROVED':  return 'icon-approved';
+      case 'JOIN_REJECTED':  return 'icon-rejected';
+      case 'SYNC_COMPLETE':  return 'icon-approved';
+      case 'SYNC_FAILED':    return 'icon-rejected';
+      case 'TOKEN_EXPIRED':  return 'icon-rejected';
+      case 'SCORING_BATCH_COMPLETE': return 'icon-join';
       default: return '';
     }
   }
