@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-04-14T14:16:59.822Z",
+  "phase": "09",
+  "phase_name": "ai-metadata-auto-fill",
+  "phase_dir": ".planning/phases/09-ai-metadata-auto-fill",
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "Restore ai_autofill.py, ai_inference.py, models/__init__, config.py, schemas/creative.py", "status": "done"},
+    {"id": 2, "name": "Swap OpenAI → Gemini 2.5 Flash (vision + audio)", "status": "done"},
+    {"id": 3, "name": "Replace 20-frame multi-image with mood board (1fps, composed grid)", "status": "done"},
+    {"id": 4, "name": "Fix locale format en_US → en-US throughout _to_locale", "status": "done"},
+    {"id": 5, "name": "Restore test_ai_autofill.py + test_ai_metadata_models.py (24 tests passing)", "status": "done"},
+    {"id": 6, "name": "Restore assets.py Phase 9 additions (metadata-filter-values, auto_fill fields, D-14 reset, debug endpoint)", "status": "done"},
+    {"id": 7, "name": "Restore metadata.component.ts auto-fill toggle UI", "status": "done"},
+    {"id": 8, "name": "Restore asset-detail-dialog CE tab AI badge + copy ID", "status": "done"},
+    {"id": 9, "name": "Restore edit-metadata-dialog field keying by UUID + default_value pre-pop", "status": "done"},
+    {"id": 10, "name": "Restore api.service.ts array param handling", "status": "done"},
+    {"id": 11, "name": "Restore .planning/phases/09-ai-metadata-auto-fill/ all 13 artifacts", "status": "done"},
+    {"id": 12, "name": "Fix dashboard.py: metadata_values now merges all org fields with default_value fallback", "status": "done"},
+    {"id": 13, "name": "Fix scoring_job.py: outerjoin with default_value fallback for BS API submission", "status": "done"},
+    {"id": 14, "name": "Fix asset-detail-dialog: move metadata section outside COMPLETE-only guard", "status": "done"},
+    {"id": 15, "name": "Fix openEditMetadata: pass existingValues from assetDetailCache", "status": "done"}
+  ],
+  "remaining_tasks": [
+    {"id": 16, "name": "Visual UAT: verify metadata shows in CE tab for unscored assets", "status": "not_started"},
+    {"id": 17, "name": "Visual UAT: verify edit metadata dialog pre-populates with existing values", "status": "not_started"},
+    {"id": 18, "name": "DB data fix: existing en_US (underscore) values in asset_metadata_values need normalizing to en-US (dash) for BS API", "status": "not_started"},
+    {"id": 19, "name": "Phase 10 Meta token error bug still unresolved (EXPIRED status not persisting)", "status": "blocked"}
+  ],
+  "blockers": [
+    {
+      "description": "Phase 10: Meta MetaTokenError handler — EXPIRED sync_status not persisting after rollback despite fresh session approach",
+      "type": "technical",
+      "workaround": "See .planning/phases/10-in-app-notifications/.continue-here.md for full debug history"
+    },
+    {
+      "description": "Metadata still needs visual UAT — backend restart done but browser hard refresh required to clear Angular preload cache",
+      "type": "human_action",
+      "workaround": "Cmd+Shift+R to hard refresh, then open any asset detail → CE tab"
+    }
+  ],
+  "human_actions_pending": [
+    {"action": "Hard refresh browser (Cmd+Shift+R) and verify metadata shows in CE tab", "context": "Backend restarted with metadata fix but Angular cache may have stale data", "blocking": false},
+    {"action": "Verify edit metadata dialog pre-populates for single-asset edit", "context": "openEditMetadata now passes existingValues from cache but needs visual confirmation", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "Gemini 2.5 Flash replaces OpenAI for both vision and audio", "rationale": "User directive; GEMINI_API_KEY already in .env", "phase": "09"},
+    {"decision": "Mood board: 1fps frames (cap 60), 5-col grid, single composed JPEG sent to Gemini", "rationale": "Token reduction vs 20 individual images", "phase": "09"},
+    {"decision": "Locale format en-US (dash) not en_US (underscore) — BrainSuite API requirement", "rationale": "BS API expects BCP 47 dash format", "phase": "09"},
+    {"decision": "metadata_values in dashboard response merges all org MetadataFields with default_value fallback", "rationale": "Fields with no asset-specific value should show org default", "phase": "09"},
+    {"decision": "CE tab metadata section visible regardless of scoring_status", "rationale": "Unscored assets should still show their metadata", "phase": "09"}
+  ],
+  "uncommitted_files": [
+    "backend/app/api/v1/endpoints/assets.py",
+    "backend/app/api/v1/endpoints/dashboard.py",
+    "backend/app/core/config.py",
+    "backend/app/models/__init__.py",
+    "backend/app/models/metadata.py",
+    "backend/app/schemas/creative.py",
+    "backend/app/services/sync/harmonizer.py",
+    "backend/app/services/sync/scheduler.py",
+    "backend/app/services/sync/scoring_job.py",
+    "backend/requirements.txt",
+    "frontend/src/app/core/layout/header/header.component.ts",
+    "frontend/src/app/core/services/api.service.ts",
+    "frontend/src/app/features/configuration/pages/metadata.component.ts",
+    "frontend/src/app/features/dashboard/dashboard.component.ts",
+    "frontend/src/app/features/dashboard/dialogs/asset-detail-dialog.component.ts",
+    "frontend/src/app/features/dashboard/dialogs/edit-metadata-dialog.component.ts",
+    ".planning/phases/09-ai-metadata-auto-fill/ (all 13 artifacts)"
+  ],
+  "next_action": "Hard refresh browser, open any asset in CE tab, verify metadata section appears. Then check edit metadata dialog pre-populates. If both pass, commit all Phase 9 restoration work.",
+  "context_notes": "Session was focused on restoring Phase 9 (AI Metadata Auto-Fill) after executor deletion. All backend/frontend code restored and Gemini swap complete. Main remaining item is visual UAT confirmation. Phase 10 Meta token bug is a separate pre-existing blocker documented in phase 10 continue-here."
+}
