@@ -15,6 +15,8 @@ interface MetadataField {
   label: string;
   field_type: 'SELECT' | 'TEXT' | 'NUMBER';
   is_required: boolean;
+  default_value?: string | null;
+  allowed_values?: { id: string; value: string; label: string }[];
   field_values?: { id: string; value: string; label: string }[];
 }
 
@@ -57,8 +59,8 @@ interface EditMetadataDialogData {
               <span class="required-mark" *ngIf="field.is_required">*</span>
             </label>
 
-            <mat-form-field appearance="outline" class="field-input" *ngIf="field.field_type === 'SELECT'">
-              <mat-select [(ngModel)]="values[field.name]" [placeholder]="data.assetIds.length > 1 ? 'Leave blank to keep existing' : ''">
+            <mat-form-field appearance="outline" class="field-input compact-select" *ngIf="field.field_type === 'SELECT'">
+              <mat-select [(ngModel)]="values[field.id]" [placeholder]="data.assetIds.length > 1 ? 'Leave blank to keep existing' : ''">
                 <mat-option value="">-- Clear --</mat-option>
                 <mat-option *ngFor="let opt of field.field_values" [value]="opt.value">
                   {{ opt.label }}
@@ -69,7 +71,7 @@ interface EditMetadataDialogData {
             <mat-form-field appearance="outline" class="field-input" *ngIf="field.field_type === 'TEXT'">
               <input
                 matInput
-                [(ngModel)]="values[field.name]"
+                [(ngModel)]="values[field.id]"
                 [placeholder]="data.assetIds.length > 1 ? 'Leave blank to keep existing' : ''"
               />
             </mat-form-field>
@@ -78,7 +80,7 @@ interface EditMetadataDialogData {
               <input
                 matInput
                 type="number"
-                [(ngModel)]="values[field.name]"
+                [(ngModel)]="values[field.id]"
                 [placeholder]="data.assetIds.length > 1 ? 'Leave blank to keep existing' : ''"
               />
             </mat-form-field>
@@ -171,10 +173,18 @@ export class EditMetadataDialogComponent implements OnInit {
   ngOnInit(): void {
     this.api.get<MetadataField[]>('/assets/metadata/fields').subscribe({
       next: (fields) => {
-        this.metadataFields = fields;
-        // Pre-populate single asset values
-        if (this.data.existingValues) {
-          this.values = { ...this.data.existingValues };
+        // Normalise allowed_values → field_values so the template works
+        this.metadataFields = fields.map(f => ({
+          ...f,
+          field_values: f.allowed_values ?? f.field_values ?? [],
+        }));
+        // Start from existing asset values (keyed by field UUID)
+        this.values = this.data.existingValues ? { ...this.data.existingValues } : {};
+        // Fall back to default_value for any field not yet set on this asset
+        for (const field of this.metadataFields) {
+          if (!this.values[field.id] && field.default_value) {
+            this.values[field.id] = field.default_value;
+          }
         }
         this.loading = false;
       },

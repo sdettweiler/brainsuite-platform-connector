@@ -376,6 +376,9 @@ interface CorrelationAsset {
         <button (click)="rescoreAsset(contextMenu.asset)">
           <i class="bi bi-lightning-charge"></i> Score now
         </button>
+        <button *ngIf="needsRedownload(contextMenu.asset)" (click)="redownloadAsset(contextMenu.asset)">
+          <i class="bi bi-cloud-download"></i> Re-download asset
+        </button>
       </div>
 
       <!-- Backdrop to close context menu -->
@@ -1512,9 +1515,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.contextMenu.visible = false;
     const { EditMetadataDialogComponent } = await import('../dashboard/dialogs/edit-metadata-dialog.component');
     const assetIds = this.selectedAssets.length > 0 ? this.selectedAssets : [asset.id];
+    const isSingle = assetIds.length === 1;
+    const cached = isSingle ? (this.assetDetailCache.get(assetIds[0]) as any) : null;
     this.dialog.open(EditMetadataDialogComponent, {
       width: '480px',
-      data: { assetIds },
+      data: {
+        assetIds,
+        singleAssetName: isSingle ? (asset.ad_name || undefined) : undefined,
+        existingValues: isSingle ? (cached?.metadata_values ?? undefined) : undefined,
+      },
     });
   }
 
@@ -1632,6 +1641,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.snackBar.open('Could not queue scoring. Try again.', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  needsRedownload(asset: DashboardAsset | null): boolean {
+    if (!asset) return false;
+    return asset.asset_format === 'VIDEO' && (!asset.asset_url || !asset.asset_url.endsWith('.mp4'));
+  }
+
+  redownloadAsset(asset: DashboardAsset | null): void {
+    if (!asset) return;
+    this.contextMenu.visible = false;
+    this.snackBar.open('Downloading video… this may take a minute', '', { duration: 5000 });
+    this.api.redownloadAsset(asset.id).subscribe({
+      next: (res) => {
+        asset.asset_url = res.asset_url;
+        this.snackBar.open('Video downloaded — autofill and scoring queued', 'OK', { duration: 4000 });
+      },
+      error: (err) => {
+        const msg = err?.error?.detail || 'Download failed. Check yt-dlp cookies.';
+        this.snackBar.open(msg, 'OK', { duration: 5000 });
       },
     });
   }

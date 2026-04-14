@@ -19,6 +19,14 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/scoring/${assetId}/rescore`, {});
   }
 
+  redownloadAsset(assetId: string): Observable<{ asset_id: string; asset_url: string }> {
+    return this.http.post<{ asset_id: string; asset_url: string }>(`${this.base}/assets/${assetId}/redownload`, {});
+  }
+
+  redownloadMissingAssets(connectionId: string): Observable<{ queued: number; message: string }> {
+    return this.http.post<{ queued: number; message: string }>(`${this.base}/assets/redownload-missing/${connectionId}`, {});
+  }
+
   getScoreDetail(assetId: string): Observable<any> {
     return this.http.get<any>(`${this.base}/scoring/${assetId}`);
   }
@@ -28,7 +36,13 @@ export class ApiService {
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
         if (v !== null && v !== undefined) {
-          httpParams = httpParams.set(k, String(v));
+          if (Array.isArray(v)) {
+            v.forEach(item => {
+              httpParams = httpParams.append(k, String(item));
+            });
+          } else {
+            httpParams = httpParams.set(k, String(v));
+          }
         }
       });
     }

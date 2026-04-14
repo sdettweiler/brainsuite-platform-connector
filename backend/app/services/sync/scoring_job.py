@@ -7,11 +7,12 @@ Public API:
 import asyncio
 import logging
 import os
+import re
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, and_
 
 from app.db.base import get_session_factory
 from app.models.creative import CreativeAsset, AssetMetadataValue
@@ -189,17 +190,29 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
 
         metadata_dict: dict[str, str] = {}
         async with get_session_factory()() as db:
+            # LEFT JOIN so fields with no asset-specific value still appear;
+            # fall back to MetadataField.default_value in that case.
             meta_result = await db.execute(
-                select(MetadataField.name, AssetMetadataValue.value)
-                .join(AssetMetadataValue, AssetMetadataValue.field_id == MetadataField.id)
+                select(MetadataField.name, AssetMetadataValue.value, MetadataField.default_value)
+                .outerjoin(
+                    AssetMetadataValue,
+                    and_(
+                        AssetMetadataValue.field_id == MetadataField.id,
+                        AssetMetadataValue.asset_id == asset_id,
+                    ),
+                )
                 .where(
-                    AssetMetadataValue.asset_id == asset_id,
+                    MetadataField.organization_id == asset.organization_id,
                     MetadataField.name.like("brainsuite_%"),
+                    MetadataField.is_active.is_(True),
                 )
             )
-            for field_name, field_value in meta_result.all():
-                if field_value is not None:
-                    metadata_dict[field_name] = field_value
+            for field_name, field_value, default_value in meta_result.all():
+                effective = field_value if field_value is not None else default_value
+                if effective is not None:
+                    # Convert stored xx_XX locale format to BS API xx-XX (BCP 47)
+                    effective = re.sub(r'^([a-z]{2})_([A-Z]{2})$', r'\1-\2', effective)
+                    metadata_dict[field_name] = effective
 
         filename = os.path.basename(s3_key) or (asset.ad_name or f"{asset_id}")
         logger.info(

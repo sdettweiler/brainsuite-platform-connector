@@ -1,7 +1,8 @@
 import logging
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -57,18 +58,19 @@ class HarmonizationService:
         connection: PlatformConnection,
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
+        _new_asset_ids: Optional[List[Tuple[uuid.UUID, uuid.UUID]]] = None,
     ) -> int:
         org = await db.get(Organization, connection.organization_id)
         org_currency = org.currency if org else "USD"
 
         if connection.platform == "META":
-            return await self._harmonize_meta(db, connection, org_currency, date_from, date_to)
+            return await self._harmonize_meta(db, connection, org_currency, date_from, date_to, _new_asset_ids)
         elif connection.platform == "TIKTOK":
-            return await self._harmonize_tiktok(db, connection, org_currency, date_from, date_to)
+            return await self._harmonize_tiktok(db, connection, org_currency, date_from, date_to, _new_asset_ids)
         elif connection.platform == "GOOGLE_ADS":
-            return await self._harmonize_google_ads(db, connection, org_currency, date_from, date_to)
+            return await self._harmonize_google_ads(db, connection, org_currency, date_from, date_to, _new_asset_ids)
         elif connection.platform == "DV360":
-            return await self._harmonize_dv360(db, connection, org_currency, date_from, date_to)
+            return await self._harmonize_dv360(db, connection, org_currency, date_from, date_to, _new_asset_ids)
         return 0
 
     @staticmethod
@@ -105,6 +107,7 @@ class HarmonizationService:
         org_currency: str,
         date_from: Optional[date],
         date_to: Optional[date],
+        _new_asset_ids: Optional[List[Tuple[uuid.UUID, uuid.UUID]]] = None,
     ) -> int:
         query = select(MetaRawPerformance).where(
             MetaRawPerformance.platform_connection_id == connection.id,
@@ -148,6 +151,7 @@ class HarmonizationService:
                     creative_id=raw.creative_id,
                     placement=raw.placement,
                     first_seen_at=report_date,
+                    _new_asset_ids=_new_asset_ids,
                 )
 
                 spend = raw.spend
@@ -328,6 +332,7 @@ class HarmonizationService:
         org_currency: str,
         date_from: Optional[date],
         date_to: Optional[date],
+        _new_asset_ids: Optional[List[Tuple[uuid.UUID, uuid.UUID]]] = None,
     ) -> int:
         query = select(TikTokRawPerformance).where(
             TikTokRawPerformance.platform_connection_id == connection.id,
@@ -366,6 +371,7 @@ class HarmonizationService:
                     thumbnail_url=raw.thumbnail_url,
                     asset_url=raw.creative_url or raw.asset_url,
                     first_seen_at=raw.report_date,
+                    _new_asset_ids=_new_asset_ids,
                 )
 
                 focused_view = raw.focused_view_6s
@@ -489,6 +495,7 @@ class HarmonizationService:
         org_currency: str,
         date_from: Optional[date],
         date_to: Optional[date],
+        _new_asset_ids: Optional[List[Tuple[uuid.UUID, uuid.UUID]]] = None,
     ) -> int:
         query = select(GoogleAdsRawPerformance).where(
             GoogleAdsRawPerformance.platform_connection_id == connection.id,
@@ -529,6 +536,7 @@ class HarmonizationService:
                     video_duration=raw.video_duration,
                     placement=raw.placement_type,
                     first_seen_at=raw.report_date,
+                    _new_asset_ids=_new_asset_ids,
                 )
 
                 impressions = raw.impressions or 0
@@ -653,6 +661,7 @@ class HarmonizationService:
         org_currency: str,
         date_from: Optional[date],
         date_to: Optional[date],
+        _new_asset_ids: Optional[List[Tuple[uuid.UUID, uuid.UUID]]] = None,
     ) -> int:
         query = select(Dv360RawPerformance).where(
             Dv360RawPerformance.platform_connection_id == connection.id,
@@ -687,6 +696,7 @@ class HarmonizationService:
                         video_duration=row.video_duration_seconds,
                         asset_format=row.asset_format or ("VIDEO" if row.youtube_ad_video_id else "DISPLAY"),
                         first_seen_at=row.report_date,
+                        _new_asset_ids=_new_asset_ids,
                     )
 
                     original_currency = row.currency or connection.currency or "USD"
@@ -836,6 +846,7 @@ class HarmonizationService:
         connection: PlatformConnection,
         platform: str,
         ad_id: str,
+        _new_asset_ids: Optional[List[Tuple[uuid.UUID, uuid.UUID]]] = None,
         **kwargs,
     ) -> CreativeAsset:
         result = await db.execute(
@@ -899,6 +910,10 @@ class HarmonizationService:
                     set_={"endpoint_type": endpoint_type.value},
                 )
                 await db.execute(score_stmt)
+
+            # Track new asset for auto-fill: fired by scheduler after db.commit()
+            if _new_asset_ids is not None:
+                _new_asset_ids.append((asset.id, asset.organization_id))
         else:
             if kwargs.get("thumbnail_url") and not asset.thumbnail_url:
                 asset.thumbnail_url = kwargs.get("thumbnail_url")

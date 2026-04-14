@@ -2,15 +2,20 @@
 Creative asset management: projects, metadata, assignments, export.
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Response
+import asyncio
+import os
+import tempfile
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, distinct
 import uuid
 
 from app.db.base import get_db
 from app.models.user import User
 from app.models.creative import CreativeAsset, Project, AssetProjectMapping, AssetMetadataValue
 from app.models.metadata import MetadataField, MetadataFieldValue
+from app.models.scoring import CreativeScoreResult
+from app.models.ai_inference import AIInferenceTracking
 from app.schemas.creative import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
     MetadataFieldCreate, MetadataFieldResponse,
@@ -18,6 +23,7 @@ from app.schemas.creative import (
 )
 from app.api.v1.deps import get_current_user, get_current_admin
 from app.services.export_service import export_service
+from app.services.ai_autofill import run_autofill_for_asset
 
 router = APIRouter()
 
@@ -164,8 +170,54 @@ async def list_metadata_fields(
             default_value=f.default_value,
             allowed_values=vals,
             created_at=f.created_at,
+            auto_fill_enabled=f.auto_fill_enabled,
+            auto_fill_type=f.auto_fill_type,
         ))
     return out
+
+
+@router.get("/metadata-filter-values")
+async def get_metadata_filter_values(
+    field_id: uuid.UUID = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return combined predefined + actual used values for a metadata field, org-scoped.
+
+    Response: List of {value, label, source} where source is "predefined" or "actual".
+    Predefined values take precedence on de-duplication by value string.
+    """
+    # 1. Predefined values from MetadataFieldValue table
+    predefined_result = await db.execute(
+        select(MetadataFieldValue).where(
+            MetadataFieldValue.field_id == field_id
+        ).order_by(MetadataFieldValue.sort_order)
+    )
+    predefined = predefined_result.scalars().all()
+    predefined_map = {v.value: {"value": v.value, "label": v.label, "source": "predefined"} for v in predefined}
+
+    # 2. Actual used values from asset_metadata_values scoped to the org
+    actual_result = await db.execute(
+        select(distinct(AssetMetadataValue.value)).where(
+            AssetMetadataValue.field_id == field_id,
+            AssetMetadataValue.asset_id.in_(
+                select(CreativeAsset.id).where(
+                    CreativeAsset.organization_id == current_user.organization_id
+                )
+            ),
+        ).order_by(AssetMetadataValue.value)
+    )
+    actual_values = [row[0] for row in actual_result.all()]
+
+    # 3. Merge: predefined take precedence; add actual values not already in predefined
+    combined = list(predefined_map.values())
+    seen = set(predefined_map.keys())
+    for v in actual_values:
+        if v not in seen:
+            combined.append({"value": v, "label": v, "source": "actual"})
+            seen.add(v)
+
+    return combined
 
 
 @router.post("/metadata-fields", response_model=MetadataFieldResponse, status_code=201)
@@ -247,6 +299,17 @@ async def update_asset_metadata(
             db.add(rec)
         else:
             db.add(AssetMetadataValue(asset_id=asset_id, field_id=field_id, value=value))
+
+    # D-14: Reset scoring status so 15-min batch rescores with updated metadata
+    score_result = await db.execute(
+        select(CreativeScoreResult).where(
+            CreativeScoreResult.creative_asset_id == asset_id
+        )
+    )
+    score_row = score_result.scalar_one_or_none()
+    if score_row and score_row.scoring_status != "UNSCORED":
+        score_row.scoring_status = "UNSCORED"
+        db.add(score_row)
 
     await db.commit()
     return {"detail": "Metadata updated"}
@@ -462,6 +525,8 @@ async def list_metadata_fields_v2(
             id=f.id, name=f.name, label=f.label, field_type=f.field_type,
             is_required=f.is_required, default_value=f.default_value,
             allowed_values=vals, created_at=f.created_at,
+            auto_fill_enabled=f.auto_fill_enabled,
+            auto_fill_type=f.auto_fill_type,
         ))
     return out
 
@@ -497,7 +562,7 @@ async def update_metadata_field_v2(
     field = await db.get(MetadataField, field_id)
     if not field or field.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Field not found")
-    allowed = {"name", "label", "field_type", "is_required", "default_value"}
+    allowed = {"name", "label", "field_type", "is_required", "default_value", "auto_fill_enabled", "auto_fill_type"}
     for k, v in payload.items():
         if k in allowed:
             setattr(field, k, v)
@@ -507,7 +572,9 @@ async def update_metadata_field_v2(
     return MetadataFieldResponse(id=field.id, name=field.name, label=field.label,
                                   field_type=field.field_type, is_required=field.is_required,
                                   default_value=field.default_value, allowed_values=[],
-                                  created_at=field.created_at)
+                                  created_at=field.created_at,
+                                  auto_fill_enabled=field.auto_fill_enabled,
+                                  auto_fill_type=field.auto_fill_type)
 
 
 @router.delete("/metadata/fields/{field_id}")
@@ -566,3 +633,169 @@ async def reorder_metadata_fields(
             db.add(field)
     await db.commit()
     return {"detail": "Order updated"}
+
+
+@router.post("/redownload-missing/{connection_id}")
+async def redownload_missing_assets(
+    connection_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Find all VIDEO assets for a connection that are missing a valid .mp4 asset_url
+    and re-download them in the background. Returns the count immediately.
+    Currently supports DV360 only.
+    """
+    from app.models.platform import PlatformConnection
+    from app.services.sync.dv360_sync import DV360SyncService
+
+    conn_result = await db.execute(
+        select(PlatformConnection).where(PlatformConnection.id == connection_id)
+    )
+    conn = conn_result.scalar_one_or_none()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    if conn.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Connection not in your organization")
+    if conn.platform != "DV360":
+        raise HTTPException(status_code=422, detail=f"Re-download not supported for platform {conn.platform}")
+
+    # Find all VIDEO assets for this connection missing a valid .mp4 URL
+    assets_result = await db.execute(
+        select(CreativeAsset).where(
+            CreativeAsset.platform_connection_id == connection_id,
+            CreativeAsset.asset_format == "VIDEO",
+        )
+    )
+    all_video_assets = assets_result.scalars().all()
+    missing = [a for a in all_video_assets if not a.asset_url or not a.asset_url.endswith(".mp4")]
+
+    if not missing:
+        return {"queued": 0, "message": "No missing videos found"}
+
+    async def _download_one(asset: CreativeAsset) -> None:
+        import tempfile
+        from app.db.base import get_session_factory
+        svc = DV360SyncService()
+        org_id_str = str(asset.organization_id)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            _, served_url = await svc._download_video_asset(
+                youtube_video_id=asset.ad_id,
+                org_dir=tmp_dir,
+                org_id=org_id_str,
+                ad_id=asset.ad_id,
+            )
+        if not served_url:
+            return
+        SessionFactory = get_session_factory()
+        async with SessionFactory() as session:
+            res = await session.execute(select(CreativeAsset).where(CreativeAsset.id == asset.id))
+            db_asset = res.scalar_one_or_none()
+            if db_asset:
+                db_asset.asset_url = served_url
+                session.add(db_asset)
+                score_res = await session.execute(
+                    select(CreativeScoreResult).where(CreativeScoreResult.creative_asset_id == asset.id)
+                )
+                score_row = score_res.scalar_one_or_none()
+                if score_row and score_row.scoring_status != "UNSCORED":
+                    score_row.scoring_status = "UNSCORED"
+                    session.add(score_row)
+                await session.commit()
+        await run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id)
+
+    for asset in missing:
+        asyncio.create_task(_download_one(asset))
+
+    return {"queued": len(missing), "message": f"Downloading {len(missing)} missing video(s) in background"}
+
+
+@router.post("/{asset_id}/redownload")
+async def redownload_asset(
+    asset_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-download an asset video from its source platform and store it in MinIO.
+    Only applicable to VIDEO assets that are missing a valid .mp4 asset_url.
+    Currently supports DV360 (downloads via yt-dlp using ad_id as YouTube video ID).
+    """
+    result = await db.execute(select(CreativeAsset).where(CreativeAsset.id == asset_id))
+    asset = result.scalar_one_or_none()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Asset not in your organization")
+    if asset.asset_format != "VIDEO":
+        raise HTTPException(status_code=422, detail="Asset is not a VIDEO")
+    if asset.asset_url and asset.asset_url.endswith(".mp4"):
+        raise HTTPException(status_code=422, detail="Asset already has a valid video URL")
+    if asset.platform != "DV360":
+        raise HTTPException(status_code=422, detail=f"Re-download not supported for platform {asset.platform}")
+
+    from app.services.sync.dv360_sync import DV360SyncService
+
+    org_id_str = str(asset.organization_id)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        svc = DV360SyncService()
+        _, served_url = await svc._download_video_asset(
+            youtube_video_id=asset.ad_id,
+            org_dir=tmp_dir,
+            org_id=org_id_str,
+            ad_id=asset.ad_id,
+        )
+
+    if not served_url:
+        raise HTTPException(status_code=502, detail="Failed to download video from YouTube — check yt-dlp cookies")
+
+    asset.asset_url = served_url
+    db.add(asset)
+
+    # Reset scoring so the next batch rescores with the new video
+    score_result = await db.execute(
+        select(CreativeScoreResult).where(CreativeScoreResult.creative_asset_id == asset_id)
+    )
+    score_row = score_result.scalar_one_or_none()
+    if score_row and score_row.scoring_status != "UNSCORED":
+        score_row.scoring_status = "UNSCORED"
+        db.add(score_row)
+
+    await db.commit()
+
+    # Kick off autofill in the background (non-blocking)
+    asyncio.create_task(run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id))
+
+    return {"asset_id": str(asset_id), "asset_url": served_url}
+
+
+@router.post("/debug/autofill/{asset_id}")
+async def debug_trigger_autofill(
+    asset_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Debug endpoint: trigger auto-fill synchronously for a single asset and return the result."""
+    result = await db.execute(
+        select(CreativeAsset).where(CreativeAsset.id == asset_id)
+    )
+    asset = result.scalar_one_or_none()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Asset not in your organization")
+
+    # Run synchronously (not via create_task) so we can return the outcome
+    await run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id)
+
+    # Return updated tracking row
+    tracking_result = await db.execute(
+        select(AIInferenceTracking).where(AIInferenceTracking.asset_id == asset_id)
+    )
+    tracking = tracking_result.scalar_one_or_none()
+
+    return {
+        "asset_id": str(asset_id),
+        "platform": asset.platform,
+        "asset_url": asset.asset_url,
+        "ai_inference_status": tracking.ai_inference_status if tracking else None,
+        "updated_at": tracking.updated_at.isoformat() if tracking else None,
+    }

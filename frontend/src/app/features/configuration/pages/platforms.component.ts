@@ -411,6 +411,9 @@ const PLATFORMS: PlatformDef[] = [
           <button mat-menu-item (click)="openMetadataPanel(conn)">
             <i class="bi bi-sliders" style="font-size: 18px; margin-right: 12px;"></i> Default Metadata
           </button>
+          <button mat-menu-item *ngIf="conn.platform === 'DV360'" (click)="downloadMissingVideos(conn)">
+            <i class="bi bi-cloud-download" style="font-size: 18px; margin-right: 12px;"></i> Download missing videos
+          </button>
           <button mat-menu-item class="delete-item" (click)="deleteConnection(conn)">
             <i class="bi bi-plug" style="font-size: 18px; margin-right: 12px;"></i> Disconnect
           </button>
@@ -1026,6 +1029,22 @@ export class PlatformsComponent implements OnInit, OnDestroy {
         conn.sync_status = 'PENDING';
         this.snackBar.open('Resync triggered', '', { duration: 2000 });
         this.startSyncStatusPolling();
+      },
+    });
+  }
+
+  downloadMissingVideos(conn: PlatformConnection): void {
+    this.api.redownloadMissingAssets(conn.id).subscribe({
+      next: (res) => {
+        if (res.queued === 0) {
+          this.snackBar.open('No missing videos found', 'OK', { duration: 3000 });
+        } else {
+          this.snackBar.open(`Downloading ${res.queued} missing video(s) in background — autofill and scoring will follow`, 'OK', { duration: 5000 });
+        }
+      },
+      error: (err) => {
+        const msg = err?.error?.detail || 'Failed to start download';
+        this.snackBar.open(msg, 'OK', { duration: 4000 });
       },
     });
   }

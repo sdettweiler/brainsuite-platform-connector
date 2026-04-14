@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     DV360_CLIENT_ID: Optional[str] = None
     DV360_CLIENT_SECRET: Optional[str] = None
 
+    # Gemini
+    GEMINI_API_KEY: Optional[str] = None
+
+    # OpenAI (fallback for AI autofill)
+    OPENAI_API_KEY: Optional[str] = None
+
     # BrainSuite
     BRAINSUITE_CLIENT_ID: Optional[str] = None
     BRAINSUITE_CLIENT_SECRET: Optional[str] = None

@@ -19,6 +19,8 @@ class MetadataField(Base):
     default_value: Mapped[str] = mapped_column(String(500), nullable=True)  # NULL means "Not specified"
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    auto_fill_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_fill_type: Mapped[str] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

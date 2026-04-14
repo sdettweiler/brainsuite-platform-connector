@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { RouterLink, Router } from '@angular/router';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
@@ -334,6 +334,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
     private dialog: MatDialog,
     private api: ApiService,
     private snackBar: MatSnackBar,
+    private router: Router,
   ) {}
 
   ngOnInit(): void {
@@ -356,7 +357,8 @@ export class HeaderComponent implements OnInit, OnDestroy {
     this.api.get<NotificationItem[]>('/users/notifications').subscribe({
       next: (notifs) => {
         this.notifications = notifs;
-        this.unreadCount = notifs.filter(n => !n.is_read).length;
+        // unreadCount is owned by loadUnreadCount() (polling path) so toasts
+        // are not suppressed when the bell is opened before the poll fires.
       },
     });
   }
@@ -366,10 +368,13 @@ export class HeaderComponent implements OnInit, OnDestroy {
     this.api.get<{count: number}>('/users/notifications/unread-count').subscribe({
       next: (res) => {
         const newCount = res.count;
-        if (newCount > this.unreadCount) {
+        const prevCount = this.unreadCount;
+        const threshold = this.lastToastCheckAt; // capture before updating
+        this.unreadCount = newCount;
+        this.lastToastCheckAt = checkTime;
+        if (newCount > prevCount) {
           this.api.get<NotificationItem[]>('/users/notifications').subscribe({
             next: (notifs) => {
-              const threshold = this.lastToastCheckAt;
               const highPriority = notifs.filter(n =>
                 !n.is_read &&
                 ['SYNC_FAILED', 'TOKEN_EXPIRED'].includes(n.type) &&
@@ -380,17 +385,20 @@ export class HeaderComponent implements OnInit, OnDestroy {
             },
           });
         }
-        this.unreadCount = newCount;
-        this.lastToastCheckAt = checkTime;
       },
     });
   }
 
   private showToastForNotification(n: NotificationItem): void {
-    const ref = this.snackBar.open(n.title, 'View Notifications', { duration: 8000 });
+    const actionLabel = n.type === 'TOKEN_EXPIRED' ? 'Fix Now' : 'View Notifications';
+    const ref = this.snackBar.open(n.title, actionLabel, { duration: 8000 });
     ref.onAction().subscribe(() => {
-      this.notifMenuTrigger?.openMenu();
-      this.loadNotifications();
+      if (n.type === 'TOKEN_EXPIRED') {
+        this.router.navigate(['/configuration/platforms']);
+      } else {
+        this.notifMenuTrigger?.openMenu();
+        this.loadNotifications();
+      }
     });
   }
 
@@ -402,6 +410,9 @@ export class HeaderComponent implements OnInit, OnDestroy {
           this.unreadCount = Math.max(0, this.unreadCount - 1);
         },
       });
+    }
+    if (n.type === 'TOKEN_EXPIRED') {
+      this.router.navigate(['/configuration/platforms']);
     }
   }
 

@@ -15,9 +15,11 @@ import uuid
 from app.db.base import get_db
 from app.models.user import User
 from app.models.creative import CreativeAsset, AssetMetadataValue, AssetProjectMapping
+from app.models.metadata import MetadataField
 from app.models.performance import HarmonizedPerformance
 from app.models.platform import PlatformConnection
 from app.models.scoring import CreativeScoreResult
+from app.models.ai_inference import AIInferenceTracking
 from app.schemas.creative import (
     DashboardFilterParams, DashboardStats, CreativeAssetResponse,
     AssetDetailResponse, ComparisonRequest,
@@ -395,11 +397,34 @@ async def get_asset_detail(
     if not asset or asset.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    # Get metadata values
+    # Get AI inference status
+    tracking_result = await db.execute(
+        select(AIInferenceTracking.ai_inference_status).where(
+            AIInferenceTracking.asset_id == asset_id
+        )
+    )
+    ai_inference_status = tracking_result.scalar_one_or_none()
+
+    # Get metadata values — asset-specific value takes precedence over field default_value
+    fields_result = await db.execute(
+        select(MetadataField).where(
+            MetadataField.organization_id == current_user.organization_id,
+            MetadataField.is_active.is_(True),
+        )
+    )
+    all_fields = {f.id: f for f in fields_result.scalars().all()}
+
     meta_result = await db.execute(
         select(AssetMetadataValue).where(AssetMetadataValue.asset_id == asset_id)
     )
-    meta_values = {str(v.field_id): v.value for v in meta_result.scalars().all()}
+    asset_values = {v.field_id: v.value for v in meta_result.scalars().all()}
+
+    meta_values = {}
+    for field_id, field in all_fields.items():
+        if field_id in asset_values:
+            meta_values[str(field_id)] = asset_values[field_id]
+        elif field.default_value:
+            meta_values[str(field_id)] = field.default_value
 
     # Get projects
     proj_result = await db.execute(
@@ -572,6 +597,7 @@ async def get_asset_detail(
         "scoring_status": None,
         "total_score": None,
         "total_rating": None,
+        "ai_inference_status": ai_inference_status,
         "metadata_values": meta_values,
         "projects": project_ids,
         "campaigns_count": int(perf.campaigns_count or 0),
@@ -670,8 +696,9 @@ async def get_homepage_widgets(
         )
 
         result = await db.execute(
-            select(CreativeAsset, perf_subq)
+            select(CreativeAsset, perf_subq, CreativeScoreResult.total_score)
             .join(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
+            .outerjoin(CreativeScoreResult, CreativeScoreResult.creative_asset_id == CreativeAsset.id)
             .where(CreativeAsset.organization_id == current_user.organization_id)
         )
 
@@ -681,7 +708,7 @@ async def get_homepage_widgets(
                 "ad_name": row[0].ad_name,
                 "thumbnail_url": row[0].thumbnail_url,
                 "asset_url": row[0].asset_url,
-                "total_score": None,
+                "ace_score": row.total_score,
                 "spend_l7d": float(row.total_spend or 0),
                 "ctr": float(row.avg_ctr or 0),
                 "asset_format": row[0].asset_format,

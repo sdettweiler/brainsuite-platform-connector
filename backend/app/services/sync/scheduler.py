@@ -13,6 +13,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 import pytz
 
 from app.db.base import get_session_factory
+from app.services.ai_autofill import run_autofill_for_asset
 from app.services.notifications import create_org_notification
 
 logger = logging.getLogger(__name__)
@@ -36,9 +37,12 @@ DEADLOCK_BACKOFF_BASE = 2
 
 
 async def _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to):
+    new_assets = []
     for attempt in range(1, MAX_DEADLOCK_RETRIES + 1):
         try:
-            return await harmonizer.harmonize_connection(db, connection, date_from, date_to)
+            new_assets.clear()
+            count = await harmonizer.harmonize_connection(db, connection, date_from, date_to, _new_asset_ids=new_assets)
+            return count, new_assets
         except Exception as exc:
             exc_name = type(exc).__name__
             is_deadlock = "deadlock" in str(exc).lower() or "DeadlockDetected" in exc_name
@@ -193,7 +197,7 @@ async def run_daily_sync(connection_id: str) -> None:
             conn_id_for_assets = connection.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
+                harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
 
                 connection.last_synced_at = datetime.utcnow()
                 connection.sync_status = "ACTIVE"
@@ -205,6 +209,8 @@ async def run_daily_sync(connection_id: str) -> None:
                 db.add(job)
 
                 await db.commit()
+                for aid, oid in new_assets:
+                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 logger.info(f"Daily sync completed for {connection.platform} {connection.ad_account_id}: {result}")
 
             except Exception as e:
@@ -283,7 +289,7 @@ async def run_daily_sync(connection_id: str) -> None:
             conn_id_for_assets = conn.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, date_from, date_to)
+                harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, conn, date_from, date_to)
                 conn.last_synced_at = datetime.utcnow()
                 conn.sync_status = "ACTIVE"
                 db.add(conn)
@@ -292,6 +298,8 @@ async def run_daily_sync(connection_id: str) -> None:
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
+                for aid, oid in new_assets:
+                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 logger.info(f"DV360 daily sync completed: {sync_result}")
             except Exception as e:
                 logger.error(f"DV360 daily sync harmonization failed: {type(e).__name__}: {e}")
@@ -449,12 +457,12 @@ async def run_full_resync(connection_id: str) -> None:
             await db.commit()
             return
 
-        if not is_dv360:
+        if not is_dv360 and _token_err is None:
             dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
             conn_id_for_assets = connection.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
+                harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.last_synced_at = datetime.utcnow()
                 connection.sync_status = "ACTIVE"
                 db.add(connection)
@@ -470,6 +478,8 @@ async def run_full_resync(connection_id: str) -> None:
                     data={"platform": connection.platform, "connection_id": str(connection.id)},
                 ))
                 await db.commit()
+                for aid, oid in new_assets:
+                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
             except Exception as e:
                 logger.error(f"Full resync harmonization failed for connection {connection_id}: {type(e).__name__}: {e}")
@@ -548,7 +558,7 @@ async def run_full_resync(connection_id: str) -> None:
             conn_id_for_assets = conn.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, dv360_info["date_from"], dv360_info["date_to"])
+                harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, conn, dv360_info["date_from"], dv360_info["date_to"])
                 conn.last_synced_at = datetime.utcnow()
                 conn.sync_status = "ACTIVE"
                 db.add(conn)
@@ -564,6 +574,8 @@ async def run_full_resync(connection_id: str) -> None:
                     data={"platform": conn.platform, "connection_id": str(conn.id)},
                 ))
                 await db.commit()
+                for aid, oid in new_assets:
+                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 logger.info(f"DV360 full resync completed: {sync_result}")
             except Exception as e:
                 logger.error(f"DV360 full resync harmonization failed: {type(e).__name__}: {e}")
@@ -687,7 +699,7 @@ async def run_initial_sync(connection_id: str) -> None:
             conn_id_for_assets = connection.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
+                harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.initial_sync_completed = True
                 connection.last_synced_at = datetime.utcnow()
                 db.add(connection)
@@ -703,6 +715,8 @@ async def run_initial_sync(connection_id: str) -> None:
                     data={"platform": connection.platform, "connection_id": str(connection.id)},
                 ))
                 await db.commit()
+                for aid, oid in new_assets:
+                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 trigger_historical = True
             except Exception as e:
                 logger.error(f"Initial sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
@@ -766,7 +780,7 @@ async def run_initial_sync(connection_id: str) -> None:
             conn_id_for_assets = conn.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, date_from, date_to)
+                harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, conn, date_from, date_to)
                 conn.initial_sync_completed = True
                 conn.last_synced_at = datetime.utcnow()
                 db.add(conn)
@@ -782,6 +796,8 @@ async def run_initial_sync(connection_id: str) -> None:
                     data={"platform": conn.platform, "connection_id": str(conn.id)},
                 ))
                 await db.commit()
+                for aid, oid in new_assets:
+                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 trigger_historical = True
                 logger.info(f"DV360 initial sync completed: {sync_result}")
             except Exception as e:
@@ -902,7 +918,7 @@ async def run_historical_sync(connection_id: str) -> None:
             conn_id_for_assets = connection.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
+                harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.historical_sync_completed = True
                 db.add(connection)
                 job.status = "COMPLETED"
@@ -910,6 +926,8 @@ async def run_historical_sync(connection_id: str) -> None:
                 job.records_processed = harmonized
                 db.add(job)
                 await db.commit()
+                for aid, oid in new_assets:
+                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
             except Exception as e:
                 logger.error(f"Historical sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
                 await db.rollback()
@@ -973,7 +991,7 @@ async def run_historical_sync(connection_id: str) -> None:
             conn_id_for_assets = conn.id if dv360_asset_queue else None
 
             try:
-                harmonized = await _harmonize_with_deadlock_retry(harmonizer, db, conn, dv360_info["date_from"], dv360_info["date_to"])
+                harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, conn, dv360_info["date_from"], dv360_info["date_to"])
                 conn.historical_sync_completed = True
                 db.add(conn)
                 sj.status = "COMPLETED"
@@ -981,6 +999,8 @@ async def run_historical_sync(connection_id: str) -> None:
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
+                for aid, oid in new_assets:
+                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
             except Exception as e:
                 logger.error(f"DV360 historical sync harmonization failed: {type(e).__name__}: {e}")
                 import traceback
