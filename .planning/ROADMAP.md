@@ -24,7 +24,7 @@
 - [x] **Phase 7: Score Trend, Performer Highlights + Performance Tab** — Score trend chart live; top/bottom badges visible; performance tab redesigned (completed 2026-03-30)
 - [x] **Phase 8: Score-to-ROAS Correlation** — Scatter chart with quadrant framing live in dashboard (completed 2026-03-31)
 - [x] **Phase 9: AI Metadata Auto-Fill** — Per-field auto-fill toggle on metadata config page; Gemini 2.5 Flash vision + Whisper inference fires on sync; inference status badge in asset detail dialog (completed 2026-04-15)
-- [ ] **Phase 10: In-App Notifications** — Bell icon + unread badge; toasts for high-priority events; 30-second polling
+- [x] **Phase 10: In-App Notifications** — Bell icon + unread badge; MatMenu list; 30s polling; MatSnackBar toasts for SYNC_FAILED + TOKEN_EXPIRED (completed 2026-04-15)
 
 ## Phase Details
 
@@ -109,7 +109,10 @@ Plans:
   3. Clicking the bell icon opens a notification list (via `MatMenu`); the user can mark individual notifications or all notifications as read
   4. The frontend polls `GET /notifications/unread` every 30 seconds — no SSE or WebSocket connections are opened
   5. When the user is active in the app and a high-priority event occurs (sync failed, token expired), a `MatSnackBar` toast appears without requiring the user to open the notification inbox
-**Plans**: TBD
+**Plans:** 2/2 plans complete
+Plans:
+- [x] 10-01-PLAN.md — Backend: create_org_notification() helper + emission wired into scheduler.py + scoring_job.py for 4 event types + notifications table migration
+- [x] 10-02 (implemented) — Backend: GET /notifications + unread-count + mark-read endpoints; Frontend: bell icon + badge + MatMenu list + 30s polling + MatSnackBar toasts
 **UI hint**: yes
 
 ## Progress
@@ -125,4 +128,4 @@ Plans:
 | 7. Score Trend, Performer Highlights + Performance Tab | v1.1 | 3/3 | Complete   | 2026-03-30 |
 | 8. Score-to-ROAS Correlation | v1.1 | 2/2 | Complete   | 2026-03-31 |
 | 9. AI Metadata Auto-Fill | v1.1 | 3/3 | Complete | 2026-04-15 |
-| 10. In-App Notifications | v1.1 | 0/? | Not started | - |
+| 10. In-App Notifications | v1.1 | 2/2 | Complete | 2026-04-15 |

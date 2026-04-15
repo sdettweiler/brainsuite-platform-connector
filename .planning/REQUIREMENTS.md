@@ -52,11 +52,11 @@
 
 ### In-App Notifications
 
-- [ ] **NOTIF-01**: `notifications` table with `(id, org_id, type, payload JSONB, read, created_at)` — indexed for efficient polling queries
-- [ ] **NOTIF-02**: Notifications created for: sync complete, sync failed, scoring batch complete, platform token expired
-- [ ] **NOTIF-03**: Frontend polls `GET /notifications/unread` every 30 seconds — no SSE or WebSockets for v1.1
-- [ ] **NOTIF-04**: Bell icon with unread badge in app header; clicking opens notification list via `MatMenu`; individual and bulk mark-as-read supported
-- [ ] **NOTIF-05**: Toast (`MatSnackBar`) shown for high-priority events (sync failed, token expired) when user is active in the app
+- [x] **NOTIF-01**: `notifications` table with `(id, user_id, type, title, message, data JSONB, is_read, created_at)` — indexes on `(user_id, is_read)` and `(user_id, created_at)` added via migration r9s0t1u2v3w4
+- [x] **NOTIF-02**: Notifications created for: sync complete, sync failed, scoring batch complete, platform token expired — wired in scheduler.py + scoring_job.py via create_org_notification() fan-out helper
+- [x] **NOTIF-03**: Frontend polls `GET /users/notifications/unread-count` every 30 seconds and fetches full list on count change — no SSE or WebSockets
+- [x] **NOTIF-04**: Bell icon with unread badge (capped at "9+") in app header; clicking opens MatMenu notification list; individual (`POST /users/notifications/{id}/read`) and bulk (`POST /users/notifications/read-all`) mark-as-read supported
+- [x] **NOTIF-05**: MatSnackBar toast shown for SYNC_FAILED and TOKEN_EXPIRED events when user is active; "Fix Now" action navigates to platform settings for token expiry
 
 ## Future Requirements (v1.2+)
 
@@ -104,11 +104,11 @@ Which phases cover which requirements. Filled by roadmapper.
 | AI-04 | Phase 9 | Complete |
 | AI-05 | Phase 9 | Complete |
 | AI-06 | Phase 9 | Complete |
-| NOTIF-01 | Phase 10 | Not started |
-| NOTIF-02 | Phase 10 | Not started |
-| NOTIF-03 | Phase 10 | Not started |
-| NOTIF-04 | Phase 10 | Not started |
-| NOTIF-05 | Phase 10 | Not started |
+| NOTIF-01 | Phase 10 | Complete |
+| NOTIF-02 | Phase 10 | Complete |
+| NOTIF-03 | Phase 10 | Complete |
+| NOTIF-04 | Phase 10 | Complete |
+| NOTIF-05 | Phase 10 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 26 total
