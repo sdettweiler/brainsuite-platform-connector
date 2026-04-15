@@ -39,12 +39,12 @@
 
 ### AI Metadata Auto-Fill
 
-- [ ] **AI-01**: `ai_metadata_suggestions` table with `ai_inference_status` state machine (`PENDING | COMPLETE | FAILED`) — one row per asset; never writes to live metadata columns directly
-- [ ] **AI-02**: `POST /assets/{id}/ai-suggest` triggers async Claude vision analysis and (if audio present) Whisper transcription; returns 202; client polls GET endpoint for status
-- [ ] **AI-03**: Inference covers: Voice Over (yes/no), Voice Over Language, Language/Market, Asset Name — auto-applied when high confidence; Brand Names and Asset Stage — surfaced as suggestions requiring user review; Project Name — left empty (not inferable from creative content)
-- [ ] **AI-04**: Asset detail dialog includes an "Auto-fill" button; clicking it triggers inference and shows pre-populated metadata fields with per-field confidence indicators; user explicitly confirms before any field is saved
-- [ ] **AI-05**: Images fetched server-side and passed to Claude as base64 (MinIO presigned URLs not reachable by Claude API); images downsampled to 1568px max if over 4 MB before encoding
-- [ ] **AI-06**: `ai_inference_status` guard prevents re-triggering inference on already-processed assets (prevents cost blowout)
+- [x] **AI-01**: `ai_inference_tracking` table with `ai_inference_status` state machine (`PENDING | COMPLETE | FAILED`) — one row per asset; pipeline-integrated direct-write model (D-04 in 09-CONTEXT.md superseded suggestions-table design)
+- [x] **AI-02**: Auto-fill triggers fire-and-forget via `asyncio.create_task` after each sync commit (scheduler/harmonizer path); Gemini 2.5 Flash Vision + Whisper inference
+- [x] **AI-03**: Inference covers 7 auto_fill_type values: language, brand_names (vision), vo_transcript, vo_language (Whisper), campaign_name, ad_name (sync data), fixed_value
+- [x] **AI-04**: Per-field auto-fill toggle + type selector on metadata config page; inference status badge in asset detail dialog; D-04 superseded dialog-button design — auto-fill is pipeline-integrated
+- [x] **AI-05**: Images fetched server-side from MinIO, passed to Gemini as base64; downsampled to 1568px max if over 4 MB before encoding
+- [x] **AI-06**: `ai_inference_status` COMPLETE guard prevents re-triggering; FAILED resets to PENDING on next sync for automatic retry
 
 ### Performance Tab Redesign
 
@@ -98,12 +98,12 @@ Which phases cover which requirements. Filled by roadmapper.
 | UI-01 | Phase 7 | Not started |
 | CORR-01 | Phase 8 | Not started |
 | CORR-02 | Phase 8 | Not started |
-| AI-01 | Phase 9 | Not started |
-| AI-02 | Phase 9 | Not started |
-| AI-03 | Phase 9 | Not started |
-| AI-04 | Phase 9 | Not started |
-| AI-05 | Phase 9 | Not started |
-| AI-06 | Phase 9 | Not started |
+| AI-01 | Phase 9 | Complete |
+| AI-02 | Phase 9 | Complete |
+| AI-03 | Phase 9 | Complete |
+| AI-04 | Phase 9 | Complete |
+| AI-05 | Phase 9 | Complete |
+| AI-06 | Phase 9 | Complete |
 | NOTIF-01 | Phase 10 | Not started |
 | NOTIF-02 | Phase 10 | Not started |
 | NOTIF-03 | Phase 10 | Not started |

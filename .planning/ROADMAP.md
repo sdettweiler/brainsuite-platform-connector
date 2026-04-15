@@ -23,7 +23,7 @@
 - [x] **Phase 6: Historical Backfill + Score History Schema** — All pre-v1.1 assets scored; append-only history table seeded (completed 2026-03-30)
 - [x] **Phase 7: Score Trend, Performer Highlights + Performance Tab** — Score trend chart live; top/bottom badges visible; performance tab redesigned (completed 2026-03-30)
 - [x] **Phase 8: Score-to-ROAS Correlation** — Scatter chart with quadrant framing live in dashboard (completed 2026-03-31)
-- [ ] **Phase 9: AI Metadata Auto-Fill** — Auto-fill button triggers Claude inference with confidence indicators and user confirmation
+- [x] **Phase 9: AI Metadata Auto-Fill** — Per-field auto-fill toggle on metadata config page; Gemini 2.5 Flash vision + Whisper inference fires on sync; inference status badge in asset detail dialog (completed 2026-04-15)
 - [ ] **Phase 10: In-App Notifications** — Bell icon + unread badge; toasts for high-priority events; 30-second polling
 
 ## Phase Details
@@ -89,16 +89,14 @@ Plans:
 **UI hint**: yes
 
 ### Phase 9: AI Metadata Auto-Fill
-**Goal**: Users can trigger AI-powered inference on any creative to get pre-filled metadata fields with confidence indicators, review the suggestions, and confirm before anything is saved
+**Goal**: Per-field auto-fill configuration on the metadata config page; Gemini 2.5 Flash Vision + Whisper inference fires pipeline-integrated on every new asset sync; inference status badge visible in asset detail dialog
 **Depends on**: Phase 5 (MinIO asset fetch pattern confirmed; image scoring shows the server-side asset access model)
 **Requirements**: AI-01, AI-02, AI-03, AI-04, AI-05, AI-06
-**Success Criteria** (what must be TRUE):
-  1. Clicking "Auto-fill" on the asset detail dialog triggers async Claude vision analysis (and Whisper transcription if audio is present); the UI shows a loading state and polls for completion — no fields are written yet
-  2. When inference completes, the metadata form is pre-populated with AI suggestions; per-field confidence indicators are visible; fields flagged as requiring review (Brand Names, Asset Stage) are visually distinguished from auto-apply fields
-  3. No metadata is saved to the live asset record until the user explicitly confirms; Project Name is always left blank (not inferred)
-  4. Clicking "Auto-fill" on an asset that has already been analyzed does not trigger a new inference run — the `ai_inference_status` guard prevents re-triggering
-  5. Images over 4 MB are downsampled server-side to 1568px on the long edge before being encoded as base64 and passed to Claude — the Claude API never receives a presigned MinIO URL
-**Plans**: TBD
+**Plans:** 3/3 plans complete
+Plans:
+- [x] 09-01-PLAN.md — AIInferenceTracking model + ai_autofill.py service (Gemini Vision + Whisper) + Alembic migration + 24 tests
+- [x] 09-02-PLAN.md — Frontend: auto-fill toggle on metadata config page + inference badge in asset detail dialog
+- [x] 09-03-PLAN.md — Sync pipeline wiring: fire-and-forget via scheduler/harmonizer + scoring reset on metadata edit + ai_inference_status in API
 **UI hint**: yes
 
 ### Phase 10: In-App Notifications
@@ -126,5 +124,5 @@ Plans:
 | 6. Historical Backfill + Score History Schema | v1.1 | 1/1 | Complete   | 2026-03-30 |
 | 7. Score Trend, Performer Highlights + Performance Tab | v1.1 | 3/3 | Complete   | 2026-03-30 |
 | 8. Score-to-ROAS Correlation | v1.1 | 2/2 | Complete   | 2026-03-31 |
-| 9. AI Metadata Auto-Fill | v1.1 | 0/? | Not started | - |
+| 9. AI Metadata Auto-Fill | v1.1 | 3/3 | Complete | 2026-04-15 |
 | 10. In-App Notifications | v1.1 | 0/? | Not started | - |
