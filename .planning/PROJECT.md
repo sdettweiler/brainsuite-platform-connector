@@ -8,9 +8,21 @@ A production-ready multi-tenant SaaS platform that connects Meta, TikTok, Google
 
 A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
 
+## Current Milestone: v1.2 BrainSuite Configuration
+
+**Goal:** Give each organization full control of their BrainSuite integration through the UI — credentials, app names, and API field mappings — with live validation and graceful handling of config changes on already-scored assets.
+
+**Target features:**
+- Per-org BrainSuite credentials (Client ID + Secret) stored in DB, managed via Settings page
+- Per-org app name config for video and static scoring endpoints (dynamically inserted into API URL)
+- Dynamic API field mapping per app type (video + static): mandatory fields always present + custom fields mapped to available metadata fields
+- Scoring pipeline reads per-org config; missing config → assets stay UNSCORED + admin warning alert
+- Test connection button — live BrainSuite API test request with inline success/failure feedback
+- Re-score prompt — if config changes after assets are already scored, prompt: keep old scores or re-score all under new config
+
 ## Current State
 
-**Version:** v1.1 (shipped 2026-04-15)
+**Version:** v1.2 (in progress — started 2026-04-15)
 
 **Stack:** Angular 17 + FastAPI + PostgreSQL + Redis + MinIO — fully containerized via Docker Compose
 **Deployment:** Any cloud host or local dev via `docker-compose up`
@@ -64,7 +76,7 @@ A user can connect all their ad accounts, see every creative's performance metri
 
 ### Active
 
-*(v1.2 requirements — to be defined via /gsd-new-milestone)*
+*(v1.2 requirements — defined below in REQUIREMENTS.md)*
 
 ### Out of Scope
 
@@ -122,4 +134,4 @@ A user can connect all their ad accounts, see every creative's performance metri
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-15 after v1.1 milestone*
+*Last updated: 2026-04-15 — v1.2 milestone started*
