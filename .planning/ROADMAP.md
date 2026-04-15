@@ -4,6 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 1–4 (shipped 2026-03-25) — [archive](milestones/v1.0-ROADMAP.md)
 - ✅ **v1.1 Insights + Intelligence** — Phases 5–10 (shipped 2026-04-15) — [archive](milestones/v1.1-ROADMAP.md)
+- 🔄 **v1.2 BrainSuite Configuration** — Phases 11–13 (in progress — started 2026-04-15)
 
 ## Phases
 
@@ -29,6 +30,52 @@
 
 </details>
 
+### v1.2 BrainSuite Configuration (Phases 11–13)
+
+- [ ] **Phase 11: Per-Org Config Schema + Pipeline Wiring** — DB tables, metadata seed, pipeline reads from DB
+- [ ] **Phase 12: Credentials + App Name Settings UI** — Settings section, Test Connection, re-score prompt
+- [ ] **Phase 13: Field Mapping Editor + Mandatory Field Enforcement** — mapping UI, custom fields, mandatory logic, pipeline guards
+
+## Phase Details
+
+### Phase 11: Per-Org Config Schema + Pipeline Wiring
+**Goal**: The database can store per-org BrainSuite configuration and the scoring pipeline reads from it instead of global env vars
+**Depends on**: Phase 10 (v1.1 complete)
+**Requirements**: FMAP-08, PIPE-01
+**Success Criteria** (what must be TRUE):
+  1. `org_brainsuite_config` table exists with columns for client_id, client_secret (encrypted), video_app_name, static_app_name, org_id FK
+  2. `org_brainsuite_field_mappings` table exists with columns for org_id, app_type, api_field_name, metadata_field_id, is_mandatory, is_custom
+  3. `brainsuite_brand_values` (TEXT) and `brainsuite_brand_values_language` (SELECT) metadata fields are seeded for all existing orgs via Alembic migration and injected during new-org provisioning
+  4. Scoring pipeline (`brainsuite_score.py`, `brainsuite_static_score.py`) loads client credentials and app names from the org's DB row, not from `.env`
+  5. Pipeline falls through gracefully (no exception, asset stays UNSCORED) when an org has no config row yet
+**Plans**: TBD
+
+### Phase 12: Credentials + App Name Settings UI
+**Goal**: Org admins can configure and validate their BrainSuite credentials and app names through the Settings page
+**Depends on**: Phase 11
+**Requirements**: BSCFG-01, BSCFG-02, BSCFG-03, BSCFG-04, VSAF-01, VSAF-02
+**Success Criteria** (what must be TRUE):
+  1. Settings page contains a dedicated "BrainSuite Configuration" section (BSCFG-04) with fields for Client ID, Client Secret, Video App Name, and Static App Name
+  2. Admin can save credentials and app names; values persist to DB and are loaded on next page visit
+  3. "Test Connection" button fires a live BrainSuite authentication request and displays inline success or failure feedback without leaving the page
+  4. When saving changes to an org that already has scored assets, a confirmation dialog appears offering "Keep existing scores" or "Re-score all assets under new config"
+  5. Client Secret field is masked (password input) and the stored value is never returned in plain text to the frontend
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 13: Field Mapping Editor + Mandatory Field Enforcement
+**Goal**: Org admins can configure exactly which metadata fields map to each BrainSuite API field, mark fields mandatory, and assets with missing mandatory data are blocked from scoring with an actionable admin warning
+**Depends on**: Phase 12
+**Requirements**: FMAP-01, FMAP-02, FMAP-03, FMAP-04, FMAP-05, FMAP-06, FMAP-07, PIPE-02, PIPE-03
+**Success Criteria** (what must be TRUE):
+  1. Admin can view all 12 standard video API fields and all 8 standard static API fields, each showing its currently mapped metadata field (or "unmapped")
+  2. Admin can change the metadata field mapped to any standard field and save; admin can add a named custom API field for video or static and map it to any org metadata field; admin can remove a custom field mapping
+  3. Admin can toggle the mandatory flag on any field (standard or custom); mandatory fields are visually distinguished in the mapping editor
+  4. When the scoring pipeline encounters an asset where a mandatory field has no mapped metadata field or the asset has no value for that field, the asset is skipped (stays UNSCORED) and a notification is created listing the missing field(s)
+  5. Org admin sees a persistent warning banner or alert in the Settings page when their BrainSuite config is incomplete (missing credentials, app name, or any mandatory field with no metadata mapping)
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -43,3 +90,6 @@
 | 8. Score-to-ROAS Correlation | v1.1 | 2/2 | Complete | 2026-03-31 |
 | 9. AI Metadata Auto-Fill | v1.1 | 3/3 | Complete | 2026-04-15 |
 | 10. In-App Notifications | v1.1 | 2/2 | Complete | 2026-04-15 |
+| 11. Per-Org Config Schema + Pipeline Wiring | v1.2 | 0/0 | Not started | - |
+| 12. Credentials + App Name Settings UI | v1.2 | 0/0 | Not started | - |
+| 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 0/0 | Not started | - |

@@ -59,33 +59,31 @@
 
 ## Traceability
 
-*(Populated by roadmapper — roadmap not yet created)*
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BSCFG-01 | TBD | Pending |
-| BSCFG-02 | TBD | Pending |
-| BSCFG-03 | TBD | Pending |
-| BSCFG-04 | TBD | Pending |
-| FMAP-01 | TBD | Pending |
-| FMAP-02 | TBD | Pending |
-| FMAP-03 | TBD | Pending |
-| FMAP-04 | TBD | Pending |
-| FMAP-05 | TBD | Pending |
-| FMAP-06 | TBD | Pending |
-| FMAP-07 | TBD | Pending |
-| FMAP-08 | TBD | Pending |
-| PIPE-01 | TBD | Pending |
-| PIPE-02 | TBD | Pending |
-| PIPE-03 | TBD | Pending |
-| VSAF-01 | TBD | Pending |
-| VSAF-02 | TBD | Pending |
+| FMAP-08 | Phase 11 | Pending |
+| PIPE-01 | Phase 11 | Pending |
+| BSCFG-01 | Phase 12 | Pending |
+| BSCFG-02 | Phase 12 | Pending |
+| BSCFG-03 | Phase 12 | Pending |
+| BSCFG-04 | Phase 12 | Pending |
+| VSAF-01 | Phase 12 | Pending |
+| VSAF-02 | Phase 12 | Pending |
+| FMAP-01 | Phase 13 | Pending |
+| FMAP-02 | Phase 13 | Pending |
+| FMAP-03 | Phase 13 | Pending |
+| FMAP-04 | Phase 13 | Pending |
+| FMAP-05 | Phase 13 | Pending |
+| FMAP-06 | Phase 13 | Pending |
+| FMAP-07 | Phase 13 | Pending |
+| PIPE-02 | Phase 13 | Pending |
+| PIPE-03 | Phase 13 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️ (roadmap not yet created)
+- Mapped to phases: 17
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-15*
-*Last updated: 2026-04-15 after initial definition*
+*Last updated: 2026-04-15 — traceability populated after roadmap creation*

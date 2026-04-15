@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: BrainSuite Configuration
-status: Defining requirements
+status: Roadmap ready
 stopped_at: null
 last_updated: "2026-04-15T12:00:00.000Z"
-last_activity: "2026-04-15 - Milestone v1.2 started"
+last_activity: "2026-04-15 - Roadmap created for v1.2 (Phases 11–13)"
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,13 +24,45 @@ See: .planning/PROJECT.md (updated 2026-04-15 — v1.2 milestone started)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 11 (not started — roadmap ready)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-15 — Milestone v1.2 started
+Status: Roadmap ready — awaiting `/gsd-plan-phase 11`
+Last activity: 2026-04-15 — v1.2 roadmap created (3 phases, 17 requirements mapped)
+
+## Progress
+
+```
+v1.2 Progress: [░░░░░░░░░░░░░░░░░░░░] 0/3 phases complete
+```
+
+| Phase | Name | Requirements | Status |
+|-------|------|--------------|--------|
+| 11 | Per-Org Config Schema + Pipeline Wiring | FMAP-08, PIPE-01 | Not started |
+| 12 | Credentials + App Name Settings UI | BSCFG-01–04, VSAF-01, VSAF-02 | Not started |
+| 13 | Field Mapping Editor + Mandatory Field Enforcement | FMAP-01–07, PIPE-02, PIPE-03 | Not started |
+
+## Accumulated Context
+
+### Key Decisions
+
+- Phases numbered 11–13 continuing from v1.1's Phase 10
+- Phase 11 delivers DB schema + pipeline re-wiring before any UI work begins (unblocks both Phase 12 and Phase 13)
+- Phase 12 scoped to credentials + app names (coarse-grained config) + validation UX (Test Connection, re-score prompt)
+- Phase 13 scoped to fine-grained field mapping editor + mandatory field enforcement throughout the pipeline
+- `org_brainsuite_config` and `org_brainsuite_field_mappings` are the two new tables — follow existing `metadata_fields` Alembic migration pattern
+- Client Secret must be stored encrypted; never returned in plain text to frontend
+- PIPE-02 and PIPE-03 placed in Phase 13 (not Phase 11) because they depend on mandatory field logic defined in FMAP-07
+
+### Todos
+
+- None yet
+
+### Blockers
+
+- None
 
 ## Session Continuity
 
-Last activity: 2026-04-15 — v1.2 milestone initialized
-Stopped at: Requirements definition
-Resume: /gsd-plan-phase [N] once roadmap is created
+Last activity: 2026-04-15 — v1.2 roadmap created
+Stopped at: Phase 11 not yet planned
+Resume: `/gsd-plan-phase 11`
