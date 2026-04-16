@@ -35,29 +35,31 @@ logger = logging.getLogger(__name__)
 
 
 class BrainSuiteScoreService:
-    """Async client for the BrainSuite ACE_VIDEO_SMV_API scoring pipeline."""
+    """Async client for the BrainSuite ACE_VIDEO scoring pipeline (per-org credentials)."""
 
     def __init__(self) -> None:
-        self._token: Optional[str] = None
-        self._token_expires_at: Optional[datetime] = None
+        self._tokens: dict[str, str] = {}           # org_id -> token
+        self._token_expires: dict[str, datetime] = {}  # org_id -> expiry
 
     # ------------------------------------------------------------------
     # Auth
     # ------------------------------------------------------------------
 
-    async def _get_token(self) -> str:
-        """Return a valid Bearer token, fetching a new one if necessary.
+    async def _get_token(self, org_id: str, client_id: str, client_secret: str) -> str:
+        """Return a valid Bearer token for the given org, fetching a new one if necessary.
 
-        Caches the token for 50 minutes to avoid unnecessary round-trips.
-        On a 401 from any API call the caller should set _token = None and
-        call this method again to force a refresh.
+        Caches the token for 50 minutes per org to avoid unnecessary round-trips.
+        On a 401 from any API call the caller should call _invalidate_token(org_id)
+        and then call this method again to force a refresh.
         """
         now = datetime.now(timezone.utc)
-        if self._token and self._token_expires_at and now < self._token_expires_at:
-            return self._token
+        if (
+            org_id in self._tokens
+            and org_id in self._token_expires
+            and now < self._token_expires[org_id]
+        ):
+            return self._tokens[org_id]
 
-        client_id = settings.BRAINSUITE_CLIENT_ID or ""
-        client_secret = settings.BRAINSUITE_CLIENT_SECRET or ""
         credentials = f"{client_id}:{client_secret}"
         encoded = base64.b64encode(credentials.encode()).decode()
 
@@ -76,22 +78,28 @@ class BrainSuiteScoreService:
         resp.raise_for_status()
         data = resp.json()
 
-        self._token = data["access_token"]
-        self._token_expires_at = now + timedelta(minutes=50)
-        logger.info("BrainSuite token refreshed, expires at %s", self._token_expires_at.isoformat())
-        return self._token
+        self._tokens[org_id] = data["access_token"]
+        self._token_expires[org_id] = now + timedelta(minutes=50)
+        logger.info("BrainSuite token refreshed for org=%s, expires at %s", org_id, self._token_expires[org_id].isoformat())
+        return self._tokens[org_id]
 
-    def _invalidate_token(self) -> None:
-        """Invalidate the cached token so the next call fetches a new one."""
-        self._token = None
-        self._token_expires_at = None
+    def _invalidate_token(self, org_id: str) -> None:
+        """Invalidate the cached token for the given org."""
+        self._tokens.pop(org_id, None)
+        self._token_expires.pop(org_id, None)
 
     # ------------------------------------------------------------------
     # Low-level API helper with retry
     # ------------------------------------------------------------------
 
     async def _api_post_with_retry(
-        self, url: str, json_body: Optional[dict] = None, log_name: str = ""
+        self,
+        url: str,
+        json_body: Optional[dict] = None,
+        log_name: str = "",
+        org_id: str = "",
+        client_id: str = "",
+        client_secret: str = "",
     ) -> dict:
         """POST to a BrainSuite API endpoint with 429/5xx retry and 401 token refresh.
 
@@ -104,7 +112,7 @@ class BrainSuiteScoreService:
         max_attempts = 5
         for attempt in range(max_attempts):
             try:
-                token = await self._get_token()
+                token = await self._get_token(org_id, client_id, client_secret)
                 logger.info("BrainSuite %s: POST %s", log_name, url)
                 async with httpx.AsyncClient(timeout=60) as client:
                     resp = await client.post(
@@ -147,7 +155,7 @@ class BrainSuiteScoreService:
                         attempt + 1,
                         max_attempts,
                     )
-                    self._invalidate_token()
+                    self._invalidate_token(org_id)
                     continue
 
                 if resp.status_code >= 400:
@@ -184,22 +192,38 @@ class BrainSuiteScoreService:
     # Announce → Upload → Start flow
     # ------------------------------------------------------------------
 
-    async def _announce_job(self) -> str:
+    async def _announce_job(
+        self, app_name: str, org_id: str = "", client_id: str = "", client_secret: str = ""
+    ) -> str:
         """POST /announce — creates a new job in Announced state, returns job_id."""
-        url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/ACE_VIDEO_SMV_API/announce"
-        resp = await self._api_post_with_retry(url, log_name="announce")
+        url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/{app_name}/announce"
+        resp = await self._api_post_with_retry(
+            url, log_name="announce", org_id=org_id, client_id=client_id, client_secret=client_secret
+        )
         job_id = resp.get("id")
         if not job_id:
             raise ValueError(f"BrainSuite announce response missing id: {resp}")
         return str(job_id)
 
-    async def _announce_asset(self, job_id: str, asset_id: str, filename: str) -> dict:
+    async def _announce_asset(
+        self,
+        job_id: str,
+        asset_id: str,
+        filename: str,
+        app_name: str,
+        org_id: str = "",
+        client_id: str = "",
+        client_secret: str = "",
+    ) -> dict:
         """POST /{jobId}/assets — announces a single asset and returns uploadUrl + fields."""
-        url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/ACE_VIDEO_SMV_API/{job_id}/assets"
+        url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/{app_name}/{job_id}/assets"
         resp = await self._api_post_with_retry(
             url,
             json_body={"assetId": asset_id, "name": filename},
             log_name="announce_asset",
+            org_id=org_id,
+            client_id=client_id,
+            client_secret=client_secret,
         )
         if "uploadUrl" not in resp:
             raise ValueError(f"BrainSuite announce_asset response missing uploadUrl: {resp}")
@@ -235,13 +259,35 @@ class BrainSuiteScoreService:
             )
         logger.info("BrainSuite S3 upload complete (status=%s)", resp.status_code)
 
-    async def _start_job(self, job_id: str, briefing_data: dict) -> None:
+    async def _start_job(
+        self,
+        job_id: str,
+        briefing_data: dict,
+        app_name: str,
+        org_id: str = "",
+        client_id: str = "",
+        client_secret: str = "",
+    ) -> None:
         """POST /{jobId}/start — transitions job from Announced to Scheduled/Created."""
-        url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/ACE_VIDEO_SMV_API/{job_id}/start"
-        await self._api_post_with_retry(url, json_body=briefing_data, log_name="start")
+        url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/{app_name}/{job_id}/start"
+        await self._api_post_with_retry(
+            url,
+            json_body=briefing_data,
+            log_name="start",
+            org_id=org_id,
+            client_id=client_id,
+            client_secret=client_secret,
+        )
 
     async def submit_job_with_upload(
-        self, file_bytes: bytes, filename: str, briefing_data: dict
+        self,
+        file_bytes: bytes,
+        filename: str,
+        briefing_data: dict,
+        org_id: str = "",
+        client_id: str = "",
+        client_secret: str = "",
+        app_name: str = "",
     ) -> str:
         """Run the full announce→upload→start flow and return the job_id.
 
@@ -254,21 +300,25 @@ class BrainSuiteScoreService:
             briefing_data: BriefingData payload (channel, language, etc.) — same
                            shape as the old /create payload but assets use
                            {assetId, name} without a url field.
+            org_id:     Organization UUID string — used for per-org token caching.
+            client_id:  BrainSuite client ID for this org.
+            client_secret: Decrypted BrainSuite client secret for this org.
+            app_name:   BrainSuite app name for this org (video endpoint).
 
         Returns:
             job_id string to pass to poll_job_status().
         """
-        job_id = await self._announce_job()
+        job_id = await self._announce_job(app_name, org_id=org_id, client_id=client_id, client_secret=client_secret)
         logger.info("BrainSuite job announced: job_id=%s", job_id)
 
         asset_id = "video"
-        upload_info = await self._announce_asset(job_id, asset_id, filename)
+        upload_info = await self._announce_asset(job_id, asset_id, filename, app_name, org_id=org_id, client_id=client_id, client_secret=client_secret)
         upload_url = upload_info["uploadUrl"]
         s3_fields = upload_info.get("fields", {})
 
         await self._upload_to_brainsuite_s3(upload_url, s3_fields, file_bytes, filename)
 
-        await self._start_job(job_id, briefing_data)
+        await self._start_job(job_id, briefing_data, app_name, org_id=org_id, client_id=client_id, client_secret=client_secret)
         logger.info("BrainSuite job started: job_id=%s channel=%s", job_id, briefing_data.get("input", {}).get("channel"))
 
         return job_id
@@ -282,6 +332,10 @@ class BrainSuiteScoreService:
         job_id: str,
         max_polls: int = 60,
         poll_interval: int = 30,
+        org_id: str = "",
+        client_id: str = "",
+        client_secret: str = "",
+        app_name: str = "",
     ) -> dict:
         """Poll the BrainSuite job status endpoint until a terminal status.
 
@@ -292,11 +346,11 @@ class BrainSuiteScoreService:
         Raises:
             BrainSuiteJobError: if job fails, goes stale, or max_polls is exhausted.
         """
-        url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/ACE_VIDEO_SMV_API/{job_id}"
+        url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/{app_name}/{job_id}"
         in_progress = {"Announced", "Scheduled", "Created", "Started"}
 
         for poll_num in range(max_polls):
-            token = await self._get_token()
+            token = await self._get_token(org_id, client_id, client_secret)
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     url,
@@ -304,7 +358,7 @@ class BrainSuiteScoreService:
                 )
 
             if resp.status_code == 401:
-                self._invalidate_token()
+                self._invalidate_token(org_id)
                 continue
 
             resp.raise_for_status()
