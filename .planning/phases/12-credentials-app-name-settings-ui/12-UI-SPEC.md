@@ -46,7 +46,7 @@ Declared values (must be multiples of 4):
 | sm | 8px | Button gap, inline icon margin, form-field row gap |
 | md | 16px | Default form-row gap, padding horizontal (compact cells) |
 | lg | 24px | Section header padding (`padding: 20px 24px`), section-body padding |
-| xl | 28px | Page container padding (`padding: 28px`) |
+| xl | 28px | Page container padding (`padding: 28px`) — inherited exception: matches existing `.page-container` padding; not a new declaration |
 | 2xl | 48px | Empty-state vertical padding |
 | 3xl | 64px | Not used in this phase |
 
@@ -54,9 +54,9 @@ Exceptions:
 - `app-row` padding: `16px 24px` (md + lg) — matches existing app row pattern
 - Section header `h2` bottom margin: `4px` (xs) — matches existing `.section-header h2` pattern
 - `config-section` border-radius: `10px` — existing token, not a multiple of 4; preserve as-is to match surrounding sections
-- Credentials collapsed summary row: `12px 24px` padding — matches `.card-sm` pattern
+- Credentials collapsed summary row: `12px 24px` padding — inherited from `.card-sm` pattern; not a new declaration
 - Accordion expand panel: `16px 24px` padding — matches `app-row` pattern
-- Test Connection status block: `12px 16px` padding inside inline status div
+- Test Connection status block: `12px 16px` padding inside inline status div — inherited from `.card-sm` pattern; not a new declaration
 
 Source: `brainsuite-apps.component.ts` inline styles, `platforms.component.scss`, `styles.scss`
 
@@ -74,7 +74,6 @@ Source: `brainsuite-apps.component.ts` inline styles, `platforms.component.scss`
 Notes:
 - `h2` in `.section-header` uses 16px / 600 — this is the heading for each `config-section` card
 - Body copy within `.section-body` uses 13px / 400 (matches `p { font-size: 13px }` in the existing component)
-- App name in app rows: 15px / 600 — used only for the display name of each app, not new inputs
 - Input labels (`mat-label`): 14px / 400 with accent color when floating (Angular Material handles this via `mdc-floating-label`)
 - `.text-sm` / caption: 12px (e.g., `app-type-badge`, `cell-id`, `app-desc`)
 - No display-level type (24px+) is used in this phase — credentials section stays within card headers
@@ -97,18 +96,18 @@ All values from `.dark-theme` block in `styles.scss` (dark theme is the current 
 
 Accent reserved for:
 1. "Save Credentials" primary button fill (`mat-flat-button`)
-2. "Save" button in accordion app-name panel
+2. "Save App Name" button in accordion app-name panel
 3. Accordion chevron `bi-chevron-down` / `bi-chevron-up` icon color when row is expanded
 4. Focused/active `mat-label` text (floating label, handled by existing global CSS)
 5. Focused input outline border (handled by existing global CSS)
-6. "Edit" button text in collapsed credentials summary row (secondary accent — `color: var(--accent)`)
+6. "Edit credentials" button text in collapsed credentials summary row (secondary accent — `color: var(--accent)`)
 7. "Re-score all assets" button label in MatDialog
 
 Do NOT use accent for:
 - "Keep existing scores" button (use `mat-stroked-button`, no accent fill)
 - "Test Connection" button (use `mat-stroked-button` default, only disabled state when no credentials)
-- "Cancel" button in secret edit mode (use `mat-stroked-button`)
-- "Change" button next to password field (use `mat-stroked-button`, font-size 12px)
+- "Discard changes" button in secret edit mode (use `mat-stroked-button`)
+- "Change secret" button next to password field (use `mat-stroked-button`, font-size 12px)
 - Destructive re-score action — use `--error` for destructive, never accent
 
 Status block colors (inline test-connection result, D-10):
@@ -131,12 +130,12 @@ These are the specific Angular Material + custom components this phase introduce
 
 ### A. Credentials Section Card (new `config-section` above app list)
 
-**Expanded state (default when no saved credentials, or after "Edit" clicked):**
+**Expanded state (default when no saved credentials, or after "Edit credentials" clicked):**
 - `.config-section` wrapper with `.section-header` (h2: "BrainSuite Credentials", p: "Connect your BrainSuite account to enable creative scoring")
 - Two `mat-form-field appearance="outline"` inputs inside `.section-body`:
   - "Client ID" — `type="text"`, full width
-  - "Client Secret" — `type="password"` when in edit mode; read-only with placeholder `●●●●●●●● (saved)` when secret already stored; a "Change" button (`mat-stroked-button`, font-size 12px) sits to the right of the field outside the mat-form-field wrapper
-- "Cancel" button (`mat-stroked-button`) reverts secret field to read-only placeholder without saving
+  - "Client Secret" — `type="password"` when in edit mode; read-only with placeholder `●●●●●●●● (saved)` when secret already stored; a "Change secret" button (`mat-stroked-button`, font-size 12px) sits to the right of the field outside the mat-form-field wrapper
+- "Discard changes" button (`mat-stroked-button`) reverts secret field to read-only placeholder without saving
 - `.form-actions` row (right-aligned, `gap: 12px`): "Save Credentials" (`mat-flat-button`, accent fill) + inline `mat-spinner diameter="16"` when saving
 
 **Test Connection row** (below form actions, same `.section-body`):
@@ -146,13 +145,14 @@ These are the specific Angular Material + custom components this phase introduce
 
 **Collapsed state** (after `hasCredentials && lastTestResult === 'success'`):
 - Replace `.section-body` with a single `.credentials-summary` row: `padding: 12px 24px`, flex, `align-items: center`, `gap: 12px`
-- Content: `bi-check-circle` icon in `--success`, span: "Client ID: {first 8 chars}... — Connection verified", push-right "Edit" button (`mat-stroked-button`, font-size 13px, `color: var(--accent)`)
+- Content: `bi-check-circle` icon in `--success`, span: "Client ID: {first 8 chars}... — Connection verified", push-right "Edit credentials" button (`mat-stroked-button`, font-size 13px, `color: var(--accent)`)
 - Collapse/expand is a local component boolean `isCredentialsSectionCollapsed`; persisted to localStorage key `bs_credentials_section_collapsed`
 
 ### B. App Row Accordion (modification to existing `.app-row`)
 
 Each app row gains a rightmost chevron button:
 - `mat-icon-button`, icon `bi-chevron-down` (collapsed) / `bi-chevron-up` (expanded), `color: var(--text-muted)` collapsed, `color: var(--accent)` expanded
+- `aria-label="Expand app name settings"` when collapsed; `aria-label="Collapse app name settings"` when expanded
 - Clicking sets `expandedAppId = app.id` (or `null` if already expanded — toggles closed)
 - Click-away (document click outside `.app-row` + `.accordion-panel`) sets `expandedAppId = null`
 
@@ -160,7 +160,7 @@ Each app row gains a rightmost chevron button:
 - `.accordion-panel` div: `padding: 16px 24px`, `background: var(--bg-secondary)`, `border-bottom: 1px solid var(--border)`
 - Single `mat-form-field appearance="outline"` labeled "BrainSuite API App Name"
   - Helper text below field (not using `mat-hint` since `mat-mdc-form-field-subscript-wrapper` is globally hidden): a `<p>` at 12px `color: var(--text-muted)` below the field: "e.g. ACE_VIDEO_SMV_API — the app name parameter used in BrainSuite scoring API calls"
-- `.form-actions` right-aligned row: "Save" (`mat-flat-button`, accent fill, `mat-spinner diameter="16"` when saving)
+- `.form-actions` right-aligned row: "Save App Name" (`mat-flat-button`, accent fill, `mat-spinner diameter="16"` when saving)
 
 ### C. Re-score Dialog (MatDialog, inline component)
 
@@ -184,17 +184,17 @@ Each app row gains a rightmost chevron button:
 
 | Interaction | Trigger | Behavior |
 |-------------|---------|----------|
-| Credentials expand | Page load with no saved credentials, OR "Edit" button click | Section body visible, form editable |
+| Credentials expand | Page load with no saved credentials, OR "Edit credentials" button click | Section body visible, form editable |
 | Credentials collapse | Save succeeds AND `lastTestResult === 'success'` | Section body replaced by summary row; state persisted to localStorage |
-| Secret field read-only | `client_secret_encrypted` non-null on GET response | Input renders placeholder `●●●●●●●● (saved)`, readonly; "Change" button visible |
-| Secret edit mode | "Change" button click | Input becomes writable, placeholder cleared, "Cancel" button appears |
-| Secret cancel | "Cancel" button click | Input returns to `●●●●●●●● (saved)` placeholder, readonly; no API call |
+| Secret field read-only | `client_secret_encrypted` non-null on GET response | Input renders placeholder `●●●●●●●● (saved)`, readonly; "Change secret" button visible |
+| Secret edit mode | "Change secret" button click | Input becomes writable, placeholder cleared, "Discard changes" button appears |
+| Secret cancel | "Discard changes" button click | Input returns to `●●●●●●●● (saved)` placeholder, readonly; no API call |
 | Save with empty secret | "Save Credentials" submit when secret field empty or still in read-only state | Send `client_secret: ""` to backend; backend interprets as "keep existing" |
 | Test Connection enable | Backend GET confirms `client_id` non-null AND `client_secret_encrypted` non-null | Button becomes enabled |
 | Test Connection click | Enabled button click | Icon → `mat-spinner`, button disabled; POST to backend; on response: spinner → icon, result block renders below |
 | Test Connection result persist | Until next click | Result block stays visible regardless of any other form interaction |
-| Accordion open | Chevron click | `expandedAppId = app.id`; panel slides open (no animation required — instant toggle); chevron rotates to `bi-chevron-up`, turns accent color |
-| Accordion close on save | Save button click inside panel | PUT request; on success: snackbar + `expandedAppId = null` |
+| Accordion open | Chevron click | `expandedAppId = app.id`; panel slides open (no animation required — instant toggle); chevron rotates to `bi-chevron-up`, turns accent color; `aria-label` updates to "Collapse app name settings" |
+| Accordion close on save | Save App Name button click inside panel | PUT request; on success: snackbar + `expandedAppId = null` |
 | Accordion close on click-away | Click outside `.app-row` + `.accordion-panel` | `expandedAppId = null` |
 | Re-score dialog trigger | PUT credentials or PUT app name response confirms value changed | Open MatDialog ONLY if org has SCORED assets (check via response flag from backend) |
 | Re-score dialog "Keep" | Button click | Close dialog; no further action |
@@ -211,8 +211,8 @@ Each app row gains a rightmost chevron button:
 | Client ID field label | "Client ID" |
 | Client Secret field label | "Client Secret" |
 | Client Secret saved placeholder | "●●●●●●●● (saved)" |
-| "Change" button label | "Change" |
-| "Cancel" (secret edit mode) button | "Cancel" |
+| "Change secret" button label | "Change secret" |
+| "Discard changes" button (secret edit mode) | "Discard changes" |
 | Save credentials button | "Save Credentials" |
 | Credentials saved toast | "Credentials saved" |
 | Test Connection button | "Test Connection" |
@@ -220,10 +220,10 @@ Each app row gains a rightmost chevron button:
 | Test Connection failure (generic) | "Authentication failed: {error message from backend}" |
 | Test Connection failure (network) | "Could not reach BrainSuite — check your network connection" |
 | Collapsed summary | "Client ID: {8-char prefix}... — Connection verified" |
-| Edit button (collapsed state) | "Edit" |
+| Edit button (collapsed state) | "Edit credentials" |
 | Accordion input label | "BrainSuite API App Name" |
 | Accordion input helper | "e.g. ACE_VIDEO_SMV_API — the app name parameter used in BrainSuite scoring API calls" |
-| Accordion save button | "Save" |
+| Accordion save button | "Save App Name" |
 | App name saved toast | "App name saved" |
 | Re-score dialog title | "Configuration changed" |
 | Re-score dialog body | "You've updated BrainSuite credentials or app names. Would you like to re-score all previously scored assets under the new configuration?" |
@@ -251,8 +251,8 @@ Source:
 |-------|-----------|--------|
 | Loading | Initial page load | `mat-spinner diameter="24"` centered in section body |
 | Expanded — no credentials | `!hasCredentials` | Full form, both fields empty, Test Connection disabled |
-| Expanded — credentials exist | `hasCredentials`, user clicked "Edit" | Client ID pre-filled, Client Secret read-only placeholder, Test Connection enabled |
-| Expanded — secret edit mode | User clicked "Change" | Secret field editable; "Cancel" button visible |
+| Expanded — credentials exist | `hasCredentials`, user clicked "Edit credentials" | Client ID pre-filled, Client Secret read-only placeholder, Test Connection enabled |
+| Expanded — secret edit mode | User clicked "Change secret" | Secret field editable; "Discard changes" button visible |
 | Saving | Save button clicked | Button shows spinner, disabled; inputs disabled |
 | Error on save | API 4xx/5xx | `api-note` div below form: `bi-x-circle` icon + error message (13px, `--error` color) |
 | Collapsed | `hasCredentials && lastTestResult === 'success'` | Summary row only |
@@ -271,10 +271,10 @@ Source:
 
 | State | Condition | Visual |
 |-------|-----------|--------|
-| Collapsed | `expandedAppId !== app.id` | No panel, chevron `bi-chevron-down`, muted color |
-| Expanded — no value | `system_app_name` is null | Panel open, input empty, helper text visible |
+| Collapsed | `expandedAppId !== app.id` | No panel, chevron `bi-chevron-down`, muted color, `aria-label="Expand app name settings"` |
+| Expanded — no value | `system_app_name` is null | Panel open, input empty, helper text visible, `aria-label="Collapse app name settings"` |
 | Expanded — has value | `system_app_name` non-null | Panel open, input pre-filled |
-| Saving | Save clicked | Button shows spinner, input disabled |
+| Saving | Save App Name clicked | Button shows spinner, input disabled |
 | Error on save | API error | Small error message (12px, `--error`) below the input, above helper text |
 
 ---
