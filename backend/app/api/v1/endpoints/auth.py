@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import re
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -231,7 +231,7 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
         if not payload.totp_code:
             raise HTTPException(status_code=400, detail="2FA code required")
 
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(timezone.utc)
     db.add(user)
 
     access_token = create_access_token({"sub": str(user.id)})
@@ -241,7 +241,7 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
     rt = RefreshToken(
         user_id=user.id,
         token_hash=token_hash,
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
     db.add(rt)
     await db.commit()
@@ -283,7 +283,6 @@ async def refresh_token(
     stored = result.scalar_one_or_none()
     if not stored:
         raise HTTPException(status_code=401, detail="Refresh token expired or revoked")
-    from datetime import timezone
     now = datetime.now(timezone.utc)
     expires_at = stored.expires_at if stored.expires_at.tzinfo else stored.expires_at.replace(tzinfo=timezone.utc)
     if expires_at < now:
@@ -300,7 +299,7 @@ async def refresh_token(
     new_rt = RefreshToken(
         user_id=stored.user_id,
         token_hash=new_hash,
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
     db.add(new_rt)
     await db.commit()

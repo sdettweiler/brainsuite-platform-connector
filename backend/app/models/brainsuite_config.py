@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import String, ForeignKey, DateTime, UniqueConstraint, Index, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
@@ -28,9 +28,13 @@ class OrgBrainsuiteConfig(Base):
     client_secret_encrypted: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     video_app_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     static_app_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     __table_args__ = (
@@ -59,9 +63,13 @@ class OrgBrainsuiteFieldMapping(Base):
     )
     is_mandatory: Mapped[bool] = mapped_column(Boolean, default=False)
     is_custom: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     __table_args__ = (
