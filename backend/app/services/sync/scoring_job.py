@@ -15,9 +15,11 @@ from datetime import datetime, timezone
 from sqlalchemy import select, and_
 
 from app.db.base import get_session_factory
+from app.models.brainsuite_config import OrgBrainsuiteConfig
 from app.models.creative import CreativeAsset, AssetMetadataValue
 from app.models.scoring import CreativeScoreResult
 from app.models.metadata import MetadataField
+from app.core.security import decrypt_token
 from app.services.brainsuite_score import (
     brainsuite_score_service,
     build_scoring_payload,
@@ -174,6 +176,44 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
         getattr(asset, "asset_format", "?"),
     )
     try:
+        # [Phase 11 / PIPE-01] Load org BrainSuite config — graceful UNSCORED on missing/incomplete (D-02)
+        org_config = None
+        async with get_session_factory()() as db:
+            config_result = await db.execute(
+                select(OrgBrainsuiteConfig).where(
+                    OrgBrainsuiteConfig.organization_id == asset.organization_id
+                )
+            )
+            org_config = config_result.scalar_one_or_none()
+
+        required_app_name = None
+        if org_config:
+            if endpoint_type == "VIDEO":
+                required_app_name = org_config.video_app_name
+            elif endpoint_type == "STATIC_IMAGE":
+                required_app_name = org_config.static_app_name
+
+        if (
+            not org_config
+            or not org_config.client_id
+            or not org_config.client_secret_encrypted
+            or not required_app_name
+        ):
+            missing = "no config row" if not org_config else (
+                "client_id" if not org_config.client_id else
+                "client_secret" if not org_config.client_secret_encrypted else
+                "app_name"
+            )
+            logger.warning(
+                "Scoring skipped for asset %s (org %s): incomplete BrainSuite config (missing %s)",
+                asset_id, asset.organization_id, missing,
+            )
+            await _mark_unscored(score_id, f"No BrainSuite configuration for this organization (missing {missing}).")
+            return
+
+        client_secret = decrypt_token(org_config.client_secret_encrypted)
+        org_id_str = str(asset.organization_id)
+
         asset_url = asset.asset_url
         if not asset_url:
             raise ValueError("No S3 asset URL available")
@@ -233,6 +273,10 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 file_bytes=file_bytes,
                 filename=filename,
                 briefing_data=briefing_data,
+                org_id=org_id_str,
+                client_id=org_config.client_id,
+                client_secret=client_secret,
+                app_name=org_config.video_app_name,
             )
         elif endpoint_type == "STATIC_IMAGE":
             announce_payload = build_static_scoring_payload(
@@ -245,6 +289,10 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 file_bytes=file_bytes,
                 filename=filename,
                 announce_payload=announce_payload,
+                org_id=org_id_str,
+                client_id=org_config.client_id,
+                client_secret=client_secret,
+                app_name=org_config.static_app_name,
             )
         else:
             logger.warning("Unexpected endpoint_type %s for asset %s, skipping", endpoint_type, asset_id)
@@ -261,9 +309,21 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
         logger.info("Scoring job submitted for asset %s, job_id=%s endpoint_type=%s", asset_id, job_id, endpoint_type)
 
         if endpoint_type == "VIDEO":
-            result_data = await brainsuite_score_service.poll_job_status(str(job_id))
+            result_data = await brainsuite_score_service.poll_job_status(
+                str(job_id),
+                org_id=org_id_str,
+                client_id=org_config.client_id,
+                client_secret=client_secret,
+                app_name=org_config.video_app_name,
+            )
         else:
-            result_data = await brainsuite_static_score_service.poll_job_status(str(job_id))
+            result_data = await brainsuite_static_score_service.poll_job_status(
+                str(job_id),
+                org_id=org_id_str,
+                client_id=org_config.client_id,
+                client_secret=client_secret,
+                app_name=org_config.static_app_name,
+            )
 
         raw_output = result_data.get("output", {})
         stored_output = await persist_and_replace_visualizations(raw_output, str(asset_id))
@@ -348,6 +408,25 @@ async def run_backfill_task() -> None:
         failed,
         len(score_ids),
     )
+
+
+async def _mark_unscored(score_id, error_reason: str) -> None:
+    """Mark a CreativeScoreResult as UNSCORED (only from PENDING state).
+
+    Per project rule: never reset PROCESSING assets (they have live BrainSuite job IDs).
+    This helper only transitions rows currently in PENDING status.
+    """
+    logger.info("Marking score_id=%s as UNSCORED: %s", score_id, error_reason[:200])
+    try:
+        async with get_session_factory()() as db:
+            score_row = await db.get(CreativeScoreResult, score_id)
+            if score_row and score_row.scoring_status == "PENDING":
+                score_row.scoring_status = "UNSCORED"
+                score_row.error_reason = error_reason
+                score_row.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+    except Exception as exc:
+        logger.error("Failed to mark score record %s as UNSCORED: %s", score_id, exc)
 
 
 async def _mark_failed(score_id, error_reason: str) -> None:
