@@ -230,6 +230,10 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
     if user.is_two_factor_enabled:
         if not payload.totp_code:
             raise HTTPException(status_code=400, detail="2FA code required")
+        import pyotp
+        totp = pyotp.TOTP(user.two_factor_secret)
+        if not totp.verify(payload.totp_code):
+            raise HTTPException(status_code=401, detail="Invalid 2FA code")
 
     user.last_login = datetime.now(timezone.utc)
     db.add(user)
