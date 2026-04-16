@@ -32,7 +32,7 @@
 
 ### v1.2 BrainSuite Configuration (Phases 11–13)
 
-- [ ] **Phase 11: Per-Org Config Schema + Pipeline Wiring** — DB tables, metadata seed, pipeline reads from DB
+- [x] **Phase 11: Per-Org Config Schema + Pipeline Wiring** — DB tables, metadata seed, pipeline reads from DB (completed 2026-04-16)
 - [ ] **Phase 12: Credentials + App Name Settings UI** — Settings section, Test Connection, re-score prompt
 - [ ] **Phase 13: Field Mapping Editor + Mandatory Field Enforcement** — mapping UI, custom fields, mandatory logic, pipeline guards
 
@@ -48,12 +48,12 @@
   3. `brainsuite_brand_values` (TEXT) and `brainsuite_brand_values_language` (SELECT) metadata fields are seeded for all existing orgs via Alembic migration and injected during new-org provisioning
   4. Scoring pipeline (`brainsuite_score.py`, `brainsuite_static_score.py`) loads client credentials and app names from the org's DB row, not from `.env`
   5. Pipeline falls through gracefully (no exception, asset stays UNSCORED) when an org has no config row yet
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 11-01-PLAN.md — SQLAlchemy models + schema migration for org_brainsuite_config and org_brainsuite_field_mappings
 - [x] 11-02-PLAN.md — Seed brand_values metadata fields via Alembic + new-org provisioning in auth.py
-- [ ] 11-03-PLAN.md — Re-wire scoring pipeline to read per-org credentials from DB
+- [x] 11-03-PLAN.md — Re-wire scoring pipeline to read per-org credentials from DB
 
 ### Phase 12: Credentials + App Name Settings UI
 **Goal**: Org admins can configure and validate their BrainSuite credentials and app names through the Settings page
@@ -95,6 +95,6 @@ Plans:
 | 8. Score-to-ROAS Correlation | v1.1 | 2/2 | Complete | 2026-03-31 |
 | 9. AI Metadata Auto-Fill | v1.1 | 3/3 | Complete | 2026-04-15 |
 | 10. In-App Notifications | v1.1 | 2/2 | Complete | 2026-04-15 |
-| 11. Per-Org Config Schema + Pipeline Wiring | v1.2 | 2/3 | In Progress|  |
+| 11. Per-Org Config Schema + Pipeline Wiring | v1.2 | 3/3 | Complete   | 2026-04-16 |
 | 12. Credentials + App Name Settings UI | v1.2 | 0/0 | Not started | - |
 | 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 0/0 | Not started | - |
