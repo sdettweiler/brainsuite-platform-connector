@@ -85,6 +85,7 @@ async def run_scoring_batch() -> None:
             score_row.scoring_status = "PENDING"
 
         await db.commit()
+        db.expunge_all()  # detach all objects while attributes are still loaded — prevents DetachedInstanceError in Phase 2/3.5
 
     logger.info("Scoring batch: found %d assets to score, marked PENDING", len(batch))
 
@@ -130,6 +131,8 @@ async def score_asset_now(score_id: uuid.UUID) -> None:
             .where(CreativeScoreResult.id == score_id)
         )
         row = result.one_or_none()
+        if row:
+            db.expunge_all()  # detach while attributes are still loaded — prevents DetachedInstanceError
 
     if not row:
         logger.error("score_asset_now: score_id=%s not found", score_id)
