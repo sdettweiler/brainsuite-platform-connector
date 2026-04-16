@@ -4,8 +4,8 @@ milestone: v1.2
 milestone_name: BrainSuite Configuration
 status: executing
 stopped_at: Phase 11 context gathered
-last_updated: "2026-04-16T07:52:33.978Z"
-last_activity: 2026-04-16 -- Phase 11 planning complete
+last_updated: "2026-04-16T08:06:54.872Z"
+last_activity: 2026-04-16 -- Phase 11 execution started
 progress:
   total_phases: 3
   completed_phases: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-15 — v1.2 milestone started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** v1.2 — BrainSuite Configuration
+**Current focus:** Phase 11 — per-org-config-schema-pipeline-wiring
 
 ## Current Position
 
-Phase: Phase 11 (not started — roadmap ready)
-Plan: —
-Status: Ready to execute
-Last activity: 2026-04-16 -- Phase 11 planning complete
+Phase: 11 (per-org-config-schema-pipeline-wiring) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 11
+Last activity: 2026-04-16 -- Phase 11 execution started
 
 ## Progress
 
