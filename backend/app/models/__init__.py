@@ -13,6 +13,7 @@ from app.models.performance import (
 )
 from app.models.scoring import CreativeScoreResult
 from app.models.ai_inference import AIInferenceTracking
+from app.models.brainsuite_config import OrgBrainsuiteConfig, OrgBrainsuiteFieldMapping
 
 __all__ = [
     "User", "Organization", "OrganizationRole", "RefreshToken",
@@ -24,4 +25,6 @@ __all__ = [
     "HarmonizedPerformance", "CurrencyRate", "SyncJob",
     "CreativeScoreResult",
     "AIInferenceTracking",
+    "OrgBrainsuiteConfig",
+    "OrgBrainsuiteFieldMapping",
 ]
