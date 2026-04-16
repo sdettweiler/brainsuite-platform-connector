@@ -600,22 +600,22 @@ for idx, (val, lbl) in enumerate(language_codes):
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Sort order for new metadata fields**
    - What we know: Existing video fields use sort orders 1–7 (from `f2g3h4i5j6k7`).
    - What's unclear: What sort orders did `m4n5o6p7q8r9` use for image-specific fields?
-   - Recommendation: Planner reads `m4n5o6p7q8r9` at plan time and picks `max_existing + 1` for the new fields. No user input needed.
+   - RESOLVED: `m4n5o6p7q8r9` uses sort 8 (`brainsuite_intended_messages`) and 9 (`brainsuite_iconic_color_scheme`). New fields get sort_order 10 (`brainsuite_brand_values`) and 11 (`brainsuite_brand_values_language`).
 
 2. **`_provision_org_metadata_fields()` helper extraction**
    - What we know: Auth.py has three org creation branches; the `else` block covers two. Claude's discretion per CONTEXT.md.
    - What's unclear: Whether Phase 12 or 13 will add more provisioning steps that would benefit from a helper.
-   - Recommendation: Extract the helper — it costs nothing and makes future phases cleaner. Planner can decide.
+   - RESOLVED: Inline provisioning chosen per D-06 and existing `auth.py` pattern. No helper extracted in Phase 11. Planner confirmed this matches the existing pattern.
 
 3. **Backward-compat for `settings.BRAINSUITE_CLIENT_ID/SECRET`**
    - What we know: These settings remain in `config.py` but become unused after Phase 11.
    - What's unclear: Whether any other endpoint (outside scoring) reads them.
-   - Recommendation: Grep for usages of `BRAINSUITE_CLIENT_ID` / `BRAINSUITE_CLIENT_SECRET` in Phase 11 planning. Do NOT remove the settings in Phase 11 — leave for cleanup in Phase 12 or post-UI confirmation.
+   - RESOLVED: No other callers found (grep confirms only `config.py`, `brainsuite_score.py`, and `brainsuite_static_score.py` reference these settings). Settings are NOT removed in Phase 11 — deferred to Phase 12 cleanup after UI confirmation.
 
 ---
 
