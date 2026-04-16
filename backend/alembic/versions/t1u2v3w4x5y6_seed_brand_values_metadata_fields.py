@@ -77,7 +77,7 @@ def upgrade() -> None:
                     (id, organization_id, name, label, field_type, is_required, default_value, is_active, sort_order, created_at, updated_at)
                 VALUES
                     (:id, :org_id, :name, :label, :ftype, :required, :default_val, true, :sort, :now, :now)
-                ON CONFLICT DO NOTHING
+                ON CONFLICT (organization_id, name) DO NOTHING
             """), {
                 "id": field_id,
                 "org_id": org_id,
@@ -91,7 +91,16 @@ def upgrade() -> None:
             })
 
             if name == "brainsuite_brand_values_language":
-                bvl_field_id = field_id
+                # Fetch the actual persisted id (handles both first-run and re-run).
+                # On first run the INSERT above succeeds and field_id is the real id.
+                # On re-run ON CONFLICT DO NOTHING fires and the INSERT is a no-op,
+                # so we must query the row that was already in the table to get its
+                # real id — using the newly-generated field_id would create orphan rows.
+                row = conn.execute(sa.text("""
+                    SELECT id FROM metadata_fields
+                    WHERE organization_id = :org_id AND name = 'brainsuite_brand_values_language'
+                """), {"org_id": org_id}).fetchone()
+                bvl_field_id = str(row[0]) if row else None
 
         # Seed the 31 language values for brainsuite_brand_values_language
         # NOTE: No ON CONFLICT DO NOTHING -- metadata_field_values has no unique constraint
