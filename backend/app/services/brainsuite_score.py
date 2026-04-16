@@ -349,6 +349,7 @@ class BrainSuiteScoreService:
         url = f"{settings.BRAINSUITE_BASE_URL}/v1/jobs/ACE_VIDEO/{app_name}/{job_id}"
         in_progress = {"Announced", "Scheduled", "Created", "Started"}
 
+        consecutive_401s = 0
         for poll_num in range(max_polls):
             token = await self._get_token(org_id, client_id, client_secret)
             async with httpx.AsyncClient(timeout=30) as client:
@@ -358,8 +359,21 @@ class BrainSuiteScoreService:
                 )
 
             if resp.status_code == 401:
+                consecutive_401s += 1
                 self._invalidate_token(org_id)
+                if consecutive_401s >= 3:
+                    raise BrainSuiteJobError(
+                        f"BrainSuite job {job_id}: persistent 401 after {consecutive_401s} attempts"
+                        " — check org credentials (client_id / client_secret)"
+                    )
+                logger.warning(
+                    "BrainSuite job %s: 401 on poll %d/%d — invalidating token, retrying after sleep",
+                    job_id, poll_num + 1, max_polls,
+                )
+                await asyncio.sleep(poll_interval)
                 continue
+
+            consecutive_401s = 0
 
             resp.raise_for_status()
             data = resp.json()
