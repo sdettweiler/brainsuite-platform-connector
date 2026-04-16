@@ -1,7 +1,8 @@
 ---
 phase: 12
 slug: credentials-app-name-settings-ui
-status: draft
+status: approved
+reviewed_at: 2026-04-16
 shadcn_initialized: false
 preset: none
 created: 2026-04-16
