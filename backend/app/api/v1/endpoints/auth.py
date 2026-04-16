@@ -13,6 +13,7 @@ from app.core.security import (
 )
 from app.core.config import settings
 from app.models.user import User, Organization, OrganizationRole, RefreshToken, OrganizationJoinRequest, Notification
+from app.models.metadata import MetadataField, MetadataFieldValue
 from app.schemas.user import (
     LoginRequest, TokenResponse, UserCreate, UserResponse,
     RefreshRequest, SlugCheckResponse,
@@ -152,6 +153,52 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
         )
         db.add(video_app)
         db.add(image_app)
+
+        # Seed brainsuite_brand_values + brainsuite_brand_values_language for new org (D-06)
+        brand_values_field = MetadataField(
+            organization_id=org_id,
+            name="brainsuite_brand_values",
+            label="Brand Values",
+            field_type="TEXT",
+            is_required=False,
+            default_value=None,
+            is_active=True,
+            sort_order=10,
+        )
+        db.add(brand_values_field)
+        await db.flush()  # get brand_values_field.id
+
+        brand_values_lang_field = MetadataField(
+            organization_id=org_id,
+            name="brainsuite_brand_values_language",
+            label="Brand Values Language",
+            field_type="SELECT",
+            is_required=False,
+            default_value=None,
+            is_active=True,
+            sort_order=11,
+        )
+        db.add(brand_values_lang_field)
+        await db.flush()  # get brand_values_lang_field.id
+
+        # Seed the 31 language values for brainsuite_brand_values_language field (per D-03)
+        _BRAND_VALUES_LANGUAGES = [
+            ("ar", "Arabic"), ("bg", "Bulgarian"), ("cs", "Czech"), ("da", "Danish"),
+            ("de", "German"), ("el", "Greek"), ("en", "English"), ("es", "Spanish"),
+            ("fi", "Finnish"), ("fr", "French"), ("he", "Hebrew"), ("hi", "Hindi"),
+            ("hr", "Croatian"), ("hu", "Hungarian"), ("id", "Indonesian"), ("it", "Italian"),
+            ("ja", "Japanese"), ("ko", "Korean"), ("ms", "Malay"), ("nl", "Dutch"),
+            ("no", "Norwegian"), ("pl", "Polish"), ("pt", "Portuguese"), ("ro", "Romanian"),
+            ("sk", "Slovak"), ("sl", "Slovenian"), ("sv", "Swedish"), ("th", "Thai"),
+            ("tr", "Turkish"), ("vi", "Vietnamese"), ("zh", "Chinese"),
+        ]
+        for idx, (val, lbl) in enumerate(_BRAND_VALUES_LANGUAGES):
+            db.add(MetadataFieldValue(
+                field_id=brand_values_lang_field.id,
+                value=val,
+                label=lbl,
+                sort_order=idx,
+            ))
 
     await db.commit()
     await db.refresh(user)
