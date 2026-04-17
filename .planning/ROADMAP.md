@@ -82,6 +82,8 @@ Plans:
   3. Admin can toggle the mandatory flag on any field (standard or custom); mandatory fields are visually distinguished in the mapping editor
   4. When the scoring pipeline encounters an asset where a mandatory field has no mapped metadata field or the asset has no value for that field, the asset is skipped (stays UNSCORED) and a notification is created listing the missing field(s)
   5. Org admin sees a persistent warning banner or alert in the Settings page when their BrainSuite config is incomplete (missing credentials, app name, or any mandatory field with no metadata mapping)
+**Additional scope (surfaced during Phase 12 UAT 2026-04-17)**:
+  - YouTube cookies DB-backed storage: store cookies in `org_brainsuite_config` (or dedicated table), add admin API endpoint to update without container restart, update `dv360_sync.py` to read from DB. Currently cookies are baked into env var requiring a Docker restart to rotate.
 **Plans**: TBD
 **UI hint**: yes
 
