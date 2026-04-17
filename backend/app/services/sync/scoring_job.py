@@ -16,6 +16,7 @@ from sqlalchemy import select, and_
 
 from app.db.base import get_session_factory
 from app.models.brainsuite_config import OrgBrainsuiteConfig
+from app.models.platform import BrainsuiteApp
 from app.models.creative import CreativeAsset, AssetMetadataValue
 from app.models.scoring import CreativeScoreResult
 from app.models.metadata import MetadataField
@@ -189,12 +190,12 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
             )
             org_config = config_result.scalar_one_or_none()
 
-        required_app_name = None
-        if org_config:
-            if endpoint_type == "VIDEO":
-                required_app_name = org_config.video_app_name
-            elif endpoint_type == "STATIC_IMAGE":
-                required_app_name = org_config.static_app_name
+            # Phase 12: resolve BrainsuiteApp row to get system_app_name
+            brainsuite_app = None
+            if asset.brainsuite_app_id:
+                brainsuite_app = await db.get(BrainsuiteApp, asset.brainsuite_app_id)
+
+        required_app_name = brainsuite_app.system_app_name if brainsuite_app else None
 
         if (
             not org_config
@@ -279,7 +280,7 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 org_id=org_id_str,
                 client_id=org_config.client_id,
                 client_secret=client_secret,
-                app_name=org_config.video_app_name,
+                app_name=required_app_name,
             )
         elif endpoint_type == "STATIC_IMAGE":
             announce_payload = build_static_scoring_payload(
@@ -295,7 +296,7 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 org_id=org_id_str,
                 client_id=org_config.client_id,
                 client_secret=client_secret,
-                app_name=org_config.static_app_name,
+                app_name=required_app_name,
             )
         else:
             logger.warning("Unexpected endpoint_type %s for asset %s, skipping", endpoint_type, asset_id)
@@ -317,7 +318,7 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 org_id=org_id_str,
                 client_id=org_config.client_id,
                 client_secret=client_secret,
-                app_name=org_config.video_app_name,
+                app_name=required_app_name,
             )
         else:
             result_data = await brainsuite_static_score_service.poll_job_status(
@@ -325,7 +326,7 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 org_id=org_id_str,
                 client_id=org_config.client_id,
                 client_secret=client_secret,
-                app_name=org_config.static_app_name,
+                app_name=required_app_name,
             )
 
         raw_output = result_data.get("output", {})

@@ -28,6 +28,7 @@ class BrainsuiteAppResponse(BrainsuiteAppBase):
     organization_id: uuid.UUID
     is_active: bool
     created_at: datetime
+    system_app_name: Optional[str] = None
 
     class Config:
         from_attributes = True
