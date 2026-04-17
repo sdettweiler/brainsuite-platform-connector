@@ -69,7 +69,7 @@ Plans:
 
 Plans:
 - [x] 12-01-PLAN.md -- Migration + model updates + pipeline re-wire (system_app_name)
-- [ ] 12-02-PLAN.md -- Backend API endpoints (credentials CRUD, test-connection, rescore)
+- [x] 12-02-PLAN.md -- Backend API endpoints (credentials CRUD, test-connection, rescore)
 - [ ] 12-03-PLAN.md -- Frontend credentials section, accordion, re-score dialog
 
 ### Phase 13: Field Mapping Editor + Mandatory Field Enforcement
@@ -100,5 +100,5 @@ Plans:
 | 9. AI Metadata Auto-Fill | v1.1 | 3/3 | Complete | 2026-04-15 |
 | 10. In-App Notifications | v1.1 | 2/2 | Complete | 2026-04-15 |
 | 11. Per-Org Config Schema + Pipeline Wiring | v1.2 | 3/3 | Complete   | 2026-04-16 |
-| 12. Credentials + App Name Settings UI | v1.2 | 1/3 | In Progress|  |
+| 12. Credentials + App Name Settings UI | v1.2 | 2/3 | In Progress|  |
 | 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 0/0 | Not started | - |
