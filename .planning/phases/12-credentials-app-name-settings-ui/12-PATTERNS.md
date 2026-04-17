@@ -42,7 +42,7 @@ from app.db.base import get_db
 from app.models.user import User
 from app.models.brainsuite_config import OrgBrainsuiteConfig
 from app.models.platform import BrainsuiteApp
-from app.models.creative import CreativeScoreResult
+from app.models.scoring import CreativeScoreResult
 from app.schemas.brainsuite_config import (
     CredentialsResponse,
     CredentialsUpdate,

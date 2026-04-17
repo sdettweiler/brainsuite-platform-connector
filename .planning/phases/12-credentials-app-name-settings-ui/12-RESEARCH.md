@@ -243,7 +243,9 @@ async def test_connection(
 
 ### Pattern 3: Re-score Reset (Backend)
 
-**What:** Reset all SCORED assets for the org to UNSCORED. Scheduler picks up on next 15-min cycle.
+**What:** Reset all COMPLETE (scored) assets for the org to UNSCORED. Scheduler picks up on next 15-min cycle.
+
+**IMPORTANT:** The actual DB status for scored assets is `"COMPLETE"`, NOT `"SCORED"`. Using `"SCORED"` silently resets zero rows.
 
 **When to use:** `POST /brainsuite-config/rescore-all` when user clicks "Re-score all assets" in the dialog
 
@@ -255,7 +257,7 @@ await db.execute(
     update(CreativeScoreResult)
     .where(
         CreativeScoreResult.organization_id == current_user.organization_id,
-        CreativeScoreResult.scoring_status == "SCORED",
+        CreativeScoreResult.scoring_status == "COMPLETE",  # NOT "SCORED" — "COMPLETE" is the actual DB value
     )
     .values(
         scoring_status="UNSCORED",
