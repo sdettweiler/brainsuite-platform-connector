@@ -868,6 +868,9 @@ export class PlatformsComponent implements OnInit, OnDestroy {
         this.statusSummary = res.status_summary || {};
         this.loading = false;
         this.applyDefaultApps();
+        // Auto-start polling if any connection is mid-sync (PENDING or first-time ACTIVE with no last_synced_at)
+        const hasSyncing = res.items.some(c => c.sync_status === 'PENDING' || (c.sync_status === 'ACTIVE' && !c.last_synced_at));
+        if (hasSyncing) this.startSyncStatusPolling();
       },
       error: () => { this.loading = false; },
     });
@@ -1092,7 +1095,8 @@ export class PlatformsComponent implements OnInit, OnDestroy {
       return 'syncing';
     }
     if (!conn.last_synced_at) {
-      return 'sync_failed';
+      // ACTIVE with no last_synced_at = first-time sync still in progress
+      return conn.sync_status === 'ACTIVE' ? 'syncing' : 'sync_failed';
     }
     const hoursSinceSync = (now.getTime() - new Date(conn.last_synced_at).getTime()) / 3_600_000;
     if (hoursSinceSync > 48) {
