@@ -154,35 +154,8 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
         db.add(video_app)
         db.add(image_app)
 
-        # Seed brainsuite_brand_values + brainsuite_brand_values_language for new org (D-06)
-        brand_values_field = MetadataField(
-            organization_id=org_id,
-            name="brainsuite_brand_values",
-            label="Brand Values",
-            field_type="TEXT",
-            is_required=False,
-            default_value=None,
-            is_active=True,
-            sort_order=10,
-        )
-        db.add(brand_values_field)
-        await db.flush()  # get brand_values_field.id
-
-        brand_values_lang_field = MetadataField(
-            organization_id=org_id,
-            name="brainsuite_brand_values_language",
-            label="Brand Values Language",
-            field_type="SELECT",
-            is_required=False,
-            default_value=None,
-            is_active=True,
-            sort_order=11,
-        )
-        db.add(brand_values_lang_field)
-        await db.flush()  # get brand_values_lang_field.id
-
-        # Seed the 31 language values for brainsuite_brand_values_language field (per D-03)
-        _BRAND_VALUES_LANGUAGES = [
+        # Seed all default metadata fields for new org
+        _LANGUAGES = [
             ("ar", "Arabic"), ("bg", "Bulgarian"), ("cs", "Czech"), ("da", "Danish"),
             ("de", "German"), ("el", "Greek"), ("en", "English"), ("es", "Spanish"),
             ("fi", "Finnish"), ("fr", "French"), ("he", "Hebrew"), ("hi", "Hindi"),
@@ -192,13 +165,63 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
             ("sk", "Slovak"), ("sl", "Slovenian"), ("sv", "Swedish"), ("th", "Thai"),
             ("tr", "Turkish"), ("vi", "Vietnamese"), ("zh", "Chinese"),
         ]
-        for idx, (val, lbl) in enumerate(_BRAND_VALUES_LANGUAGES):
-            db.add(MetadataFieldValue(
-                field_id=brand_values_lang_field.id,
-                value=val,
-                label=lbl,
-                sort_order=idx,
+
+        # Simple text/select fields with no child values
+        for name, label, ftype, required, default, sort in [
+            ("brainsuite_brand_names",        "Brand Names",       "TEXT",   True,  None,             1),
+            ("brainsuite_project_name",        "Project Name",      "TEXT",   False, "Spring Campaign 2026", 3),
+            ("brainsuite_asset_name",          "Asset Name",        "TEXT",   False, None,             4),
+            ("brainsuite_voice_over",          "Voice Over",        "TEXT",   False, None,             6),
+            ("brainsuite_intended_messages",   "Intended Messages", "TEXT",   False, None,             8),
+            ("brainsuite_brand_values",        "Brand Values",      "TEXT",   False, None,            10),
+        ]:
+            db.add(MetadataField(
+                organization_id=org_id, name=name, label=label, field_type=ftype,
+                is_required=required, default_value=default, is_active=True, sort_order=sort,
             ))
+
+        # SELECT fields that need child values — flush each to get its id
+        asset_lang_field = MetadataField(
+            organization_id=org_id, name="brainsuite_asset_language", label="Asset Language",
+            field_type="SELECT", is_required=True, default_value=None, is_active=True, sort_order=2,
+        )
+        db.add(asset_lang_field)
+
+        asset_stage_field = MetadataField(
+            organization_id=org_id, name="brainsuite_asset_stage", label="Asset Stage",
+            field_type="SELECT", is_required=False, default_value="finalVersion", is_active=True, sort_order=5,
+        )
+        db.add(asset_stage_field)
+
+        vo_lang_field = MetadataField(
+            organization_id=org_id, name="brainsuite_voice_over_language", label="Voice Over Language",
+            field_type="SELECT", is_required=False, default_value=None, is_active=True, sort_order=7,
+        )
+        db.add(vo_lang_field)
+
+        iconic_color_field = MetadataField(
+            organization_id=org_id, name="brainsuite_iconic_color_scheme", label="Iconic Color Scheme",
+            field_type="SELECT", is_required=False, default_value="manufactory", is_active=True, sort_order=9,
+        )
+        db.add(iconic_color_field)
+
+        brand_values_lang_field = MetadataField(
+            organization_id=org_id, name="brainsuite_brand_values_language", label="Brand Values Language",
+            field_type="SELECT", is_required=False, default_value=None, is_active=True, sort_order=11,
+        )
+        db.add(brand_values_lang_field)
+
+        await db.flush()
+
+        for idx, (val, lbl) in enumerate(_LANGUAGES):
+            db.add(MetadataFieldValue(field_id=asset_lang_field.id, value=val, label=lbl, sort_order=idx))
+            db.add(MetadataFieldValue(field_id=vo_lang_field.id, value=val, label=lbl, sort_order=idx))
+            db.add(MetadataFieldValue(field_id=brand_values_lang_field.id, value=val, label=lbl, sort_order=idx))
+
+        for val, lbl, sort in [("firstVersion", "First Version", 1), ("iteration", "Iteration", 2), ("finalVersion", "Final Version", 3)]:
+            db.add(MetadataFieldValue(field_id=asset_stage_field.id, value=val, label=lbl, sort_order=sort))
+
+        db.add(MetadataFieldValue(field_id=iconic_color_field.id, value="manufactory", label="Manufactory", sort_order=0))
 
     await db.commit()
     await db.refresh(user)
