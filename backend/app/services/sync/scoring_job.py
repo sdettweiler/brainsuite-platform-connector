@@ -101,20 +101,49 @@ async def run_scoring_batch() -> None:
     # -----------------------------------------------------------------------
     from app.services.notifications import create_org_notification
 
-    org_scored_counts: Counter = Counter()
-    for item in batch:
-        asset = item["asset"]
-        org_scored_counts[str(asset.organization_id)] += 1
+    score_ids = [item["score_id"] for item in batch]
+    org_id_by_score: dict = {str(item["score_id"]): str(item["asset"].organization_id) for item in batch}
 
-    if org_scored_counts:
-        for org_id, count in org_scored_counts.items():
-            s_suffix = "s" if count != 1 else ""
+    # Query final statuses for all processed assets
+    org_complete: Counter = Counter()
+    org_failed: Counter = Counter()
+    async with get_session_factory()() as db:
+        rows = await db.execute(
+            select(CreativeScoreResult.id, CreativeScoreResult.scoring_status)
+            .where(CreativeScoreResult.id.in_(score_ids))
+        )
+        for row_id, status in rows:
+            org_id = org_id_by_score.get(str(row_id))
+            if not org_id:
+                continue
+            if status == "COMPLETE":
+                org_complete[org_id] += 1
+            else:
+                org_failed[org_id] += 1
+
+    all_orgs = set(org_complete.keys()) | set(org_failed.keys())
+    if all_orgs:
+        for org_id in all_orgs:
+            complete = org_complete[org_id]
+            failed = org_failed[org_id]
+            total = complete + failed
+
+            if failed == 0:
+                title = "Scoring Complete"
+                message = f"{complete} creative{'s' if complete != 1 else ''} scored successfully."
+            elif complete == 0:
+                title = "Scoring Failed"
+                message = f"{failed} creative{'s' if failed != 1 else ''} failed to score."
+            else:
+                title = "Scoring Complete"
+                message = f"{complete} of {total} creatives scored successfully, {failed} failed."
+
             asyncio.create_task(create_org_notification(
                 org_id=org_id,
                 type="SCORING_BATCH_COMPLETE",
-                title="Scoring Complete",
-                message=f"{count} creative{s_suffix} scored in this batch.",
-                data={"scored_count": count},
+                title=title,
+                message=message,
+                data={"scored_count": complete, "failed_count": failed, "total_count": total},
             ))
 
 
