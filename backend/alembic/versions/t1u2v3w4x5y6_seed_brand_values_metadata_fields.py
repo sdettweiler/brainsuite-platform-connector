@@ -75,9 +75,11 @@ def upgrade() -> None:
             conn.execute(sa.text("""
                 INSERT INTO metadata_fields
                     (id, organization_id, name, label, field_type, is_required, default_value, is_active, sort_order, created_at, updated_at)
-                VALUES
-                    (:id, :org_id, :name, :label, :ftype, :required, :default_val, true, :sort, :now, :now)
-                ON CONFLICT (organization_id, name) DO NOTHING
+                SELECT :id, :org_id, :name, :label, :ftype, :required, :default_val, true, :sort, :now, :now
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM metadata_fields
+                    WHERE organization_id = :org_id AND name = :name
+                )
             """), {
                 "id": field_id,
                 "org_id": org_id,
