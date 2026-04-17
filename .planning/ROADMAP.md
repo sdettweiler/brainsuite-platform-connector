@@ -65,8 +65,12 @@ Plans:
   3. "Test Connection" button fires a live BrainSuite authentication request and displays inline success or failure feedback without leaving the page
   4. When saving changes to an org that already has scored assets, a confirmation dialog appears offering "Keep existing scores" or "Re-score all assets under new config"
   5. Client Secret field is masked (password input) and the stored value is never returned in plain text to the frontend
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 3 plans
+
+Plans:
+- [ ] 12-01-PLAN.md -- Migration + model updates + pipeline re-wire (system_app_name)
+- [ ] 12-02-PLAN.md -- Backend API endpoints (credentials CRUD, test-connection, rescore)
+- [ ] 12-03-PLAN.md -- Frontend credentials section, accordion, re-score dialog
 
 ### Phase 13: Field Mapping Editor + Mandatory Field Enforcement
 **Goal**: Org admins can configure exactly which metadata fields map to each BrainSuite API field, mark fields mandatory, and assets with missing mandatory data are blocked from scoring with an actionable admin warning
@@ -96,5 +100,5 @@ Plans:
 | 9. AI Metadata Auto-Fill | v1.1 | 3/3 | Complete | 2026-04-15 |
 | 10. In-App Notifications | v1.1 | 2/2 | Complete | 2026-04-15 |
 | 11. Per-Org Config Schema + Pipeline Wiring | v1.2 | 3/3 | Complete   | 2026-04-16 |
-| 12. Credentials + App Name Settings UI | v1.2 | 0/0 | Not started | - |
+| 12. Credentials + App Name Settings UI | v1.2 | 0/3 | In progress | - |
 | 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 0/0 | Not started | - |
