@@ -1,6 +1,6 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, FormControl, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -8,6 +8,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDialogModule, MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { ApiService } from '../../../core/services/api.service';
 
 interface BrainsuiteApp {
@@ -17,6 +18,34 @@ interface BrainsuiteApp {
   is_default_for_video: boolean;
   is_default_for_image: boolean;
   description?: string;
+  system_app_name?: string;  // NEW — Phase 12
+}
+
+@Component({
+  standalone: true,
+  imports: [CommonModule, MatButtonModule, MatDialogModule],
+  template: `
+    <div class="rescore-dialog">
+      <h3>Configuration changed</h3>
+      <p>You've updated BrainSuite credentials or app names. Would you like to re-score all previously scored assets under the new configuration?</p>
+      <p class="sub-note">Re-scoring queues all SCORED assets for the next 15-minute scoring cycle. This cannot be undone.</p>
+      <div class="dialog-actions">
+        <button mat-stroked-button (click)="dialogRef.close('keep')">Keep existing scores</button>
+        <button mat-flat-button class="rescore-btn" (click)="dialogRef.close('rescore')">Re-score all assets</button>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .rescore-dialog { padding: 8px 4px; min-width: 260px; max-width: 440px; }
+    .rescore-dialog h3 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+    .rescore-dialog p { font-size: 13px; color: var(--text-secondary); margin: 0 0 12px; }
+    .rescore-dialog .sub-note { font-size: 13px; color: var(--text-secondary); }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+    .rescore-btn { background: var(--error) !important; color: white !important; }
+  `],
+})
+export class RescoreDialogComponent {
+  constructor(public dialogRef: MatDialogRef<RescoreDialogComponent>) {}
 }
 
 @Component({
@@ -24,10 +53,94 @@ interface BrainsuiteApp {
   imports: [
     CommonModule, FormsModule, ReactiveFormsModule, MatButtonModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule,
-    MatProgressSpinnerModule, MatSnackBarModule,
+    MatProgressSpinnerModule, MatSnackBarModule, MatDialogModule,
   ],
   template: `
-    <div class="page-container">
+    <div class="page-container" (click)="onClickAway($event)">
+
+      <!-- A. BrainSuite Credentials Section (NEW - Phase 12, D-01) -->
+      <section class="config-section" *ngIf="credentials">
+
+        <!-- Collapsed state (D-02) -->
+        <div *ngIf="credentialsCollapsed && hasCredentials" class="credentials-summary">
+          <i class="bi bi-check-circle summary-icon"></i>
+          <span>Client ID: {{ credentials!.client_id?.substring(0, 8) }}... — Connection verified</span>
+          <button mat-stroked-button class="edit-credentials-btn" (click)="expandCredentials()">Edit credentials</button>
+        </div>
+
+        <!-- Expanded state -->
+        <ng-container *ngIf="!credentialsCollapsed || !hasCredentials">
+          <div class="section-header">
+            <div>
+              <h2>BrainSuite Credentials</h2>
+              <p>Connect your BrainSuite account to enable creative scoring</p>
+            </div>
+          </div>
+          <div class="section-body">
+            <form [formGroup]="credentialsForm!" (ngSubmit)="saveCredentials()">
+
+              <!-- Client ID field -->
+              <div class="form-full">
+                <mat-form-field appearance="outline" class="w-full">
+                  <mat-label>Client ID</mat-label>
+                  <input matInput formControlName="client_id" />
+                </mat-form-field>
+              </div>
+
+              <!-- Client Secret field with Change/Discard pattern (D-06) -->
+              <div class="form-full">
+                <div class="secret-field-row">
+                  <mat-form-field appearance="outline" class="secret-input">
+                    <mat-label>Client Secret</mat-label>
+                    <input matInput
+                      [type]="'password'"
+                      formControlName="client_secret"
+                      [readonly]="hasCredentials && !secretEditMode"
+                      [placeholder]="hasCredentials && !secretEditMode ? '\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF\u25CF (saved)' : ''"
+                    />
+                  </mat-form-field>
+                  <button *ngIf="hasCredentials && !secretEditMode"
+                    mat-stroked-button type="button" class="change-secret-btn" (click)="enableSecretEdit()">
+                    Change secret
+                  </button>
+                  <button *ngIf="secretEditMode"
+                    mat-stroked-button type="button" class="change-secret-btn" (click)="cancelSecretEdit()">
+                    Discard changes
+                  </button>
+                </div>
+              </div>
+
+              <!-- Save button -->
+              <div class="form-actions">
+                <button mat-flat-button type="submit" class="save-btn"
+                  [disabled]="credentialsForm!.get('client_id')!.invalid || savingCredentials">
+                  <mat-spinner *ngIf="savingCredentials" diameter="16"></mat-spinner>
+                  {{ savingCredentials ? 'Saving...' : 'Save Credentials' }}
+                </button>
+              </div>
+            </form>
+
+            <!-- Test Connection (D-08, D-09, D-10) -->
+            <div class="test-connection-row">
+              <button mat-stroked-button type="button"
+                [disabled]="!hasCredentials || testingConnection"
+                (click)="testConnection()">
+                <mat-spinner *ngIf="testingConnection" diameter="16"></mat-spinner>
+                <i *ngIf="!testingConnection" class="bi bi-plug"></i>
+                {{ testingConnection ? 'Testing...' : 'Test Connection' }}
+              </button>
+              <div *ngIf="testResult" class="test-result"
+                [class.test-success]="testResult.success"
+                [class.test-failure]="!testResult.success">
+                <i class="bi" [class.bi-check-circle]="testResult.success" [class.bi-x-circle]="!testResult.success"></i>
+                <span>{{ testResult.message }}</span>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+      </section>
+
+      <!-- B. Brainsuite Apps Section (EXISTING — preserved, with accordion additions) -->
       <section class="config-section">
         <div class="section-header">
           <div>
@@ -40,28 +153,53 @@ interface BrainsuiteApp {
         </div>
 
         <div *ngIf="!loading; else loadingTpl">
-          <div *ngFor="let app of apps" class="app-row">
-            <div class="app-icon">
-              <i class="bi bi-cpu"></i>
-            </div>
-            <div class="app-info">
-              <span class="app-name">{{ app.name }}</span>
-              <span class="app-type-badge" [class]="'type-' + app.app_type.toLowerCase()">{{ app.app_type }}</span>
-              <span class="app-desc" *ngIf="app.description">{{ app.description }}</span>
-            </div>
-            <div class="app-defaults">
-              <div class="default-flag" [class.active]="app.is_default_for_video">
-                <i class="bi bi-camera-video"></i> Default for Video
+          <ng-container *ngFor="let app of apps">
+            <div class="app-row">
+              <div class="app-icon">
+                <i class="bi bi-cpu"></i>
               </div>
-              <div class="default-flag" [class.active]="app.is_default_for_image">
-                <i class="bi bi-image"></i> Default for Image
+              <div class="app-info">
+                <span class="app-name">{{ app.name }}</span>
+                <span class="app-type-badge" [class]="'type-' + app.app_type.toLowerCase()">{{ app.app_type }}</span>
+                <span class="app-desc" *ngIf="app.description">{{ app.description }}</span>
+              </div>
+              <div class="app-defaults">
+                <div class="default-flag" [class.active]="app.is_default_for_video">
+                  <i class="bi bi-camera-video"></i> Default for Video
+                </div>
+                <div class="default-flag" [class.active]="app.is_default_for_image">
+                  <i class="bi bi-image"></i> Default for Image
+                </div>
+              </div>
+              <div class="app-actions">
+                <button mat-icon-button (click)="editApp(app)"><i class="bi bi-pencil"></i></button>
+                <button mat-icon-button (click)="deleteApp(app)"><i class="bi bi-trash"></i></button>
+                <button mat-icon-button (click)="toggleAccordion(app)"
+                  [attr.aria-label]="expandedAppId === app.id ? 'Collapse app name settings' : 'Expand app name settings'">
+                  <i class="bi" [class.bi-chevron-down]="expandedAppId !== app.id"
+                    [class.bi-chevron-up]="expandedAppId === app.id"
+                    [class.chevron-expanded]="expandedAppId === app.id"></i>
+                </button>
               </div>
             </div>
-            <div class="app-actions">
-              <button mat-icon-button (click)="editApp(app)"><i class="bi bi-pencil"></i></button>
-              <button mat-icon-button (click)="deleteApp(app)"><i class="bi bi-trash"></i></button>
+
+            <!-- Accordion panel (D-04) -->
+            <div *ngIf="expandedAppId === app.id" class="accordion-panel">
+              <mat-form-field appearance="outline" class="w-full">
+                <mat-label>BrainSuite API App Name</mat-label>
+                <input matInput [formControl]="getAppNameControl(app.id)" />
+              </mat-form-field>
+              <p class="accordion-helper">e.g. ACE_VIDEO_SMV_API — the app name parameter used in BrainSuite scoring API calls</p>
+              <div class="form-actions">
+                <button mat-flat-button class="save-btn"
+                  [disabled]="savingAppName[app.id]"
+                  (click)="saveSystemAppName(app)">
+                  <mat-spinner *ngIf="savingAppName[app.id]" diameter="16"></mat-spinner>
+                  {{ savingAppName[app.id] ? 'Saving...' : 'Save App Name' }}
+                </button>
+              </div>
             </div>
-          </div>
+          </ng-container>
 
           <div *ngIf="apps.length === 0" class="empty-apps">
             <i class="bi bi-cpu"></i>
@@ -75,7 +213,7 @@ interface BrainsuiteApp {
         </ng-template>
       </section>
 
-      <!-- Add/Edit Form -->
+      <!-- C. Add/Edit Form (EXISTING — preserved verbatim) -->
       <section class="config-section" *ngIf="showForm">
         <div class="section-header">
           <div>
@@ -127,7 +265,7 @@ interface BrainsuiteApp {
         </div>
       </section>
 
-      <!-- Info section -->
+      <!-- D. Info section (EXISTING — preserved verbatim) -->
       <section class="config-section info-section">
         <div class="section-body">
           <div class="info-header">
@@ -232,9 +370,40 @@ interface BrainsuiteApp {
       i.bi { color: var(--text-secondary); font-size: 16px; }
       h3 { font-size: 14px; font-weight: 600; margin: 0; }
     }
+
+    /* Phase 12: Credentials section */
+    .credentials-summary {
+      display: flex; align-items: center; gap: 12px; padding: 12px 24px;
+    }
+    .credentials-summary .summary-icon { color: var(--success); font-size: 18px; }
+    .credentials-summary span { flex: 1; font-size: 13px; color: var(--text-secondary); }
+    .edit-credentials-btn { font-size: 13px; color: var(--accent) !important; }
+
+    .secret-field-row { display: flex; align-items: flex-start; gap: 12px; }
+    .secret-input { flex: 1; }
+    .change-secret-btn { font-size: 12px; margin-top: 8px; }
+
+    .test-connection-row { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; }
+    .test-connection-row button { align-self: flex-start; display: flex; align-items: center; gap: 8px; }
+
+    .test-result {
+      display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+      border-radius: 8px; font-size: 13px;
+    }
+    .test-success { background: rgba(46,204,113,0.15); color: var(--success); }
+    .test-failure { background: rgba(231,76,60,0.15); color: var(--error); }
+
+    /* Phase 12: Accordion */
+    .accordion-panel {
+      padding: 16px 24px; background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+    .accordion-helper { font-size: 12px; color: var(--text-muted); margin: -8px 0 16px; }
+    .chevron-expanded { color: var(--accent) !important; }
   `],
 })
 export class BrainsuiteAppsComponent implements OnInit {
+  // Existing state
   apps: BrainsuiteApp[] = [];
   loading = true;
   saving = false;
@@ -242,15 +411,33 @@ export class BrainsuiteAppsComponent implements OnInit {
   editingApp: BrainsuiteApp | null = null;
   appForm?: FormGroup;
 
+  // Credentials section state (Phase 12)
+  credentials: { client_id: string | null; has_secret: boolean; has_scored_assets: boolean } | null = null;
+  credentialsForm?: FormGroup;
+  credentialsCollapsed = false;
+  secretEditMode = false;
+  savingCredentials = false;
+  testingConnection = false;
+  testResult: { success: boolean; message: string } | null = null;
+
+  // Accordion state (Phase 12)
+  expandedAppId: string | null = null;
+  appNameForms: Record<string, FormGroup> = {};
+  savingAppName: Record<string, boolean> = {};
+
   constructor(
     private api: ApiService,
     private fb: FormBuilder,
     private snackBar: MatSnackBar,
+    private dialog: MatDialog,
   ) {}
 
   ngOnInit(): void {
     this.loadApps();
+    this.loadCredentials();
   }
+
+  // --- Existing methods (preserved) ---
 
   loadApps(): void {
     this.api.get<BrainsuiteApp[]>('/platforms/brainsuite-apps').subscribe({
@@ -316,6 +503,161 @@ export class BrainsuiteAppsComponent implements OnInit {
         this.apps = this.apps.filter(a => a.id !== app.id);
         this.snackBar.open('App deleted', '', { duration: 2000 });
       },
+    });
+  }
+
+  // --- Credentials section methods ---
+
+  loadCredentials(): void {
+    this.api.get<{ client_id: string | null; has_secret: boolean; has_scored_assets: boolean }>('/brainsuite-config/credentials').subscribe({
+      next: (data) => {
+        this.credentials = data;
+        const hasCredentials = !!data.client_id && data.has_secret;
+        // Restore collapsed state from localStorage if credentials exist
+        if (hasCredentials) {
+          const saved = localStorage.getItem('bs_credentials_collapsed');
+          if (saved === 'true') {
+            this.credentialsCollapsed = true;
+          }
+        }
+        this.initCredentialsForm();
+      },
+      error: () => {
+        this.credentials = { client_id: null, has_secret: false, has_scored_assets: false };
+        this.initCredentialsForm();
+      },
+    });
+  }
+
+  initCredentialsForm(): void {
+    this.credentialsForm = this.fb.group({
+      client_id: [this.credentials?.client_id || '', Validators.required],
+      client_secret: [''],
+    });
+    this.secretEditMode = false;
+  }
+
+  get hasCredentials(): boolean {
+    return !!this.credentials?.client_id && !!this.credentials?.has_secret;
+  }
+
+  expandCredentials(): void {
+    this.credentialsCollapsed = false;
+    localStorage.removeItem('bs_credentials_collapsed');
+  }
+
+  enableSecretEdit(): void {
+    this.secretEditMode = true;
+    this.credentialsForm?.get('client_secret')?.setValue('');
+  }
+
+  cancelSecretEdit(): void {
+    this.secretEditMode = false;
+    this.credentialsForm?.get('client_secret')?.setValue('');
+  }
+
+  saveCredentials(): void {
+    if (this.credentialsForm?.invalid) return;
+    this.savingCredentials = true;
+    const payload = this.credentialsForm!.value;
+    this.api.put<{ changed: boolean; has_scored_assets: boolean }>('/brainsuite-config/credentials', payload).subscribe({
+      next: (resp) => {
+        this.savingCredentials = false;
+        this.snackBar.open('Credentials saved', '', { duration: 3000 });
+        this.loadCredentials();
+        if (resp.changed && resp.has_scored_assets) {
+          this.openRescoreDialog();
+        }
+      },
+      error: () => { this.savingCredentials = false; },
+    });
+  }
+
+  // --- Test Connection methods ---
+
+  testConnection(): void {
+    this.testingConnection = true;
+    this.testResult = null;
+    this.api.post<{ success: boolean; message: string }>('/brainsuite-config/test-connection', {}).subscribe({
+      next: (result) => {
+        this.testingConnection = false;
+        this.testResult = result;
+        if (result.success && this.hasCredentials) {
+          this.credentialsCollapsed = true;
+          localStorage.setItem('bs_credentials_collapsed', 'true');
+        }
+      },
+      error: () => {
+        this.testingConnection = false;
+        this.testResult = { success: false, message: 'Could not reach BrainSuite — check your network connection' };
+      },
+    });
+  }
+
+  // --- Accordion methods ---
+
+  toggleAccordion(app: BrainsuiteApp): void {
+    if (this.expandedAppId === app.id) {
+      this.expandedAppId = null;
+    } else {
+      this.expandedAppId = app.id;
+      if (!this.appNameForms[app.id]) {
+        this.appNameForms[app.id] = this.fb.group({
+          system_app_name: [app.system_app_name || ''],
+        });
+      }
+    }
+  }
+
+  getAppNameControl(appId: string): FormControl {
+    return this.appNameForms[appId]?.get('system_app_name') as FormControl;
+  }
+
+  saveSystemAppName(app: BrainsuiteApp): void {
+    const form = this.appNameForms[app.id];
+    if (!form) return;
+    this.savingAppName[app.id] = true;
+    this.api.patch<{ changed: boolean; has_scored_assets: boolean }>(
+      `/brainsuite-config/apps/${app.id}/system-app-name`,
+      form.value,
+    ).subscribe({
+      next: (resp) => {
+        this.savingAppName[app.id] = false;
+        app.system_app_name = form.value.system_app_name;
+        this.expandedAppId = null;
+        this.snackBar.open('App name saved', '', { duration: 3000 });
+        if (resp.changed && resp.has_scored_assets) {
+          this.openRescoreDialog();
+        }
+      },
+      error: () => { this.savingAppName[app.id] = false; },
+    });
+  }
+
+  onClickAway(event: Event): void {
+    if (this.expandedAppId) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.app-row') && !target.closest('.accordion-panel')) {
+        this.expandedAppId = null;
+      }
+    }
+  }
+
+  // --- Re-score dialog ---
+
+  openRescoreDialog(): void {
+    const ref = this.dialog.open(RescoreDialogComponent, {
+      width: '480px',
+      maxWidth: '480px',
+    });
+    ref.afterClosed().subscribe((action: string) => {
+      if (action === 'rescore') {
+        this.api.post('/brainsuite-config/rescore-all', {}).subscribe({
+          next: () => {
+            this.snackBar.open('Assets queued for re-scoring', '', { duration: 4000 });
+          },
+        });
+      }
     });
   }
 }
