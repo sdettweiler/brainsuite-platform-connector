@@ -175,7 +175,6 @@ export class RescoreDialogComponent {
                 </div>
               </div>
               <div class="app-actions">
-                <button mat-icon-button (click)="deleteApp(app)"><i class="bi bi-trash"></i></button>
                 <button mat-icon-button (click)="toggleAccordion(app)"
                   [attr.aria-label]="expandedAppId === app.id ? 'Collapse settings' : 'Expand settings'">
                   <i class="bi" [class.bi-chevron-down]="expandedAppId !== app.id"
@@ -221,12 +220,17 @@ export class RescoreDialogComponent {
                   <p class="accordion-helper">e.g. ACE_VIDEO_SMV_API — the app name used in BrainSuite scoring API calls</p>
                 </div>
                 <div class="form-actions">
-                  <button mat-stroked-button type="button" (click)="expandedAppId = null">Cancel</button>
-                  <button mat-flat-button type="submit" class="save-btn"
-                    [disabled]="savingInline[app.id] || inlineEditForms[app.id].invalid">
-                    <span *ngIf="savingInline[app.id]" class="btn-spinner"><mat-spinner diameter="16"></mat-spinner></span>
-                    {{ savingInline[app.id] ? 'Saving...' : 'Save' }}
+                  <button mat-stroked-button type="button" class="delete-btn" (click)="deleteApp(app)">
+                    <i class="bi bi-trash"></i> Delete
                   </button>
+                  <div class="form-actions-right">
+                    <button mat-stroked-button type="button" (click)="expandedAppId = null">Cancel</button>
+                    <button mat-flat-button type="submit" class="save-btn"
+                      [disabled]="savingInline[app.id] || inlineEditForms[app.id].invalid">
+                      <span *ngIf="savingInline[app.id]" class="btn-spinner"><mat-spinner diameter="16"></mat-spinner></span>
+                      {{ savingInline[app.id] ? 'Saving...' : 'Save' }}
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
@@ -380,7 +384,9 @@ export class RescoreDialogComponent {
     .form-full { margin-bottom: 16px; }
     .w-full { width: 100%; }
     .form-checkboxes { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
-    .form-actions { display: flex; justify-content: flex-end; gap: 12px; }
+    .form-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .form-actions-right { display: flex; gap: 12px; }
+    .delete-btn { color: var(--error) !important; border-color: var(--error) !important; }
     .save-btn { background: var(--accent) !important; color: white !important; display: flex; align-items: center; gap: 8px; }
 
     .api-note {
@@ -564,9 +570,10 @@ export class BrainsuiteAppsComponent implements OnInit {
   }
 
   initCredentialsForm(): void {
+    const hasSecret = !!this.credentials?.has_secret;
     this.credentialsForm = this.fb.group({
       client_id: [this.credentials?.client_id || '', Validators.required],
-      client_secret: [''],
+      client_secret: [hasSecret ? '••••••••' : ''],
     });
     this.secretEditMode = false;
   }
@@ -587,13 +594,17 @@ export class BrainsuiteAppsComponent implements OnInit {
 
   cancelSecretEdit(): void {
     this.secretEditMode = false;
-    this.credentialsForm?.get('client_secret')?.setValue('');
+    this.credentialsForm?.get('client_secret')?.setValue('••••••••');
   }
 
   saveCredentials(): void {
     if (this.credentialsForm?.invalid) return;
     this.savingCredentials = true;
-    const payload = this.credentialsForm!.value;
+    const raw = this.credentialsForm!.value;
+    // Omit the sentinel placeholder value — only send client_secret when the user is actively editing it.
+    const payload = this.secretEditMode
+      ? raw
+      : { client_id: raw.client_id };
     this.api.put<{ changed: boolean; has_scored_assets: boolean }>('/brainsuite-config/credentials', payload).subscribe({
       next: (resp) => {
         this.savingCredentials = false;
