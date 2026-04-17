@@ -4,8 +4,8 @@ milestone: v1.2
 milestone_name: BrainSuite Configuration
 status: executing
 stopped_at: Phase 12 UI-SPEC approved
-last_updated: "2026-04-17T07:49:58.607Z"
-last_activity: 2026-04-17 -- Phase 12 planning complete
+last_updated: "2026-04-17T10:19:29.851Z"
+last_activity: 2026-04-17 -- Phase 12 execution started
 progress:
   total_phases: 3
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-15 — v1.2 milestone started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 12 — Credentials + App Name Settings UI
+**Current focus:** Phase 12 — credentials-app-name-settings-ui
 
 ## Current Position
 
-Phase: 11 (per-org-config-schema-pipeline-wiring) — COMPLETE
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-04-17 -- Phase 12 planning complete
+Phase: 12 (credentials-app-name-settings-ui) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 12
+Last activity: 2026-04-17 -- Phase 12 execution started
 
 ## Progress
 
