@@ -63,11 +63,16 @@ blocked: 0
 ## Gaps
 
 - truth: "Locked client secret field shows masking placeholder (e.g. ******saved) at rest, without requiring user interaction"
-  status: failed
+  status: fixed
   reason: "User reported: the client secret field (locked) looks empty. only when I click in it it shows ******(saved)"
   severity: cosmetic
   test: 4
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "credentialsForm initialized client_secret to '' when in locked state; Angular Material mat-form-field hides native placeholder until focused, so the field appeared blank at rest"
+  artifacts:
+    - path: "frontend/src/app/features/configuration/pages/brainsuite-apps.component.ts"
+      issue: "initCredentialsForm() set client_secret to '' regardless of has_secret; cancelSecretEdit() also reset to ''"
+  missing:
+    - "Seed '••••••••' sentinel in initCredentialsForm() when has_secret is true"
+    - "Restore sentinel in cancelSecretEdit()"
+    - "Strip sentinel from PUT payload in saveCredentials() when not in secretEditMode"
+  fix_commit: "d6e8f7e"
