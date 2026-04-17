@@ -33,7 +33,7 @@
 ### v1.2 BrainSuite Configuration (Phases 11–13)
 
 - [x] **Phase 11: Per-Org Config Schema + Pipeline Wiring** — DB tables, metadata seed, pipeline reads from DB (completed 2026-04-16)
-- [ ] **Phase 12: Credentials + App Name Settings UI** — Settings section, Test Connection, re-score prompt
+- [x] **Phase 12: Credentials + App Name Settings UI** — Settings section, Test Connection, re-score prompt (completed 2026-04-17)
 - [ ] **Phase 13: Field Mapping Editor + Mandatory Field Enforcement** — mapping UI, custom fields, mandatory logic, pipeline guards
 
 ## Phase Details
@@ -70,7 +70,7 @@ Plans:
 Plans:
 - [x] 12-01-PLAN.md -- Migration + model updates + pipeline re-wire (system_app_name)
 - [x] 12-02-PLAN.md -- Backend API endpoints (credentials CRUD, test-connection, rescore)
-- [ ] 12-03-PLAN.md -- Frontend credentials section, accordion, re-score dialog
+- [x] 12-03-PLAN.md -- Frontend credentials section, accordion, re-score dialog
 
 ### Phase 13: Field Mapping Editor + Mandatory Field Enforcement
 **Goal**: Org admins can configure exactly which metadata fields map to each BrainSuite API field, mark fields mandatory, and assets with missing mandatory data are blocked from scoring with an actionable admin warning
@@ -100,5 +100,5 @@ Plans:
 | 9. AI Metadata Auto-Fill | v1.1 | 3/3 | Complete | 2026-04-15 |
 | 10. In-App Notifications | v1.1 | 2/2 | Complete | 2026-04-15 |
 | 11. Per-Org Config Schema + Pipeline Wiring | v1.2 | 3/3 | Complete   | 2026-04-16 |
-| 12. Credentials + App Name Settings UI | v1.2 | 2/3 | In Progress|  |
+| 12. Credentials + App Name Settings UI | v1.2 | 3/3 | Complete   | 2026-04-17 |
 | 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 0/0 | Not started | - |
