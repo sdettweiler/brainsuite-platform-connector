@@ -10,8 +10,8 @@ from app.db.base import Base
 class OrgBrainsuiteConfig(Base):
     """Per-org BrainSuite credentials and app name configuration.
 
-    Stores Client ID and encrypted Client Secret for BrainSuite API access,
-    along with the video and static app names used in BrainSuite scoring URLs.
+    Stores Client ID and encrypted Client Secret for BrainSuite API access.
+    for BrainSuite API access. App names are stored per-app on the brainsuite_apps table.
 
     Security note (T-11-01): client_secret_encrypted stores a Fernet-encrypted
     value using String(1000) — never Text — to prevent accidental plain-text
@@ -26,8 +26,6 @@ class OrgBrainsuiteConfig(Base):
     )
     client_id: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     client_secret_encrypted: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
-    video_app_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    static_app_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
