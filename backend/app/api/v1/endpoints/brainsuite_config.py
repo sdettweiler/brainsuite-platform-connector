@@ -24,6 +24,7 @@ from app.schemas.brainsuite_config import (
     CredentialsSaveResponse,
     TestConnectionResponse,
     SystemAppNameUpdate,
+    RescoreRequest,
 )
 from app.api.v1.deps import get_current_admin
 from app.core.security import encrypt_token, decrypt_token
@@ -202,26 +203,37 @@ async def update_system_app_name(
 
 @router.post("/rescore-all")
 async def rescore_all(
+    payload: RescoreRequest = RescoreRequest(),
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Reset all COMPLETE assets for the org to UNSCORED. Per D-13: scheduler picks them up.
-    IMPORTANT: Only resets COMPLETE status. Never touches PROCESSING (live job IDs) or PENDING.
+    """Reset COMPLETE assets to UNSCORED. Scoped by app_type when provided.
+    VIDEO  → only endpoint_type='VIDEO'
+    IMAGE  → only endpoint_type='STATIC_IMAGE'
+    MIXED or absent → all endpoint types (used when credentials change)
+    IMPORTANT: Never touches PROCESSING (live job IDs) or PENDING.
     """
+    # Map BrainsuiteApp.app_type to CreativeScoreResult.endpoint_type
+    ENDPOINT_TYPE_MAP = {"VIDEO": "VIDEO", "IMAGE": "STATIC_IMAGE"}
+    endpoint_filter = ENDPOINT_TYPE_MAP.get(payload.app_type) if payload.app_type else None
+
+    conditions = [
+        CreativeScoreResult.organization_id == current_user.organization_id,
+        CreativeScoreResult.scoring_status == "COMPLETE",
+    ]
+    if endpoint_filter:
+        conditions.append(CreativeScoreResult.endpoint_type == endpoint_filter)
+
     result = await db.execute(
         update(CreativeScoreResult)
-        .where(
-            CreativeScoreResult.organization_id == current_user.organization_id,
-            CreativeScoreResult.scoring_status == "COMPLETE",
-        )
-        .values(
-            scoring_status="UNSCORED",
-            updated_at=datetime.now(timezone.utc),
-        )
+        .where(*conditions)
+        .values(scoring_status="UNSCORED", updated_at=datetime.now(timezone.utc))
     )
     await db.commit()
 
     count = result.rowcount
-    logger.info("Rescore-all: reset %d COMPLETE assets to UNSCORED for org %s",
-                count, current_user.organization_id)
+    logger.info(
+        "Rescore-all: reset %d COMPLETE assets to UNSCORED for org %s (app_type=%s)",
+        count, current_user.organization_id, payload.app_type or "ALL",
+    )
     return {"reset_count": count}

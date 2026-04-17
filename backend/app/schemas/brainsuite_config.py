@@ -34,3 +34,12 @@ class TestConnectionResponse(BaseModel):
 class SystemAppNameUpdate(BaseModel):
     """PATCH /apps/{app_id}/system-app-name request."""
     system_app_name: Optional[str] = None
+
+
+class RescoreRequest(BaseModel):
+    """POST /rescore-all request. app_type scopes reset to a specific endpoint type.
+    VIDEO  → only resets endpoint_type='VIDEO'
+    IMAGE  → only resets endpoint_type='STATIC_IMAGE'
+    MIXED or absent → resets all endpoint types (credentials change)
+    """
+    app_type: Optional[str] = None  # 'VIDEO', 'IMAGE', 'MIXED', or None
