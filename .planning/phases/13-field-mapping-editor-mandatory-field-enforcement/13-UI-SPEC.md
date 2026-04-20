@@ -36,18 +36,17 @@ Declared values (all multiples of 4 — mapped to existing usage in `brainsuite-
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Icon gaps, inline badge padding, row gap between default-flags |
-| sm | 8px | Gap between form action buttons, toggle label gap |
-| sm+ | 12px | Panel body field mapping row vertical padding (matches `account-item` pattern from `platforms.component.scss`) |
-| md | 16px | Default element spacing, grid column gap, panel body row padding horizontal complement |
-| lg | 24px | Section body padding, panel header padding horizontal, panel footer padding |
+| sm | 8px | Gap between form action buttons, toggle label gap, panel body field mapping row vertical padding |
+| md | 16px | Default element spacing, grid column gap, panel body row padding horizontal complement, sticky banner vertical padding |
+| lg | 24px | Section body padding, panel header padding horizontal, panel footer padding, banner horizontal padding |
 | xl | 32px | Accordion panel top padding, page-container column gap |
 | 2xl | 48px | Empty-state padding (vertical) |
 | 3xl | 64px | Not used in this phase |
 
 Exceptions:
-- Panel body field mapping rows: 12px vertical padding, 24px horizontal padding (matches `account-item` pattern) — `12px` included in declared scale above
+- Panel body field mapping rows: `8px` vertical padding, `24px` horizontal padding — compact density appropriate for Angular Material 36px-height compact form elements
 - Toggle switch touch target minimum: 44px minimum row height — **a11y-touch-target constraint only, not a layout spacing value**; this is a WCAG 2.5.5 minimum tap area requirement, not part of the spacing grid
-- Sticky warning banner: 12px vertical padding, 24px horizontal padding (matches existing `api-note` padding)
+- Sticky warning banner: `16px` vertical padding, `24px` horizontal padding — uses `md` and `lg` tokens from declared scale
 
 ---
 
@@ -58,11 +57,12 @@ All sizes are sourced from `styles.scss` global type scale and confirmed in `bra
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Body | 13px | 400 (regular) | 1.5 |
-| Label / UI text | 14px | 400 (regular) | 1.4 |
+| Label / UI text | 13px | 600 (semibold) | 1.4 |
 | Section heading | 16px | 600 (semibold) | 1.2 |
 | Panel title | 18px | 600 (semibold) | 1.2 |
 
 Notes:
+- Body and Label both use 13px — hierarchy is achieved exclusively through weight: body = 400 (regular), label = 600 (semibold). No separate 14px size is introduced for Phase 13.
 - Phase 13 declared weight scale: **2 weights only — 400 (regular) and 600 (semibold)**. Weight 500 is not introduced for any new Phase 13 elements (it appears in pre-existing platform list code at `app-name` but is outside this phase's scope).
 - 11px used for sticky column headers inside the panel body — pre-existing pattern from `platforms.component.scss` (`connections-table thead th`). Not a new size for Phase 13; acknowledged here for completeness.
 - 10px used only for uppercase table column headers (letter-spacing 0.5px, weight 600) — not a new size, already established.
@@ -117,7 +117,7 @@ All tokens are CSS custom properties declared in `.dark-theme` / `.light-theme` 
 ```
 
 **CSS class:** `.config-warning-banner` — extends `api-note` styling pattern:
-- `display: flex; gap: 8px; padding: 12px 24px; background: rgba(243,156,18,0.06); border: 1px solid rgba(243,156,18,0.3); border-radius: 8px;`
+- `display: flex; gap: 8px; padding: 16px 24px; background: rgba(243,156,18,0.06); border: 1px solid rgba(243,156,18,0.3); border-radius: 8px;`
 - `position: sticky; top: 0; z-index: 10;` — sticks at top during scroll
 - Icon: `bi-exclamation-triangle`, color `#F09300`, font-size 18px
 - Text: 13px / 400 / `var(--text-secondary)`
@@ -159,16 +159,16 @@ All tokens are CSS custom properties declared in `.dark-theme` / `.light-theme` 
 
 **Panel Body (`.panel-body`):**
 
-Split into two sections, each with a `12px / 600 / var(--text-muted) / uppercase / letter-spacing: 0.5px` label:
+Split into two sections, each with a `11px / 600 / var(--text-muted) / uppercase / letter-spacing: 0.5px` label:
 
 **Section A — "Standard Fields"**
-- Section label: `STANDARD FIELDS` — 11px, 600, uppercase, `var(--text-muted)`, padding `12px 24px 8px`
+- Section label: `STANDARD FIELDS` — 11px, 600, uppercase, `var(--text-muted)`, padding `8px 24px`
 - One row per standard field (12 for VIDEO, 8 for STATIC)
 - Row layout: 3 columns in a grid `grid-template-columns: 1fr 1.5fr auto`
   - Col 1: API field name — 13px / 400 / `var(--text-primary)`, not editable, truncated with ellipsis
   - Col 2: `mat-select` (outline appearance, compact — 36px height using `.compact-select` pattern from `platforms.component.scss`) showing all org metadata fields + "— Unmapped —" as first option
   - Col 3: Angular Material `mat-slide-toggle` sized small; label: none (column header provides context)
-- Row padding: `12px 24px`
+- Row padding: `8px 24px`
 - Row with mandatory toggle ON: background `rgba(255, 119, 0, 0.06)`; API field name gains `bi-asterisk` icon (12px, `var(--accent)`) prepended inline
 
 **Section B — "Custom Fields"**
@@ -190,7 +190,7 @@ Split into two sections, each with a `12px / 600 / var(--text-muted) / uppercase
 - Padding: `8px 24px`
 
 **Panel Footer (`.panel-footer`):**
-- Right-aligned, gap 12px
+- Right-aligned, gap 8px
 - Discard Changes: `mat-stroked-button` — "Discard Changes"
 - Save: `mat-flat-button` `.save-btn` — "Save Mappings" (accent fill, white text)
 - Saving state: spinner 16px inside Save button, label "Saving..."
@@ -209,6 +209,7 @@ Split into two sections, each with a `12px / 600 / var(--text-muted) / uppercase
 | Closing | Reverse animation. Triggered by: "Discard Changes" button, close `bi-x-lg` (`aria-label="Close panel"`), backdrop click. |
 | Saving | Save button shows spinner, is disabled. "Discard Changes" stays enabled. |
 | Saved | Panel closes, `MatSnackBar` shows "Field mappings saved" for 3000ms. |
+| Save failed | Panel stays open. Save button re-enables. `MatSnackBar` shows "Failed to save mappings — please try again." for 4000ms (panelClass: `snack-error`). |
 
 ### Mandatory Toggle Row
 | State | Visual |
@@ -249,6 +250,7 @@ Split into two sections, each with a `12px / 600 / var(--text-muted) / uppercase
 | Add custom field | "Add custom field" |
 | Empty custom fields | "No custom fields added. Use custom fields to send additional metadata to the BrainSuite API." |
 | Save success toast | "Field mappings saved" |
+| Save failure toast | "Failed to save mappings — please try again." |
 | Incomplete config banner heading | "BrainSuite configuration is incomplete" |
 | Incomplete config — missing credentials | "Missing credentials" (as a list item in banner) |
 | Incomplete config — missing app name | "{App Name} has no BrainSuite API app name" |
