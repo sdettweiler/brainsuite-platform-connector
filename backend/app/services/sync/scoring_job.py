@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, and_
 
 from app.db.base import get_session_factory
-from app.models.brainsuite_config import OrgBrainsuiteConfig
+from app.models.brainsuite_config import OrgBrainsuiteConfig, OrgBrainsuiteFieldMapping
 from app.models.platform import BrainsuiteApp
 from app.models.creative import CreativeAsset, AssetMetadataValue
 from app.models.scoring import CreativeScoreResult
@@ -33,12 +33,11 @@ from app.services.brainsuite_static_score import (
     build_static_scoring_payload,
 )
 from app.services.object_storage import get_object_storage
+from app.services.notifications import create_org_notification
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20
-
-# Phase 13 guard placeholder — _check_mandatory_fields() added by Plan 03 (Wave 2)
 
 
 async def run_scoring_batch() -> None:
@@ -101,8 +100,6 @@ async def run_scoring_batch() -> None:
     # -----------------------------------------------------------------------
     # Phase 3.5: Emit per-org SCORING_BATCH_COMPLETE notifications
     # -----------------------------------------------------------------------
-    from app.services.notifications import create_org_notification
-
     score_ids = [item["score_id"] for item in batch]
     org_id_by_score: dict = {str(item["score_id"]): str(item["asset"].organization_id) for item in batch}
 
@@ -228,6 +225,7 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
 
         required_app_name = brainsuite_app.system_app_name if brainsuite_app else None
 
+        # [Phase 13 / PIPE-02] Guard: incomplete config blocks scoring (silent — no notification per D-13)
         if (
             not org_config
             or not org_config.client_id
@@ -245,6 +243,39 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
             )
             await _mark_unscored(score_id, f"No BrainSuite configuration for this organization (missing {missing}).")
             return
+
+        # [Phase 13 / FMAP-07] Guard: check mandatory fields have mappings + values
+        if brainsuite_app:
+            is_valid, missing_fields = await _check_mandatory_fields(
+                asset_id=asset_id,
+                app_id=brainsuite_app.id,
+                organization_id=asset.organization_id,
+            )
+            if not is_valid and missing_fields:
+                logger.warning(
+                    "Scoring skipped for asset %s: mandatory field(s) missing: %s",
+                    asset_id, ", ".join(missing_fields),
+                )
+                # D-12: Create MANDATORY_FIELD_MISSING notification
+                asyncio.create_task(create_org_notification(
+                    org_id=str(asset.organization_id),
+                    type="MANDATORY_FIELD_MISSING",
+                    title="Scoring skipped \u2014 mandatory field missing",
+                    message=(
+                        f"Asset \"{asset.ad_name or str(asset_id)}\" was not scored. "
+                        f"Missing field(s): {', '.join(missing_fields)}."
+                    ),
+                    data={
+                        "asset_id": str(asset_id),
+                        "asset_name": asset.ad_name or str(asset_id),
+                        "missing_fields": missing_fields,
+                    },
+                ))
+                await _mark_unscored(
+                    score_id,
+                    f"Mandatory field(s) missing: {', '.join(missing_fields)}",
+                )
+                return
 
         client_secret = decrypt_token(org_config.client_secret_encrypted)
         org_id_str = str(asset.organization_id)
@@ -443,6 +474,58 @@ async def run_backfill_task() -> None:
         failed,
         len(score_ids),
     )
+
+
+async def _check_mandatory_fields(
+    asset_id: uuid.UUID,
+    app_id: uuid.UUID,
+    organization_id: uuid.UUID,
+) -> tuple[bool, list[str]]:
+    """Check if asset has values for all mandatory field mappings.
+
+    Reads mandatory mappings for the given BrainsuiteApp, then checks
+    whether the asset has an AssetMetadataValue row with a non-empty
+    value for each mandatory field's metadata_field_id.
+
+    Returns:
+        (is_valid, missing_field_names) — is_valid is True if all mandatory
+        fields have values; missing_field_names lists the api_field_name of
+        any field that is unmapped or has no asset value.
+    """
+    async with get_session_factory()() as db:
+        # Fetch mandatory field mappings for this app
+        result = await db.execute(
+            select(OrgBrainsuiteFieldMapping).where(
+                OrgBrainsuiteFieldMapping.brainsuite_app_id == app_id,
+                OrgBrainsuiteFieldMapping.is_mandatory == True,
+            )
+        )
+        mandatory_mappings = result.scalars().all()
+
+        if not mandatory_mappings:
+            return (True, [])  # No mandatory fields configured — all clear
+
+        missing_fields: list[str] = []
+        for mapping in mandatory_mappings:
+            if not mapping.metadata_field_id:
+                # Field is mandatory but not mapped to any metadata field
+                missing_fields.append(mapping.api_field_name)
+                continue
+
+            # Check if asset has a non-empty value for this metadata field
+            # NOTE: AssetMetadataValue uses column "field_id" (not "metadata_field_id")
+            value_result = await db.execute(
+                select(AssetMetadataValue).where(
+                    AssetMetadataValue.asset_id == asset_id,
+                    AssetMetadataValue.field_id == mapping.metadata_field_id,
+                )
+            )
+            value_row = value_result.scalar_one_or_none()
+
+            if not value_row or not value_row.value:
+                missing_fields.append(mapping.api_field_name)
+
+    return (len(missing_fields) == 0, missing_fields)
 
 
 async def _mark_unscored(score_id, error_reason: str) -> None:
