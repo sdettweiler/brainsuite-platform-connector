@@ -41,23 +41,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 STANDARD_VIDEO_FIELDS = [
-    "channel", "projectName", "assetName", "assetStage", "assetLanguage",
+    "projectName", "assetName", "assetStage", "assetLanguage",
     "brandNames", "voiceOver", "voiceOverLanguage", "intendedMessages",
     "intendedMessagesLanguage", "brandValues", "brandValuesLanguage",
 ]
 
 STANDARD_STATIC_FIELDS = [
-    "channel", "projectName", "assetLanguage", "iconicColorScheme",
+    "projectName", "assetLanguage", "iconicColorScheme",
     "intendedMessages", "intendedMessagesLanguage", "brandValues",
     "brandValuesLanguage",
 ]
 
 # D-06: Auto-match hints — map standard API field names to metadata field slugs
+# Note: "channel" is excluded — it is auto-derived from asset.platform + asset.placement
 AUTO_MATCH_HINTS: dict[str, str] = {
     "brandValues": "brainsuite_brand_values",
     "brandValuesLanguage": "brainsuite_brand_values_language",
     "assetLanguage": "brainsuite_asset_language",
     "voiceOverLanguage": "brainsuite_voice_over_language",
+    "intendedMessagesLanguage": "brainsuite_intended_messages_language",
     "assetName": "brainsuite_asset_name",
 }
 

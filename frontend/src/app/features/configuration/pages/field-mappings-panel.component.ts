@@ -309,7 +309,7 @@ interface FieldMappingApiResponse {
     .slide-panel {
       position: fixed;
       top: 0; right: 0;
-      width: 480px;
+      width: 600px;
       max-width: 90vw;
       height: 100vh;
       background: var(--bg-card);
@@ -332,7 +332,7 @@ interface FieldMappingApiResponse {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      padding: 20px 24px;
+      padding: 20px 32px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
@@ -400,7 +400,7 @@ interface FieldMappingApiResponse {
       display: grid;
       grid-template-columns: 1fr 1.5fr auto;
       gap: 12px;
-      padding: 8px 24px;
+      padding: 8px 32px;
       position: sticky;
       top: 0;
       background: var(--bg-secondary);
@@ -423,7 +423,7 @@ interface FieldMappingApiResponse {
       text-transform: uppercase;
       letter-spacing: 0.5px;
       color: var(--text-muted);
-      padding: 8px 24px;
+      padding: 8px 32px;
     }
     .section-label--custom {
       padding-top: 16px;
@@ -437,7 +437,7 @@ interface FieldMappingApiResponse {
       grid-template-columns: 1fr 1.5fr auto;
       gap: 12px;
       align-items: center;
-      padding: 8px 24px;
+      padding: 8px 32px;
       transition: background 0.15s ease;
     }
     .field-row--mandatory {
@@ -499,9 +499,16 @@ interface FieldMappingApiResponse {
       min-height: 36px;
       padding-top: 6px;
       padding-bottom: 6px;
+      display: flex;
+      align-items: center;
     }
     .custom-name-field ::ng-deep .mdc-text-field--outlined {
       height: 36px;
+    }
+    .custom-name-field ::ng-deep input.mat-mdc-input-element {
+      line-height: 36px;
+      padding-top: 0;
+      padding-bottom: 0;
     }
 
     /* -----------------------------------------------------------------------
