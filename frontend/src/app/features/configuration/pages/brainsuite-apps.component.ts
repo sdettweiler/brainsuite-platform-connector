@@ -36,16 +36,7 @@ interface BrainsuiteApp {
         <button mat-flat-button class="rescore-btn" (click)="dialogRef.close('rescore')">{{ data.buttonLabel }}</button>
       </div>
     </div>
-
-      <!-- Phase 13: Field Mappings Slide Panel -->
-      <app-field-mappings-panel
-        [app]="selectedAppForFieldMappings"
-        [isOpen]="fieldMappingsPanelOpen"
-        (closed)="closeFieldMappingsPanel()"
-        (saved)="onFieldMappingsSaved()"
-      ></app-field-mappings-panel>
-    </div>
-  \`,
+  `,
   styles: [`
     .rescore-dialog { padding: 24px 28px; min-width: 320px; max-width: 480px; text-align: center; }
     .rescore-dialog h3 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
@@ -345,6 +336,14 @@ export class RescoreDialogComponent {
           </ul>
         </div>
       </section>
+
+      <!-- Phase 13: Field Mappings Slide Panel -->
+      <app-field-mappings-panel
+        [app]="selectedAppForFieldMappings"
+        [isOpen]="fieldMappingsPanelOpen"
+        (closed)="closeFieldMappingsPanel()"
+        (saved)="onFieldMappingsSaved()"
+      ></app-field-mappings-panel>
     </div>
   `,
   styles: [`
