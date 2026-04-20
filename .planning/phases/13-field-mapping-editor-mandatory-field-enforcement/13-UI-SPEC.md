@@ -21,7 +21,7 @@ created: 2026-04-20
 | Preset | not applicable |
 | Component library | Angular Material (MDC-based) — `@angular/material` |
 | Icon library | Bootstrap Icons (`bi-*`) — already imported in `styles.scss` |
-| Font | Nunito Sans 400/500/600/700 — already imported in `styles.scss` |
+| Font | Nunito Sans 400/600/700 — already imported in `styles.scss` |
 
 Source: `frontend/src/styles.scss`, `brainsuite-apps.component.ts`
 
@@ -37,6 +37,7 @@ Declared values (all multiples of 4 — mapped to existing usage in `brainsuite-
 |-------|-------|-------|
 | xs | 4px | Icon gaps, inline badge padding, row gap between default-flags |
 | sm | 8px | Gap between form action buttons, toggle label gap |
+| sm+ | 12px | Panel body field mapping row vertical padding (matches `account-item` pattern from `platforms.component.scss`) |
 | md | 16px | Default element spacing, grid column gap, panel body row padding horizontal complement |
 | lg | 24px | Section body padding, panel header padding horizontal, panel footer padding |
 | xl | 32px | Accordion panel top padding, page-container column gap |
@@ -44,9 +45,9 @@ Declared values (all multiples of 4 — mapped to existing usage in `brainsuite-
 | 3xl | 64px | Not used in this phase |
 
 Exceptions:
-- Panel body field mapping rows: 12px vertical padding, 24px horizontal padding (matches `account-item` pattern from `platforms.component.scss`)
-- Toggle switch touch target: 44px minimum height per row to ensure tappable area
-- Sticky warning banner: 14px vertical padding, 24px horizontal padding (matches existing `api-note` padding)
+- Panel body field mapping rows: 12px vertical padding, 24px horizontal padding (matches `account-item` pattern) — `12px` included in declared scale above
+- Toggle switch touch target minimum: 44px minimum row height — **a11y-touch-target constraint only, not a layout spacing value**; this is a WCAG 2.5.5 minimum tap area requirement, not part of the spacing grid
+- Sticky warning banner: 12px vertical padding, 24px horizontal padding (matches existing `api-note` padding)
 
 ---
 
@@ -57,14 +58,15 @@ All sizes are sourced from `styles.scss` global type scale and confirmed in `bra
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Body | 13px | 400 (regular) | 1.5 |
-| Label / UI text | 14px | 500 (medium) | 1.4 |
+| Label / UI text | 14px | 400 (regular) | 1.4 |
 | Section heading | 16px | 600 (semibold) | 1.2 |
 | Panel title | 18px | 600 (semibold) | 1.2 |
 
 Notes:
-- 10px used only for uppercase table column headers (letter-spacing 0.5px, weight 600) — not a new size, already established
-- 12px used only for helper text / muted captions (`accordion-helper`, `app-desc`) — not a named body size
-- The type system is limited to 2 weights in this phase: 400 (regular) and 600 (semibold). 500 appears in the platform list (`app-name`) but should not be introduced for new Phase 13 elements.
+- Phase 13 declared weight scale: **2 weights only — 400 (regular) and 600 (semibold)**. Weight 500 is not introduced for any new Phase 13 elements (it appears in pre-existing platform list code at `app-name` but is outside this phase's scope).
+- 11px used for sticky column headers inside the panel body — pre-existing pattern from `platforms.component.scss` (`connections-table thead th`). Not a new size for Phase 13; acknowledged here for completeness.
+- 10px used only for uppercase table column headers (letter-spacing 0.5px, weight 600) — not a new size, already established.
+- 12px used only for helper text / muted captions (`accordion-helper`, `app-desc`) — not a named body size.
 
 ---
 
@@ -115,7 +117,7 @@ All tokens are CSS custom properties declared in `.dark-theme` / `.light-theme` 
 ```
 
 **CSS class:** `.config-warning-banner` — extends `api-note` styling pattern:
-- `display: flex; gap: 10px; padding: 14px 24px; background: rgba(243,156,18,0.06); border: 1px solid rgba(243,156,18,0.3); border-radius: 8px;`
+- `display: flex; gap: 8px; padding: 12px 24px; background: rgba(243,156,18,0.06); border: 1px solid rgba(243,156,18,0.3); border-radius: 8px;`
 - `position: sticky; top: 0; z-index: 10;` — sticks at top during scroll
 - Icon: `bi-exclamation-triangle`, color `#F09300`, font-size 18px
 - Text: 13px / 400 / `var(--text-secondary)`
@@ -153,7 +155,7 @@ All tokens are CSS custom properties declared in `.dark-theme` / `.light-theme` 
 **Panel Header (`.panel-header`):**
 - Line 1: App name (16px / 600) + app-type badge (`app-type-badge` class from `brainsuite-apps.component.ts`) — e.g. "My Video App" + `VIDEO` badge
 - Line 2: `13px / 400 / var(--text-secondary)` — "Map metadata fields to BrainSuite API fields"
-- Right: `mat-icon-button` with `bi-x-lg` (close)
+- Right: `mat-icon-button` with `bi-x-lg` (close), `aria-label="Close panel"`
 
 **Panel Body (`.panel-body`):**
 
@@ -175,7 +177,7 @@ Split into two sections, each with a `12px / 600 / var(--text-muted) / uppercase
   - Col 1: editable text input (API field name), 13px outline mat-input, compact height 36px
   - Col 2: same `mat-select` as standard fields
   - Col 3: `mat-slide-toggle`
-  - Col 4: `mat-icon-button` with `bi-trash`, `color: var(--error)`
+  - Col 4: `mat-icon-button` with `bi-trash`, `color: var(--error)`, `aria-label="Delete field"`
 - Below custom field rows: `+ Add custom field` row
   - Display: flex, gap 8px, padding `8px 24px`
   - Left element: plain `mat-stroked-button` — `bi-plus-lg` icon + label `Add custom field`, 13px, `color: var(--accent)`
@@ -189,10 +191,10 @@ Split into two sections, each with a `12px / 600 / var(--text-muted) / uppercase
 
 **Panel Footer (`.panel-footer`):**
 - Right-aligned, gap 12px
-- Cancel: `mat-stroked-button` — "Cancel"
+- Discard Changes: `mat-stroked-button` — "Discard Changes"
 - Save: `mat-flat-button` `.save-btn` — "Save Mappings" (accent fill, white text)
 - Saving state: spinner 16px inside Save button, label "Saving..."
-- Cancel closes panel without saving, discards all unsaved changes (D-10)
+- "Discard Changes" closes panel without saving, discards all unsaved changes (D-10)
 
 ---
 
@@ -204,8 +206,8 @@ Split into two sections, each with a `12px / 600 / var(--text-muted) / uppercase
 | Closed | `transform: translateX(100%)` — off-screen. Backdrop invisible. |
 | Opening | Both animate simultaneously over 300ms. |
 | Open | `transform: translateX(0)`. Backdrop `rgba(0,0,0,0.5)` opacity 1. |
-| Closing | Reverse animation. Triggered by: Cancel button, close `bi-x-lg`, backdrop click. |
-| Saving | Save button shows spinner, is disabled. Cancel stays enabled. |
+| Closing | Reverse animation. Triggered by: "Discard Changes" button, close `bi-x-lg` (`aria-label="Close panel"`), backdrop click. |
+| Saving | Save button shows spinner, is disabled. "Discard Changes" stays enabled. |
 | Saved | Panel closes, `MatSnackBar` shows "Field mappings saved" for 3000ms. |
 
 ### Mandatory Toggle Row
@@ -225,7 +227,7 @@ Split into two sections, each with a `12px / 600 / var(--text-muted) / uppercase
 | State | Visual |
 |-------|--------|
 | Adding | New row with empty inputs appears, API field name input is auto-focused |
-| API name empty on Save | Inline validation: input border turns `var(--error)` color, row does not save |
+| API name empty on Save | Inline validation: input border turns `var(--error)` color; error message "API field name is required" appears below the input at 12px / 400 / `var(--error)`; row does not save |
 | Deleting | Immediate optimistic removal from DOM; deletion included in next Save payload (not API-called independently) |
 
 ### Sticky Warning Banner
@@ -243,7 +245,7 @@ Split into two sections, each with a `12px / 600 / var(--text-muted) / uppercase
 | Primary CTA (panel save) | "Save Mappings" |
 | Trigger button | "Configure Field Mappings" |
 | Panel subtitle | "Map metadata fields to BrainSuite API fields" |
-| Cancel button | "Cancel" |
+| Discard Changes button | "Discard Changes" |
 | Add custom field | "Add custom field" |
 | Empty custom fields | "No custom fields added. Use custom fields to send additional metadata to the BrainSuite API." |
 | Save success toast | "Field mappings saved" |
@@ -253,10 +255,11 @@ Split into two sections, each with a `12px / 600 / var(--text-muted) / uppercase
 | Incomplete config — unmapped mandatory field | "{N} mandatory field{s} not mapped" |
 | Scoring skipped notification title | "Scoring skipped — mandatory field missing" |
 | Scoring skipped notification body | "Asset "{asset_name}" was not scored. Missing field: {field_name}." (one notification per scoring run listing all affected assets and fields) |
-| Delete custom field (no confirmation dialog) | No confirmation required — deletion is not persisted until "Save Mappings" is clicked. The row is removed from the UI immediately; the admin can Cancel to undo. |
+| Delete custom field (no confirmation dialog) | No confirmation required — deletion is not persisted until "Save Mappings" is clicked. The row is removed from the UI immediately; the admin can click "Discard Changes" to undo. |
 | Mandatory column header | "Mandatory" |
 | API field column header | "API Field" |
 | Metadata field column header | "Metadata Field" |
+| Custom field API name — empty validation error | "API field name is required" (shown below the input, 12px / 400 / `var(--error)`, when field is empty and user clicks Save) |
 
 Source: CONTEXT.md D-10, D-11, D-12; REQUIREMENTS.md FMAP-07, PIPE-03.
 
