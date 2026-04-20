@@ -9,7 +9,9 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule, MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { ApiService } from '../../../core/services/api.service';
+import { FieldMappingsPanelComponent } from './field-mappings-panel.component';
 
 interface BrainsuiteApp {
   id: string;
@@ -34,7 +36,16 @@ interface BrainsuiteApp {
         <button mat-flat-button class="rescore-btn" (click)="dialogRef.close('rescore')">{{ data.buttonLabel }}</button>
       </div>
     </div>
-  `,
+
+      <!-- Phase 13: Field Mappings Slide Panel -->
+      <app-field-mappings-panel
+        [app]="selectedAppForFieldMappings"
+        [isOpen]="fieldMappingsPanelOpen"
+        (closed)="closeFieldMappingsPanel()"
+        (saved)="onFieldMappingsSaved()"
+      ></app-field-mappings-panel>
+    </div>
+  \`,
   styles: [`
     .rescore-dialog { padding: 24px 28px; min-width: 320px; max-width: 480px; text-align: center; }
     .rescore-dialog h3 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
@@ -57,9 +68,19 @@ export class RescoreDialogComponent {
     CommonModule, FormsModule, ReactiveFormsModule, MatButtonModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule,
     MatProgressSpinnerModule, MatSnackBarModule, MatDialogModule,
+    MatSlideToggleModule, FieldMappingsPanelComponent,
   ],
   template: `
     <div class="page-container" (click)="onClickAway($event)">
+
+      <!-- Phase 13: Incomplete Config Warning Banner (PIPE-03 / D-11) -->
+      <div class="config-warning-banner" *ngIf="showIncompleteWarning">
+        <i class="bi bi-exclamation-triangle"></i>
+        <div class="banner-text">
+          <strong>BrainSuite configuration is incomplete</strong>
+          <span class="banner-items">{{ incompleteConfigItems.join(' · ') }}</span>
+        </div>
+      </div>
 
       <!-- A. BrainSuite Credentials Section (NEW - Phase 12, D-01) -->
       <section class="config-section" *ngIf="credentials">
@@ -219,6 +240,11 @@ export class RescoreDialogComponent {
                   </mat-form-field>
                   <p class="accordion-helper">e.g. ACE_VIDEO_SMV_API — the app name used in BrainSuite scoring API calls</p>
                 </div>
+                <!-- Phase 13: Configure Field Mappings trigger (D-01) -->
+                <button mat-stroked-button type="button" class="configure-fields-btn" (click)="openFieldMappingsPanel(app); $event.stopPropagation()">
+                  <i class="bi bi-sliders"></i>
+                  Configure Field Mappings
+                </button>
                 <div class="form-actions">
                   <button mat-stroked-button type="button" class="delete-btn" (click)="deleteApp(app)">
                     <i class="bi bi-trash"></i> Delete
@@ -440,6 +466,29 @@ export class RescoreDialogComponent {
     .accordion-divider { border-top: 1px solid var(--border); margin: 4px 0 24px; }
     .accordion-helper { font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; }
     .chevron-expanded { color: var(--accent) !important; }
+
+    /* Phase 13: Configure Field Mappings button */
+    .configure-fields-btn {
+      margin: 16px 0 8px;
+      color: var(--accent) !important;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .configure-fields-btn i { font-size: 16px; }
+
+    /* Phase 13: Incomplete Config Warning Banner (PIPE-03) */
+    .config-warning-banner {
+      display: flex; gap: 12px; padding: 16px 24px;
+      background: rgba(243, 156, 18, 0.06);
+      border: 1px solid rgba(243, 156, 18, 0.3);
+      border-radius: 8px;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .config-warning-banner i {
+      color: #F09300; font-size: 18px; flex-shrink: 0; margin-top: 2px;
+    }
+    .banner-text { display: flex; flex-direction: column; gap: 4px; }
+    .banner-text strong { font-size: 13px; color: var(--text-primary); }
+    .banner-items { font-size: 12px; color: var(--text-secondary); }
   `],
 })
 export class BrainsuiteAppsComponent implements OnInit {
@@ -465,6 +514,11 @@ export class BrainsuiteAppsComponent implements OnInit {
   inlineEditForms: Record<string, FormGroup> = {};
   savingInline: Record<string, boolean> = {};
 
+  // Field mapping panel state (Phase 13)
+  fieldMappingsPanelOpen = false;
+  selectedAppForFieldMappings: BrainsuiteApp | null = null;
+  appFieldMappings: Record<string, { standard_fields: any[]; custom_fields: any[] }> = {};
+
   constructor(
     private api: ApiService,
     private fb: FormBuilder,
@@ -481,7 +535,11 @@ export class BrainsuiteAppsComponent implements OnInit {
 
   loadApps(): void {
     this.api.get<BrainsuiteApp[]>('/platforms/brainsuite-apps').subscribe({
-      next: (apps) => { this.apps = apps; this.loading = false; },
+      next: (apps) => {
+        this.apps = apps;
+        this.loading = false;
+        this.loadAllFieldMappings();
+      },
       error: () => { this.loading = false; },
     });
   }
@@ -718,5 +776,73 @@ export class BrainsuiteAppsComponent implements OnInit {
         });
       }
     });
+  }
+
+  // --- Phase 13: Field Mapping Panel methods ---
+
+  openFieldMappingsPanel(app: BrainsuiteApp): void {
+    this.selectedAppForFieldMappings = app;
+    this.fieldMappingsPanelOpen = true;
+  }
+
+  closeFieldMappingsPanel(): void {
+    this.fieldMappingsPanelOpen = false;
+    this.selectedAppForFieldMappings = null;
+  }
+
+  onFieldMappingsSaved(): void {
+    // Refresh field mapping cache for banner computation
+    this.loadAllFieldMappings();
+    this.closeFieldMappingsPanel();
+  }
+
+  loadAllFieldMappings(): void {
+    for (const app of this.apps) {
+      this.api.get<any>(`/brainsuite-config/apps/${app.id}/field-mappings`).subscribe({
+        next: (response) => {
+          this.appFieldMappings[app.id] = {
+            standard_fields: response.standard_fields || [],
+            custom_fields: response.custom_fields || [],
+          };
+        },
+        error: () => {
+          // Silently ignore — banner will show "no data" state
+        },
+      });
+    }
+  }
+
+  get incompleteConfigItems(): string[] {
+    const items: string[] = [];
+
+    // Check credentials
+    if (!this.credentials?.client_id || !this.credentials?.has_secret) {
+      items.push('Missing credentials');
+    }
+
+    // Check app names + mandatory fields
+    for (const app of this.apps) {
+      if (!app.system_app_name) {
+        items.push(`${app.name} has no BrainSuite API app name`);
+      }
+
+      const mappings = this.appFieldMappings[app.id];
+      if (mappings) {
+        const allFields = [...(mappings.standard_fields || []), ...(mappings.custom_fields || [])];
+        const unmappedMandatory = allFields.filter(
+          (m: any) => m.is_mandatory && !m.metadata_field_id
+        );
+        if (unmappedMandatory.length > 0) {
+          const s = unmappedMandatory.length === 1 ? '' : 's';
+          items.push(`${unmappedMandatory.length} mandatory field${s} not mapped`);
+        }
+      }
+    }
+
+    return items;
+  }
+
+  get showIncompleteWarning(): boolean {
+    return this.incompleteConfigItems.length > 0;
   }
 }
