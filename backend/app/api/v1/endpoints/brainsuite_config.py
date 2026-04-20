@@ -11,12 +11,13 @@ import httpx
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, delete
 
 from app.db.base import get_db
 from app.models.user import User
-from app.models.brainsuite_config import OrgBrainsuiteConfig
+from app.models.brainsuite_config import OrgBrainsuiteConfig, OrgBrainsuiteFieldMapping
 from app.models.platform import BrainsuiteApp
+from app.models.metadata import MetadataField
 from app.models.scoring import CreativeScoreResult
 from app.schemas.brainsuite_config import (
     CredentialsResponse,
@@ -26,12 +27,39 @@ from app.schemas.brainsuite_config import (
     SystemAppNameUpdate,
     RescoreRequest,
 )
+from app.schemas.brainsuite_field_mappings import (
+    FieldMappingResponse,
+    FieldMappingUpdate,
+    FieldMappingRow,
+    MetadataFieldOption,
+)
 from app.api.v1.deps import get_current_admin
 from app.core.security import encrypt_token, decrypt_token
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+STANDARD_VIDEO_FIELDS = [
+    "channel", "projectName", "assetName", "assetStage", "assetLanguage",
+    "brandNames", "voiceOver", "voiceOverLanguage", "intendedMessages",
+    "intendedMessagesLanguage", "brandValues", "brandValuesLanguage",
+]
+
+STANDARD_STATIC_FIELDS = [
+    "channel", "projectName", "assetLanguage", "iconicColorScheme",
+    "intendedMessages", "intendedMessagesLanguage", "brandValues",
+    "brandValuesLanguage",
+]
+
+# D-06: Auto-match hints — map standard API field names to metadata field slugs
+AUTO_MATCH_HINTS: dict[str, str] = {
+    "brandValues": "brainsuite_brand_values",
+    "brandValuesLanguage": "brainsuite_brand_values_language",
+    "assetLanguage": "brainsuite_asset_language",
+    "voiceOverLanguage": "brainsuite_voice_over_language",
+    "assetName": "brainsuite_asset_name",
+}
 
 
 async def _has_scored_assets(db: AsyncSession, organization_id: uuid.UUID) -> bool:
@@ -237,3 +265,187 @@ async def rescore_all(
         count, current_user.organization_id, payload.app_type or "ALL",
     )
     return {"reset_count": count}
+
+
+@router.get("/apps/{app_id}/field-mappings", response_model=FieldMappingResponse)
+async def get_field_mappings(
+    app_id: uuid.UUID,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch field mappings + metadata options for a BrainsuiteApp.
+
+    If the app has zero saved mappings, standard fields are returned with
+    auto-matched metadata_field_ids based on name similarity (D-06).
+    Auto-matched values are NOT persisted until the admin clicks Save.
+    """
+    app = await db.get(BrainsuiteApp, app_id)
+    if not app or app.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="App not found")
+
+    # Fetch existing mappings for this app
+    result = await db.execute(
+        select(OrgBrainsuiteFieldMapping).where(
+            OrgBrainsuiteFieldMapping.brainsuite_app_id == app_id
+        )
+    )
+    mappings = result.scalars().all()
+
+    # Fetch org metadata fields for dropdown
+    result = await db.execute(
+        select(MetadataField).where(
+            MetadataField.organization_id == current_user.organization_id,
+            MetadataField.is_active == True,
+        ).order_by(MetadataField.sort_order)
+    )
+    metadata_fields = result.scalars().all()
+
+    # Build metadata slug lookup for auto-matching
+    slug_to_id: dict[str, uuid.UUID] = {f.name: f.id for f in metadata_fields}
+
+    # Determine standard fields for this app type
+    standard_names = STANDARD_VIDEO_FIELDS if app.app_type == "VIDEO" else STANDARD_STATIC_FIELDS
+
+    # Build mapping lookup by api_field_name
+    mapping_by_name: dict[str, OrgBrainsuiteFieldMapping] = {m.api_field_name: m for m in mappings}
+    has_saved_mappings = len(mappings) > 0
+
+    # Build standard field rows
+    standard_rows: list[FieldMappingRow] = []
+    for field_name in standard_names:
+        existing = mapping_by_name.get(field_name)
+        if existing:
+            standard_rows.append(FieldMappingRow(
+                api_field_name=field_name,
+                metadata_field_id=existing.metadata_field_id,
+                is_mandatory=existing.is_mandatory,
+                is_custom=False,
+            ))
+        else:
+            # D-06: auto-match if no saved mappings exist
+            auto_id = slug_to_id.get(AUTO_MATCH_HINTS.get(field_name, "")) if not has_saved_mappings else None
+            standard_rows.append(FieldMappingRow(
+                api_field_name=field_name,
+                metadata_field_id=auto_id,
+                is_mandatory=False,
+                is_custom=False,
+            ))
+
+    # Build custom field rows (only from saved mappings)
+    custom_rows: list[FieldMappingRow] = [
+        FieldMappingRow(
+            api_field_name=m.api_field_name,
+            metadata_field_id=m.metadata_field_id,
+            is_mandatory=m.is_mandatory,
+            is_custom=True,
+        )
+        for m in mappings if m.is_custom
+    ]
+
+    return FieldMappingResponse(
+        app_id=app_id,
+        app_name=app.name,
+        app_type=app.app_type,
+        standard_fields=standard_rows,
+        custom_fields=custom_rows,
+        metadata_options=[
+            MetadataFieldOption(id=f.id, name=f.name, label=f.label, field_type=f.field_type)
+            for f in metadata_fields
+        ],
+    )
+
+
+@router.put("/apps/{app_id}/field-mappings")
+async def upsert_field_mappings(
+    app_id: uuid.UUID,
+    payload: FieldMappingUpdate,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Persist all field mappings atomically. Deletes old, inserts new (D-10)."""
+    app = await db.get(BrainsuiteApp, app_id)
+    if not app or app.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="App not found")
+
+    # Validate standard field count
+    max_standard = 12 if app.app_type == "VIDEO" else 8
+    if len(payload.standard_fields) > max_standard:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many standard fields for {app.app_type} app (max {max_standard})",
+        )
+
+    # Validate: custom field names must not duplicate standard names
+    standard_names_set = {f.api_field_name for f in payload.standard_fields}
+    custom_names_seen: set[str] = set()
+    for cf in payload.custom_fields:
+        if cf.api_field_name in standard_names_set:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Custom field '{cf.api_field_name}' conflicts with a standard field name",
+            )
+        if cf.api_field_name in custom_names_seen:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Duplicate custom field name: '{cf.api_field_name}'",
+            )
+        custom_names_seen.add(cf.api_field_name)
+
+    # Validate: metadata_field_ids belong to this org (if set)
+    all_metadata_ids = set()
+    for f in payload.standard_fields:
+        if f.metadata_field_id:
+            all_metadata_ids.add(f.metadata_field_id)
+    for f in payload.custom_fields:
+        if f.metadata_field_id:
+            all_metadata_ids.add(f.metadata_field_id)
+
+    if all_metadata_ids:
+        result = await db.execute(
+            select(func.count()).select_from(MetadataField).where(
+                MetadataField.id.in_(all_metadata_ids),
+                MetadataField.organization_id == current_user.organization_id,
+            )
+        )
+        valid_count = result.scalar() or 0
+        if valid_count != len(all_metadata_ids):
+            raise HTTPException(
+                status_code=400,
+                detail="One or more metadata_field_id values do not belong to this organization",
+            )
+
+    # Atomic replace: delete all existing mappings for this app
+    await db.execute(
+        delete(OrgBrainsuiteFieldMapping).where(
+            OrgBrainsuiteFieldMapping.brainsuite_app_id == app_id
+        )
+    )
+
+    # Insert standard fields
+    for field in payload.standard_fields:
+        mapping = OrgBrainsuiteFieldMapping(
+            brainsuite_app_id=app_id,
+            organization_id=current_user.organization_id,
+            api_field_name=field.api_field_name,
+            metadata_field_id=field.metadata_field_id,
+            is_mandatory=field.is_mandatory,
+            is_custom=False,
+            app_type=app.app_type,
+        )
+        db.add(mapping)
+
+    # Insert custom fields
+    for field in payload.custom_fields:
+        mapping = OrgBrainsuiteFieldMapping(
+            brainsuite_app_id=app_id,
+            organization_id=current_user.organization_id,
+            api_field_name=field.api_field_name,
+            metadata_field_id=field.metadata_field_id,
+            is_mandatory=field.is_mandatory,
+            is_custom=True,
+            app_type=app.app_type,
+        )
+        db.add(mapping)
+
+    await db.commit()
+    return {"success": True}
