@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20
 
+# Phase 13 guard placeholder — _check_mandatory_fields() added by Plan 03 (Wave 2)
+
 
 async def run_scoring_batch() -> None:
     """Process up to BATCH_SIZE UNSCORED VIDEO and IMAGE assets and submit to BrainSuite.
