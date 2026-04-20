@@ -84,7 +84,14 @@ Plans:
   5. Org admin sees a persistent warning banner or alert in the Settings page when their BrainSuite config is incomplete (missing credentials, app name, or any mandatory field with no metadata mapping)
 **Additional scope (surfaced during Phase 12 UAT 2026-04-17)**:
   - YouTube cookies DB-backed storage: store cookies in `org_brainsuite_config` (or dedicated table), add admin API endpoint to update without container restart, update `dv360_sync.py` to read from DB. Currently cookies are baked into env var requiring a Docker restart to rotate.
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 13-01-PLAN.md -- Data layer: model update (brainsuite_app_id FK), Alembic migration, Pydantic schemas
+- [ ] 13-02-PLAN.md -- Backend API: GET/PUT field-mapping endpoints + Wave 0 test stubs
+- [ ] 13-03-PLAN.md -- Pipeline enforcement: FMAP-07 mandatory field guard + notification
+- [ ] 13-04-PLAN.md -- Frontend: field mapping slide panel, trigger button, warning banner
+
 **UI hint**: yes
 
 ## Progress
@@ -103,4 +110,4 @@ Plans:
 | 10. In-App Notifications | v1.1 | 2/2 | Complete | 2026-04-15 |
 | 11. Per-Org Config Schema + Pipeline Wiring | v1.2 | 3/3 | Complete   | 2026-04-16 |
 | 12. Credentials + App Name Settings UI | v1.2 | 3/3 | Complete   | 2026-04-17 |
-| 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 0/0 | Not started | - |
+| 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 0/4 | Not started | - |
