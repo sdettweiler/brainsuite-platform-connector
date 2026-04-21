@@ -182,6 +182,20 @@ interface FieldMappingApiResponse {
             </div>
           </ng-container>
 
+          <!-- channel: auto-derived read-only row -->
+          <div class="field-row field-row--auto-derived">
+            <div class="col-api-field field-name-cell">
+              <span class="field-name-text">channel</span>
+            </div>
+            <div class="col-metadata-field auto-derived-label">
+              <i class="bi bi-arrow-repeat auto-derived-icon"></i>
+              Auto-derived from platform + placement
+            </div>
+            <div class="col-mandatory">
+              <span class="auto-derived-dash">—</span>
+            </div>
+          </div>
+
           <!-- SECTION B: Custom Fields -->
           <div class="section-label section-label--custom">CUSTOM FIELDS</div>
 
@@ -445,6 +459,23 @@ interface FieldMappingApiResponse {
     .field-row--custom {
       /* custom fields may have taller rows due to form-field */
       align-items: flex-start;
+    }
+    .field-row--auto-derived {
+      opacity: 0.65;
+    }
+    .auto-derived-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+    .auto-derived-icon { font-size: 13px; flex-shrink: 0; }
+    .auto-derived-dash {
+      font-size: 16px;
+      color: var(--text-muted);
+      line-height: 1;
     }
 
     /* Col: API field name */
