@@ -643,7 +643,7 @@ export class BrainsuiteAppsComponent implements OnInit, OnDestroy {
       client_id: [this.credentials?.client_id || '', Validators.required],
       client_secret: [hasSecret ? '••••••••' : ''],
     });
-    this.secretEditMode = false;
+    this.secretEditMode = !hasSecret;
   }
 
   get hasCredentials(): boolean {
