@@ -1,4 +1,4 @@
-import { Component, OnInit, Inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, FormControl, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -10,6 +10,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule, MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
 import { FieldMappingsPanelComponent } from './field-mappings-panel.component';
 
@@ -490,9 +492,12 @@ export class RescoreDialogComponent {
     .banner-items { font-size: 12px; color: var(--text-secondary); }
   `],
 })
-export class BrainsuiteAppsComponent implements OnInit {
+export class BrainsuiteAppsComponent implements OnInit, OnDestroy {
   // Existing state
   apps: BrainsuiteApp[] = [];
+
+  // WR-02: destroy subject for unsubscribing HTTP subscriptions on destroy
+  private destroy$ = new Subject<void>();
   loading = true;
   saving = false;
   showForm = false;
@@ -528,6 +533,11 @@ export class BrainsuiteAppsComponent implements OnInit {
   ngOnInit(): void {
     this.loadApps();
     this.loadCredentials();
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   // --- Existing methods (preserved) ---
@@ -798,17 +808,19 @@ export class BrainsuiteAppsComponent implements OnInit {
 
   loadAllFieldMappings(): void {
     for (const app of this.apps) {
-      this.api.get<any>(`/brainsuite-config/apps/${app.id}/field-mappings`).subscribe({
-        next: (response) => {
-          this.appFieldMappings[app.id] = {
-            standard_fields: response.standard_fields || [],
-            custom_fields: response.custom_fields || [],
-          };
-        },
-        error: () => {
-          // Silently ignore — banner will show "no data" state
-        },
-      });
+      this.api.get<any>(`/brainsuite-config/apps/${app.id}/field-mappings`)
+        .pipe(takeUntil(this.destroy$))  // WR-02: cancel in-flight requests on destroy
+        .subscribe({
+          next: (response) => {
+            this.appFieldMappings[app.id] = {
+              standard_fields: response.standard_fields || [],
+              custom_fields: response.custom_fields || [],
+            };
+          },
+          error: () => {
+            // Silently ignore — banner will show "no data" state
+          },
+        });
     }
   }
 
