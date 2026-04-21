@@ -34,7 +34,7 @@
 
 - [x] **Phase 11: Per-Org Config Schema + Pipeline Wiring** — DB tables, metadata seed, pipeline reads from DB (completed 2026-04-16)
 - [x] **Phase 12: Credentials + App Name Settings UI** — Settings section, Test Connection, re-score prompt (completed 2026-04-17)
-- [ ] **Phase 13: Field Mapping Editor + Mandatory Field Enforcement** — mapping UI, custom fields, mandatory logic, pipeline guards
+- [x] **Phase 13: Field Mapping Editor + Mandatory Field Enforcement** — mapping UI, custom fields, mandatory logic, pipeline guards (completed 2026-04-21)
 
 ## Phase Details
 
@@ -90,7 +90,7 @@ Plans:
 - [x] 13-01-PLAN.md -- Data layer: model update (brainsuite_app_id FK), Alembic migration, Pydantic schemas
 - [x] 13-02-PLAN.md -- Backend API: GET/PUT field-mapping endpoints + Wave 0 test stubs
 - [x] 13-03-PLAN.md -- Pipeline enforcement: FMAP-07 mandatory field guard + notification
-- [ ] 13-04-PLAN.md -- Frontend: field mapping slide panel, trigger button, warning banner
+- [x] 13-04-PLAN.md -- Frontend: field mapping slide panel, trigger button, warning banner
 
 **UI hint**: yes
 
@@ -110,4 +110,4 @@ Plans:
 | 10. In-App Notifications | v1.1 | 2/2 | Complete | 2026-04-15 |
 | 11. Per-Org Config Schema + Pipeline Wiring | v1.2 | 3/3 | Complete   | 2026-04-16 |
 | 12. Credentials + App Name Settings UI | v1.2 | 3/3 | Complete   | 2026-04-17 |
-| 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 3/4 | In Progress|  |
+| 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 4/4 | Complete   | 2026-04-21 |
