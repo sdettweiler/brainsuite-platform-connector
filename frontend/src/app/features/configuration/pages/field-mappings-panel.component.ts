@@ -221,6 +221,10 @@ interface FieldMappingApiResponse {
                 <span class="custom-name-error" *ngIf="fieldGroup.get('api_field_name')?.hasError('required') && fieldGroup.get('api_field_name')?.touched">
                   Required
                 </span>
+                <!-- WR-04: surface pattern validation to user before backend 422 -->
+                <span class="custom-name-error" *ngIf="fieldGroup.get('api_field_name')?.hasError('pattern') && fieldGroup.get('api_field_name')?.touched">
+                  Must start with a letter; letters, digits, underscores only
+                </span>
               </div>
 
               <!-- Col 2: Metadata field dropdown -->
@@ -719,7 +723,12 @@ export class FieldMappingsPanelComponent implements OnInit, OnChanges, OnDestroy
 
     const customGroups = response.custom_fields.map(field =>
       this.fb.group({
-        api_field_name: [field.api_field_name, [Validators.required, Validators.minLength(1)]],
+        // WR-04: pattern matches backend FieldMappingCustom validator ^[a-zA-Z][a-zA-Z0-9_]*$
+        api_field_name: [field.api_field_name, [
+          Validators.required,
+          Validators.minLength(1),
+          Validators.pattern(/^[a-zA-Z][a-zA-Z0-9_]*$/),
+        ]],
         metadata_field_id: [field.metadata_field_id],
         is_mandatory: [field.is_mandatory],
       })
@@ -738,7 +747,12 @@ export class FieldMappingsPanelComponent implements OnInit, OnChanges, OnDestroy
   addCustomField(): void {
     this.customFieldsArray.push(
       this.fb.group({
-        api_field_name: ['', [Validators.required, Validators.minLength(1)]],
+        // WR-04: pattern matches backend FieldMappingCustom validator ^[a-zA-Z][a-zA-Z0-9_]*$
+        api_field_name: ['', [
+          Validators.required,
+          Validators.minLength(1),
+          Validators.pattern(/^[a-zA-Z][a-zA-Z0-9_]*$/),
+        ]],
         metadata_field_id: [null],
         is_mandatory: [false],
       })
