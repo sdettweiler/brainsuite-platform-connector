@@ -1,0 +1,27 @@
+# Tests — not needed in production image
+tests/
+.pytest_cache/
+
+# Python artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+
+# Dev tooling
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Local creative uploads — served from object storage, not baked in
+static/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
