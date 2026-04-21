@@ -22,7 +22,7 @@ A user can connect all their ad accounts, see every creative's performance metri
 
 ## Current State
 
-**Version:** v1.2 (in progress — started 2026-04-15)
+**Version:** v1.2 (milestone complete — 2026-04-21; Phase 13 complete)
 
 **Stack:** Angular 17 + FastAPI + PostgreSQL + Redis + MinIO — fully containerized via Docker Compose
 **Deployment:** Any cloud host or local dev via `docker-compose up`
@@ -73,10 +73,13 @@ A user can connect all their ad accounts, see every creative's performance metri
 - ✓ Score-to-ROAS correlation scatter chart — v1.1 (Phase 8)
 - ✓ AI metadata auto-fill (Gemini Vision + Whisper, pipeline-integrated) — v1.1 (Phase 9)
 - ✓ In-app notifications (bell + polling + toasts) — v1.1 (Phase 10)
+- ✓ Per-org BrainSuite config schema + pipeline wiring — v1.2 (Phase 11)
+- ✓ Credentials + app name settings UI — v1.2 (Phase 12)
+- ✓ Field mapping editor + mandatory field enforcement (FMAP-01–07, PIPE-02–03) — v1.2 (Phase 13)
 
 ### Active
 
-*(v1.2 requirements — defined below in REQUIREMENTS.md)*
+*(all v1.2 requirements validated — see Phase 13 completion)*
 
 ### Out of Scope
 
@@ -134,4 +137,4 @@ A user can connect all their ad accounts, see every creative's performance metri
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-15 — v1.2 milestone started*
+*Last updated: 2026-04-21 — v1.2 milestone complete (Phase 13 done)*
