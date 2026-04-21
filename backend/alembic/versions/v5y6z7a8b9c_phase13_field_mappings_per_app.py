@@ -21,6 +21,15 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Acquire a table-level lock before any DDL to prevent concurrent DML from
+    # inserting duplicate (brainsuite_app_id, api_field_name) rows during the
+    # window between the FK/NOT NULL steps and the unique constraint creation.
+    # CR-02: prevents race condition on unique constraint creation.
+    conn = op.get_bind()
+    conn.execute(sa.text(
+        "LOCK TABLE org_brainsuite_field_mappings IN SHARE ROW EXCLUSIVE MODE"
+    ))
+
     # 1. Add brainsuite_app_id as nullable initially (required for backfill)
     op.add_column(
         "org_brainsuite_field_mappings",
@@ -28,7 +37,6 @@ def upgrade() -> None:
     )
 
     # 2. Backfill brainsuite_app_id from brainsuite_apps via org + app_type match
-    conn = op.get_bind()
     conn.execute(sa.text("""
         UPDATE org_brainsuite_field_mappings m
         SET brainsuite_app_id = app.id
@@ -49,6 +57,21 @@ def upgrade() -> None:
     )
 
     # 4. Alter column to NOT NULL after backfill
+    # CR-01: Pre-check for orphan rows that could not be backfilled. Any row
+    # still NULL here means its (organization_id, app_type) matched zero or
+    # multiple brainsuite_apps rows — the NOT NULL ALTER would abort the entire
+    # migration, leaving the database in a partial state. Raise early with a
+    # clear message so the operator can resolve the rows manually.
+    orphan_result = conn.execute(sa.text(
+        "SELECT COUNT(*) FROM org_brainsuite_field_mappings WHERE brainsuite_app_id IS NULL"
+    ))
+    orphan_count = orphan_result.scalar()
+    if orphan_count > 0:
+        raise RuntimeError(
+            f"Migration aborted: {orphan_count} org_brainsuite_field_mappings row(s) could not be "
+            "backfilled (no matching brainsuite_apps entry). Resolve these rows manually before upgrading."
+        )
+
     op.alter_column(
         "org_brainsuite_field_mappings",
         "brainsuite_app_id",
