@@ -496,19 +496,26 @@ interface FieldMappingApiResponse {
     }
     /* Compact mat-form-field height inside rows */
     .custom-name-field ::ng-deep .mat-mdc-form-field-infix {
-      min-height: 36px;
-      padding-top: 6px;
-      padding-bottom: 6px;
+      min-height: unset;
+      height: 36px;
+      padding-top: 0;
+      padding-bottom: 0;
       display: flex;
       align-items: center;
     }
     .custom-name-field ::ng-deep .mdc-text-field--outlined {
       height: 36px;
     }
+    .custom-name-field ::ng-deep .mat-mdc-text-field-wrapper {
+      height: 36px;
+      padding: 0 8px;
+    }
     .custom-name-field ::ng-deep input.mat-mdc-input-element {
+      height: 36px;
       line-height: 36px;
-      padding-top: 0;
-      padding-bottom: 0;
+      padding: 0;
+      margin: 0;
+      box-sizing: border-box;
     }
 
     /* -----------------------------------------------------------------------
