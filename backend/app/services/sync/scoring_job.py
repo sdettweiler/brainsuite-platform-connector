@@ -493,38 +493,36 @@ async def _check_mandatory_fields(
         any field that is unmapped or has no asset value.
     """
     async with get_session_factory()() as db:
-        # Fetch mandatory field mappings for this app
+        # WR-01: Single JOIN query replacing the N+1 per-field SELECT loop.
+        # Fetches all mandatory mappings for the app and their corresponding
+        # asset values (if any) in one round-trip via an OUTER JOIN.
         result = await db.execute(
-            select(OrgBrainsuiteFieldMapping).where(
+            select(
+                OrgBrainsuiteFieldMapping.api_field_name,
+                OrgBrainsuiteFieldMapping.metadata_field_id,
+                AssetMetadataValue.value,
+            )
+            .outerjoin(
+                AssetMetadataValue,
+                and_(
+                    AssetMetadataValue.field_id == OrgBrainsuiteFieldMapping.metadata_field_id,
+                    AssetMetadataValue.asset_id == asset_id,
+                ),
+            )
+            .where(
                 OrgBrainsuiteFieldMapping.brainsuite_app_id == app_id,
                 OrgBrainsuiteFieldMapping.is_mandatory == True,
             )
         )
-        mandatory_mappings = result.scalars().all()
+        rows = result.all()
 
-        if not mandatory_mappings:
-            return (True, [])  # No mandatory fields configured — all clear
+    if not rows:
+        return (True, [])  # No mandatory fields configured — all clear
 
-        missing_fields: list[str] = []
-        for mapping in mandatory_mappings:
-            if not mapping.metadata_field_id:
-                # Field is mandatory but not mapped to any metadata field
-                missing_fields.append(mapping.api_field_name)
-                continue
-
-            # Check if asset has a non-empty value for this metadata field
-            # NOTE: AssetMetadataValue uses column "field_id" (not "metadata_field_id")
-            value_result = await db.execute(
-                select(AssetMetadataValue).where(
-                    AssetMetadataValue.asset_id == asset_id,
-                    AssetMetadataValue.field_id == mapping.metadata_field_id,
-                )
-            )
-            value_row = value_result.scalar_one_or_none()
-
-            if not value_row or not value_row.value:
-                missing_fields.append(mapping.api_field_name)
-
+    missing_fields = [
+        api_name for api_name, meta_id, val in rows
+        if not meta_id or not val
+    ]
     return (len(missing_fields) == 0, missing_fields)
 
 
