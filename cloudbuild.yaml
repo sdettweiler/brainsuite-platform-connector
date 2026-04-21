@@ -1,0 +1,90 @@
+steps:
+  # ── Build images ─────────────────────────────────────────────────────────────
+
+  - name: gcr.io/cloud-builders/docker
+    id: build-backend
+    args:
+      - build
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/brainsuite/backend:$COMMIT_SHA
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/brainsuite/backend:latest
+      - -f
+      - docker/Dockerfile.backend
+      - ./backend
+
+  - name: gcr.io/cloud-builders/docker
+    id: build-frontend
+    args:
+      - build
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/brainsuite/frontend:$COMMIT_SHA
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/brainsuite/frontend:latest
+      - -f
+      - docker/Dockerfile.frontend
+      - .
+
+  # ── Push images ──────────────────────────────────────────────────────────────
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-backend
+    waitFor: [build-backend]
+    args: [push, --all-tags, us-central1-docker.pkg.dev/$PROJECT_ID/brainsuite/backend]
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-frontend
+    waitFor: [build-frontend]
+    args: [push, --all-tags, us-central1-docker.pkg.dev/$PROJECT_ID/brainsuite/frontend]
+
+  # ── Run migrations (once, before instances scale up) ─────────────────────────
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: migrate
+    waitFor: [push-backend]
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - execute
+      - brainsuite-migrate
+      - --region=us-central1
+      - --wait
+
+  # ── Deploy services ───────────────────────────────────────────────────────────
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-backend
+    waitFor: [migrate]
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - brainsuite-backend
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/brainsuite/backend:$COMMIT_SHA
+      - --region=us-central1
+      - --platform=managed
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-frontend
+    waitFor: [push-frontend]
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        BACKEND_URL=$$(gcloud run services describe brainsuite-backend \
+          --region=us-central1 \
+          --format='value(status.url)')
+        BACKEND_HOST=$$(echo "$$BACKEND_URL" | sed 's|https://||')
+        gcloud run deploy brainsuite-frontend \
+          --image="us-central1-docker.pkg.dev/$PROJECT_ID/brainsuite/frontend:$COMMIT_SHA" \
+          --region=us-central1 \
+          --platform=managed \
+          --set-env-vars="BACKEND_URL=$$BACKEND_URL,BACKEND_HOST=$$BACKEND_HOST"
+
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/brainsuite/backend:$COMMIT_SHA
+  - us-central1-docker.pkg.dev/$PROJECT_ID/brainsuite/frontend:$COMMIT_SHA
+
+options:
+  logging: CLOUD_LOGGING_ONLY
