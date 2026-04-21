@@ -194,16 +194,15 @@ interface FieldMappingApiResponse {
             >
               <!-- Col 1: Editable API field name -->
               <div class="col-api-field">
-                <mat-form-field appearance="outline" class="custom-name-field">
-                  <input
-                    matInput
-                    formControlName="api_field_name"
-                    placeholder="API field name"
-                  />
-                  <mat-error *ngIf="fieldGroup.get('api_field_name')?.hasError('required')">
-                    API field name is required
-                  </mat-error>
-                </mat-form-field>
+                <input
+                  class="custom-name-input"
+                  formControlName="api_field_name"
+                  placeholder="API field name"
+                  type="text"
+                />
+                <span class="custom-name-error" *ngIf="fieldGroup.get('api_field_name')?.hasError('required') && fieldGroup.get('api_field_name')?.touched">
+                  Required
+                </span>
               </div>
 
               <!-- Col 2: Metadata field dropdown -->
@@ -494,28 +493,27 @@ interface FieldMappingApiResponse {
       width: 100%;
       font-size: 13px;
     }
-    /* Compact mat-form-field height inside rows */
-    .custom-name-field ::ng-deep .mat-mdc-form-field-infix {
-      min-height: unset;
+    /* Plain input for custom field API name */
+    .custom-name-input {
+      width: 100%;
       height: 36px;
-      padding-top: 0;
-      padding-bottom: 0;
-      display: flex;
-      align-items: center;
-    }
-    .custom-name-field ::ng-deep .mdc-text-field--outlined {
-      height: 36px;
-    }
-    .custom-name-field ::ng-deep .mat-mdc-text-field-wrapper {
-      height: 36px;
-      padding: 0 8px;
-    }
-    .custom-name-field ::ng-deep input.mat-mdc-input-element {
-      height: 36px;
-      line-height: 36px;
-      padding: 0;
-      margin: 0;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 13px;
       box-sizing: border-box;
+      outline: none;
+      vertical-align: middle;
+    }
+    .custom-name-input::placeholder { color: var(--text-muted); }
+    .custom-name-input:focus { border-color: var(--accent); }
+    .custom-name-error {
+      font-size: 11px;
+      color: var(--error);
+      display: block;
+      margin-top: 2px;
     }
 
     /* -----------------------------------------------------------------------

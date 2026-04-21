@@ -59,7 +59,6 @@ AUTO_MATCH_HINTS: dict[str, str] = {
     "brandValuesLanguage": "brainsuite_brand_values_language",
     "assetLanguage": "brainsuite_asset_language",
     "voiceOverLanguage": "brainsuite_voice_over_language",
-    "intendedMessagesLanguage": "brainsuite_intended_messages_language",
     "assetName": "brainsuite_asset_name",
 }
 
