@@ -457,6 +457,7 @@ export class OrganizationComponent implements OnInit {
         this.orgForm.patchValue({ name: org.name, currency: org.currency });
         this.orgSlug = org.slug;
       },
+      error: () => {},
     });
 
     this.api.get<OrgUser[]>('/users').subscribe({

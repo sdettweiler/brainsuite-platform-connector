@@ -343,6 +343,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
       if (u) {
         this.loadNotifications();
         this.lastToastCheckAt = new Date();
+        if (this.pollInterval) clearInterval(this.pollInterval);
         this.pollInterval = setInterval(() => this.loadUnreadCount(), 30000);
       }
     });
