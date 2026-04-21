@@ -3,9 +3,13 @@ import {
   Input,
   Output,
   EventEmitter,
+  OnInit,
   OnChanges,
+  OnDestroy,
   SimpleChanges,
 } from '@angular/core';
+import { Subject } from 'rxjs';
+import { takeUntil, switchMap } from 'rxjs/operators';
 import { CommonModule } from '@angular/common';
 import {
   FormsModule,
@@ -598,7 +602,7 @@ interface FieldMappingApiResponse {
     }
   `],
 })
-export class FieldMappingsPanelComponent implements OnChanges {
+export class FieldMappingsPanelComponent implements OnInit, OnChanges, OnDestroy {
   @Input() app: BrainsuiteApp | null = null;
   @Input() isOpen = false;
 
@@ -610,11 +614,41 @@ export class FieldMappingsPanelComponent implements OnChanges {
   loading = false;
   saving = false;
 
+  // WR-03: switchMap subject cancels in-flight requests on rapid app switching
+  private loadRequest$ = new Subject<string>();
+  private destroy$ = new Subject<void>();
+
   constructor(
     private fb: FormBuilder,
     private api: ApiService,
     private snackBar: MatSnackBar,
   ) {}
+
+  ngOnInit(): void {
+    // WR-03: Wire the load pipeline once; switchMap cancels prior in-flight request
+    // whenever a new app id is emitted, preventing stale-response race conditions.
+    this.loadRequest$.pipe(
+      switchMap(appId => this.api.get<FieldMappingApiResponse>(
+        `/brainsuite-config/apps/${appId}/field-mappings`
+      )),
+      takeUntil(this.destroy$),
+    ).subscribe({
+      next: (response) => {
+        this.metadataOptions = response.metadata_options || [];
+        this.buildForm(response);
+        this.loading = false;
+      },
+      error: () => {
+        this.loading = false;
+        this.snackBar.open(
+          'Failed to load field mappings — please try again.',
+          'Close',
+          { duration: 4000, panelClass: ['snack-error'] }
+        );
+        this.closed.emit();
+      },
+    });
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
     // Load field mappings whenever the panel opens (isOpen becomes true) and an app is selected
@@ -627,6 +661,11 @@ export class FieldMappingsPanelComponent implements OnChanges {
     if (appChange && this.isOpen && this.app) {
       this.loadFieldMappings();
     }
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   // -------------------------------------------------------------------------
@@ -650,26 +689,8 @@ export class FieldMappingsPanelComponent implements OnChanges {
     this.loading = true;
     this.form = null;
     this.metadataOptions = [];
-
-    this.api.get<FieldMappingApiResponse>(
-      `/brainsuite-config/apps/${this.app.id}/field-mappings`
-    ).subscribe({
-      next: (response) => {
-        this.metadataOptions = response.metadata_options || [];
-        this.buildForm(response);
-        this.loading = false;
-      },
-      error: () => {
-        this.loading = false;
-        this.snackBar.open(
-          'Failed to load field mappings — please try again.',
-          'Close',
-          { duration: 4000, panelClass: ['snack-error'] }
-        );
-        // Close the panel gracefully on load failure
-        this.closed.emit();
-      },
-    });
+    // WR-03: emit app id into the switchMap pipeline (cancels prior in-flight request)
+    this.loadRequest$.next(this.app.id);
   }
 
   private buildForm(response: FieldMappingApiResponse): void {
