@@ -54,6 +54,10 @@ v1.2 Progress: [███░░░░░░░░░░░░░░░░░] 1/
 - Client Secret must be stored encrypted; never returned in plain text to frontend
 - PIPE-02 and PIPE-03 placed in Phase 13 (not Phase 11) because they depend on mandatory field logic defined in FMAP-07
 
+### Roadmap Evolution
+
+- Phase 14 added: YouTube Cookies Admin UI (2026-04-21 — scope originally listed as additional scope under Phase 13)
+
 ### Todos
 
 - None yet
