@@ -1,16 +1,18 @@
 import os
 import logging
 import asyncio
+import traceback
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response, RedirectResponse
+from fastapi.responses import FileResponse, Response, RedirectResponse, JSONResponse
 from pathlib import PurePosixPath
 from urllib.parse import unquote
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 from app.core.config import settings
 from app.api.v1 import api_router
@@ -109,6 +111,17 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json" if settings.DEBUG else None,
     lifespan=lifespan,
 )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error(
+        "Unhandled exception: %s %s\n%s",
+        request.method,
+        request.url.path,
+        traceback.format_exc(),
+    )
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
 
 app.add_middleware(
     CORSMiddleware,
