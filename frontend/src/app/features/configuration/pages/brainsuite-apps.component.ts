@@ -580,9 +580,10 @@ export class BrainsuiteAppsComponent implements OnInit {
       next: () => {
         this.saving = false;
         this.showForm = false;
+        const wasEditing = !!this.editingApp;  // WR-05: capture before clearing
         this.editingApp = null;
         this.loadApps();
-        this.snackBar.open(`App ${this.editingApp ? 'updated' : 'created'}`, '', { duration: 2000 });
+        this.snackBar.open(`App ${wasEditing ? 'updated' : 'created'}`, '', { duration: 2000 });
       },
       error: () => { this.saving = false; },
     });
