@@ -211,12 +211,19 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
         )
         db.add(brand_values_lang_field)
 
+        intended_messages_lang_field = MetadataField(
+            organization_id=org_id, name="brainsuite_intended_messages_language", label="Intended Messages Language",
+            field_type="SELECT", is_required=False, default_value=None, is_active=True, sort_order=12,
+        )
+        db.add(intended_messages_lang_field)
+
         await db.flush()
 
         for idx, (val, lbl) in enumerate(_LANGUAGES):
             db.add(MetadataFieldValue(field_id=asset_lang_field.id, value=val, label=lbl, sort_order=idx))
             db.add(MetadataFieldValue(field_id=vo_lang_field.id, value=val, label=lbl, sort_order=idx))
             db.add(MetadataFieldValue(field_id=brand_values_lang_field.id, value=val, label=lbl, sort_order=idx))
+            db.add(MetadataFieldValue(field_id=intended_messages_lang_field.id, value=val, label=lbl, sort_order=idx))
 
         for val, lbl, sort in [("firstVersion", "First Version", 1), ("iteration", "Iteration", 2), ("finalVersion", "Final Version", 3)]:
             db.add(MetadataFieldValue(field_id=asset_stage_field.id, value=val, label=lbl, sort_order=sort))
