@@ -110,4 +110,4 @@ Plans:
 | 10. In-App Notifications | v1.1 | 2/2 | Complete | 2026-04-15 |
 | 11. Per-Org Config Schema + Pipeline Wiring | v1.2 | 3/3 | Complete   | 2026-04-16 |
 | 12. Credentials + App Name Settings UI | v1.2 | 3/3 | Complete   | 2026-04-17 |
-| 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 4/4 | Complete   | 2026-04-21 |
+| 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 4/4 | Complete    | 2026-04-21 |
