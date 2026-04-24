@@ -870,7 +870,12 @@ export class PlatformsComponent implements OnInit, OnDestroy {
         this.applyDefaultApps();
         // Auto-start polling if any connection is mid-sync (PENDING or first-time ACTIVE with no last_synced_at)
         const hasSyncing = res.items.some(c => c.sync_status === 'PENDING' || (c.sync_status === 'ACTIVE' && !c.last_synced_at));
-        if (hasSyncing) this.startSyncStatusPolling();
+        if (hasSyncing) {
+          this.startSyncStatusPolling();
+        } else if (this.syncStatusPollInterval) {
+          clearInterval(this.syncStatusPollInterval);
+          this.syncStatusPollInterval = null;
+        }
       },
       error: () => { this.loading = false; },
     });
@@ -1058,8 +1063,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     this.syncStatusPollInterval = setInterval(() => {
       ticks++;
       this.loadConnections();
-      const stillPending = this.connections.some(c => c.sync_status === 'PENDING');
-      if (!stillPending || ticks >= 120) {
+      if (ticks >= 120) {
         clearInterval(this.syncStatusPollInterval);
         this.syncStatusPollInterval = null;
       }
