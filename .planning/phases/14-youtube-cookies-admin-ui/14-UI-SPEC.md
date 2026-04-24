@@ -38,14 +38,16 @@ Declared values (must be multiples of 4):
 | sm | 8px | Compact element spacing, button gaps |
 | md | 16px | Default element spacing, form field margin-bottom, grid gaps |
 | lg | 24px | Section body padding, section header padding, page gap between cards |
-| xl | 28px | Page container horizontal padding (matches `.page-container { padding: 28px }`) |
 | 2xl | 48px | Empty state vertical padding |
 | 3xl | 64px | Not used in this phase |
 
 Exceptions:
 - Cookie textarea row height: 6 rows (unrestricted pixel height — user-controlled)
-- Touch targets for Reveal / Replace buttons: minimum 36px height (Angular Material default)
+- Touch targets for Reveal Cookie / Replace buttons: minimum 36px height (Angular Material default)
 - Table row padding: 8px vertical, 8px horizontal (matches existing table `th, td { padding: 8px }` in RESEARCH.md code example)
+
+Inherited implementation detail outside the design token system:
+- `.page-container { padding: 28px }` — this 28px value is inherited from the existing global page container style and is not a new design token. Executors must not use 28px for any new element spacing; use `lg (24px)` or `2xl (48px)` instead.
 
 Source: All spacing values verified against `brainsuite-apps.component.ts` inline styles (`.page-container`, `.section-body`, `.section-header`, `.form-full`).
 
@@ -57,13 +59,13 @@ Source: All spacing values verified against `brainsuite-apps.component.ts` inlin
 |------|------|--------|-------------|
 | Body | 14px | 400 | 1.5 |
 | Label / secondary | 13px | 400 | 1.5 |
-| Small / muted | 12px | 400 | 1.5 |
+| Small / badge / label | 12px | 400 or 600 | 1.5 |
 | Section heading | 16px | 600 | 1.2 |
 
 Notes:
 - Body 14px is the global `html, body { font-size: 14px }` baseline — all Admin sections inherit it.
 - Section headings use `h2 { font-size: 16px; font-weight: 600 }` per `.section-header` rule in brainsuite-apps.component.ts.
-- Badge text (health status labels) uses 11px weight 600 uppercase with letter-spacing 0.5px — inherits from global `.badge` class.
+- Badge text (health status labels: VALID / EXPIRED / MISSING) uses the 12px Small role at weight 600 uppercase with letter-spacing 0.5px — the uppercase transform and letter-spacing provide sufficient visual differentiation without introducing a 5th size. Inherits from global `.badge` class.
 - Table header cells use 13px weight 400 (no separate bold declared in existing patterns — matches Angular Material MDC table default).
 
 Source: `frontend/src/styles.scss` lines 99–105, `brainsuite-apps.component.ts` lines 357–358.
@@ -76,7 +78,7 @@ Source: `frontend/src/styles.scss` lines 99–105, `brainsuite-apps.component.ts
 |------|-------|-------|
 | Dominant (60%) | `var(--bg-primary)` = `#1B1B1B` (dark) / `#F5F6FA` (light) | Page background, admin container background |
 | Secondary (30%) | `var(--bg-card)` = `#2C2C2C` (dark) / `#FFFFFF` (light) | config-section card backgrounds, cookie slot cards, table surfaces |
-| Accent (10%) | `#FF7700` (`var(--accent)`) | Save button background, focused form field border, Reveal/Replace button text color on hover |
+| Accent (10%) | `#FF7700` (`var(--accent)`) | Save button background, focused form field border, Reveal Cookie/Replace button text color on hover |
 | Success semantic | `#2ECC71` (`var(--success)`) | VALID badge background-tint + text |
 | Warning semantic | `#F39C12` (`var(--warning)`) | EXPIRED badge background-tint + text |
 | Neutral semantic | `var(--border)` = `#404040` (dark) / `#C2CDE2` (light) | MISSING badge background |
@@ -86,12 +88,14 @@ Source: `frontend/src/styles.scss` lines 99–105, `brainsuite-apps.component.ts
 | Text muted | `var(--text-muted)` = `#707070` (dark) / `#718096` (light) | Placeholder text, masked cookie display `••••••••••` |
 
 Accent reserved for:
-- "Save" button fill (primary CTA per cookie slot)
+- "Save Cookie" button fill (primary CTA per cookie slot)
 - "Promote to SuperAdmin" button fill (primary CTA in SuperAdmin section)
 - Focused/active form field outline border
-- Hovered stroked button (`Reveal`, `Replace`, `Change secret`) text color
+- Hovered stroked button (`Reveal Cookie`, `Replace`, `Change secret`) text color
 
 No accent on: table headers, section headings, nav label text, badge text.
+
+Primary focal point: the cookie health badge (VALID / EXPIRED / MISSING) at the top-right of each cookie slot card. This badge is the first element the eye should locate on page load and after a save action; all other slot elements are subordinate to it.
 
 Source: `frontend/src/styles.scss` `:root`, `.dark-theme`, `.light-theme` blocks; `.badge` class; `brainsuite-apps.component.ts` RESEARCH.md Example 5 badge color inline styles.
 
@@ -103,7 +107,7 @@ Source: `frontend/src/styles.scss` `:root`, `.dark-theme`, `.light-theme` blocks
 | expired | `badge-warning` | `rgba(243,156,18,0.15)` | `#F39C12` | EXPIRED |
 | missing | `badge-neutral` | `var(--border)` | `var(--text-secondary)` | MISSING |
 
-Use existing global `.badge` class + status modifier. Do not create new badge styles.
+Badge text: 12px weight 600 uppercase letter-spacing 0.5px (Small role with uppercase modifier). Use existing global `.badge` class + status modifier. Do not create new badge styles.
 
 ---
 
@@ -117,7 +121,7 @@ Use existing global `.badge` class + status modifier. Do not create new badge st
 | Section header | — | `.section-header` | Title + description row at top of each card |
 | Section body | — | `.section-body` | Content area with 24px padding |
 | Primary button | `mat-flat-button` | `.save-btn` (accent fill) | "Save Cookie", "Promote to SuperAdmin" |
-| Stroked button | `mat-stroked-button` | — | "Reveal", "Replace", "Discard" |
+| Stroked button | `mat-stroked-button` | — | "Reveal Cookie", "Hide Cookie", "Replace", "Discard" |
 | Snack bar | `MatSnackBar` | — | Success and error feedback toasts |
 | Spinner | `MatProgressSpinner` diameter=16 | — | Inline save/load loading states |
 | Badge | — | `.badge .badge-{status}` | Cookie health status labels |
@@ -155,18 +159,18 @@ Use existing global `.badge` class + status modifier. Do not create new badge st
 │ │ ┌─ .section-body ─────────────┐ │ │
 │ │ │ ┌─ .cookie-card ──────────┐ │ │ │
 │ │ │ │ .slot-header: "Primary" │ │ │ │
-│ │ │ │ + health badge          │ │ │ │
+│ │ │ │ + health badge [FOCAL]  │ │ │ │
 │ │ │ │ ─────────────────────── │ │ │ │
 │ │ │ │ [masked display or      │ │ │ │
 │ │ │ │  textarea in edit mode] │ │ │ │
-│ │ │ │ [Reveal] [Replace]      │ │ │ │
+│ │ │ │ [Reveal Cookie][Replace]│ │ │ │
 │ │ │ └─────────────────────────┘ │ │ │
 │ │ │ ┌─ .cookie-card ──────────┐ │ │ │
 │ │ │ │ .slot-header: "Backup"  │ │ │ │
-│ │ │ │ + health badge          │ │ │ │
+│ │ │ │ + health badge [FOCAL]  │ │ │ │
 │ │ │ │ [masked display or      │ │ │ │
 │ │ │ │  textarea in edit mode] │ │ │ │
-│ │ │ │ [Reveal] [Replace]      │ │ │ │
+│ │ │ │ [Reveal Cookie][Replace]│ │ │ │
 │ │ │ └─────────────────────────┘ │ │ │
 │ │ └─────────────────────────────┘ │ │
 │ └─────────────────────────────────┘ │
@@ -192,19 +196,19 @@ Use existing global `.badge` class + status modifier. Do not create new badge st
 **State A — Masked (default after cookie saved):**
 ```
 [ Primary Cookie ]                    • VALID
-[••••••••••••••••••••]  [Reveal]  [Replace]
+[••••••••••••••••••••]  [Reveal Cookie]  [Replace]
 ```
 - `••••••••••••••••••••` uses monospace font, `var(--text-muted)` color
-- `Reveal` button: `mat-stroked-button`, switches to State B
+- `Reveal Cookie` button: `mat-stroked-button`, switches to State B
 - `Replace` button: `mat-stroked-button`, switches to State C
 
 **State B — Revealed:**
 ```
 [ Primary Cookie ]                    • VALID
-[yt_cookie_value plaintext…]  [Hide]  [Replace]
+[yt_cookie_value plaintext…]  [Hide Cookie]  [Replace]
 ```
 - Plain text in same field, normal `var(--text-primary)` color
-- `Hide` button collapses back to State A
+- `Hide Cookie` button collapses back to State A
 
 **State C — Replace mode (editing):**
 ```
@@ -235,8 +239,8 @@ No cookie saved.
 | Interaction | Trigger | Response | Feedback |
 |-------------|---------|----------|----------|
 | Page load | `ngOnInit` | GET `/api/v1/super-admin/youtube-cookies` | Skeleton shimmer on badge while loading; badge updates on resolve |
-| Reveal | Click `Reveal` | Toggle `showPrimaryContent` / `showBackupContent` | Button label switches to "Hide"; masked text replaced with plain text |
-| Hide | Click `Hide` | Toggle reveal state off | Button label returns to "Reveal"; plain text replaced with masked |
+| Reveal Cookie | Click `Reveal Cookie` | Toggle `showPrimaryContent` / `showBackupContent` | Button label switches to "Hide Cookie"; masked text replaced with plain text |
+| Hide Cookie | Click `Hide Cookie` | Toggle reveal state off | Button label returns to "Reveal Cookie"; plain text replaced with masked |
 | Replace | Click `Replace` | Set `editingPrimary` / `editingBackup` = true | Textarea appears; masked display hidden; Discard + Save Cookie buttons appear |
 | Discard | Click `Discard` | Clear textarea content; set editing = false | Returns to masked display (State A) |
 | Save Cookie | Click `Save Cookie` | PUT `/api/v1/super-admin/youtube-cookies` | Inline spinner on button; button disabled during request; on success: snack "Cookie updated" 3s; badge refreshes; editing mode closes; on error: snack "Failed to save cookie" stays open until dismissed |
@@ -275,8 +279,8 @@ No cookie saved.
 | YouTube Cookies section description | Manage system-wide DV360 cookie credentials used for video asset downloads. |
 | Primary CTA — save primary slot | Save Cookie |
 | Primary CTA — save backup slot | Save Cookie |
-| Reveal button | Reveal |
-| Hide button | Hide |
+| Reveal button | Reveal Cookie |
+| Hide button | Hide Cookie |
 | Replace button | Replace |
 | Add cookie button (MISSING state) | Add Cookie |
 | Discard button | Discard |
@@ -346,7 +350,7 @@ Table shared styles: `border-collapse: collapse`, header row `background: var(--
 | Textarea must have label | `<label>` or `aria-label="Cookie content"` associated with each textarea |
 | Promote input must have label | `mat-label` "Email address to promote" inside `MatFormField` |
 | Icon-only buttons disallowed | All icon usages in this phase accompany text labels |
-| Reveal/Hide toggle announces to screen readers | `aria-pressed` on the Reveal/Hide button; `aria-label` changes to "Hide cookie" when revealed |
+| Reveal/Hide toggle announces to screen readers | `aria-pressed` on the Reveal Cookie/Hide Cookie button; `aria-label` changes to "Hide cookie" when revealed |
 | Admin nav item | Standard `<a>` with `routerLink`; no aria additions needed beyond the link text "Admin" |
 
 ---
