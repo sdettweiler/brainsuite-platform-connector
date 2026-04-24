@@ -7,7 +7,6 @@ Implements cursor-based pagination to retrieve all pages.
 import asyncio
 import httpx
 import logging
-import os
 import uuid as uuid_mod
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -25,9 +24,6 @@ logger = logging.getLogger(__name__)
 
 META_GRAPH_URL = "https://graph.facebook.com/v21.0"
 
-CREATIVES_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "static", "creatives")
-)
 
 INSIGHTS_FIELDS = [
     "date_start",
@@ -740,8 +736,6 @@ class MetaSyncService:
         ad_ids: List[str],
     ) -> None:
         """Batch-fetch creative details for ads, download full-res assets, update DB records."""
-        org_dir = os.path.join(CREATIVES_DIR, str(connection.organization_id))
-        os.makedirs(org_dir, exist_ok=True)
 
         batch_size = 50
         for i in range(0, len(ad_ids), batch_size):
@@ -785,7 +779,7 @@ class MetaSyncService:
                     video_source = video_info.get("source") if video_info else None
                     if video_source:
                         _, asset_served_url = await self._download_asset(
-                            video_source, org_dir, connection.organization_id, ad_id, "vid"
+                            video_source, connection.organization_id, ad_id, "vid"
                         )
                     video_thumbs = video_info.get("thumbnails", {}).get("data", []) if video_info else []
                     if video_thumbs and not thumbnail_url:
@@ -830,20 +824,14 @@ class MetaSyncService:
                             ext = ".png" if "png" in content_type else ".jpg"
                             img_filename = f"img_{ad_id}{ext}"
                             img_rel = f"creatives/{connection.organization_id}/{img_filename}"
-                            img_local = os.path.join(org_dir, img_filename)
-                            with open(img_local, "wb") as f:
-                                f.write(image_bytes)
                             from app.services.object_storage import get_object_storage
                             obj_storage = get_object_storage()
-                            asset_served_url = obj_storage.upload_file(img_local, img_rel)
-                            try:
-                                os.remove(img_local)
-                            except OSError:
-                                pass
+                            img_ct = "image/png" if ext == ".png" else "image/jpeg"
+                            asset_served_url = obj_storage.upload_bytes(image_bytes, img_rel, img_ct)
 
                             # Generate thumbnail from full-res image
                             thumb_served_url = await self._generate_and_upload_thumbnail(
-                                image_bytes, org_dir, connection.organization_id, ad_id
+                                image_bytes, connection.organization_id, ad_id
                             )
 
                 if is_video and video_id and not asset_served_url:
@@ -851,7 +839,7 @@ class MetaSyncService:
                     video_source = video_info.get("source") if video_info else None
                     if video_source:
                         _, asset_served_url = await self._download_asset(
-                            video_source, org_dir, connection.organization_id, ad_id, "vid"
+                            video_source, connection.organization_id, ad_id, "vid"
                         )
                     video_thumbs = video_info.get("thumbnails", {}).get("data", []) if video_info else []
                     if video_thumbs and not thumbnail_url:
@@ -863,7 +851,7 @@ class MetaSyncService:
                 # For images: thumb_served_url already set above from generated thumbnail
                 if thumbnail_url and not thumb_served_url:
                     _, thumb_served_url = await self._download_asset(
-                        thumbnail_url, org_dir, connection.organization_id, ad_id, "thumb"
+                        thumbnail_url, connection.organization_id, ad_id, "thumb"
                     )
 
                 final_thumb = thumb_served_url or thumbnail_url
@@ -1008,12 +996,11 @@ class MetaSyncService:
     async def _download_asset(
         self,
         url: str,
-        org_dir: str,
         org_id,
         ad_id: str,
         prefix: str,
     ) -> tuple:
-        """Download a file from URL, upload to object storage. Returns (local_path, served_url)."""
+        """Download a file from URL, upload to object storage. Returns (None, served_url)."""
         try:
             from app.services.object_storage import get_object_storage
             obj_storage = get_object_storage()
@@ -1032,8 +1019,6 @@ class MetaSyncService:
             if obj_storage.file_exists(relative_path):
                 return None, obj_storage.served_url(relative_path)
 
-            local_path = os.path.join(org_dir, filename)
-
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
@@ -1048,16 +1033,9 @@ class MetaSyncService:
 
                 filename = f"{prefix}_{ad_id}{ext}"
                 relative_path = f"creatives/{org_id}/{filename}"
-                local_path = os.path.join(org_dir, filename)
 
-                with open(local_path, "wb") as f:
-                    f.write(resp.content)
-
-            served_url = obj_storage.upload_file(local_path, relative_path)
-            try:
-                os.remove(local_path)
-            except OSError:
-                pass
+            ct = content_type.split(";")[0].strip() or "application/octet-stream"
+            served_url = obj_storage.upload_bytes(resp.content, relative_path, ct)
             logger.info(f"  Downloaded asset: {filename} ({len(resp.content)} bytes)")
             return None, served_url
 
@@ -1096,7 +1074,6 @@ class MetaSyncService:
     async def _generate_and_upload_thumbnail(
         self,
         image_bytes: bytes,
-        org_dir: str,
         org_id,
         ad_id: str,
     ) -> str | None:
@@ -1109,16 +1086,9 @@ class MetaSyncService:
             ext = ".jpg" if fmt == "JPEG" else ".png"
             filename = f"thumb_{ad_id}{ext}"
             relative_path = f"creatives/{org_id}/{filename}"
-            local_path = os.path.join(org_dir, filename)
+            ct = "image/jpeg" if fmt == "JPEG" else "image/png"
 
-            with open(local_path, "wb") as f:
-                f.write(thumb_bytes)
-
-            served_url = obj_storage.upload_file(local_path, relative_path)
-            try:
-                os.remove(local_path)
-            except OSError:
-                pass
+            served_url = obj_storage.upload_bytes(thumb_bytes, relative_path, ct)
             logger.info(f"  Generated thumbnail: {filename} ({len(thumb_bytes)} bytes)")
             return served_url
         except Exception as e:
