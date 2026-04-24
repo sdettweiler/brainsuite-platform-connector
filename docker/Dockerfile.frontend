@@ -2,20 +2,20 @@
 FROM node:20-alpine AS builder
 
 WORKDIR /app
-COPY package*.json ./
+COPY frontend/package*.json ./
 RUN npm ci
 
-COPY . .
+COPY frontend/ .
 RUN npm run build -- --configuration production
 
 # Serve stage
 FROM nginx:alpine
 
 # Copy built app
-COPY --from=builder /app/dist/brainsuite-platform-connector/browser /usr/share/nginx/html
+COPY --from=builder /app/dist/brainsuite /usr/share/nginx/html
 
 # Nginx config
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx.conf.template /etc/nginx/templates/default.conf.template
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
