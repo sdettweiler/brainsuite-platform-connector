@@ -1668,16 +1668,15 @@ class DV360SyncService:
         if not org_dir or not org_id or not queue:
             return
 
-        primary_status = self._check_youtube_cookies("YOUTUBE_COOKIES")
-        backup_status = self._check_youtube_cookies("YOUTUBE_COOKIES_BACKUP")
-        can_download_video = primary_status == "valid" or backup_status == "valid"
+        db_cookies = await self._get_cookies_from_db()
+        can_download_video = len(db_cookies) > 0
 
         logger.info(
             f"  Downloading assets for {len(queue)} unique ads... "
-            f"(cookies: primary={primary_status}, backup={backup_status})"
+            f"(cookies: {'available' if can_download_video else 'none'})"
         )
         if not can_download_video:
-            logger.warning("  Both cookie sets expired/missing — skipping video downloads, thumbnails only")
+            logger.warning("  No valid cookies found in DB or env — skipping authenticated video downloads, thumbnails only")
 
         from sqlalchemy import update as sa_update
 
