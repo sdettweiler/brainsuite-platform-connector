@@ -29,6 +29,21 @@ server {
         add_header Cache-Control "no-cache, no-store, must-revalidate";
     }
 
+    # Proxy object storage requests to backend
+    location /objects/ {
+        proxy_pass ${BACKEND_URL};
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${BACKEND_HOST};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 10s;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+    }
+
     # Proxy API calls to backend (Cloud Run → Cloud Run via HTTPS)
     location /api/ {
         proxy_pass ${BACKEND_URL};
