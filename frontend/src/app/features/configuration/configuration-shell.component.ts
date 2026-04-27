@@ -71,9 +71,11 @@ export class ConfigurationShellComponent implements OnInit {
   constructor(private authService: AuthService) {}
 
   ngOnInit(): void {
-    this.navItems = [...this.baseNavItems];
-    if (this.authService.currentUser?.is_superuser) {
-      this.navItems.push({ path: 'admin', label: 'Admin', icon: 'shield-lock' });
-    }
+    this.authService.currentUser$.subscribe(user => {
+      this.navItems = [...this.baseNavItems];
+      if (user?.is_superuser) {
+        this.navItems.push({ path: 'admin', label: 'Admin', icon: 'shield-lock' });
+      }
+    });
   }
 }
