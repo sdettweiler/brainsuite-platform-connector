@@ -18,7 +18,7 @@ from typing import Optional
 from google import genai
 from google.genai import types as genai_types
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_, and_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
@@ -629,3 +629,58 @@ def _compose_mood_board(frames: list[bytes]) -> bytes:
         len(frames), canvas_w, canvas_h, len(buf.getvalue()) / 1024,
     )
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Backfill: re-trigger autofill for failed / never-run assets
+# ---------------------------------------------------------------------------
+
+async def backfill_failed_autofill_for_connection(
+    connection_id: uuid.UUID,
+    org_id: uuid.UUID,
+    exclude_asset_ids: set | None = None,
+) -> None:
+    """Queue autofill for assets where inference previously failed or never ran.
+
+    Called after every successful sync. Handles the case where a prior attempt
+    failed (e.g. video download unavailable) and the asset now has a URL.
+    Skips COMPLETE and PENDING assets — only retries FAILED or untracked ones.
+    """
+    async with get_session_factory()() as db:
+        has_fields = (await db.execute(
+            select(MetadataField.id).where(
+                MetadataField.organization_id == org_id,
+                MetadataField.auto_fill_enabled.is_(True),
+                MetadataField.is_active.is_(True),
+            ).limit(1)
+        )).scalar_one_or_none()
+
+        if not has_fields:
+            return
+
+        result = await db.execute(
+            select(CreativeAsset.id, CreativeAsset.organization_id)
+            .outerjoin(AIInferenceTracking, AIInferenceTracking.asset_id == CreativeAsset.id)
+            .where(
+                CreativeAsset.platform_connection_id == connection_id,
+                CreativeAsset.asset_url.isnot(None),
+                or_(
+                    AIInferenceTracking.ai_inference_status == "FAILED",
+                    AIInferenceTracking.asset_id.is_(None),
+                ),
+            )
+        )
+        assets = result.all()
+
+    if not assets:
+        return
+
+    queued = 0
+    for aid, oid in assets:
+        if exclude_asset_ids and aid in exclude_asset_ids:
+            continue
+        asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+        queued += 1
+
+    if queued:
+        logger.info("Autofill backfill: queued %d tasks for connection %s", queued, connection_id)

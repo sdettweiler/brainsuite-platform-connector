@@ -13,7 +13,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 import pytz
 
 from app.db.base import get_session_factory
-from app.services.ai_autofill import run_autofill_for_asset
+from app.services.ai_autofill import run_autofill_for_asset, backfill_failed_autofill_for_connection
 from app.services.notifications import create_org_notification
 
 logger = logging.getLogger(__name__)
@@ -209,8 +209,10 @@ async def run_daily_sync(connection_id: str) -> None:
                 db.add(job)
 
                 await db.commit()
+                new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
                 logger.info(f"Daily sync completed for {connection.platform} {connection.ad_account_id}: {result}")
 
             except Exception as e:
@@ -298,8 +300,10 @@ async def run_daily_sync(connection_id: str) -> None:
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
+                new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
                 logger.info(f"DV360 daily sync completed: {sync_result}")
             except Exception as e:
                 logger.error(f"DV360 daily sync harmonization failed: {type(e).__name__}: {e}")
@@ -478,8 +482,10 @@ async def run_full_resync(connection_id: str) -> None:
                     data={"platform": connection.platform, "connection_id": str(connection.id)},
                 ))
                 await db.commit()
+                new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
                 logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
             except Exception as e:
                 logger.error(f"Full resync harmonization failed for connection {connection_id}: {type(e).__name__}: {e}")
@@ -574,8 +580,10 @@ async def run_full_resync(connection_id: str) -> None:
                     data={"platform": conn.platform, "connection_id": str(conn.id)},
                 ))
                 await db.commit()
+                new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
                 logger.info(f"DV360 full resync completed: {sync_result}")
             except Exception as e:
                 logger.error(f"DV360 full resync harmonization failed: {type(e).__name__}: {e}")
@@ -715,8 +723,10 @@ async def run_initial_sync(connection_id: str) -> None:
                     data={"platform": connection.platform, "connection_id": str(connection.id)},
                 ))
                 await db.commit()
+                new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
                 trigger_historical = True
             except Exception as e:
                 logger.error(f"Initial sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
@@ -796,8 +806,10 @@ async def run_initial_sync(connection_id: str) -> None:
                     data={"platform": conn.platform, "connection_id": str(conn.id)},
                 ))
                 await db.commit()
+                new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
                 trigger_historical = True
                 logger.info(f"DV360 initial sync completed: {sync_result}")
             except Exception as e:
@@ -926,8 +938,10 @@ async def run_historical_sync(connection_id: str) -> None:
                 job.records_processed = harmonized
                 db.add(job)
                 await db.commit()
+                new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
             except Exception as e:
                 logger.error(f"Historical sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
                 await db.rollback()
@@ -999,8 +1013,10 @@ async def run_historical_sync(connection_id: str) -> None:
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
+                new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
             except Exception as e:
                 logger.error(f"DV360 historical sync harmonization failed: {type(e).__name__}: {e}")
                 import traceback
