@@ -9,6 +9,8 @@ from botocore.exceptions import ClientError
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+logging.getLogger("botocore").setLevel(logging.DEBUG)
+logging.getLogger("botocore.auth").setLevel(logging.DEBUG)
 
 
 class ObjectStorageService:
