@@ -23,7 +23,7 @@ class ObjectStorageService:
                 "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
                 "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
                 "region_name": settings.AWS_REGION or "us-east-1",
-                "config": Config(signature_version="s3v4"),
+                "config": Config(signature_version="s3v4", s3={"addressing_style": "path"}),
             }
             if settings.S3_ENDPOINT_URL:
                 kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
@@ -126,7 +126,7 @@ class ObjectStorageService:
                 "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
                 "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
                 "region_name": settings.AWS_REGION or "us-east-1",
-                "config": Config(signature_version="s3v4"),
+                "config": Config(signature_version="s3v4", s3={"addressing_style": "path"}),
             }
             if endpoint:
                 kwargs["endpoint_url"] = endpoint
