@@ -1154,6 +1154,7 @@ class DV360SyncService:
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
         def _do_download_with_cookies(cookie_data: str):
+            import shutil
             import yt_dlp
             import tempfile
             ffmpeg_path = None
@@ -1162,6 +1163,12 @@ class DV360SyncService:
                 ffmpeg_path = os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
             except (ImportError, OSError):
                 pass
+
+            # Fall back to system ffmpeg if imageio_ffmpeg didn't provide one
+            if not ffmpeg_path and shutil.which("ffmpeg"):
+                ffmpeg_path = os.path.dirname(shutil.which("ffmpeg"))
+
+            has_ffmpeg = bool(ffmpeg_path)
 
             class _YDLLogger:
                 def debug(self, msg):
@@ -1175,8 +1182,9 @@ class DV360SyncService:
 
             ydl_opts = {
                 "outtmpl": local_path,
-                "format": "bv*+ba/b",
-                "merge_output_format": "mp4",
+                # Only request merge format when ffmpeg is available; fall back to
+                # pre-merged best format to avoid DownloadError on containers without ffmpeg.
+                "format": "bv*+ba/b" if has_ffmpeg else "best/b",
                 "quiet": True,
                 "no_warnings": True,
                 "socket_timeout": 30,
@@ -1184,7 +1192,8 @@ class DV360SyncService:
                 "remote_components": {"ejs:github": True},
                 "logger": _YDLLogger(),
             }
-            if ffmpeg_path:
+            if has_ffmpeg:
+                ydl_opts["merge_output_format"] = "mp4"
                 ydl_opts["ffmpeg_location"] = ffmpeg_path
             # Accept cookie string directly (T-14-10: never log cookie content)
             cookies_data = cookie_data if cookie_data else ""
