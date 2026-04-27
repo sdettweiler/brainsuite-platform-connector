@@ -1098,6 +1098,9 @@ export class PlatformsComponent implements OnInit, OnDestroy {
     if (conn.sync_status === 'PENDING') {
       return 'syncing';
     }
+    if (conn.sync_status === 'ERROR') {
+      return 'sync_failed';
+    }
     if (!conn.last_synced_at) {
       // ACTIVE with no last_synced_at = first-time sync still in progress
       return conn.sync_status === 'ACTIVE' ? 'syncing' : 'sync_failed';
