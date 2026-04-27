@@ -56,6 +56,7 @@ class UserUpdate(BaseModel):
 class UserResponse(UserBase):
     id: uuid.UUID
     is_active: bool
+    is_superuser: bool = False  # Phase 14: SuperAdmin flag for frontend role gating
     organization_id: Optional[uuid.UUID]
     last_login: Optional[datetime]
     created_at: datetime

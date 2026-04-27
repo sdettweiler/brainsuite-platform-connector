@@ -268,8 +268,8 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
     user.last_login = datetime.now(timezone.utc)
     db.add(user)
 
-    access_token = create_access_token({"sub": str(user.id)})
-    refresh_token = create_refresh_token({"sub": str(user.id)})
+    access_token = create_access_token({"sub": str(user.id), "is_superuser": user.is_superuser})
+    refresh_token = create_refresh_token({"sub": str(user.id), "is_superuser": user.is_superuser})
 
     token_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
     rt = RefreshToken(

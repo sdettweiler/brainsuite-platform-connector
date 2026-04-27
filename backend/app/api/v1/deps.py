@@ -64,6 +64,22 @@ async def get_current_admin(
     return current_user
 
 
+async def get_current_superadmin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Verify current user is a SuperAdmin.
+
+    Simpler than get_current_admin -- no DB query needed, just check is_superuser flag.
+    Raised when accessing platform-wide admin endpoints.
+    """
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="SuperAdmin privileges required",
+        )
+    return current_user
+
+
 async def get_user_role(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
