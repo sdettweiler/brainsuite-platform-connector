@@ -26,6 +26,7 @@ def _make_user():
     user.email = "test@example.com"
     user.password_hash = "$2b$12$fake_hash_that_gets_mocked"
     user.is_active = True
+    user.is_superuser = False
     user.is_two_factor_enabled = False
     user.last_login = None
     user.organization_id = uuid.uuid4()
@@ -285,4 +286,58 @@ def test_refresh_rotates_token(app):
     )
     assert new_token_value == rotated_rt, (
         f"Expected rotated token '{rotated_rt}', got: '{new_token_value}'"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 6: JWT access token includes is_superuser claim (Task 14-01-02)
+# ---------------------------------------------------------------------------
+
+def test_jwt_superuser_claim(app):
+    """Login response JWT access_token includes is_superuser claim."""
+    import base64
+    import json
+
+    user = _make_user()
+    user.is_superuser = True  # SuperAdmin user logging in
+
+    mock_db = _make_db(return_value=user)
+
+    async def override_get_db():
+        yield mock_db
+
+    from app.db.base import get_db
+
+    with patch("app.api.v1.endpoints.auth.verify_password", return_value=True):
+        app.dependency_overrides[get_db] = override_get_db
+        try:
+            from fastapi.testclient import TestClient
+            client = TestClient(app, raise_server_exceptions=True)
+            response = client.post(
+                "/api/v1/auth/login",
+                json={"email": "test@example.com", "password": "secret"},
+            )
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200, (
+        f"Expected 200, got {response.status_code}: {response.text}"
+    )
+
+    access_token = response.json().get("access_token")
+    assert access_token, "access_token missing from response"
+
+    # Decode JWT payload without signature verification (base64url decode middle segment)
+    parts = access_token.split(".")
+    assert len(parts) == 3, f"Expected 3-part JWT, got {len(parts)} parts"
+    payload_b64 = parts[1]
+    # Add padding as required by base64
+    payload_b64 += "=" * (4 - len(payload_b64) % 4)
+    decoded = json.loads(base64.urlsafe_b64decode(payload_b64))
+
+    assert "is_superuser" in decoded, (
+        f"JWT access_token does not contain is_superuser claim. Claims: {list(decoded.keys())}"
+    )
+    assert decoded["is_superuser"] is True, (
+        f"Expected is_superuser=True in JWT, got: {decoded['is_superuser']}"
     )

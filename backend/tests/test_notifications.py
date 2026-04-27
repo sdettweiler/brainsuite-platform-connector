@@ -275,3 +275,96 @@ async def test_scoring_batch_per_org_notification():
     # Verify counts
     assert org_scored_counts[str(org_a)] == 2
     assert org_scored_counts[str(org_b)] == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 14-03-02 — create_superadmin_notification fan-out (COOK-03)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_superadmin_notification():
+    """create_superadmin_notification inserts one Notification row per active SuperAdmin."""
+    from app.services.notifications import create_superadmin_notification
+
+    superadmin_ids = [uuid.uuid4(), uuid.uuid4()]
+
+    with patch("app.services.notifications.get_session_factory") as mock_sf:
+        db_session = AsyncMock()
+        db_session.__aenter__ = AsyncMock(return_value=db_session)
+        db_session.__aexit__ = AsyncMock(return_value=False)
+
+        scalars_result = MagicMock()
+        scalars_result.all.return_value = superadmin_ids
+        exec_result = MagicMock()
+        exec_result.scalars.return_value = scalars_result
+
+        db_session.execute = AsyncMock(side_effect=[exec_result, MagicMock()])
+        db_session.commit = AsyncMock()
+
+        mock_sf.return_value.return_value = db_session
+
+        count = await create_superadmin_notification(
+            type="COOKIE_FAILED",
+            title="YouTube cookies failed",
+            message="All cookie slots exhausted.",
+            data={"deeplink": "/configuration/admin"},
+        )
+
+    assert count == 2, f"Expected 2 notifications (one per SuperAdmin), got {count}"
+    assert db_session.execute.call_count == 2, (
+        "Expected 2 execute calls: one user query + one bulk insert"
+    )
+    db_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_superadmin_notification_no_superadmins():
+    """create_superadmin_notification returns 0 and inserts nothing when no active SuperAdmins exist."""
+    from app.services.notifications import create_superadmin_notification
+
+    with patch("app.services.notifications.get_session_factory") as mock_sf:
+        db_session = AsyncMock()
+        db_session.__aenter__ = AsyncMock(return_value=db_session)
+        db_session.__aexit__ = AsyncMock(return_value=False)
+
+        scalars_result = MagicMock()
+        scalars_result.all.return_value = []
+        exec_result = MagicMock()
+        exec_result.scalars.return_value = scalars_result
+
+        db_session.execute = AsyncMock(return_value=exec_result)
+        db_session.commit = AsyncMock()
+
+        mock_sf.return_value.return_value = db_session
+
+        count = await create_superadmin_notification(
+            type="COOKIE_FAILED",
+            title="No admins",
+            message="Should insert nothing.",
+        )
+
+    assert count == 0, f"Expected 0, got {count}"
+    assert db_session.execute.call_count == 1, (
+        "Only the user query should run — no insert when zero SuperAdmins"
+    )
+    db_session.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_superadmin_notification_no_db_or_org_param():
+    """create_superadmin_notification must NOT accept db or org_id parameters."""
+    from app.services.notifications import create_superadmin_notification
+    import inspect
+
+    sig = inspect.signature(create_superadmin_notification)
+    param_names = list(sig.parameters.keys())
+
+    assert "db" not in param_names, (
+        "create_superadmin_notification must NOT accept a db parameter"
+    )
+    assert "org_id" not in param_names, (
+        "create_superadmin_notification must NOT accept org_id (it is system-wide)"
+    )
+    assert "type" in param_names
+    assert "title" in param_names
+    assert "message" in param_names
