@@ -1,0 +1,296 @@
+"""
+SuperAdmin API endpoints.
+
+Provides platform-wide administrative operations:
+- YouTube cookie management (health check + update)
+- SuperAdmin user management (list + promote)
+- Organization read-only list with user counts
+
+All endpoints require SuperAdmin privileges (Depends(get_current_superadmin)).
+Cookie content is NEVER returned in any response — only health status strings.
+
+Security (T-14-05 through T-14-08):
+- GET /youtube-cookies: health only, no decrypted content in response
+- PUT /youtube-cookies: encrypts before storage, never logs decrypted values
+- POST /users/promote: only existing SuperAdmins can call this endpoint
+"""
+import logging
+from datetime import datetime
+from typing import Literal, Optional, List
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+
+from app.db.base import get_db
+from app.models.system_config import SystemConfig
+from app.models.user import User, Organization
+from app.api.v1.deps import get_current_superadmin
+from app.core.security import encrypt_token, decrypt_token
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Pydantic models
+# ---------------------------------------------------------------------------
+
+class CookieSlotHealth(BaseModel):
+    status: Literal["valid", "expired", "missing"]
+
+
+class CookieHealthResponse(BaseModel):
+    primary: CookieSlotHealth
+    backup: CookieSlotHealth
+
+
+class UpdateCookiesRequest(BaseModel):
+    primary: Optional[str] = None
+    backup: Optional[str] = None
+
+
+class SuperAdminUserResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PromoteRequest(BaseModel):
+    email: EmailStr
+
+
+class OrgListItem(BaseModel):
+    id: str
+    name: str
+    slug: str
+    user_count: int
+    created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Cookie health helper (T-14-05: expiry parsing only, no live yt-dlp test)
+# ---------------------------------------------------------------------------
+
+def _check_cookie_health(cookie_data: str) -> str:
+    """Parse Netscape cookie expiry timestamps. Returns 'valid', 'expired', or 'missing'.
+
+    Replicates the logic from DV360SyncService._check_youtube_cookies but accepts
+    a cookie string directly instead of reading from an env var.
+    """
+    if not cookie_data:
+        return "missing"
+    now_ts = datetime.now().timestamp()
+    has_any_expiry = False
+    has_valid = False
+    for line in cookie_data.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 7:
+            try:
+                expiry = int(parts[4])
+                if expiry > 0:
+                    has_any_expiry = True
+                    if expiry > now_ts:
+                        has_valid = True
+            except (ValueError, IndexError):
+                pass
+    if not has_any_expiry:
+        return "valid"
+    return "valid" if has_valid else "expired"
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/youtube-cookies", response_model=CookieHealthResponse)
+async def get_youtube_cookies(
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return health status for both YouTube cookie slots.
+
+    Security (T-14-05): Response model contains ONLY status strings.
+    Decrypted cookie content is never included in the response.
+    """
+    result = await db.execute(select(SystemConfig).limit(1))
+    config = result.scalar_one_or_none()
+
+    primary_status = "missing"
+    backup_status = "missing"
+
+    if config:
+        if config.youtube_cookies_encrypted:
+            try:
+                decrypted = decrypt_token(config.youtube_cookies_encrypted)
+                primary_status = _check_cookie_health(decrypted)
+            except Exception:
+                primary_status = "missing"
+
+        if config.youtube_cookies_backup_encrypted:
+            try:
+                decrypted = decrypt_token(config.youtube_cookies_backup_encrypted)
+                backup_status = _check_cookie_health(decrypted)
+            except Exception:
+                backup_status = "missing"
+
+    return CookieHealthResponse(
+        primary=CookieSlotHealth(status=primary_status),
+        backup=CookieSlotHealth(status=backup_status),
+    )
+
+
+@router.put("/youtube-cookies", response_model=CookieHealthResponse)
+async def update_youtube_cookies(
+    payload: UpdateCookiesRequest,
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update YouTube cookie slots (partial update supported).
+
+    Security (T-14-06): Cookie values are encrypted before storage.
+    Never logged at any level.
+    """
+    result = await db.execute(select(SystemConfig).limit(1))
+    config = result.scalar_one_or_none()
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="System config not initialized",
+        )
+
+    if payload.primary is not None:
+        config.youtube_cookies_encrypted = encrypt_token(payload.primary)
+        logger.info("SuperAdmin updated primary YouTube cookie slot (cookie content not logged)")
+
+    if payload.backup is not None:
+        config.youtube_cookies_backup_encrypted = encrypt_token(payload.backup)
+        logger.info("SuperAdmin updated backup YouTube cookie slot (cookie content not logged)")
+
+    db.add(config)
+    await db.commit()
+    await db.refresh(config)
+
+    # Return fresh health status after save
+    primary_status = "missing"
+    backup_status = "missing"
+
+    if config.youtube_cookies_encrypted:
+        try:
+            decrypted = decrypt_token(config.youtube_cookies_encrypted)
+            primary_status = _check_cookie_health(decrypted)
+        except Exception:
+            primary_status = "missing"
+
+    if config.youtube_cookies_backup_encrypted:
+        try:
+            decrypted = decrypt_token(config.youtube_cookies_backup_encrypted)
+            backup_status = _check_cookie_health(decrypted)
+        except Exception:
+            backup_status = "missing"
+
+    return CookieHealthResponse(
+        primary=CookieSlotHealth(status=primary_status),
+        backup=CookieSlotHealth(status=backup_status),
+    )
+
+
+@router.get("/users", response_model=List[SuperAdminUserResponse])
+async def get_superadmin_users(
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all active SuperAdmin users."""
+    result = await db.execute(
+        select(User)
+        .where(User.is_superuser == True, User.is_active == True)  # noqa: E712
+        .order_by(User.created_at)
+    )
+    users = result.scalars().all()
+    return [
+        SuperAdminUserResponse(
+            id=str(u.id),
+            email=u.email,
+            full_name=u.full_name,
+            created_at=u.created_at,
+        )
+        for u in users
+    ]
+
+
+@router.post("/users/promote", response_model=SuperAdminUserResponse)
+async def promote_user(
+    payload: PromoteRequest,
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Promote a user to SuperAdmin by email address.
+
+    Security (T-14-08): Only existing SuperAdmins can call this endpoint.
+    Returns 404 if user not found, 409 if already SuperAdmin.
+    """
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already a SuperAdmin")
+
+    user.is_superuser = True
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    logger.info("User %s promoted to SuperAdmin by %s", user.email, current_user.email)
+
+    return SuperAdminUserResponse(
+        id=str(user.id),
+        email=user.email,
+        full_name=user.full_name,
+        created_at=user.created_at,
+    )
+
+
+@router.get("/organizations", response_model=List[OrgListItem])
+async def get_organizations(
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all organizations with active user counts (read-only)."""
+    user_count_subq = (
+        select(func.count(User.id))
+        .where(User.organization_id == Organization.id, User.is_active == True)  # noqa: E712
+        .correlate(Organization)
+        .scalar_subquery()
+    )
+    result = await db.execute(
+        select(
+            Organization.id,
+            Organization.name,
+            Organization.slug,
+            user_count_subq.label("user_count"),
+            Organization.created_at,
+        ).order_by(Organization.name)
+    )
+    rows = result.all()
+    return [
+        OrgListItem(
+            id=str(row.id),
+            name=row.name,
+            slug=row.slug,
+            user_count=row.user_count or 0,
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]

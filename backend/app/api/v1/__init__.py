@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, platforms, dashboard, assets, scoring, brainsuite_config
+from app.api.v1.endpoints import auth, users, platforms, dashboard, assets, scoring, brainsuite_config, super_admin
 
 api_router = APIRouter()
 
@@ -10,3 +10,4 @@ api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboar
 api_router.include_router(assets.router, prefix="/assets", tags=["assets"])
 api_router.include_router(scoring.router, prefix="/scoring", tags=["scoring"])
 api_router.include_router(brainsuite_config.router, prefix="/brainsuite-config", tags=["brainsuite-config"])
+api_router.include_router(super_admin.router, prefix="/super-admin", tags=["super-admin"])
