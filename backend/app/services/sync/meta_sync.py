@@ -569,17 +569,6 @@ class MetaSyncService:
                 "is_processed": False,
             })
 
-        report_dates = {row["report_date"] for row in rows}
-        for rd in report_dates:
-            await db.execute(
-                MetaRawPerformance.__table__.delete().where(
-                    MetaRawPerformance.platform_connection_id == connection.id,
-                    MetaRawPerformance.ad_account_id == connection.ad_account_id,
-                    MetaRawPerformance.report_date == rd,
-                )
-            )
-        await db.flush()
-
         stmt = pg_insert(MetaRawPerformance).values(rows)
         update_cols = {c.name: getattr(stmt.excluded, c.name)
                        for c in MetaRawPerformance.__table__.columns
