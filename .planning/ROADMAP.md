@@ -111,14 +111,14 @@ Plans:
 | 11. Per-Org Config Schema + Pipeline Wiring | v1.2 | 3/3 | Complete   | 2026-04-16 |
 | 12. Credentials + App Name Settings UI | v1.2 | 3/3 | Complete   | 2026-04-17 |
 | 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 4/4 | Complete    | 2026-04-21 |
-| 14. YouTube Cookies Admin UI | v1.2 | 1/3 | In Progress|  |
+| 14. YouTube Cookies Admin UI | v1.2 | 3/3 | Complete   | 2026-04-27 |
 
 ### Phase 14: YouTube Cookies Admin UI
 
 **Goal:** Org admins can store and rotate YouTube/DV360 cookies through the Settings UI without requiring a Docker restart or direct env var access. Cookies are persisted in the database per-org, the admin API endpoint accepts updates, and dv360_sync.py reads cookies from DB instead of env vars.
 **Requirements**: COOK-01, COOK-02, COOK-03
 **Depends on:** Phase 13
-**Plans:** 1/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 14 to break down)
+- [x] TBD (run /gsd-plan-phase 14 to break down) (completed 2026-04-27)
