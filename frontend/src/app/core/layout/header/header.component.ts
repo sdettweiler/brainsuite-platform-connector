@@ -378,7 +378,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
             next: (notifs) => {
               const highPriority = notifs.filter(n =>
                 !n.is_read &&
-                ['SYNC_FAILED', 'TOKEN_EXPIRED'].includes(n.type) &&
+                ['SYNC_FAILED', 'TOKEN_EXPIRED', 'COOKIE_FAILED'].includes(n.type) &&
                 new Date(n.created_at) > threshold
               );
               highPriority.forEach(n => this.showToastForNotification(n));
@@ -391,11 +391,13 @@ export class HeaderComponent implements OnInit, OnDestroy {
   }
 
   private showToastForNotification(n: NotificationItem): void {
-    const actionLabel = n.type === 'TOKEN_EXPIRED' ? 'Fix Now' : 'View Notifications';
+    const actionLabel = (n.type === 'TOKEN_EXPIRED' || n.type === 'COOKIE_FAILED') ? 'Fix Now' : 'View Notifications';
     const ref = this.snackBar.open(n.title, actionLabel, { duration: 8000 });
     ref.onAction().subscribe(() => {
       if (n.type === 'TOKEN_EXPIRED') {
         this.router.navigate(['/configuration/platforms']);
+      } else if (n.type === 'COOKIE_FAILED') {
+        this.router.navigate(['/configuration/admin']);
       } else {
         this.notifMenuTrigger?.openMenu();
         this.loadNotifications();
@@ -414,6 +416,9 @@ export class HeaderComponent implements OnInit, OnDestroy {
     }
     if (n.type === 'TOKEN_EXPIRED') {
       this.router.navigate(['/configuration/platforms']);
+    }
+    if (n.type === 'COOKIE_FAILED') {
+      this.router.navigate(['/configuration/admin']);
     }
   }
 
@@ -435,6 +440,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
       case 'SYNC_FAILED':    return 'bi-exclamation-triangle-fill';
       case 'TOKEN_EXPIRED':  return 'bi-shield-exclamation';
       case 'SCORING_BATCH_COMPLETE': return 'bi-bar-chart-fill';
+      case 'COOKIE_FAILED': return 'bi-key';
       default: return 'bi-bell';
     }
   }
@@ -448,6 +454,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
       case 'SYNC_FAILED':    return 'icon-rejected';
       case 'TOKEN_EXPIRED':  return 'icon-rejected';
       case 'SCORING_BATCH_COMPLETE': return 'icon-join';
+      case 'COOKIE_FAILED': return 'icon-rejected';
       default: return '';
     }
   }
