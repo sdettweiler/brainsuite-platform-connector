@@ -16,7 +16,7 @@ from sqlalchemy import select, and_
 
 from app.db.base import get_session_factory
 from app.models.brainsuite_config import OrgBrainsuiteConfig, OrgBrainsuiteFieldMapping
-from app.models.platform import BrainsuiteApp
+from app.models.platform import BrainsuiteApp, PlatformConnection
 from app.models.creative import CreativeAsset, AssetMetadataValue
 from app.models.scoring import CreativeScoreResult
 from app.models.metadata import MetadataField
@@ -220,8 +220,17 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
 
             # Phase 12: resolve BrainsuiteApp row to get system_app_name
             brainsuite_app = None
-            if asset.brainsuite_app_id:
-                brainsuite_app = await db.get(BrainsuiteApp, asset.brainsuite_app_id)
+            connection = await db.get(PlatformConnection, asset.platform_connection_id)
+            if connection:
+                fmt = (asset.asset_format or "").upper()
+                if fmt == "VIDEO" and connection.brainsuite_app_id_video:
+                    app_id = connection.brainsuite_app_id_video
+                elif fmt == "IMAGE" and connection.brainsuite_app_id_image:
+                    app_id = connection.brainsuite_app_id_image
+                else:
+                    app_id = connection.brainsuite_app_id
+                if app_id:
+                    brainsuite_app = await db.get(BrainsuiteApp, app_id)
 
         required_app_name = brainsuite_app.system_app_name if brainsuite_app else None
 
