@@ -5,13 +5,14 @@ Revises: w4x5y6z7a8b9
 Create Date: 2026-04-27
 
 Creates the system_config singleton table for platform-wide configuration
-(YouTube cookies encrypted storage) and seeds s.dettweiler@brainsuite.ai
-as SuperAdmin.
+(YouTube cookies encrypted storage). Sets initial SuperAdmin from
+INITIAL_SUPERADMIN_EMAIL env var at migration time (no-op if unset).
 """
 from alembic import op
 import sqlalchemy as sa
 import uuid
-from datetime import datetime
+import os
+from datetime import datetime, timezone
 
 revision = "x6y7z8a9b0c"
 down_revision = "w4x5y6z7a8b9"
@@ -36,7 +37,7 @@ def upgrade() -> None:
 
     # 3. Insert default singleton row
     conn = op.get_bind()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     conn.execute(
         sa.text(
             "INSERT INTO system_config (id, singleton_guard, created_at, updated_at) "
@@ -45,12 +46,13 @@ def upgrade() -> None:
         {"id": str(uuid.uuid4()), "now": now},
     )
 
-    # 4. Seed SuperAdmin: s.dettweiler@brainsuite.ai
-    conn.execute(
-        sa.text(
-            "UPDATE users SET is_superuser = true WHERE email = 's.dettweiler@brainsuite.ai'"
+    # 4. Seed initial SuperAdmin from env var (no-op if unset — set via INITIAL_SUPERADMIN_EMAIL at deploy time)
+    superadmin_email = os.environ.get("INITIAL_SUPERADMIN_EMAIL")
+    if superadmin_email:
+        conn.execute(
+            sa.text("UPDATE users SET is_superuser = true WHERE email = :email"),
+            {"email": superadmin_email},
         )
-    )
 
 
 def downgrade() -> None:
