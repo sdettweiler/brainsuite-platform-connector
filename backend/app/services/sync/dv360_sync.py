@@ -1084,6 +1084,52 @@ class DV360SyncService:
             to_try.append("YOUTUBE_COOKIES_BACKUP")
         return to_try
 
+    async def _get_cookies_from_db(self) -> List[str]:
+        """Fetch decrypted YouTube cookies from system_config (primary, then backup).
+
+        Falls back to env vars if DB has no cookies (graceful migration path per D-11).
+        Returns: list of cookie strings in preference order.
+
+        Security (T-14-10): Decrypted cookie content is never logged.
+        Only decrypt failures are logged (without the cipher text).
+        """
+        from app.core.security import decrypt_token
+        from app.db.base import get_session_factory
+        from app.models.system_config import SystemConfig
+        from sqlalchemy import select
+
+        cookies = []
+
+        try:
+            async with get_session_factory()() as db:
+                result = await db.execute(select(SystemConfig).limit(1))
+                config = result.scalar_one_or_none()
+
+                if config:
+                    if config.youtube_cookies_encrypted:
+                        try:
+                            cookies.append(decrypt_token(config.youtube_cookies_encrypted))
+                        except Exception:
+                            logger.warning("Failed to decrypt primary YouTube cookie from DB")
+                    if config.youtube_cookies_backup_encrypted:
+                        try:
+                            cookies.append(decrypt_token(config.youtube_cookies_backup_encrypted))
+                        except Exception:
+                            logger.warning("Failed to decrypt backup YouTube cookie from DB")
+        except Exception as e:
+            logger.warning("Failed to read cookies from DB, falling back to env vars: %s", e)
+
+        # Fall back to env vars if DB is empty (per D-11 graceful migration)
+        if not cookies:
+            env_primary = os.environ.get("YOUTUBE_COOKIES", "").strip()
+            env_backup = os.environ.get("YOUTUBE_COOKIES_BACKUP", "").strip()
+            if env_primary:
+                cookies.append(env_primary)
+            if env_backup:
+                cookies.append(env_backup)
+
+        return cookies
+
     async def _download_video_asset(
         self,
         youtube_video_id: str,
@@ -1102,11 +1148,12 @@ class DV360SyncService:
         if obj_storage.file_exists(relative_path):
             return local_path if os.path.exists(local_path) else None, obj_storage.served_url(relative_path)
 
-        cookie_vars = self._get_cookie_env_vars_to_try()
+        # Read cookies from DB first, fall back to env vars if DB is empty (D-11)
+        cookies = await self._get_cookies_from_db()
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
-        def _do_download_with_cookies(env_var_name: str):
+        def _do_download_with_cookies(cookie_data: str):
             import yt_dlp
             import tempfile
             ffmpeg_path = None
@@ -1139,7 +1186,8 @@ class DV360SyncService:
             }
             if ffmpeg_path:
                 ydl_opts["ffmpeg_location"] = ffmpeg_path
-            cookies_data = os.environ.get(env_var_name, "") if env_var_name else ""
+            # Accept cookie string directly (T-14-10: never log cookie content)
+            cookies_data = cookie_data if cookie_data else ""
             cookie_file = None
             if cookies_data:
                 cleaned = "\n".join(
@@ -1158,14 +1206,14 @@ class DV360SyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
-        # Try with each valid cookie set, then fall back to a cookieless attempt
-        attempts = cookie_vars if cookie_vars else [None]
+        # Try with each cookie string in preference order, then fall back to cookieless
+        attempts = cookies if cookies else [""]
         loop = asyncio.get_event_loop()
-        for i, env_var in enumerate(attempts):
-            label = "no cookies" if env_var is None else ("primary" if i == 0 else "backup")
+        for i, cookie in enumerate(attempts):
+            label = "no cookies" if not cookie else ("primary" if i == 0 else "backup")
             logger.info("  Attempting DV360 video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
             try:
-                await loop.run_in_executor(None, lambda ev=env_var: _do_download_with_cookies(ev))
+                await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))
 
                 if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
                     size_mb = os.path.getsize(local_path) / (1024 * 1024)
@@ -1186,6 +1234,19 @@ class DV360SyncService:
                     logger.info("  %s cookies failed for %s, trying next... (%s: %s)", label, youtube_video_id, type(e).__name__, e)
                     continue
                 logger.warning("  Failed to download DV360 video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
+
+        # Notify all SuperAdmins when all cookie slots are exhausted (D-12, D-13)
+        if cookies:
+            try:
+                from app.services.notifications import create_superadmin_notification
+                await create_superadmin_notification(
+                    type="COOKIE_FAILED",
+                    title="YouTube cookies failed",
+                    message=f"yt-dlp download failed for asset {ad_id} — all cookie slots exhausted or expired. Update cookies in Admin settings.",
+                    data={"deeplink": "/configuration/admin"},
+                )
+            except Exception as notif_err:
+                logger.warning("Failed to send COOKIE_FAILED notification: %s", notif_err)
 
         return None, None
 

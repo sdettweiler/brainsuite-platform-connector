@@ -82,3 +82,61 @@ async def create_org_notification(
             type,
         )
         return len(rows)
+
+
+async def create_superadmin_notification(
+    type: str,
+    title: str,
+    message: str,
+    data: Optional[dict] = None,
+) -> int:
+    """Create one Notification row per active SuperAdmin user (system-wide).
+
+    Opens its own DB session (session-per-operation pattern).
+    Does NOT accept or reuse a caller session.
+
+    Args:
+        type:    Notification type string (e.g. "COOKIE_FAILED").
+        title:   Short notification title.
+        message: Full notification message body.
+        data:    Optional dict stored in the JSONB data column.
+
+    Returns:
+        Number of Notification rows inserted (0 if no active SuperAdmins).
+    """
+    async with get_session_factory()() as db:
+        result = await db.execute(
+            select(User.id).where(
+                User.is_superuser == True,  # noqa: E712
+                User.is_active == True,     # noqa: E712
+            )
+        )
+        user_ids = result.scalars().all()
+
+        if not user_ids:
+            logger.debug(
+                "create_superadmin_notification: no active SuperAdmins, skipping type=%s",
+                type,
+            )
+            return 0
+
+        rows = [
+            {
+                "user_id": uid,
+                "type": type,
+                "title": title,
+                "message": message,
+                "data": data or {},
+            }
+            for uid in user_ids
+        ]
+
+        await db.execute(insert(Notification).values(rows))
+        await db.commit()
+
+        logger.info(
+            "create_superadmin_notification: created %d notification(s) type=%s",
+            len(rows),
+            type,
+        )
+        return len(rows)
