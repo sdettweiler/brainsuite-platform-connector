@@ -1,6 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { AuthService } from '../../../core/services/auth.service';
 
 interface ConfigNav {
   path: string;
@@ -57,11 +58,22 @@ interface ConfigNav {
     .config-content { flex: 1; overflow-y: auto; }
   `],
 })
-export class ConfigurationShellComponent {
-  navItems: ConfigNav[] = [
+export class ConfigurationShellComponent implements OnInit {
+  navItems: ConfigNav[] = [];
+
+  private baseNavItems: ConfigNav[] = [
     { path: 'organization', label: 'Organization & Users', icon: 'building' },
     { path: 'metadata', label: 'Metadata Fields', icon: 'sliders' },
     { path: 'platforms', label: 'Platform Connections', icon: 'link-45deg' },
     { path: 'brainsuite-apps', label: 'Brainsuite Apps', icon: 'cpu' },
   ];
+
+  constructor(private authService: AuthService) {}
+
+  ngOnInit(): void {
+    this.navItems = [...this.baseNavItems];
+    if (this.authService.currentUser?.is_superuser) {
+      this.navItems.push({ path: 'admin', label: 'Admin', icon: 'shield-lock' });
+    }
+  }
 }

@@ -34,6 +34,7 @@ export interface CurrentUser {
   organization_id: string;
   organization_currency: string;
   role?: string;
+  is_superuser?: boolean;  // Phase 14: SuperAdmin flag for admin nav gating
 }
 
 @Injectable({ providedIn: 'root' })

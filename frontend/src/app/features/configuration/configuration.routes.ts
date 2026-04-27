@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { IsSuperAdminGuard } from '../../core/guards/is-superadmin.guard';
 
 export const CONFIGURATION_ROUTES: Routes = [
   {
@@ -21,6 +22,11 @@ export const CONFIGURATION_ROUTES: Routes = [
       {
         path: 'brainsuite-apps',
         loadComponent: () => import('./pages/brainsuite-apps.component').then(m => m.BrainsuiteAppsComponent),
+      },
+      {
+        path: 'admin',
+        loadComponent: () => import('./pages/admin.component').then(m => m.AdminComponent),
+        canActivate: [IsSuperAdminGuard],
       },
     ],
   },
