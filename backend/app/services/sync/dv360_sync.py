@@ -1154,39 +1154,8 @@ class DV360SyncService:
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
         def _do_download_with_cookies(cookie_data: str):
-            import shutil
-            import subprocess
             import yt_dlp
             import tempfile
-
-            def _find_working_ffmpeg() -> str | None:
-                """Return directory containing a working ffmpeg binary, or None."""
-                candidates = []
-                # 1. imageio_ffmpeg bundled binary
-                try:
-                    import imageio_ffmpeg
-                    candidates.append(imageio_ffmpeg.get_ffmpeg_exe())
-                except (ImportError, OSError):
-                    pass
-                # 2. System ffmpeg (installed via apt-get in Dockerfile)
-                sys_ffmpeg = shutil.which("ffmpeg")
-                if sys_ffmpeg:
-                    candidates.append(sys_ffmpeg)
-                for exe in candidates:
-                    try:
-                        result = subprocess.run(
-                            [exe, "-version"],
-                            capture_output=True,
-                            timeout=5,
-                        )
-                        if result.returncode == 0:
-                            return os.path.dirname(exe)
-                    except Exception:
-                        continue
-                return None
-
-            ffmpeg_dir = _find_working_ffmpeg()
-            has_ffmpeg = ffmpeg_dir is not None
 
             class _YDLLogger:
                 def debug(self, msg):
@@ -1200,9 +1169,9 @@ class DV360SyncService:
 
             ydl_opts = {
                 "outtmpl": local_path,
-                # Only request merge format when a working ffmpeg is confirmed.
-                # "best/b" selects a pre-merged stream — no ffmpeg needed.
-                "format": "bv*+ba/b" if has_ffmpeg else "best/b",
+                # Use pre-merged format — no ffmpeg required for format selection.
+                # "best" picks the highest-quality single stream (typically 720p/1080p mp4).
+                "format": "best/b",
                 "quiet": True,
                 "no_warnings": True,
                 "socket_timeout": 30,
@@ -1210,9 +1179,6 @@ class DV360SyncService:
                 "remote_components": {"ejs:github": True},
                 "logger": _YDLLogger(),
             }
-            if has_ffmpeg:
-                ydl_opts["merge_output_format"] = "mp4"
-                ydl_opts["ffmpeg_location"] = ffmpeg_dir
             # Accept cookie string directly (T-14-10: never log cookie content)
             cookies_data = cookie_data if cookie_data else ""
             cookie_file = None
