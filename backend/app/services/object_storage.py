@@ -62,15 +62,15 @@ class ObjectStorageService:
         return served
 
     def upload_bytes(self, data: bytes, relative_path: str, content_type: Optional[str] = None) -> str:
-        import io
         client = self._ensure_client()
         if content_type is None:
             content_type = mimetypes.guess_type(relative_path)[0] or "application/octet-stream"
-        client.upload_fileobj(
-            io.BytesIO(data),
-            self._bucket_name,
-            self._object_name(relative_path),
-            ExtraArgs={"ContentType": content_type},
+        client.put_object(
+            Bucket=self._bucket_name,
+            Key=self._object_name(relative_path),
+            Body=data,
+            ContentType=content_type,
+            ContentLength=len(data),
         )
         served = self.served_url(relative_path)
         logger.info(f"Uploaded to S3: {relative_path} ({content_type})")
