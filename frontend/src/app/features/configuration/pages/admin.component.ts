@@ -399,9 +399,8 @@ export class AdminComponent implements OnInit {
     this.api.put<CookieHealthResponse>('/super-admin/youtube-cookies', payload).subscribe({
       next: (updated) => {
         this.cookieHealth = updated;
-        this.discardEdit(slot);
-        if (slot === 'primary') this.savingPrimary = false;
-        else this.savingBackup = false;
+        if (slot === 'primary') { this.savingPrimary = false; this.editingPrimary = false; this.newPrimaryCookie = ''; }
+        else { this.savingBackup = false; this.editingBackup = false; this.newBackupCookie = ''; }
         this.snackBar.open('Cookie updated successfully.', 'Close', { duration: 3000 });
       },
       error: () => {
