@@ -1309,10 +1309,9 @@ class DV360SyncService:
         if not records:
             return 0, {}
 
-        if records:
-            first_row = records[0]
-            csv_columns = list(first_row.keys())
-            logger.info(f"DV360 perf CSV columns ({len(csv_columns)}): {csv_columns}")
+        first_row = records[0]
+        csv_columns = list(first_row.keys())
+        logger.info(f"DV360 perf CSV columns ({len(csv_columns)}): {csv_columns}")
 
         org_id = str(connection.organization_id) if hasattr(connection, "organization_id") and connection.organization_id else None
         org_dir = None
@@ -1784,10 +1783,9 @@ class DV360SyncService:
         if not records:
             return 0
 
-        if records:
-            first_row = records[0]
-            csv_columns = list(first_row.keys())
-            logger.info(f"DV360 conv CSV columns ({len(csv_columns)}): {csv_columns}")
+        first_row = records[0]
+        csv_columns = list(first_row.keys())
+        logger.info(f"DV360 conv CSV columns ({len(csv_columns)}): {csv_columns}")
 
         def safe_float(val, default=None):
             try:
