@@ -326,8 +326,11 @@ async def refresh_token(
     db.add(stored)
 
     user_id = token_data.get("sub")
-    new_access = create_access_token({"sub": user_id})
-    new_refresh = create_refresh_token({"sub": user_id})
+    user_result = await db.execute(select(User).where(User.id == stored.user_id))
+    refreshed_user = user_result.scalar_one_or_none()
+    is_superuser = refreshed_user.is_superuser if refreshed_user else False
+    new_access = create_access_token({"sub": user_id, "is_superuser": is_superuser})
+    new_refresh = create_refresh_token({"sub": user_id, "is_superuser": is_superuser})
 
     new_hash = hashlib.sha256(new_refresh.encode()).hexdigest()
     new_rt = RefreshToken(
