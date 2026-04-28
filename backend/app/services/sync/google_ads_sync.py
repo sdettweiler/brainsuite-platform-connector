@@ -7,6 +7,7 @@ import asyncio
 import httpx
 import logging
 import os
+import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional, List, Dict, Any, Tuple
@@ -19,9 +20,6 @@ from app.models.performance import GoogleAdsRawPerformance
 from app.core.security import decrypt_token
 from app.services.platform.google_ads_oauth import google_ads_oauth
 
-_CREATIVES_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "static", "creatives")
-)
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +42,6 @@ class GoogleAdsSyncService:
         asset_map = await self._fetch_youtube_asset_map(access_token, customer_id)
 
         org_id = str(connection.organization_id)
-        org_dir = os.path.join(_CREATIVES_DIR, org_id)
-        os.makedirs(org_dir, exist_ok=True)
 
         total_fetched = 0
         total_upserted = 0
@@ -57,7 +53,7 @@ class GoogleAdsSyncService:
                 access_token, customer_id, chunk_start, chunk_end
             )
             upserted = await self._upsert_records(
-                db, connection, records, sync_job_id, asset_map, org_id, org_dir
+                db, connection, records, sync_job_id, asset_map, org_id
             )
             total_fetched += len(records)
             total_upserted += upserted
@@ -229,7 +225,6 @@ class GoogleAdsSyncService:
     async def _download_thumbnail(
         self,
         youtube_video_id: str,
-        org_dir: str,
         org_id: str,
         ad_id: str,
     ) -> Tuple[Optional[str], Optional[str]]:
@@ -238,7 +233,6 @@ class GoogleAdsSyncService:
 
         filename = f"thumb_yt_{ad_id}.jpg"
         relative_path = f"creatives/{org_id}/{filename}"
-        local_path = os.path.join(org_dir, filename)
 
         if obj_storage.file_exists(relative_path):
             return None, obj_storage.served_url(relative_path)
@@ -256,13 +250,7 @@ class GoogleAdsSyncService:
                     if resp.status_code == 200 and len(resp.content) > 1000:
                         break
                 resp.raise_for_status()
-                with open(local_path, "wb") as f:
-                    f.write(resp.content)
-            served_url = obj_storage.upload_file(local_path, relative_path, content_type="image/jpeg")
-            try:
-                os.remove(local_path)
-            except OSError:
-                pass
+            served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="image/jpeg")
             logger.info(f"  Downloaded YouTube thumbnail: {filename} ({len(resp.content)} bytes)")
             return None, served_url
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
@@ -272,7 +260,6 @@ class GoogleAdsSyncService:
     async def _download_video(
         self,
         youtube_video_id: str,
-        org_dir: str,
         org_id: str,
         ad_id: str,
     ) -> Tuple[Optional[str], Optional[str]]:
@@ -281,16 +268,17 @@ class GoogleAdsSyncService:
 
         filename = f"vid_yt_{ad_id}.mp4"
         relative_path = f"creatives/{org_id}/{filename}"
-        local_path = os.path.join(org_dir, filename)
 
         if obj_storage.file_exists(relative_path):
-            return local_path if os.path.exists(local_path) else None, obj_storage.served_url(relative_path)
+            return None, obj_storage.served_url(relative_path)
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp_path = tmp.name
+
         def _do_download():
             import yt_dlp
-            import tempfile
 
             class _YDLLogger:
                 def debug(self, msg):
@@ -303,7 +291,7 @@ class GoogleAdsSyncService:
                 def error(self, msg): logger.warning("yt-dlp error: %s", msg)
 
             ydl_opts = {
-                "outtmpl": local_path,
+                "outtmpl": tmp_path,
                 "format": "bv*+ba/b",
                 "quiet": True,
                 "no_warnings": True,
@@ -338,19 +326,20 @@ class GoogleAdsSyncService:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, _do_download)
 
-            if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
-                size_mb = os.path.getsize(local_path) / (1024 * 1024)
-                served_url = obj_storage.upload_file(local_path, relative_path, content_type="video/mp4")
+            if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
+                served_url = obj_storage.upload_file(tmp_path, relative_path, content_type="video/mp4")
                 logger.info("  Downloaded Google Ads YouTube video: %s (%.1f MB)", filename, size_mb)
-                return local_path, served_url
+                return None, served_url
             else:
-                logger.warning("  yt-dlp finished but output file missing: %s", local_path)
+                logger.warning("  yt-dlp finished but output file missing: %s", tmp_path)
                 return None, None
         except Exception as e:
             logger.warning("Failed to download Google Ads video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
-            if os.path.exists(local_path):
-                os.remove(local_path)
             return None, None
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     async def _upsert_records(
         self,
@@ -360,7 +349,6 @@ class GoogleAdsSyncService:
         sync_job_id: Optional[str],
         asset_map: Optional[Dict[str, str]] = None,
         org_id: Optional[str] = None,
-        org_dir: Optional[str] = None,
     ) -> int:
         if not records:
             return 0
@@ -393,12 +381,12 @@ class GoogleAdsSyncService:
 
             video_url = None
             thumbnail_url = None
-            if youtube_video_id and org_id and org_dir:
+            if youtube_video_id and org_id:
                 _, thumbnail_url = await self._download_thumbnail(
-                    youtube_video_id, org_dir, org_id, ad_id_str
+                    youtube_video_id, org_id, ad_id_str
                 )
                 _, video_url = await self._download_video(
-                    youtube_video_id, org_dir, org_id, ad_id_str
+                    youtube_video_id, org_id, ad_id_str
                 )
             if not thumbnail_url and youtube_video_id:
                 thumbnail_url = f"https://img.youtube.com/vi/{youtube_video_id}/maxresdefault.jpg"

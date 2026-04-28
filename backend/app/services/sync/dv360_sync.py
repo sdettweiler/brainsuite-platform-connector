@@ -44,6 +44,7 @@ import logging
 import asyncio
 import subprocess
 import json
+import tempfile
 from datetime import date, timedelta, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Dict, Any, NamedTuple, Tuple
@@ -57,8 +58,6 @@ from app.core.security import decrypt_token
 from app.services.platform.dv360_oauth import dv360_oauth
 
 logger = logging.getLogger(__name__)
-
-_CREATIVES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "static", "creatives")
 
 _SAFE_FILENAME_RE = re.compile(r'[^a-zA-Z0-9_\-]')
 
@@ -993,7 +992,6 @@ class DV360SyncService:
     async def _download_image_asset(
         self,
         url: str,
-        org_dir: str,
         org_id: str,
         ad_id: str,
         prefix: str = "img",
@@ -1015,8 +1013,6 @@ class DV360SyncService:
             if obj_storage.file_exists(relative_path):
                 return None, obj_storage.served_url(relative_path)
 
-            local_path = os.path.join(org_dir, filename)
-
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
@@ -1029,16 +1025,8 @@ class DV360SyncService:
 
                 filename = f"{prefix}_dv360_{safe_id}{ext}"
                 relative_path = f"creatives/{org_id}/{filename}"
-                local_path = os.path.join(org_dir, filename)
 
-                with open(local_path, "wb") as f:
-                    f.write(resp.content)
-
-            served_url = obj_storage.upload_file(local_path, relative_path)
-            try:
-                os.remove(local_path)
-            except OSError:
-                pass
+            served_url = obj_storage.upload_bytes(resp.content, relative_path)
             logger.info(f"  Downloaded DV360 asset: {filename} ({len(resp.content)} bytes)")
             return None, served_url
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
@@ -1133,29 +1121,29 @@ class DV360SyncService:
     async def _download_video_asset(
         self,
         youtube_video_id: str,
-        org_dir: str,
         org_id: str,
         ad_id: str,
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> Tuple[Optional[float], Optional[str]]:
         from app.services.object_storage import get_object_storage
         obj_storage = get_object_storage()
 
         safe_id = _sanitize_for_filename(ad_id)
         filename = f"vid_dv360_{safe_id}.mp4"
         relative_path = f"creatives/{org_id}/{filename}"
-        local_path = os.path.join(org_dir, filename)
 
         if obj_storage.file_exists(relative_path):
-            return local_path if os.path.exists(local_path) else None, obj_storage.served_url(relative_path)
+            return None, obj_storage.served_url(relative_path)
 
         # Read cookies from DB first, fall back to env vars if DB is empty (D-11)
         cookies = await self._get_cookies_from_db()
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp_path = tmp.name
+
         def _do_download_with_cookies(cookie_data: str):
             import yt_dlp
-            import tempfile
 
             class _YDLLogger:
                 def debug(self, msg):
@@ -1168,7 +1156,7 @@ class DV360SyncService:
                 def error(self, msg): logger.warning("yt-dlp error: %s", msg)
 
             ydl_opts = {
-                "outtmpl": local_path,
+                "outtmpl": tmp_path,
                 # Use pre-merged format — no ffmpeg required for format selection.
                 # "best" picks the highest-quality single stream (typically 720p/1080p mp4).
                 "format": "best/b",
@@ -1202,31 +1190,34 @@ class DV360SyncService:
         # Try with each cookie string in preference order, then fall back to cookieless
         attempts = cookies if cookies else [""]
         loop = asyncio.get_event_loop()
-        for i, cookie in enumerate(attempts):
-            label = "no cookies" if not cookie else ("primary" if i == 0 else "backup")
-            logger.info("  Attempting DV360 video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
-            try:
-                await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))
+        try:
+            for i, cookie in enumerate(attempts):
+                label = "no cookies" if not cookie else ("primary" if i == 0 else "backup")
+                logger.info("  Attempting DV360 video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
+                try:
+                    await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))
 
-                if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
-                    size_mb = os.path.getsize(local_path) / (1024 * 1024)
-                    served_url = obj_storage.upload_file(local_path, relative_path, content_type="video/mp4")
-                    logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, label)
-                    return local_path, served_url
-                else:
-                    logger.warning("  yt-dlp finished but output file missing: %s", local_path)
-            except Exception as e:
-                if os.path.exists(local_path):
-                    os.remove(local_path)
-                err_str = str(e)
-                is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
-                if is_format_error:
-                    logger.warning("  No video formats available for %s — skipping", youtube_video_id)
-                    break
-                if i < len(attempts) - 1:
-                    logger.info("  %s cookies failed for %s, trying next... (%s: %s)", label, youtube_video_id, type(e).__name__, e)
-                    continue
-                logger.warning("  Failed to download DV360 video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
+                    if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                        size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
+                        duration = self._get_video_duration(tmp_path)
+                        served_url = obj_storage.upload_file(tmp_path, relative_path, content_type="video/mp4")
+                        logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, label)
+                        return duration, served_url
+                    else:
+                        logger.warning("  yt-dlp finished but output file missing: %s", tmp_path)
+                except Exception as e:
+                    err_str = str(e)
+                    is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
+                    if is_format_error:
+                        logger.warning("  No video formats available for %s — skipping", youtube_video_id)
+                        break
+                    if i < len(attempts) - 1:
+                        logger.info("  %s cookies failed for %s, trying next... (%s: %s)", label, youtube_video_id, type(e).__name__, e)
+                        continue
+                    logger.warning("  Failed to download DV360 video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
         # Notify all SuperAdmins when all cookie slots are exhausted (D-12, D-13)
         if cookies:
@@ -1246,7 +1237,6 @@ class DV360SyncService:
     async def _download_youtube_thumbnail(
         self,
         youtube_video_id: str,
-        org_dir: str,
         org_id: str,
         ad_id: str,
     ) -> Tuple[Optional[str], Optional[str]]:
@@ -1256,7 +1246,6 @@ class DV360SyncService:
         safe_id = _sanitize_for_filename(ad_id)
         filename = f"thumb_dv360_{safe_id}.jpg"
         relative_path = f"creatives/{org_id}/{filename}"
-        local_path = os.path.join(org_dir, filename)
 
         if obj_storage.file_exists(relative_path):
             return None, obj_storage.served_url(relative_path)
@@ -1271,13 +1260,7 @@ class DV360SyncService:
                 for thumb_url in candidates:
                     resp = await client.get(thumb_url)
                     if resp.status_code == 200 and len(resp.content) > 1000:
-                        with open(local_path, "wb") as f:
-                            f.write(resp.content)
-                        served_url = obj_storage.upload_file(local_path, relative_path, content_type="image/jpeg")
-                        try:
-                            os.remove(local_path)
-                        except OSError:
-                            pass
+                        served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="image/jpeg")
                         return None, served_url
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
             logger.warning("Failed to download YouTube thumbnail for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
@@ -1314,10 +1297,6 @@ class DV360SyncService:
         logger.info(f"DV360 perf CSV columns ({len(csv_columns)}): {csv_columns}")
 
         org_id = str(connection.organization_id) if hasattr(connection, "organization_id") and connection.organization_id else None
-        org_dir = None
-        if org_id:
-            org_dir = os.path.join(_CREATIVES_DIR, org_id)
-            os.makedirs(org_dir, exist_ok=True)
 
         def safe_decimal(val, default=None):
             try:
@@ -1652,7 +1631,7 @@ class DV360SyncService:
             await db.execute(stmt)
             await db.flush()
 
-        return len(rows), {"org_dir": org_dir, "org_id": org_id, "queue": asset_download_queue}
+        return len(rows), {"org_id": org_id, "queue": asset_download_queue}
 
     async def download_assets_post_commit(
         self,
@@ -1660,11 +1639,10 @@ class DV360SyncService:
         connection: PlatformConnection,
         asset_info: Dict[str, Any],
     ) -> None:
-        org_dir = asset_info.get("org_dir")
         org_id = asset_info.get("org_id")
         queue = asset_info.get("queue", {})
 
-        if not org_dir or not org_id or not queue:
+        if not org_id or not queue:
             return
 
         db_cookies = await self._get_cookies_from_db()
@@ -1687,7 +1665,7 @@ class DV360SyncService:
             if yt_vid:
                 try:
                     _, thumb_served = await self._download_youtube_thumbnail(
-                        yt_vid, org_dir, org_id, ad_id
+                        yt_vid, org_id, ad_id
                     )
                     if thumb_served:
                         thumb_results[ad_id] = thumb_served
@@ -1696,7 +1674,7 @@ class DV360SyncService:
             elif thumb and thumb.startswith("http"):
                 try:
                     _, img_served = await self._download_image_asset(
-                        thumb, org_dir, org_id, ad_id
+                        thumb, org_id, ad_id
                     )
                     if img_served:
                         thumb_results[ad_id] = img_served
@@ -1733,15 +1711,15 @@ class DV360SyncService:
                 if video_download_count > 0:
                     await asyncio.sleep(4)
                 try:
-                    vid_path, vid_served = await self._download_video_asset(
-                        yt_vid, org_dir, org_id, ad_id
+                    vid_duration, vid_served = await self._download_video_asset(
+                        yt_vid, org_id, ad_id
                     )
                     video_download_count += 1
                     if vid_served:
                         video_results[ad_id] = {
                             "video_url": vid_served,
                             "asset_url": vid_served,
-                            "video_duration_seconds": self._get_video_duration(vid_path),
+                            "video_duration_seconds": vid_duration,
                         }
                         downloaded_videos.add(yt_vid)
                 except Exception as e:
