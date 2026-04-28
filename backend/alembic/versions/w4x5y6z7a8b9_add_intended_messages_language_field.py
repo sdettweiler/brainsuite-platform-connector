@@ -1,7 +1,7 @@
 """Add brainsuite_intended_messages_language default metadata field
 
 Revision ID: w4x5y6z7a8b9
-Revises: v3w4x5y6z7a8
+Revises: v5y6z7a8b9c
 Create Date: 2026-04-24
 
 Adds the missing intendedMessagesLanguage SELECT field to all orgs and seeds

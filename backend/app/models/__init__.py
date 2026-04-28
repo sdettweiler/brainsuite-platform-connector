@@ -14,6 +14,7 @@ from app.models.performance import (
 from app.models.scoring import CreativeScoreResult
 from app.models.ai_inference import AIInferenceTracking
 from app.models.brainsuite_config import OrgBrainsuiteConfig, OrgBrainsuiteFieldMapping
+from app.models.system_config import SystemConfig
 
 __all__ = [
     "User", "Organization", "OrganizationRole", "RefreshToken",
@@ -27,4 +28,5 @@ __all__ = [
     "AIInferenceTracking",
     "OrgBrainsuiteConfig",
     "OrgBrainsuiteFieldMapping",
+    "SystemConfig",
 ]
