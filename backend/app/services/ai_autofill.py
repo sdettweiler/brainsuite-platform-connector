@@ -18,7 +18,7 @@ from typing import Optional
 from google import genai
 from google.genai import types as genai_types
 from pydantic import BaseModel
-from sqlalchemy import select, update, or_, and_
+from sqlalchemy import select, update, or_, and_, exists
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
@@ -640,47 +640,102 @@ async def backfill_failed_autofill_for_connection(
     org_id: uuid.UUID,
     exclude_asset_ids: set | None = None,
 ) -> None:
-    """Queue autofill for assets where inference previously failed or never ran.
+    """Queue autofill for assets where inference failed, never ran, or completed with no values written.
 
-    Called after every successful sync. Handles the case where a prior attempt
-    failed (e.g. video download unavailable) and the asset now has a URL.
-    Skips COMPLETE and PENDING assets — only retries FAILED or untracked ones.
+    Called after every successful sync. Covers four cases:
+    - FAILED status (e.g. video download previously unavailable)
+    - No tracking row at all (pre-autofill assets)
+    - COMPLETE but no autofill field values exist (e.g. first run had no GEMINI_API_KEY)
+    - Stale PENDING (> 30 min old — process died mid-flight)
     """
-    async with get_session_factory()() as db:
-        has_fields = (await db.execute(
-            select(MetadataField.id).where(
-                MetadataField.organization_id == org_id,
-                MetadataField.auto_fill_enabled.is_(True),
-                MetadataField.is_active.is_(True),
-            ).limit(1)
-        )).scalar_one_or_none()
+    try:
+        from datetime import timedelta
+        stale_cutoff = datetime.utcnow() - timedelta(minutes=30)
 
-        if not has_fields:
+        async with get_session_factory()() as db:
+            has_fields = (await db.execute(
+                select(MetadataField.id).where(
+                    MetadataField.organization_id == org_id,
+                    MetadataField.auto_fill_enabled.is_(True),
+                    MetadataField.is_active.is_(True),
+                ).limit(1)
+            )).scalar_one_or_none()
+
+            if not has_fields:
+                logger.debug("Autofill backfill: no autofill fields for org %s, skipping", org_id)
+                return
+
+            # Cases 1, 2, 4: FAILED, no tracking row, or stale PENDING
+            failed_result = await db.execute(
+                select(CreativeAsset.id, CreativeAsset.organization_id)
+                .outerjoin(AIInferenceTracking, AIInferenceTracking.asset_id == CreativeAsset.id)
+                .where(
+                    CreativeAsset.platform_connection_id == connection_id,
+                    CreativeAsset.asset_url.isnot(None),
+                    CreativeAsset.asset_url != "",
+                    or_(
+                        AIInferenceTracking.ai_inference_status == "FAILED",
+                        AIInferenceTracking.asset_id.is_(None),
+                        and_(
+                            AIInferenceTracking.ai_inference_status == "PENDING",
+                            AIInferenceTracking.updated_at < stale_cutoff,
+                        ),
+                    ),
+                )
+            )
+            assets = list(failed_result.all())
+
+            # Case 3: COMPLETE but no autofill values — two-step to avoid correlated subquery issues
+            complete_result = await db.execute(
+                select(CreativeAsset.id, CreativeAsset.organization_id)
+                .join(AIInferenceTracking, AIInferenceTracking.asset_id == CreativeAsset.id)
+                .where(
+                    CreativeAsset.platform_connection_id == connection_id,
+                    CreativeAsset.asset_url.isnot(None),
+                    CreativeAsset.asset_url != "",
+                    AIInferenceTracking.ai_inference_status == "COMPLETE",
+                )
+            )
+            complete_list = complete_result.all()
+
+            if complete_list:
+                complete_ids = [aid for aid, _ in complete_list]
+                has_values_result = await db.execute(
+                    select(AssetMetadataValue.asset_id)
+                    .join(MetadataField, MetadataField.id == AssetMetadataValue.field_id)
+                    .where(
+                        AssetMetadataValue.asset_id.in_(complete_ids),
+                        MetadataField.auto_fill_enabled.is_(True),
+                        MetadataField.organization_id == org_id,
+                    )
+                    .distinct()
+                )
+                has_values_ids = {row[0] for row in has_values_result.all()}
+                complete_empty = [(aid, oid) for aid, oid in complete_list if aid not in has_values_ids]
+
+                if complete_empty:
+                    empty_ids = [aid for aid, _ in complete_empty]
+                    await db.execute(
+                        update(AIInferenceTracking)
+                        .where(AIInferenceTracking.asset_id.in_(empty_ids))
+                        .values(ai_inference_status="FAILED", updated_at=datetime.utcnow())
+                    )
+                    await db.commit()
+                    assets.extend(complete_empty)
+
+        if not assets:
+            logger.debug("Autofill backfill: nothing to retry for connection %s", connection_id)
             return
 
-        result = await db.execute(
-            select(CreativeAsset.id, CreativeAsset.organization_id)
-            .outerjoin(AIInferenceTracking, AIInferenceTracking.asset_id == CreativeAsset.id)
-            .where(
-                CreativeAsset.platform_connection_id == connection_id,
-                CreativeAsset.asset_url.isnot(None),
-                or_(
-                    AIInferenceTracking.ai_inference_status == "FAILED",
-                    AIInferenceTracking.asset_id.is_(None),
-                ),
-            )
-        )
-        assets = result.all()
+        queued = 0
+        for aid, oid in assets:
+            if exclude_asset_ids and aid in exclude_asset_ids:
+                continue
+            asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+            queued += 1
 
-    if not assets:
-        return
+        if queued:
+            logger.info("Autofill backfill: queued %d tasks for connection %s", queued, connection_id)
 
-    queued = 0
-    for aid, oid in assets:
-        if exclude_asset_ids and aid in exclude_asset_ids:
-            continue
-        asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
-        queued += 1
-
-    if queued:
-        logger.info("Autofill backfill: queued %d tasks for connection %s", queued, connection_id)
+    except Exception:
+        logger.exception("Autofill backfill failed for connection %s", connection_id)
