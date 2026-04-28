@@ -7,32 +7,38 @@
 
 ### BrainSuite Org Config (BSCFG)
 
-- [ ] **BSCFG-01**: Admin can save BrainSuite Client ID and Client Secret per organization via the Settings page
-- [ ] **BSCFG-02**: Admin can configure the video app name per organization (replaces hardcoded `ACE_VIDEO_SMV_API` in the scoring endpoint URL)
-- [ ] **BSCFG-03**: Admin can configure the static app name per organization (replaces hardcoded `ACE_STATIC_SOCIAL_STATIC_API` in the scoring endpoint URL)
-- [ ] **BSCFG-04**: BrainSuite configuration is accessible as a dedicated section within the existing Settings page
+- [x] **BSCFG-01**: Admin can save BrainSuite Client ID and Client Secret per organization via the Settings page
+- [x] **BSCFG-02**: Admin can configure the video app name per organization (replaces hardcoded `ACE_VIDEO_SMV_API` in the scoring endpoint URL)
+- [x] **BSCFG-03**: Admin can configure the static app name per organization (replaces hardcoded `ACE_STATIC_SOCIAL_STATIC_API` in the scoring endpoint URL)
+- [x] **BSCFG-04**: BrainSuite configuration is accessible as a dedicated section within the existing Settings page
 
 ### API Field Mapping (FMAP)
 
-- [ ] **FMAP-01**: Admin can view and update the metadata field mapped to each of the 12 standard video API fields: channel, projectName, assetName, assetStage, assetLanguage, brandNames, voiceOver, voiceOverLanguage, intendedMessages, intendedMessagesLanguage, brandValues, brandValuesLanguage
-- [ ] **FMAP-02**: Admin can view and update the metadata field mapped to each of the 8 standard static API fields: channel, projectName, assetLanguage, iconicColorScheme, intendedMessages, intendedMessagesLanguage, brandValues, brandValuesLanguage
-- [ ] **FMAP-03**: Admin can add a custom API field for the video app and select any organization metadata field to map it to
-- [ ] **FMAP-04**: Admin can add a custom API field for the static app and select any organization metadata field to map it to
-- [ ] **FMAP-05**: Admin can remove a custom field mapping (standard fields cannot be removed, only left unmapped)
-- [ ] **FMAP-06**: Admin can mark any field (standard or custom) as mandatory
-- [ ] **FMAP-07**: For an asset where a mandatory field has no metadata mapping or no value, scoring is skipped and the user is notified which field(s) are missing
-- [ ] **FMAP-08**: `brainsuite_brand_values` (TEXT) and `brainsuite_brand_values_language` (SELECT, language enum) are seeded as default non-mandatory metadata fields for all organizations via Alembic migration and new-org provisioning
+- [x] **FMAP-01**: Admin can view and update the metadata field mapped to each of the 12 standard video API fields: channel, projectName, assetName, assetStage, assetLanguage, brandNames, voiceOver, voiceOverLanguage, intendedMessages, intendedMessagesLanguage, brandValues, brandValuesLanguage
+- [x] **FMAP-02**: Admin can view and update the metadata field mapped to each of the 8 standard static API fields: channel, projectName, assetLanguage, iconicColorScheme, intendedMessages, intendedMessagesLanguage, brandValues, brandValuesLanguage
+- [x] **FMAP-03**: Admin can add a custom API field for the video app and select any organization metadata field to map it to
+- [x] **FMAP-04**: Admin can add a custom API field for the static app and select any organization metadata field to map it to
+- [x] **FMAP-05**: Admin can remove a custom field mapping (standard fields cannot be removed, only left unmapped)
+- [x] **FMAP-06**: Admin can mark any field (standard or custom) as mandatory
+- [x] **FMAP-07**: For an asset where a mandatory field has no metadata mapping or no value, scoring is skipped and the user is notified which field(s) are missing
+- [x] **FMAP-08**: `brainsuite_brand_values` (TEXT) and `brainsuite_brand_values_language` (SELECT, language enum) are seeded as default non-mandatory metadata fields for all organizations via Alembic migration and new-org provisioning
 
 ### Scoring Pipeline Integration (PIPE)
 
-- [ ] **PIPE-01**: Scoring pipeline reads Client ID, Client Secret, app names, and field mappings from the organization's DB config instead of global `.env` settings
-- [ ] **PIPE-02**: Assets for an organization with incomplete BrainSuite config (missing credentials or app name) remain UNSCORED and are not queued for scoring
-- [ ] **PIPE-03**: Org admin sees a visible warning in the UI when their BrainSuite configuration is incomplete or missing
+- [x] **PIPE-01**: Scoring pipeline reads Client ID, Client Secret, app names, and field mappings from the organization's DB config instead of global `.env` settings
+- [x] **PIPE-02**: Assets for an organization with incomplete BrainSuite config (missing credentials or app name) remain UNSCORED and are not queued for scoring
+- [x] **PIPE-03**: Org admin sees a visible warning in the UI when their BrainSuite configuration is incomplete or missing
 
 ### Validation & Safety (VSAF)
 
-- [ ] **VSAF-01**: Admin can click "Test Connection" to fire a live BrainSuite authentication request and see inline success or failure feedback
-- [ ] **VSAF-02**: When an admin saves changes to a BrainSuite config and the organization has already-scored assets, a prompt appears asking: keep existing scores or re-score all previously scored assets under the new configuration
+- [x] **VSAF-01**: Admin can click "Test Connection" to fire a live BrainSuite authentication request and see inline success or failure feedback
+- [x] **VSAF-02**: When an admin saves changes to a BrainSuite config and the organization has already-scored assets, a prompt appears asking: keep existing scores or re-score all previously scored assets under the new configuration
+
+### YouTube Cookies (COOK)
+
+- [x] **COOK-01**: YouTube/DV360 cookies are stored encrypted in the database (`system_config` table) and manageable by SuperAdmins without requiring a Docker restart or direct env var access
+- [x] **COOK-02**: SuperAdmin can view cookie health status and replace primary/backup cookie slots via the `/configuration/admin` UI, with route-guard protection preventing access by non-SuperAdmin users
+- [x] **COOK-03**: `dv360_sync.py` reads cookies from the database first (falling back to env vars for zero-downtime migration); a `COOKIE_FAILED` notification is broadcast to all SuperAdmins when all cookie attempts are exhausted, routing them to the admin UI
 
 ## Future Requirements
 
@@ -61,29 +67,32 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FMAP-08 | Phase 11 | Pending |
-| PIPE-01 | Phase 11 | Pending |
-| BSCFG-01 | Phase 12 | Pending |
-| BSCFG-02 | Phase 12 | Pending |
-| BSCFG-03 | Phase 12 | Pending |
-| BSCFG-04 | Phase 12 | Pending |
-| VSAF-01 | Phase 12 | Pending |
-| VSAF-02 | Phase 12 | Pending |
-| FMAP-01 | Phase 13 | Pending |
-| FMAP-02 | Phase 13 | Pending |
-| FMAP-03 | Phase 13 | Pending |
-| FMAP-04 | Phase 13 | Pending |
-| FMAP-05 | Phase 13 | Pending |
-| FMAP-06 | Phase 13 | Pending |
-| FMAP-07 | Phase 13 | Pending |
-| PIPE-02 | Phase 13 | Pending |
-| PIPE-03 | Phase 13 | Pending |
+| FMAP-08 | Phase 11 | Complete |
+| PIPE-01 | Phase 11 | Complete |
+| BSCFG-01 | Phase 12 | Complete |
+| BSCFG-02 | Phase 12 | Complete |
+| BSCFG-03 | Phase 12 | Complete |
+| BSCFG-04 | Phase 12 | Complete |
+| VSAF-01 | Phase 12 | Complete |
+| VSAF-02 | Phase 12 | Complete |
+| FMAP-01 | Phase 13 | Complete |
+| FMAP-02 | Phase 13 | Complete |
+| FMAP-03 | Phase 13 | Complete |
+| FMAP-04 | Phase 13 | Complete |
+| FMAP-05 | Phase 13 | Complete |
+| FMAP-06 | Phase 13 | Complete |
+| FMAP-07 | Phase 13 | Complete |
+| PIPE-02 | Phase 13 | Complete |
+| PIPE-03 | Phase 13 | Complete |
+| COOK-01 | Phase 14 | Complete |
+| COOK-02 | Phase 14 | Complete |
+| COOK-03 | Phase 14 | Complete |
 
 **Coverage:**
-- v1.2 requirements: 17 total
-- Mapped to phases: 17
+- v1.2 requirements: 20 total
+- Mapped to phases: 20
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-15*
-*Last updated: 2026-04-15 — traceability populated after roadmap creation*
+*Last updated: 2026-04-28 — all v1.2 requirements marked complete; COOK-01/02/03 added for Phase 14*
