@@ -1,5 +1,23 @@
 # Milestones
 
+## v1.2 BrainSuite Configuration (Shipped: 2026-04-28)
+
+**Phases completed:** 4 phases, 13 plans
+**Stats:** 123 files changed, +21,744 / -504 lines, 13 days (2026-04-15 → 2026-04-28)
+
+**Key accomplishments:**
+
+1. Per-org BrainSuite credential schema (`org_brainsuite_config` + `org_brainsuite_field_mappings` tables) with Fernet-encrypted `String(1000)` secret and per-org token dict caching — scoring pipeline eliminated all hardcoded `.env` credential reads (Phase 11)
+2. Brand values metadata fields (`brainsuite_brand_values` + `_language`, 31 language options) seeded for all existing orgs via Alembic + provisioned on new-org registration (Phase 11)
+3. BrainSuite credentials + app name Settings UI — masked secret input, live "Test Connection" auth check, per-app `system_app_name` accordion, re-score dialog on config change (Phase 12)
+4. Per-app field mapping editor (750-line `FieldMappingsPanelComponent`) with 12 video / 8 static standard fields, custom field CRUD, mandatory toggles, and D-06 auto-match on first open (Phase 13)
+5. FMAP-07 pipeline guard: `_check_mandatory_fields` blocks scoring for assets with missing mandatory field values; fires `MANDATORY_FIELD_MISSING` notification via `asyncio.create_task` (Phase 13)
+6. `SystemConfig` singleton table with Fernet-encrypted YouTube cookie slots, SuperAdmin JWT claim + `get_current_superadmin` FastAPI dependency, `/configuration/admin` UI, and `dv360_sync.py` reading cookies from DB with env var fallback + `COOKIE_FAILED` notification broadcast (Phase 14)
+
+**Archive:** [v1.2-ROADMAP.md](milestones/v1.2-ROADMAP.md) | [v1.2-REQUIREMENTS.md](milestones/v1.2-REQUIREMENTS.md)
+
+---
+
 ## v1.1 Insights + Intelligence (Shipped: 2026-04-15)
 
 **Phases completed:** 6 phases, 14 plans, 19 tasks

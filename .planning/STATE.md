@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: BrainSuite Configuration
-status: executing
-stopped_at: context exhaustion at 90% (2026-04-27)
-last_updated: "2026-04-27T14:34:47.730Z"
-last_activity: 2026-04-27
+status: complete
+stopped_at: milestone archived 2026-04-28
+last_updated: "2026-04-28T10:00:00.000Z"
+last_activity: 2026-04-28
 progress:
   total_phases: 4
   completed_phases: 4
@@ -18,49 +18,35 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-15 — v1.2 milestone started)
+See: .planning/PROJECT.md (updated 2026-04-28 — v1.2 milestone complete)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 14 — youtube-cookies-admin-ui
+**Current focus:** v1.3 planning — run `/gsd-new-milestone` to start
 
 ## Current Position
 
-Phase: 14
-Plan: Not started
-Status: Executing Phase 14
-Last activity: 2026-04-27
+Phase: 14 (complete)
+Status: v1.2 milestone archived — all 4 phases, 13 plans, 20/20 requirements shipped
+Last activity: 2026-04-28
 
 ## Progress
 
 ```
-v1.2 Progress: [███░░░░░░░░░░░░░░░░░] 1/3 phases complete
+v1.2 Progress: [████████████████████] 4/4 phases complete ✅
 ```
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 11 | Per-Org Config Schema + Pipeline Wiring | FMAP-08, PIPE-01 | Complete |
-| 12 | Credentials + App Name Settings UI | BSCFG-01–04, VSAF-01, VSAF-02 | Not started |
-| 13 | Field Mapping Editor + Mandatory Field Enforcement | FMAP-01–07, PIPE-02, PIPE-03 | Not started |
+| 12 | Credentials + App Name Settings UI | BSCFG-01–04, VSAF-01, VSAF-02 | Complete |
+| 13 | Field Mapping Editor + Mandatory Field Enforcement | FMAP-01–07, PIPE-02, PIPE-03 | Complete |
+| 14 | YouTube Cookies Admin UI | COOK-01–03 | Complete |
 
 ## Accumulated Context
 
-### Key Decisions
+### Key Decisions (archived)
 
-- Phases numbered 11–13 continuing from v1.1's Phase 10
-- Phase 11 delivers DB schema + pipeline re-wiring before any UI work begins (unblocks both Phase 12 and Phase 13)
-- Phase 12 scoped to credentials + app names (coarse-grained config) + validation UX (Test Connection, re-score prompt)
-- Phase 13 scoped to fine-grained field mapping editor + mandatory field enforcement throughout the pipeline
-- `org_brainsuite_config` and `org_brainsuite_field_mappings` are the two new tables — follow existing `metadata_fields` Alembic migration pattern
-- Client Secret must be stored encrypted; never returned in plain text to frontend
-- PIPE-02 and PIPE-03 placed in Phase 13 (not Phase 11) because they depend on mandatory field logic defined in FMAP-07
-
-### Roadmap Evolution
-
-- Phase 14 added: YouTube Cookies Admin UI (2026-04-21 — scope originally listed as additional scope under Phase 13)
-
-### Todos
-
-- None yet
+See `.planning/milestones/v1.2-ROADMAP.md` for full decision log.
 
 ### Blockers
 
@@ -68,6 +54,5 @@ v1.2 Progress: [███░░░░░░░░░░░░░░░░░] 1/
 
 ## Session Continuity
 
-Last activity: 2026-04-16 — Phase 11 execution complete
-Stopped at: context exhaustion at 90% (2026-04-27)
-Resume: `/gsd-plan-phase 12`
+Last activity: 2026-04-28 — v1.2 milestone archived
+Next: `/gsd-new-milestone` to define v1.3 requirements and roadmap

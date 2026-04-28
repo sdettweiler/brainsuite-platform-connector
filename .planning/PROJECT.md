@@ -8,25 +8,13 @@ A production-ready multi-tenant SaaS platform that connects Meta, TikTok, Google
 
 A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
 
-## Current Milestone: v1.2 BrainSuite Configuration
-
-**Goal:** Give each organization full control of their BrainSuite integration through the UI — credentials, app names, and API field mappings — with live validation and graceful handling of config changes on already-scored assets.
-
-**Target features:**
-- Per-org BrainSuite credentials (Client ID + Secret) stored in DB, managed via Settings page
-- Per-org app name config for video and static scoring endpoints (dynamically inserted into API URL)
-- Dynamic API field mapping per app type (video + static): mandatory fields always present + custom fields mapped to available metadata fields
-- Scoring pipeline reads per-org config; missing config → assets stay UNSCORED + admin warning alert
-- Test connection button — live BrainSuite API test request with inline success/failure feedback
-- Re-score prompt — if config changes after assets are already scored, prompt: keep old scores or re-score all under new config
-
 ## Current State
 
-**Version:** v1.2 (milestone complete — 2026-04-21; Phase 13 complete)
+**Version:** v1.2 — SHIPPED 2026-04-28
 
 **Stack:** Angular 17 + FastAPI + PostgreSQL + Redis + MinIO — fully containerized via Docker Compose
 **Deployment:** Any cloud host or local dev via `docker-compose up`
-**LOC:** ~52,000 lines (v1.0) + ~23,842 net additions across 329 files in v1.1
+**LOC:** ~52,000 (v1.0) + ~23,842 net (v1.1) + ~21,240 net additions across 123 files (v1.2)
 
 **What works:**
 - Multi-tenant organization with RBAC
@@ -39,12 +27,17 @@ A user can connect all their ad accounts, see every creative's performance metri
 - Performance tab redesigned as tile/card grid; score-to-ROAS scatter chart with Stars/Q-Marks/Workhorses/Laggards quadrants
 - Gemini 2.5 Flash Vision + Whisper auto-fill on every new asset sync; per-field toggle on metadata config page; inference status badge in asset detail
 - In-app notifications: bell icon + unread badge + MatMenu inbox + 30s polling + MatSnackBar toasts for SYNC_FAILED and TOKEN_EXPIRED
+- Per-org BrainSuite credentials (Client ID + encrypted Secret) + app names stored in DB; scoring pipeline reads from DB, not `.env`
+- BrainSuite Settings UI: masked secret, Test Connection live auth check, `system_app_name` accordion per app, re-score dialog on config change
+- Field mapping editor (slide panel): standard + custom API fields per app type, mandatory flag, D-06 auto-match, FMAP-07 pipeline guard
+- `SystemConfig` singleton table with Fernet-encrypted YouTube cookie slots; SuperAdmin role + JWT claim + `/configuration/admin` UI; `dv360_sync.py` reads cookies from DB (env var fallback); `COOKIE_FAILED` notification broadcast to SuperAdmins
 
-**Known tech debt (v1.1):**
+**Known tech debt:**
 - Performer badge minimum guard is 3 assets (requirement: 10) — minor threshold mismatch
 - Score trend shows single data point per asset (no append-only history table — intentional per D-09)
-- Phases 7, 8, 10 missing formal VERIFICATION.md files
+- Phases 7, 8, 10 missing formal VERIFICATION.md files; Phase 12 missing VERIFICATION.md (implementation confirmed via integration checks)
 - `get_asset_detail()` hardcoded None for score fields (unused by frontend; confusing for API consumers)
+- GCP Cloud SQL DB password (`BrainsuiteDB2024!`) is a placeholder — must be rotated before production go-live
 
 ## Requirements
 
@@ -76,21 +69,23 @@ A user can connect all their ad accounts, see every creative's performance metri
 - ✓ Per-org BrainSuite config schema + pipeline wiring — v1.2 (Phase 11)
 - ✓ Credentials + app name settings UI — v1.2 (Phase 12)
 - ✓ Field mapping editor + mandatory field enforcement (FMAP-01–07, PIPE-02–03) — v1.2 (Phase 13)
+- ✓ YouTube/DV360 cookie DB storage + SuperAdmin UI + COOKIE_FAILED notifications — v1.2 (Phase 14)
 
 ### Active
 
-*(all v1.2 requirements validated — see Phase 13 completion)*
+*(no active requirements — v1.3 requirements to be defined via /gsd-new-milestone)*
 
 ### Out of Scope
 
-- Real-time notifications (Slack/email) — in-app only for v1.1; v1.2 candidate
+- Real-time notifications (Slack/email) — in-app only for v1.x; deferred to v1.3 candidate
 - Mobile app — web-first
 - Audience/targeting asset import — user specified images and video only
 - Ad copy / text creative scoring — not in scope
 - Creative identity across platforms — deferred to v2
 - Replit deployment — replaced by portable Docker Compose
-- Per-tenant AI inference daily spend cap — deferred to v1.2 (AI-v2-01)
-- SSE/WebSocket real-time notifications — polling sufficient for v1.1 event frequency
+- Per-tenant AI inference daily spend cap — deferred (AI-01)
+- SSE/WebSocket real-time notifications — polling sufficient for v1.x event frequency
+- Moving GEMINI_API_KEY to DB — platform-wide key, not per-org
 
 ## Constraints
 
@@ -98,7 +93,7 @@ A user can connect all their ad accounts, see every creative's performance metri
 - **BrainSuite API**: Video (ACE_SOCIAL) and Static image (ACE_STATIC_SOCIAL_STATIC_API) endpoints confirmed and integrated
 - **AI metadata inference**: Gemini 2.5 Flash (Vision) + Whisper (audio transcription) via GEMINI_API_KEY
 - **Storage**: Assets in S3-compatible storage — presigned URLs per request
-- **Audience**: Production-ready — external users can onboard after v1.1
+- **Audience**: Production-ready — external users can onboard after v1.2
 
 ## Key Decisions
 
@@ -120,6 +115,18 @@ A user can connect all their ad accounts, see every creative's performance metri
 | Gemini 2.5 Flash for AI auto-fill | Cost-effective vision model; GEMINI_API_KEY already in .env | ✓ Good |
 | Pipeline-integrated auto-fill (D-04) | Fires on sync, not on user button click — simpler UX, no suggestion staging table | ✓ Good |
 | Performer badge minimum guard: 3 assets | Implementation used 3; requirement said 10 — minor tech debt | ⚠️ Revisit |
+| Fernet String(1000) for client_secret_encrypted | Enforces max length at DB level; never Text (D-05/T-11-01) | ✓ Good |
+| Per-org token dict cache keyed by org_id | No cross-org token sharing possible; T-11-06 mitigation | ✓ Good |
+| system_app_name on BrainsuiteApp (not OrgBrainsuiteConfig) | Each app row owns its URL segment — cleaner than per-org duplication | ✓ Good |
+| CredentialsResponse has no client_secret field | `has_secret: bool` only — secret never returned to frontend (T-12-04) | ✓ Good |
+| COMPLETE-only rescore-all target | Never touch PROCESSING/PENDING rows on re-score trigger (T-12-07) | ✓ Good |
+| app_type denormalized on OrgBrainsuiteFieldMapping | Avoids pipeline JOIN; composite index pre-built for Phase 13 queries (D-05) | ✓ Good |
+| _check_mandatory_fields session-per-operation | Consistent with all scoring_job.py helpers; T-13-09 mitigation | ✓ Good |
+| MANDATORY_FIELD_MISSING via asyncio.create_task | Fire-and-forget — notification failure must not block scoring | ✓ Good |
+| SystemConfig singleton_guard String(1) unique | DB-level enforcement of exactly one platform config row (T-14-02) | ✓ Good |
+| Text (not String) for YouTube cookie columns | Cookies are multi-KB; String(1000) would overflow | ✓ Good |
+| _do_download_with_cookies accepts string not env var | Eliminates os.environ.get inside executor — no accidental cookie logging (T-14-10) | ✓ Good |
+| COOKIE_FAILED only when cookies list non-empty | Cookieless download is normal fallback, not an error state (D-12/D-13) | ✓ Good |
 
 ## Evolution
 
@@ -137,4 +144,4 @@ A user can connect all their ad accounts, see every creative's performance metri
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-21 — v1.2 milestone complete (Phase 13 done)*
+*Last updated: 2026-04-28 — v1.2 milestone complete (Phases 11–14, all 20 requirements shipped)*

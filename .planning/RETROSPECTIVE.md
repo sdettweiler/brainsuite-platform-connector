@@ -42,8 +42,51 @@
 
 ---
 
+## Milestone: v1.2 — BrainSuite Configuration
+
+**Shipped:** 2026-04-28
+**Phases:** 4 (11–14) | **Plans:** 13
+
+### What Was Built
+
+1. Per-org BrainSuite credential schema (`org_brainsuite_config` + `org_brainsuite_field_mappings`) with Fernet-encrypted secret, per-org token dict caching, and full scoring pipeline re-wire off `.env` (Phase 11)
+2. Brand values metadata fields seeded via Alembic + provisioned on new-org registration; `system_app_name` moved to `BrainsuiteApp` row for cleaner per-app URL control (Phase 11–12)
+3. Settings UI: masked secret input, Test Connection live auth check, per-app `system_app_name` accordion, re-score dialog on config change (Phase 12)
+4. Field mapping slide panel (750 lines): 12 video / 8 static standard fields, custom CRUD, mandatory toggles, D-06 auto-match; FMAP-07 pipeline guard + `MANDATORY_FIELD_MISSING` notification (Phase 13)
+5. `SystemConfig` singleton table + SuperAdmin JWT claim + `/configuration/admin` UI; `dv360_sync.py` reads cookies from DB with env var fallback + `COOKIE_FAILED` broadcast to SuperAdmins (Phase 14)
+
+### What Worked
+
+- **Schema-first phase ordering** — Phase 11 DB schema before any UI unblocked Phases 12, 13, 14 to execute independently; zero cross-phase blocking
+- **Static analysis tests** — All schema/endpoint tests used `pathlib.read_text()` with no live DB, enabling fast CI verification; pattern established in Phase 11 paid dividends through Phase 14
+- **Session-per-operation everywhere** — `_check_mandatory_fields`, `_get_cookies_from_db`, `create_superadmin_notification` all open their own sessions; no cross-concern session sharing
+- **Pydantic Literal for health status** — `CookieSlotHealth.status: Literal["valid","expired","missing"]` structurally prevents any string field leaking decrypted cookie content
+- **Phase 14 code review fixes** — 6-item code review caught a hardcoded superadmin email, env var cookie bypass, and missing token refresh; all resolved atomically before UAT
+
+### What Was Inefficient
+
+- **`system_app_name` schema pivot in Phase 12** — Plan 12-01 had to drop `video_app_name`/`static_app_name` columns added in Phase 11 and move to `BrainsuiteApp.system_app_name`; indicates Phase 11 research could have surfaced this earlier
+- **Phase 13 UAT field removals** — `channel` field removed post-UAT (auto-derived from platform); `brainsuite_intended_messages_language` metadata field had to be added in a follow-up migration; both gaps could have been caught by dry-running the UI against real data before plan execution
+- **STATE.md staleness** — STATE.md had progress showing 1/3 phases complete and described Phase 14 as "Not started" throughout execution; kept getting stale without automatic update
+
+### Patterns Established
+
+- **Singleton guard pattern** — `singleton_guard String(1) UNIQUE` enforces exactly one platform-config row at DB level; no application-layer check needed
+- **SuperAdmin tier** — `is_superuser` JWT claim + `get_current_superadmin` dependency is the right pattern for platform-operator capabilities that sit above org admin; class-based guard for explicit intent
+- **COOKIE_FAILED notification only when cookies list non-empty** — Cookieless download is a valid fallback; only notify when cookies existed and all failed (D-12/D-13)
+
+### Key Lessons
+
+- Surface schema design questions (where does `app_name` live — app row vs org config?) during research, not mid-execution
+- Run UI against real staging data before finalizing field lists for mapping editors — "channel" removal and missing language field were preventable
+- `asyncio.create_task` for fire-and-forget notifications is the right pattern; notification failure must never block scoring state transitions
+
+---
+
 ## Cross-Milestone Trends
 
 | Milestone | Phases | Plans | Days | Files | LOC Added |
 |-----------|--------|-------|------|-------|-----------|
 | v1.0 MVP | 4 | 19 | 34 | 276 | ~52,000 |
+| v1.1 Insights + Intelligence | 6 | 14 | 21 | 329 | ~23,842 |
+| v1.2 BrainSuite Configuration | 4 | 13 | 13 | 123 | ~21,240 |
