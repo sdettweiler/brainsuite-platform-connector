@@ -379,6 +379,9 @@ interface CorrelationAsset {
         <button *ngIf="needsRedownload(contextMenu.asset)" (click)="redownloadAsset(contextMenu.asset)">
           <i class="bi bi-cloud-download"></i> Re-download asset
         </button>
+        <button (click)="triggerAutofill(contextMenu.asset)">
+          <i class="bi bi-stars"></i> Trigger autofill
+        </button>
       </div>
 
       <!-- Backdrop to close context menu -->
@@ -1657,12 +1660,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.api.redownloadAsset(asset.id).subscribe({
       next: (res) => {
         asset.asset_url = res.asset_url;
+        const cached = this.assetDetailCache.get(asset.id) as any;
+        if (cached) cached.asset_url = res.asset_url;
         this.snackBar.open('Video downloaded — autofill and scoring queued', 'OK', { duration: 4000 });
       },
       error: (err) => {
         const msg = err?.error?.detail || 'Download failed. Check yt-dlp cookies.';
         this.snackBar.open(msg, 'OK', { duration: 5000 });
       },
+    });
+  }
+
+  triggerAutofill(asset: DashboardAsset | null): void {
+    if (!asset) return;
+    this.contextMenu.visible = false;
+    this.api.triggerAutofillForAsset(asset.id).subscribe({
+      next: () => this.snackBar.open('Autofill queued — results will appear shortly', 'OK', { duration: 4000 }),
+      error: () => this.snackBar.open('Failed to trigger autofill', 'OK', { duration: 4000 }),
     });
   }
 

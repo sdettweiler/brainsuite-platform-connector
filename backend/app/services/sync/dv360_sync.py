@@ -1750,6 +1750,48 @@ class DV360SyncService:
 
         logger.info(f"  Asset downloads complete: {len(downloaded_videos)} videos, {len(thumb_results)} thumbnails")
 
+        # Propagate downloaded URLs to CreativeAsset and reset autofill tracking
+        all_downloaded: dict[str, str] = {**thumb_results, **{ad_id: r["asset_url"] for ad_id, r in video_results.items() if r.get("asset_url")}}
+        if all_downloaded:
+            from sqlalchemy import select, or_
+            from sqlalchemy import update as _sa_update
+            from app.models.creative import CreativeAsset
+            from app.models.ai_inference import AIInferenceTracking
+            from datetime import datetime as _dt
+
+            for ad_id, served_url in all_downloaded.items():
+                await db.execute(
+                    _sa_update(CreativeAsset)
+                    .where(
+                        CreativeAsset.platform_connection_id == connection.id,
+                        CreativeAsset.ad_id == ad_id,
+                        or_(CreativeAsset.asset_url.is_(None), CreativeAsset.asset_url == ""),
+                    )
+                    .values(asset_url=served_url)
+                )
+
+            updated_ids_result = await db.execute(
+                select(CreativeAsset.id)
+                .where(
+                    CreativeAsset.platform_connection_id == connection.id,
+                    CreativeAsset.ad_id.in_(list(all_downloaded.keys())),
+                )
+            )
+            updated_ids = [row[0] for row in updated_ids_result.all()]
+
+            if updated_ids:
+                await db.execute(
+                    _sa_update(AIInferenceTracking)
+                    .where(
+                        AIInferenceTracking.asset_id.in_(updated_ids),
+                        AIInferenceTracking.ai_inference_status.in_(["COMPLETE", "FAILED"]),
+                    )
+                    .values(ai_inference_status="FAILED", updated_at=_dt.utcnow())
+                )
+
+            await db.commit()
+            logger.info(f"  CreativeAsset URLs propagated and autofill reset for {len(updated_ids)} assets")
+
     async def _upsert_conversion_records(
         self,
         db: AsyncSession,

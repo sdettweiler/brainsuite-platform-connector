@@ -27,6 +27,14 @@ export class ApiService {
     return this.http.post<{ queued: number; message: string }>(`${this.base}/assets/redownload-missing/${connectionId}`, {});
   }
 
+  triggerAutofillForAsset(assetId: string): Observable<{ asset_id: string; queued: boolean }> {
+    return this.http.post<{ asset_id: string; queued: boolean }>(`${this.base}/assets/${assetId}/trigger-autofill`, {});
+  }
+
+  triggerAutofillForConnection(connectionId: string): Observable<{ queued: number; message: string }> {
+    return this.http.post<{ queued: number; message: string }>(`${this.base}/assets/trigger-autofill/${connectionId}`, {});
+  }
+
   getScoreDetail(assetId: string): Observable<any> {
     return this.http.get<any>(`${this.base}/scoring/${assetId}`);
   }

@@ -325,6 +325,7 @@ async def run_daily_sync(connection_id: str) -> None:
 
 async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
     from app.services.sync.dv360_sync import dv360_sync
+    from app.services.ai_autofill import backfill_failed_autofill_for_connection
     from sqlalchemy import select
     from app.models.platform import PlatformConnection
     import uuid
@@ -339,6 +340,7 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
             if not connection:
                 return
             await dv360_sync.download_assets_post_commit(db, connection, asset_queue)
+        asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id))
     except Exception as e:
         logger.warning(f"DV360 asset download failed (non-fatal): {e}")
 

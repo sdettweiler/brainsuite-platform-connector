@@ -411,8 +411,11 @@ const PLATFORMS: PlatformDef[] = [
           <button mat-menu-item (click)="openMetadataPanel(conn)">
             <i class="bi bi-sliders" style="font-size: 18px; margin-right: 12px;"></i> Default Metadata
           </button>
-          <button mat-menu-item *ngIf="conn.platform === 'DV360'" (click)="downloadMissingVideos(conn)">
+          <button mat-menu-item *ngIf="conn.platform === 'DV360' || conn.platform === 'GOOGLE_ADS'" (click)="downloadMissingVideos(conn)">
             <i class="bi bi-cloud-download" style="font-size: 18px; margin-right: 12px;"></i> Download missing videos
+          </button>
+          <button mat-menu-item (click)="triggerAutofillForConnection(conn)">
+            <i class="bi bi-stars" style="font-size: 18px; margin-right: 12px;"></i> Trigger autofill
           </button>
           <button mat-menu-item class="delete-item" (click)="deleteConnection(conn)">
             <i class="bi bi-plug" style="font-size: 18px; margin-right: 12px;"></i> Disconnect
@@ -1054,6 +1057,13 @@ export class PlatformsComponent implements OnInit, OnDestroy {
         const msg = err?.error?.detail || 'Failed to start download';
         this.snackBar.open(msg, 'OK', { duration: 4000 });
       },
+    });
+  }
+
+  triggerAutofillForConnection(conn: PlatformConnection): void {
+    this.api.triggerAutofillForConnection(conn.id).subscribe({
+      next: (res) => this.snackBar.open(res.message, 'OK', { duration: 5000 }),
+      error: () => this.snackBar.open('Failed to trigger autofill', 'OK', { duration: 4000 }),
     });
   }
 

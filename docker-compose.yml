@@ -59,6 +59,8 @@ services:
       context: ./backend
       dockerfile: ../docker/Dockerfile.backend
     container_name: brainsuite_backend
+    env_file:
+      - .env
     restart: unless-stopped
     depends_on:
       db:
@@ -146,12 +148,15 @@ services:
   # ─── Frontend ────────────────────────────────────────────────────────────────
   frontend:
     build:
-      context: ./frontend
-      dockerfile: ../docker/Dockerfile.frontend
+      context: .
+      dockerfile: docker/Dockerfile.frontend
     container_name: brainsuite_frontend
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      BACKEND_URL: http://backend:8000
+      BACKEND_HOST: backend
     ports:
       - "80:80"
 

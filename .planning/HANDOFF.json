@@ -1,78 +1,73 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-14T14:16:59.822Z",
-  "phase": "09",
-  "phase_name": "ai-metadata-auto-fill",
-  "phase_dir": ".planning/phases/09-ai-metadata-auto-fill",
+  "timestamp": "2026-04-29T08:31:08Z",
+  "phase": "none",
+  "phase_name": "debugging + feature work",
+  "phase_dir": null,
   "plan": null,
   "task": null,
   "total_tasks": null,
   "status": "paused",
   "completed_tasks": [
-    {"id": 1, "name": "Restore ai_autofill.py, ai_inference.py, models/__init__, config.py, schemas/creative.py", "status": "done"},
-    {"id": 2, "name": "Swap OpenAI → Gemini 2.5 Flash (vision + audio)", "status": "done"},
-    {"id": 3, "name": "Replace 20-frame multi-image with mood board (1fps, composed grid)", "status": "done"},
-    {"id": 4, "name": "Fix locale format en_US → en-US throughout _to_locale", "status": "done"},
-    {"id": 5, "name": "Restore test_ai_autofill.py + test_ai_metadata_models.py (24 tests passing)", "status": "done"},
-    {"id": 6, "name": "Restore assets.py Phase 9 additions (metadata-filter-values, auto_fill fields, D-14 reset, debug endpoint)", "status": "done"},
-    {"id": 7, "name": "Restore metadata.component.ts auto-fill toggle UI", "status": "done"},
-    {"id": 8, "name": "Restore asset-detail-dialog CE tab AI badge + copy ID", "status": "done"},
-    {"id": 9, "name": "Restore edit-metadata-dialog field keying by UUID + default_value pre-pop", "status": "done"},
-    {"id": 10, "name": "Restore api.service.ts array param handling", "status": "done"},
-    {"id": 11, "name": "Restore .planning/phases/09-ai-metadata-auto-fill/ all 13 artifacts", "status": "done"},
-    {"id": 12, "name": "Fix dashboard.py: metadata_values now merges all org fields with default_value fallback", "status": "done"},
-    {"id": 13, "name": "Fix scoring_job.py: outerjoin with default_value fallback for BS API submission", "status": "done"},
-    {"id": 14, "name": "Fix asset-detail-dialog: move metadata section outside COMPLETE-only guard", "status": "done"},
-    {"id": 15, "name": "Fix openEditMetadata: pass existingValues from assetDetailCache", "status": "done"}
+    {"id": 1, "name": "Fix HTTP 500 on manual video redownload — removed stale org_dir param", "status": "done"},
+    {"id": 2, "name": "Fix autofill timing — download_assets_post_commit now propagates URL to CreativeAsset + resets tracking to FAILED", "status": "done"},
+    {"id": 3, "name": "Fix GEMINI_API_KEY not reaching container — added env_file: .env to docker-compose backend", "status": "done"},
+    {"id": 4, "name": "Fix detail dialog stale cache — always background-refresh loadDetail() even with preloaded data", "status": "done"},
+    {"id": 5, "name": "Fix redownloadAsset cache not updated — update assetDetailCache entry on successful redownload", "status": "done"},
+    {"id": 6, "name": "Extend video redownload to Google Ads — both redownload endpoints now support DV360 + GOOGLE_ADS", "status": "done"},
+    {"id": 7, "name": "Add manual autofill trigger at asset level — right-click context menu 'Trigger autofill'", "status": "done"},
+    {"id": 8, "name": "Add manual autofill trigger at connection level — Platform Connections row menu 'Trigger autofill' (all platforms)", "status": "done"},
+    {"id": 9, "name": "Add new backend endpoints: POST /assets/{asset_id}/trigger-autofill and POST /assets/trigger-autofill/{connection_id}", "status": "done"},
+    {"id": 10, "name": "Reset 1551 COMPLETE tracking rows to FAILED so Gemini re-runs with key now available", "status": "done"},
+    {"id": 11, "name": "Fix BACKEND_HOST missing from docker-compose — frontend rebuild was crash-looping", "status": "done"},
+    {"id": 12, "name": "Rebuild frontend container to ship new TypeScript (autofill triggers)", "status": "done"}
   ],
   "remaining_tasks": [
-    {"id": 16, "name": "Visual UAT: verify metadata shows in CE tab for unscored assets", "status": "not_started"},
-    {"id": 17, "name": "Visual UAT: verify edit metadata dialog pre-populates with existing values", "status": "not_started"},
-    {"id": 18, "name": "DB data fix: existing en_US (underscore) values in asset_metadata_values need normalizing to en-US (dash) for BS API", "status": "not_started"},
-    {"id": 19, "name": "Phase 10 Meta token error bug still unresolved (EXPIRED status not persisting)", "status": "blocked"}
+    {
+      "id": 13,
+      "name": "Download missing videos for DV360/Google Ads connections",
+      "status": "human_action_required",
+      "note": "Platform Connections → row menu → 'Download missing videos' on each DV360/Google Ads connection. 1543/1550 videos have no asset_url."
+    },
+    {
+      "id": 14,
+      "name": "Verify Gemini autofill fires after downloads complete",
+      "status": "not_started",
+      "note": "Check backend logs for Gemini API calls, then check asset_metadata_values for language/brand_names/vo fields"
+    }
   ],
   "blockers": [
     {
-      "description": "Phase 10: Meta MetaTokenError handler — EXPIRED sync_status not persisting after rollback despite fresh session approach",
-      "type": "technical",
-      "workaround": "See .planning/phases/10-in-app-notifications/.continue-here.md for full debug history"
-    },
-    {
-      "description": "Metadata still needs visual UAT — backend restart done but browser hard refresh required to clear Angular preload cache",
+      "description": "1543/1550 video assets have no asset_url — autofill skips vision/audio without binary to analyze",
       "type": "human_action",
-      "workaround": "Cmd+Shift+R to hard refresh, then open any asset detail → CE tab"
+      "workaround": "Platform Connections → 'Download missing videos' on each DV360/Google Ads connection. Downloads run via yt-dlp in background. After completion, backfill auto-triggers autofill."
     }
   ],
   "human_actions_pending": [
-    {"action": "Hard refresh browser (Cmd+Shift+R) and verify metadata shows in CE tab", "context": "Backend restarted with metadata fix but Angular cache may have stale data", "blocking": false},
-    {"action": "Verify edit metadata dialog pre-populates for single-asset edit", "context": "openEditMetadata now passes existingValues from cache but needs visual confirmation", "blocking": false}
+    {
+      "action": "Click 'Download missing videos' on each DV360 and Google Ads connection in Platform Connections",
+      "context": "1543/1550 video assets have no asset_url. Autofill triggers and runs but asset_bytes is None so vision/audio inference (language, brand_names, vo_transcript, vo_language) is skipped. Videos must be downloaded first.",
+      "blocking": true
+    }
   ],
   "decisions": [
-    {"decision": "Gemini 2.5 Flash replaces OpenAI for both vision and audio", "rationale": "User directive; GEMINI_API_KEY already in .env", "phase": "09"},
-    {"decision": "Mood board: 1fps frames (cap 60), 5-col grid, single composed JPEG sent to Gemini", "rationale": "Token reduction vs 20 individual images", "phase": "09"},
-    {"decision": "Locale format en-US (dash) not en_US (underscore) — BrainSuite API requirement", "rationale": "BS API expects BCP 47 dash format", "phase": "09"},
-    {"decision": "metadata_values in dashboard response merges all org MetadataFields with default_value fallback", "rationale": "Fields with no asset-specific value should show org default", "phase": "09"},
-    {"decision": "CE tab metadata section visible regardless of scoring_status", "rationale": "Unscored assets should still show their metadata", "phase": "09"}
+    {"decision": "Added env_file: .env to docker-compose backend service", "rationale": "Many .env keys were silently never reaching container; env_file ensures all keys available without manual enumeration"},
+    {"decision": "download_assets_post_commit now updates CreativeAsset.asset_url after downloading", "rationale": "Harmonizer ran before downloads so CreativeAsset.asset_url was always empty; propagating after download fixes the timing gap"},
+    {"decision": "detail dialog always calls loadDetail() even with preloaded data", "rationale": "Preloaded path used stale cache forever; background refresh gives instant render + eventually fresh data"},
+    {"decision": "Frontend requires docker-compose up --build to ship TS changes (no hot-reload unlike backend)", "rationale": "Angular is pre-compiled at image build time, not mounted as volume"}
   ],
   "uncommitted_files": [
     "backend/app/api/v1/endpoints/assets.py",
-    "backend/app/api/v1/endpoints/dashboard.py",
-    "backend/app/core/config.py",
-    "backend/app/models/__init__.py",
-    "backend/app/models/metadata.py",
-    "backend/app/schemas/creative.py",
-    "backend/app/services/sync/harmonizer.py",
+    "backend/app/services/sync/dv360_sync.py",
     "backend/app/services/sync/scheduler.py",
-    "backend/app/services/sync/scoring_job.py",
-    "backend/requirements.txt",
-    "frontend/src/app/core/layout/header/header.component.ts",
+    "docker-compose.yml",
     "frontend/src/app/core/services/api.service.ts",
-    "frontend/src/app/features/configuration/pages/metadata.component.ts",
     "frontend/src/app/features/dashboard/dashboard.component.ts",
+    "frontend/src/app/features/configuration/pages/platforms.component.ts",
     "frontend/src/app/features/dashboard/dialogs/asset-detail-dialog.component.ts",
-    "frontend/src/app/features/dashboard/dialogs/edit-metadata-dialog.component.ts",
-    ".planning/phases/09-ai-metadata-auto-fill/ (all 13 artifacts)"
+    ".planning/.continue-here.md",
+    ".planning/HANDOFF.json"
   ],
-  "next_action": "Hard refresh browser, open any asset in CE tab, verify metadata section appears. Then check edit metadata dialog pre-populates. If both pass, commit all Phase 9 restoration work.",
-  "context_notes": "Session was focused on restoring Phase 9 (AI Metadata Auto-Fill) after executor deletion. All backend/frontend code restored and Gemini swap complete. Main remaining item is visual UAT confirmation. Phase 10 Meta token bug is a separate pre-existing blocker documented in phase 10 continue-here."
+  "next_action": "Verify video downloads are working: Platform Connections → 'Download missing videos' on a DV360 connection, then watch backend logs for yt-dlp activity. Then check: SELECT count(*) FILTER (WHERE asset_url IS NOT NULL AND asset_url != '') FROM creative_assets WHERE asset_format = 'VIDEO'",
+  "context_notes": "All code fixes and features are shipped. The only remaining work is operational: videos need to be downloaded so autofill has binaries to analyze. The backfill fires automatically after downloads complete (wired in this session). GEMINI_API_KEY is confirmed set in container. All 1551 assets are in FAILED status ready for retry."
 }

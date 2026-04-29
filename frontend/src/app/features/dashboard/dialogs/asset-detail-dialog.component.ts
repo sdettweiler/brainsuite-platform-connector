@@ -1063,9 +1063,8 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
       this.asset = this.data.preloaded;
       this.loading = false;
       this.buildChart();
-    } else {
-      this.loadDetail();
     }
+    this.loadDetail();
     this.loadScoreDetail();
   }
 

@@ -4,7 +4,6 @@ Creative asset management: projects, metadata, assignments, export.
 from typing import List, Optional
 import asyncio
 import os
-import tempfile
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, distinct
@@ -642,11 +641,11 @@ async def redownload_missing_assets(
     db: AsyncSession = Depends(get_db),
 ):
     """Find all VIDEO assets for a connection that are missing a valid .mp4 asset_url
-    and re-download them in the background. Returns the count immediately.
-    Currently supports DV360 only.
+    and re-download them in the background. Supports DV360 and GOOGLE_ADS.
     """
     from app.models.platform import PlatformConnection
     from app.services.sync.dv360_sync import DV360SyncService
+    from app.services.sync.google_ads_sync import google_ads_sync
 
     conn_result = await db.execute(
         select(PlatformConnection).where(PlatformConnection.id == connection_id)
@@ -656,10 +655,9 @@ async def redownload_missing_assets(
         raise HTTPException(status_code=404, detail="Connection not found")
     if conn.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Connection not in your organization")
-    if conn.platform != "DV360":
+    if conn.platform not in ("DV360", "GOOGLE_ADS"):
         raise HTTPException(status_code=422, detail=f"Re-download not supported for platform {conn.platform}")
 
-    # Find all VIDEO assets for this connection missing a valid .mp4 URL
     assets_result = await db.execute(
         select(CreativeAsset).where(
             CreativeAsset.platform_connection_id == connection_id,
@@ -673,14 +671,19 @@ async def redownload_missing_assets(
         return {"queued": 0, "message": "No missing videos found"}
 
     async def _download_one(asset: CreativeAsset) -> None:
-        import tempfile
         from app.db.base import get_session_factory
-        svc = DV360SyncService()
         org_id_str = str(asset.organization_id)
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        served_url = None
+        if asset.platform == "DV360":
+            svc = DV360SyncService()
             _, served_url = await svc._download_video_asset(
                 youtube_video_id=asset.ad_id,
-                org_dir=tmp_dir,
+                org_id=org_id_str,
+                ad_id=asset.ad_id,
+            )
+        elif asset.platform == "GOOGLE_ADS":
+            _, served_url = await google_ads_sync._download_video(
+                youtube_video_id=asset.ad_id,
                 org_id=org_id_str,
                 ad_id=asset.ad_id,
             )
@@ -717,7 +720,7 @@ async def redownload_asset(
 ):
     """Re-download an asset video from its source platform and store it in MinIO.
     Only applicable to VIDEO assets that are missing a valid .mp4 asset_url.
-    Currently supports DV360 (downloads via yt-dlp using ad_id as YouTube video ID).
+    Supports DV360 and GOOGLE_ADS (both use yt-dlp for YouTube video IDs).
     """
     result = await db.execute(select(CreativeAsset).where(CreativeAsset.id == asset_id))
     asset = result.scalar_one_or_none()
@@ -729,17 +732,23 @@ async def redownload_asset(
         raise HTTPException(status_code=422, detail="Asset is not a VIDEO")
     if asset.asset_url and asset.asset_url.endswith(".mp4"):
         raise HTTPException(status_code=422, detail="Asset already has a valid video URL")
-    if asset.platform != "DV360":
+    if asset.platform not in ("DV360", "GOOGLE_ADS"):
         raise HTTPException(status_code=422, detail=f"Re-download not supported for platform {asset.platform}")
 
-    from app.services.sync.dv360_sync import DV360SyncService
-
     org_id_str = str(asset.organization_id)
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    served_url = None
+    if asset.platform == "DV360":
+        from app.services.sync.dv360_sync import DV360SyncService
         svc = DV360SyncService()
         _, served_url = await svc._download_video_asset(
             youtube_video_id=asset.ad_id,
-            org_dir=tmp_dir,
+            org_id=org_id_str,
+            ad_id=asset.ad_id,
+        )
+    elif asset.platform == "GOOGLE_ADS":
+        from app.services.sync.google_ads_sync import google_ads_sync
+        _, served_url = await google_ads_sync._download_video(
+            youtube_video_id=asset.ad_id,
             org_id=org_id_str,
             ad_id=asset.ad_id,
         )
@@ -765,6 +774,84 @@ async def redownload_asset(
     asyncio.create_task(run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id))
 
     return {"asset_id": str(asset_id), "asset_url": served_url}
+
+
+@router.post("/trigger-autofill/{connection_id}")
+async def trigger_autofill_for_connection(
+    connection_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset and re-queue autofill for all assets on a connection."""
+    from datetime import datetime
+    from sqlalchemy import update as sa_update
+    from app.models.platform import PlatformConnection
+    from app.services.ai_autofill import backfill_failed_autofill_for_connection
+
+    conn_result = await db.execute(select(PlatformConnection).where(PlatformConnection.id == connection_id))
+    conn = conn_result.scalar_one_or_none()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    if conn.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Connection not in your organization")
+
+    asset_ids_result = await db.execute(
+        select(CreativeAsset.id).where(CreativeAsset.platform_connection_id == connection_id)
+    )
+    all_asset_ids = [row[0] for row in asset_ids_result.all()]
+
+    if all_asset_ids:
+        await db.execute(
+            sa_update(AIInferenceTracking)
+            .where(
+                AIInferenceTracking.asset_id.in_(all_asset_ids),
+                AIInferenceTracking.ai_inference_status.in_(["COMPLETE", "FAILED"]),
+            )
+            .values(ai_inference_status="FAILED", updated_at=datetime.utcnow())
+        )
+        await db.commit()
+
+    asyncio.create_task(backfill_failed_autofill_for_connection(connection_id, conn.organization_id))
+    total = len(all_asset_ids)
+    return {"queued": total, "message": f"Autofill queued for {total} assets"}
+
+
+@router.post("/{asset_id}/trigger-autofill")
+async def trigger_autofill_for_asset(
+    asset_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset and re-queue autofill for a single asset."""
+    from datetime import datetime
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    result = await db.execute(select(CreativeAsset).where(CreativeAsset.id == asset_id))
+    asset = result.scalar_one_or_none()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Asset not in your organization")
+
+    await db.execute(
+        pg_insert(AIInferenceTracking)
+        .values(
+            id=uuid.uuid4(),
+            asset_id=asset_id,
+            org_id=asset.organization_id,
+            ai_inference_status="FAILED",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        .on_conflict_do_update(
+            index_elements=["asset_id"],
+            set_={"ai_inference_status": "FAILED", "updated_at": datetime.utcnow()},
+        )
+    )
+    await db.commit()
+
+    asyncio.create_task(run_autofill_for_asset(asset_id=asset_id, org_id=asset.organization_id))
+    return {"asset_id": str(asset_id), "queued": True}
 
 
 @router.post("/debug/autofill/{asset_id}")
