@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ApiService } from '../../../core/services/api.service';
 
@@ -32,10 +33,27 @@ interface OrgItem {
   created_at: string;
 }
 
+interface OrgScoringItem {
+  org_id: string;
+  org_name: string;
+  quota: number | null;
+  scored_count: number;
+  pending_count: number;
+  editingQuota?: boolean;
+  quotaDraft?: string;
+  savingQuota?: boolean;
+  resetting?: boolean;
+}
+
+interface ScoringConfigResponse {
+  scoring_enabled: boolean;
+  organizations: OrgScoringItem[];
+}
+
 @Component({
   standalone: true,
   selector: 'app-admin',
-  imports: [CommonModule, FormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressSpinnerModule, MatSnackBarModule],
+  imports: [CommonModule, FormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressSpinnerModule, MatSlideToggleModule, MatSnackBarModule],
   template: `
 <div class="page-container">
 
@@ -179,6 +197,88 @@ interface OrgItem {
           </tr>
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- Section 4: Scoring Controls -->
+  <section class="config-section">
+    <div class="section-header">
+      <div>
+        <h2>Scoring Controls</h2>
+        <p class="section-desc">Manage auto-scoring globally and set per-org quotas. Reset assets back to unscored to retrigger scoring.</p>
+      </div>
+    </div>
+    <div class="section-body">
+      <div *ngIf="loadingScoring" class="skeleton-block"></div>
+
+      <ng-container *ngIf="!loadingScoring && scoringConfig">
+        <!-- Global toggle -->
+        <div class="scoring-toggle-row">
+          <div>
+            <div class="scoring-toggle-label">Auto-scoring</div>
+            <div class="scoring-toggle-hint">When disabled, the scoring batch job will not process any assets across all organizations.</div>
+          </div>
+          <mat-slide-toggle
+            [checked]="scoringConfig.scoring_enabled"
+            [disabled]="togglingScoring"
+            (change)="toggleScoring($event.checked)">
+            {{ scoringConfig.scoring_enabled ? 'Enabled' : 'Disabled' }}
+          </mat-slide-toggle>
+        </div>
+
+        <!-- Per-org quota + reset table -->
+        <table class="admin-table scoring-table" *ngIf="scoringConfig.organizations.length > 0">
+          <thead>
+            <tr>
+              <th>Organization</th>
+              <th style="width: 110px; text-align: right">Scored</th>
+              <th style="width: 110px; text-align: right">Pending</th>
+              <th style="width: 180px; text-align: right">Quota</th>
+              <th style="width: 120px; text-align: right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let org of scoringConfig.organizations">
+              <td>{{ org.org_name }}</td>
+              <td style="text-align: right">{{ org.scored_count }}</td>
+              <td style="text-align: right">{{ org.pending_count }}</td>
+              <!-- Quota cell -->
+              <td style="text-align: right">
+                <ng-container *ngIf="!org.editingQuota">
+                  <span class="quota-display" [class.quota-unlimited]="org.quota === null">
+                    {{ org.quota === null ? 'Unlimited' : org.quota }}
+                  </span>
+                  <button mat-icon-button class="edit-quota-btn" title="Edit quota" (click)="startEditQuota(org)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                  </button>
+                </ng-container>
+                <ng-container *ngIf="org.editingQuota">
+                  <div class="quota-edit-row">
+                    <input class="quota-input" type="number" min="0" [(ngModel)]="org.quotaDraft" placeholder="e.g. 500">
+                    <button mat-icon-button class="save-quota-btn" title="Save" [disabled]="org.savingQuota" (click)="saveQuota(org)">
+                      <mat-spinner *ngIf="org.savingQuota" diameter="14"></mat-spinner>
+                      <svg *ngIf="!org.savingQuota" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                    </button>
+                    <button mat-icon-button title="Cancel" (click)="cancelEditQuota(org)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                    </button>
+                  </div>
+                </ng-container>
+              </td>
+              <!-- Reset cell -->
+              <td style="text-align: right">
+                <button mat-stroked-button class="reset-btn" [disabled]="org.resetting" (click)="resetOrg(org)">
+                  <mat-spinner *ngIf="org.resetting" diameter="14"></mat-spinner>
+                  {{ org.resetting ? 'Resetting...' : 'Reset Failed' }}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div *ngIf="scoringConfig.organizations.length === 0" class="empty-state">
+          <p>No organizations with BrainSuite configuration found.</p>
+        </div>
+      </ng-container>
     </div>
   </section>
 
@@ -330,6 +430,56 @@ interface OrgItem {
     }
 
     .error-text { color: var(--error); font-size: 14px; }
+
+    .scoring-toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .scoring-toggle-label { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+    .scoring-toggle-hint { font-size: 13px; color: var(--text-secondary); max-width: 480px; }
+
+    .scoring-table { margin-top: 0; }
+
+    .quota-display { font-size: 14px; }
+    .quota-unlimited { color: var(--text-muted); font-style: italic; }
+
+    .edit-quota-btn {
+      width: 24px; height: 24px; line-height: 24px;
+      color: var(--text-muted);
+      &:hover { color: var(--text-primary); }
+    }
+
+    .quota-edit-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .quota-input {
+      width: 72px;
+      padding: 2px 6px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 13px;
+      text-align: right;
+      &:focus { outline: none; border-color: var(--accent); }
+    }
+    .save-quota-btn { color: var(--accent); }
+
+    .reset-btn {
+      font-size: 12px;
+      padding: 0 10px;
+      height: 28px;
+      line-height: 28px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
   `],
 })
 export class AdminComponent implements OnInit {
@@ -351,6 +501,10 @@ export class AdminComponent implements OnInit {
   promoteEmail = '';
   promotingUser = false;
 
+  scoringConfig: ScoringConfigResponse | null = null;
+  loadingScoring = true;
+  togglingScoring = false;
+
   constructor(
     private api: ApiService,
     private snackBar: MatSnackBar,
@@ -360,6 +514,7 @@ export class AdminComponent implements OnInit {
     this.loadCookieHealth();
     this.loadSuperAdmins();
     this.loadOrganizations();
+    this.loadScoringConfig();
   }
 
   loadCookieHealth(): void {
@@ -414,6 +569,77 @@ export class AdminComponent implements OnInit {
   discardEdit(slot: 'primary' | 'backup'): void {
     if (slot === 'primary') { this.editingPrimary = false; this.newPrimaryCookie = ''; }
     else { this.editingBackup = false; this.newBackupCookie = ''; }
+  }
+
+  loadScoringConfig(): void {
+    this.loadingScoring = true;
+    this.api.get<ScoringConfigResponse>('/super-admin/scoring/config').subscribe({
+      next: (data) => { this.scoringConfig = data; this.loadingScoring = false; },
+      error: () => { this.loadingScoring = false; },
+    });
+  }
+
+  toggleScoring(enabled: boolean): void {
+    this.togglingScoring = true;
+    this.api.put<{ scoring_enabled: boolean }>('/super-admin/scoring/config', { scoring_enabled: enabled }).subscribe({
+      next: (data) => {
+        if (this.scoringConfig) this.scoringConfig.scoring_enabled = data.scoring_enabled;
+        this.togglingScoring = false;
+        this.snackBar.open(`Auto-scoring ${data.scoring_enabled ? 'enabled' : 'disabled'}.`, 'Close', { duration: 3000 });
+      },
+      error: () => {
+        this.togglingScoring = false;
+        this.snackBar.open('Failed to update scoring toggle.', 'Close');
+      },
+    });
+  }
+
+  startEditQuota(org: OrgScoringItem): void {
+    org.quotaDraft = org.quota !== null ? String(org.quota) : '';
+    org.editingQuota = true;
+  }
+
+  cancelEditQuota(org: OrgScoringItem): void {
+    org.editingQuota = false;
+    org.quotaDraft = undefined;
+  }
+
+  saveQuota(org: OrgScoringItem): void {
+    const raw = (org.quotaDraft ?? '').trim();
+    const quota = raw === '' ? null : parseInt(raw, 10);
+    if (raw !== '' && (isNaN(quota!) || quota! < 0)) {
+      this.snackBar.open('Quota must be a positive number or empty for unlimited.', 'Close');
+      return;
+    }
+    org.savingQuota = true;
+    this.api.put<{ org_id: string; quota: number | null }>(`/super-admin/scoring/orgs/${org.org_id}/quota`, { quota }).subscribe({
+      next: (data) => {
+        org.quota = data.quota;
+        org.editingQuota = false;
+        org.savingQuota = false;
+        org.quotaDraft = undefined;
+        this.snackBar.open(quota === null ? 'Quota removed (unlimited).' : `Quota set to ${quota}.`, 'Close', { duration: 3000 });
+      },
+      error: () => {
+        org.savingQuota = false;
+        this.snackBar.open('Failed to update quota.', 'Close');
+      },
+    });
+  }
+
+  resetOrg(org: OrgScoringItem): void {
+    org.resetting = true;
+    this.api.post<{ reset_count: number }>(`/super-admin/scoring/orgs/${org.org_id}/reset`, { statuses: ['FAILED'] }).subscribe({
+      next: (data) => {
+        org.resetting = false;
+        this.snackBar.open(`${data.reset_count} asset${data.reset_count !== 1 ? 's' : ''} reset to unscored.`, 'Close', { duration: 3000 });
+        this.loadScoringConfig();
+      },
+      error: () => {
+        org.resetting = false;
+        this.snackBar.open('Failed to reset assets.', 'Close');
+      },
+    });
   }
 
   promoteUser(): void {
