@@ -19,6 +19,7 @@ Scoring controls security:
 - Reset endpoint supports FAILED, COMPLETE, PROCESSING, PENDING statuses
 """
 import logging
+import uuid
 from datetime import datetime
 from typing import Literal, Optional, List
 
@@ -425,7 +426,7 @@ async def update_scoring_config(
 
 @router.put("/scoring/orgs/{org_id}/quota", response_model=ScoringOrgStats)
 async def update_org_scoring_quota(
-    org_id: str,
+    org_id: uuid.UUID,
     payload: UpdateOrgQuotaRequest,
     current_user: User = Depends(get_current_superadmin),
     db: AsyncSession = Depends(get_db),
@@ -475,8 +476,8 @@ async def update_org_scoring_quota(
     pending_count = pending_result.scalar() or 0
 
     return ScoringOrgStats(
-        org_id=org_id,
-        org_name=org.name if org else org_id,
+        org_id=str(org_id),
+        org_name=org.name if org else str(org_id),
         quota=org_cfg.scoring_quota,
         scored_count=scored_count,
         pending_count=pending_count,
@@ -485,7 +486,7 @@ async def update_org_scoring_quota(
 
 @router.post("/scoring/orgs/{org_id}/reset", response_model=ResetScoringResponse)
 async def reset_org_scoring(
-    org_id: str,
+    org_id: uuid.UUID,
     payload: ResetScoringRequest,
     current_user: User = Depends(get_current_superadmin),
     db: AsyncSession = Depends(get_db),
