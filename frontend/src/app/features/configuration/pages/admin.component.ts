@@ -623,17 +623,21 @@ export class AdminComponent implements OnInit {
       return;
     }
     org.savingQuota = true;
-    this.api.put<{ org_id: string; quota: number | null }>(`/super-admin/scoring/orgs/${org.org_id}/quota`, { quota }).subscribe({
+    const url = `/super-admin/scoring/orgs/${org.org_id}/quota`;
+    console.log('[saveQuota] PUT', url, { quota });
+    this.api.put<{ org_id: string; quota: number | null }>(url, { quota }).subscribe({
       next: (data) => {
+        console.log('[saveQuota] success', data);
         org.quota = data.quota;
         org.editingQuota = false;
         org.savingQuota = false;
         org.quotaDraft = undefined;
         this.snackBar.open(quota === null ? 'Quota removed (unlimited).' : `Quota set to ${quota}.`, 'Close', { duration: 3000 });
       },
-      error: () => {
+      error: (err) => {
+        console.error('[saveQuota] error', err);
         org.savingQuota = false;
-        this.snackBar.open('Failed to update quota.', 'Close');
+        this.snackBar.open(`Failed: ${err?.error?.detail || err?.status || 'unknown error'}`, 'Close');
       },
     });
   }
