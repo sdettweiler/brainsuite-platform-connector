@@ -243,14 +243,16 @@ interface ScoringConfigResponse {
               <td style="text-align: right">{{ org.scored_count }}</td>
               <td style="text-align: right">{{ org.pending_count }}</td>
               <!-- Quota cell -->
-              <td style="text-align: right">
+              <td>
                 <ng-container *ngIf="!org.editingQuota">
-                  <span class="quota-display" [class.quota-unlimited]="org.quota === null">
-                    {{ org.quota === null ? 'Unlimited' : org.quota }}
-                  </span>
-                  <button mat-icon-button class="edit-quota-btn" title="Edit quota" (click)="startEditQuota(org)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                  </button>
+                  <div class="quota-view-row">
+                    <span class="quota-display" [class.quota-unlimited]="org.quota === null">
+                      {{ org.quota === null ? 'Unlimited' : org.quota }}
+                    </span>
+                    <button mat-icon-button class="edit-quota-btn" title="Edit quota" (click)="startEditQuota(org)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    </button>
+                  </div>
                 </ng-container>
                 <ng-container *ngIf="org.editingQuota">
                   <div class="quota-edit-row">
@@ -444,12 +446,17 @@ interface ScoringConfigResponse {
 
     .scoring-table { margin-top: 0; td { vertical-align: middle; } }
 
-    .quota-display { font-size: 14px; vertical-align: middle; }
+    .quota-view-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 2px;
+    }
+    .quota-display { font-size: 14px; }
     .quota-unlimited { color: var(--text-muted); font-style: italic; }
 
     .edit-quota-btn {
-      width: 24px; height: 24px; line-height: 24px;
-      vertical-align: middle;
+      width: 24px; height: 24px; line-height: 1;
       color: var(--text-muted);
       &:hover { color: var(--text-primary); }
     }
