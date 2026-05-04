@@ -1093,7 +1093,7 @@ async def startup_scheduler(db_session=None) -> None:
             trigger=IntervalTrigger(minutes=15),
             id="scoring_batch",
             replace_existing=True,
-            max_instances=1,
+            max_instances=10,
         )
         logger.info("Registered scoring_batch job (every 15 minutes)")
     else:
