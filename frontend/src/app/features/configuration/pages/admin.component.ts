@@ -249,20 +249,20 @@ interface ScoringConfigResponse {
                     <span class="quota-display" [class.quota-unlimited]="org.quota === null">
                       {{ org.quota === null ? 'Unlimited' : org.quota }}
                     </span>
-                    <button mat-icon-button class="edit-quota-btn" title="Edit quota" (click)="startEditQuota(org)">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    <button type="button" class="edit-quota-btn" title="Edit quota" (click)="startEditQuota(org)">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                     </button>
                   </div>
                 </ng-container>
                 <ng-container *ngIf="org.editingQuota">
                   <div class="quota-edit-row">
                     <input class="quota-input" type="number" min="0" [(ngModel)]="org.quotaDraft" placeholder="e.g. 500">
-                    <button mat-icon-button class="save-quota-btn" title="Save" [disabled]="org.savingQuota" (click)="saveQuota(org)">
+                    <button type="button" class="save-quota-btn" title="Save" [disabled]="org.savingQuota" (click)="saveQuota(org)">
                       <mat-spinner *ngIf="org.savingQuota" diameter="14"></mat-spinner>
-                      <svg *ngIf="!org.savingQuota" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                      <svg *ngIf="!org.savingQuota" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                     </button>
-                    <button mat-icon-button title="Cancel" (click)="cancelEditQuota(org)">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                    <button type="button" class="cancel-quota-btn" title="Cancel" (click)="cancelEditQuota(org)">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                     </button>
                   </div>
                 </ng-container>
@@ -455,11 +455,14 @@ interface ScoringConfigResponse {
     .quota-display { font-size: 14px; }
     .quota-unlimited { color: var(--text-muted); font-style: italic; }
 
-    .edit-quota-btn {
-      width: 24px; height: 24px; line-height: 1;
-      color: var(--text-muted);
-      &:hover { color: var(--text-primary); }
+    .edit-quota-btn, .save-quota-btn, .cancel-quota-btn {
+      background: none; border: none; padding: 2px 3px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--text-muted); border-radius: 3px;
+      &:hover { color: var(--text-primary); background: var(--bg-hover); }
+      &:disabled { opacity: 0.4; cursor: default; }
     }
+    .save-quota-btn { color: var(--accent); }
 
     .quota-edit-row {
       display: inline-flex;
