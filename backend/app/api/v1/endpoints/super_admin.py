@@ -16,7 +16,7 @@ Security (T-14-05 through T-14-08):
 - POST /users/promote: only existing SuperAdmins can call this endpoint
 
 Scoring controls security:
-- Reset endpoint never touches PROCESSING assets (project rule: live BrainSuite job IDs)
+- Reset endpoint supports FAILED, COMPLETE, PROCESSING, PENDING statuses
 """
 import logging
 from datetime import datetime
@@ -339,8 +339,7 @@ class ResetScoringResponse(BaseModel):
 # Scoring controls — Endpoints
 # ---------------------------------------------------------------------------
 
-_ALLOWED_RESET_STATUSES = {"FAILED", "COMPLETE"}
-# PROCESSING is intentionally excluded: those assets have live BrainSuite job IDs
+_ALLOWED_RESET_STATUSES = {"FAILED", "COMPLETE", "PROCESSING", "PENDING"}
 
 
 @router.get("/scoring/config", response_model=ScoringConfigResponse)
@@ -493,18 +492,15 @@ async def reset_org_scoring(
 ):
     """Reset scoring for specified statuses back to UNSCORED.
 
-    Allowed statuses: FAILED, COMPLETE.
-    PROCESSING is never reset (project rule: those assets have live BrainSuite job IDs).
-    Default: resets only FAILED assets.
-
+    Allowed statuses: FAILED, COMPLETE, PROCESSING, PENDING.
     Clears: total_score, total_rating, score_dimensions, scored_at, error_reason, brainsuite_job_id.
     """
-    # Validate requested statuses — reject any unknown or forbidden values
+    # Validate requested statuses — reject any unknown values
     invalid = [s for s in payload.statuses if s not in _ALLOWED_RESET_STATUSES]
     if invalid:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid statuses: {invalid}. Allowed values: FAILED, COMPLETE. PROCESSING is never reset.",
+            detail=f"Invalid statuses: {invalid}. Allowed values: FAILED, COMPLETE, PROCESSING, PENDING.",
         )
 
     if not payload.statuses:

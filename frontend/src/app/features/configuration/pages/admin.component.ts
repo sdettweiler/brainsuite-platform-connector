@@ -269,7 +269,7 @@ interface ScoringConfigResponse {
               <td style="text-align: right">
                 <button mat-stroked-button class="reset-btn" [disabled]="org.resetting" (click)="resetOrg(org)">
                   <mat-spinner *ngIf="org.resetting" diameter="14"></mat-spinner>
-                  {{ org.resetting ? 'Resetting...' : 'Reset Failed' }}
+                  {{ org.resetting ? 'Resetting...' : 'Reset Stuck' }}
                 </button>
               </td>
             </tr>
@@ -629,7 +629,7 @@ export class AdminComponent implements OnInit {
 
   resetOrg(org: OrgScoringItem): void {
     org.resetting = true;
-    this.api.post<{ reset_count: number }>(`/super-admin/scoring/orgs/${org.org_id}/reset`, { statuses: ['FAILED'] }).subscribe({
+    this.api.post<{ reset_count: number }>(`/super-admin/scoring/orgs/${org.org_id}/reset`, { statuses: ['FAILED', 'PROCESSING', 'PENDING'] }).subscribe({
       next: (data) => {
         org.resetting = false;
         this.snackBar.open(`${data.reset_count} asset${data.reset_count !== 1 ? 's' : ''} reset to unscored.`, 'Close', { duration: 3000 });
