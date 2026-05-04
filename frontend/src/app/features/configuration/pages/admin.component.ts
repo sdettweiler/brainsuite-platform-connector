@@ -40,7 +40,7 @@ interface OrgScoringItem {
   scored_count: number;
   pending_count: number;
   editingQuota?: boolean;
-  quotaDraft?: string;
+  quotaDraft?: string | number;
   savingQuota?: boolean;
   resetting?: boolean;
 }
@@ -616,7 +616,7 @@ export class AdminComponent implements OnInit {
   }
 
   saveQuota(org: OrgScoringItem): void {
-    const raw = (org.quotaDraft ?? '').trim();
+    const raw = String(org.quotaDraft ?? '').trim();
     const quota = raw === '' ? null : parseInt(raw, 10);
     if (raw !== '' && (isNaN(quota!) || quota! < 0)) {
       this.snackBar.open('Quota must be a positive number or empty for unlimited.', 'Close');
