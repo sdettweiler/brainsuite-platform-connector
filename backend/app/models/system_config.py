@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, DateTime, UniqueConstraint, Text
+from sqlalchemy import String, DateTime, UniqueConstraint, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
@@ -24,6 +24,7 @@ class SystemConfig(Base):
     singleton_guard: Mapped[str] = mapped_column(String(1), unique=True, default='X', nullable=False)
     youtube_cookies_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     youtube_cookies_backup_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scoring_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, ForeignKey, DateTime, UniqueConstraint, Index, Boolean
+from sqlalchemy import String, ForeignKey, DateTime, UniqueConstraint, Index, Boolean, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
@@ -16,6 +16,8 @@ class OrgBrainsuiteConfig(Base):
     Security note (T-11-01): client_secret_encrypted stores a Fernet-encrypted
     value using String(1000) — never Text — to prevent accidental plain-text
     leakage. The model never exposes a client_secret plain column.
+
+    scoring_quota: maximum number of assets that can be scored for this org (NULL = unlimited).
     """
 
     __tablename__ = "org_brainsuite_config"
@@ -26,6 +28,7 @@ class OrgBrainsuiteConfig(Base):
     )
     client_id: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     client_secret_encrypted: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    scoring_quota: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
