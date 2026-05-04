@@ -45,6 +45,8 @@ import asyncio
 import subprocess
 import json
 import tempfile
+import glob
+import shutil
 from datetime import date, timedelta, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Dict, Any, NamedTuple, Tuple
@@ -1143,8 +1145,8 @@ class DV360SyncService:
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-            tmp_path = tmp.name
+        tmpdir = tempfile.mkdtemp()
+        tmp_base = os.path.join(tmpdir, "video")
 
         def _do_download_with_cookies(cookie_data: str):
             import yt_dlp
@@ -1165,7 +1167,7 @@ class DV360SyncService:
                 def error(self, msg): logger.warning("yt-dlp error: %s", msg)
 
             ydl_opts = {
-                "outtmpl": tmp_path,
+                "outtmpl": f"{tmp_base}.%(ext)s",
                 # Use pre-merged format — no ffmpeg required for format selection.
                 # "best" picks the highest-quality single stream (typically 720p/1080p mp4).
                 "format": "best/b",
@@ -1210,14 +1212,16 @@ class DV360SyncService:
                 try:
                     await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))
 
-                    if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-                        size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
-                        duration = self._get_video_duration(tmp_path)
-                        served_url = obj_storage.upload_file(tmp_path, relative_path, content_type="video/mp4")
+                    matches = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0]
+                    actual_path = matches[0] if matches else None
+                    if actual_path:
+                        size_mb = os.path.getsize(actual_path) / (1024 * 1024)
+                        duration = self._get_video_duration(actual_path)
+                        served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
                         logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, label)
                         return duration, served_url
                     else:
-                        logger.warning("  yt-dlp finished but output file missing: %s", tmp_path)
+                        logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
                 except _CookiesExpiredError:
                     if i < len(attempts) - 1:
                         logger.info("  %s cookies expired for %s — trying backup slot", label, youtube_video_id)
@@ -1246,8 +1250,7 @@ class DV360SyncService:
                         continue
                     logger.warning("  Failed to download DV360 video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
         finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
         return None, None
 

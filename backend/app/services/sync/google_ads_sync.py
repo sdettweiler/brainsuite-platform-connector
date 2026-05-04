@@ -4,9 +4,11 @@ Uses Google Ads API v23 with GAQL (Google Ads Query Language).
 All video ad performance data lives in Google Ads, not YouTube Data API.
 """
 import asyncio
+import glob
 import httpx
 import logging
 import os
+import shutil
 import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
@@ -275,8 +277,8 @@ class GoogleAdsSyncService:
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-            tmp_path = tmp.name
+        tmpdir = tempfile.mkdtemp()
+        tmp_base = os.path.join(tmpdir, "video")
 
         def _do_download():
             import yt_dlp
@@ -297,7 +299,7 @@ class GoogleAdsSyncService:
                 def error(self, msg): logger.warning("yt-dlp error: %s", msg)
 
             ydl_opts = {
-                "outtmpl": tmp_path,
+                "outtmpl": f"{tmp_base}.%(ext)s",
                 "format": "bv*+ba/b",
                 "quiet": True,
                 "no_warnings": True,
@@ -336,13 +338,15 @@ class GoogleAdsSyncService:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, _do_download)
 
-            if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-                size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
-                served_url = obj_storage.upload_file(tmp_path, relative_path, content_type="video/mp4")
+            matches = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0]
+            actual_path = matches[0] if matches else None
+            if actual_path:
+                size_mb = os.path.getsize(actual_path) / (1024 * 1024)
+                served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
                 logger.info("  Downloaded Google Ads YouTube video: %s (%.1f MB)", filename, size_mb)
                 return None, served_url
             else:
-                logger.warning("  yt-dlp finished but output file missing: %s", tmp_path)
+                logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
                 return None, None
         except _CookiesExpiredError:
             raise
@@ -350,8 +354,7 @@ class GoogleAdsSyncService:
             logger.warning("Failed to download Google Ads video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
             return None, None
         finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
     async def _upsert_records(
         self,
