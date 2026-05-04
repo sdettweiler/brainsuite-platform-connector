@@ -1,17 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: BrainSuite Configuration
-status: complete
-stopped_at: milestone archived 2026-04-28
-last_updated: "2026-04-28T10:00:00.000Z"
+milestone: v1.0
+milestone_name: milestone
+status: v1.2 milestone archived — all 4 phases, 13 plans, 20/20 requirements shipped
+last_updated: "2026-05-04T07:47:10.714Z"
 last_activity: 2026-04-28
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -52,7 +50,13 @@ See `.planning/milestones/v1.2-ROADMAP.md` for full decision log.
 
 - None
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260504-n2w | Superadmin scoring controls: global toggle, org quota, reset to unscored | 2026-05-04 | b6d7bd0 | [260504-n2w-superadmin-scoring-controls](./quick/260504-n2w-superadmin-scoring-controls/) |
+
 ## Session Continuity
 
-Last activity: 2026-04-28 — v1.2 milestone archived
+Last activity: 2026-05-04 - Completed quick task 260504-n2w: superadmin scoring controls
 Next: `/gsd-new-milestone` to define v1.3 requirements and roadmap
