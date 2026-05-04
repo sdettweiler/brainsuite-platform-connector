@@ -79,11 +79,18 @@ async def rescore_asset(
     score_record = score_result.scalar_one_or_none()
 
     if score_record is None:
+        fmt = (asset.asset_format or "").upper()
+        if fmt == "VIDEO":
+            ep_type = "VIDEO"
+        elif fmt in ("IMAGE", "STATIC_IMAGE"):
+            ep_type = "STATIC_IMAGE"
+        else:
+            ep_type = "UNSUPPORTED"
         score_record = CreativeScoreResult(
             creative_asset_id=asset_id,
             organization_id=current_user.organization_id,
             scoring_status="PENDING",
-            endpoint_type=None,
+            endpoint_type=ep_type,
         )
         db.add(score_record)
     else:

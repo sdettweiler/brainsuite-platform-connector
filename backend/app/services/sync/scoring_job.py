@@ -167,10 +167,12 @@ async def run_scoring_batch() -> None:
     logger.info("Scoring batch: found %d assets to score, marked PENDING", len(batch))
 
     # -----------------------------------------------------------------------
-    # Phase 2: Process each asset — NO session held during HTTP calls
+    # Phase 2: Process all assets concurrently — NO session held during HTTP calls
     # -----------------------------------------------------------------------
-    for item in batch:
-        await _process_asset(item["score_id"], item["asset"], item["endpoint_type"])
+    await asyncio.gather(*[
+        _process_asset(item["score_id"], item["asset"], item["endpoint_type"])
+        for item in batch
+    ])
 
     # -----------------------------------------------------------------------
     # Phase 3.5: Emit per-org SCORING_BATCH_COMPLETE notifications
@@ -401,7 +403,7 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
             s3_key = s3_key[len("objects/"):]
         logger.info("Scoring asset %s: downloading from s3_key=%s", asset_id, s3_key)
 
-        file_bytes, _ = get_object_storage().download_blob(s3_key)
+        file_bytes, _ = await asyncio.to_thread(get_object_storage().download_blob, s3_key)
         if not file_bytes:
             raise ValueError(f"Asset not found in object storage: {s3_key}")
         logger.info("Scoring asset %s: downloaded %d bytes", asset_id, len(file_bytes))
