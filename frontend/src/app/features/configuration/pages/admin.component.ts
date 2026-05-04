@@ -442,13 +442,14 @@ interface ScoringConfigResponse {
     .scoring-toggle-label { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
     .scoring-toggle-hint { font-size: 13px; color: var(--text-secondary); max-width: 480px; }
 
-    .scoring-table { margin-top: 0; }
+    .scoring-table { margin-top: 0; td { vertical-align: middle; } }
 
-    .quota-display { font-size: 14px; }
+    .quota-display { font-size: 14px; vertical-align: middle; }
     .quota-unlimited { color: var(--text-muted); font-style: italic; }
 
     .edit-quota-btn {
       width: 24px; height: 24px; line-height: 24px;
+      vertical-align: middle;
       color: var(--text-muted);
       &:hover { color: var(--text-primary); }
     }
