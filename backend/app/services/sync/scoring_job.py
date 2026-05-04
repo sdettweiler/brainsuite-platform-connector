@@ -12,7 +12,7 @@ import uuid
 from collections import Counter
 from datetime import datetime, timezone
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 
 from app.db.base import get_session_factory
 from app.models.brainsuite_config import OrgBrainsuiteConfig, OrgBrainsuiteFieldMapping
@@ -20,6 +20,7 @@ from app.models.platform import BrainsuiteApp, PlatformConnection
 from app.models.creative import CreativeAsset, AssetMetadataValue
 from app.models.scoring import CreativeScoreResult
 from app.models.metadata import MetadataField
+from app.models.system_config import SystemConfig
 from app.core.security import decrypt_token
 from app.services.brainsuite_score import (
     brainsuite_score_service,
@@ -57,6 +58,16 @@ async def run_scoring_batch() -> None:
     logger.info("Starting scoring batch run")
 
     # -----------------------------------------------------------------------
+    # Global toggle check — exit early if auto-scoring is disabled by superadmin
+    # -----------------------------------------------------------------------
+    async with get_session_factory()() as db:
+        cfg_result = await db.execute(select(SystemConfig).limit(1))
+        system_cfg = cfg_result.scalar_one_or_none()
+        if system_cfg is not None and not system_cfg.scoring_enabled:
+            logger.info("Scoring batch: auto-scoring disabled by superadmin (scoring_enabled=False), exiting")
+            return
+
+    # -----------------------------------------------------------------------
     # Phase 1: Fetch batch and mark PENDING (single DB session, then release)
     # -----------------------------------------------------------------------
     batch = []
@@ -77,7 +88,67 @@ async def run_scoring_batch() -> None:
             logger.info("Scoring batch: no UNSCORED VIDEO or STATIC_IMAGE assets found, exiting")
             return
 
+        # Cache per-org quota checks to avoid repeated queries for the same org
+        org_quota_cache: dict = {}  # org_id -> (quota, current_count) or None if no config
+
         for score_row, asset_row in rows:
+            org_id = asset_row.organization_id
+
+            # -----------------------------------------------------------------------
+            # Per-org quota check: skip assets for orgs that have reached their limit
+            # -----------------------------------------------------------------------
+            if org_id not in org_quota_cache:
+                quota_result = await db.execute(
+                    select(OrgBrainsuiteConfig.scoring_quota).where(
+                        OrgBrainsuiteConfig.organization_id == org_id
+                    )
+                )
+                quota_row = quota_result.one_or_none()
+                quota = quota_row[0] if quota_row is not None else None
+                if quota is not None:
+                    count_result = await db.execute(
+                        select(func.count(CreativeScoreResult.id)).where(
+                            CreativeScoreResult.organization_id == org_id,
+                            CreativeScoreResult.scoring_status.in_(["COMPLETE", "PROCESSING", "PENDING"]),
+                        )
+                    )
+                    current_count = count_result.scalar() or 0
+                else:
+                    current_count = 0
+                org_quota_cache[org_id] = (quota, current_count)
+
+            quota, current_count = org_quota_cache[org_id]
+            if quota is not None and current_count >= quota:
+                logger.info(
+                    "Scoring batch: skipping asset %s — org %s has reached scoring quota (%d/%d)",
+                    asset_row.id, org_id, current_count, quota,
+                )
+                continue
+
+            # Pre-check mandatory fields before marking PENDING — assets with missing
+            # metadata must not cycle endlessly through UNSCORED → PENDING → UNSCORED.
+            connection = await db.get(PlatformConnection, asset_row.platform_connection_id)
+            if connection:
+                fmt = (asset_row.asset_format or "").upper()
+                if fmt == "VIDEO":
+                    app_id = connection.brainsuite_app_id_video or connection.brainsuite_app_id
+                elif fmt == "IMAGE":
+                    app_id = connection.brainsuite_app_id_image or connection.brainsuite_app_id
+                else:
+                    app_id = connection.brainsuite_app_id
+                if app_id:
+                    is_valid, missing = await _check_mandatory_fields(
+                        asset_id=asset_row.id,
+                        app_id=app_id,
+                        organization_id=asset_row.organization_id,
+                    )
+                    if not is_valid:
+                        logger.info(
+                            "Scoring batch: skipping asset %s — mandatory field(s) not ready: %s",
+                            asset_row.id, ", ".join(missing),
+                        )
+                        continue
+
             batch.append({
                 "score_id": score_row.id,
                 "asset_id": asset_row.id,
@@ -85,6 +156,10 @@ async def run_scoring_batch() -> None:
                 "endpoint_type": score_row.endpoint_type,
             })
             score_row.scoring_status = "PENDING"
+            # Track accepted assets towards the org quota (avoids double-counting
+            # within the same batch when multiple assets belong to the same org)
+            if quota is not None:
+                org_quota_cache[org_id] = (quota, current_count + 1)
 
         await db.commit()
         db.expunge_all()  # detach all objects while attributes are still loaded — prevents DetachedInstanceError in Phase 2/3.5
@@ -151,6 +226,9 @@ async def score_asset_now(score_id: uuid.UUID) -> None:
 
     Loads the score row + asset from DB, marks PENDING, then delegates to
     _process_asset(). Designed to run as a FastAPI BackgroundTask.
+
+    Note: Does NOT check the global scoring_enabled toggle (explicit rescore always fires).
+    DOES check per-org quota — won't score if the org has already reached its limit.
     """
     logger.info("score_asset_now: loading score_id=%s", score_id)
     async with get_session_factory()() as db:
@@ -168,6 +246,31 @@ async def score_asset_now(score_id: uuid.UUID) -> None:
         return
 
     score_row, asset = row
+
+    # Per-org quota check — explicit rescores respect the quota limit
+    async with get_session_factory()() as db:
+        quota_result = await db.execute(
+            select(OrgBrainsuiteConfig.scoring_quota).where(
+                OrgBrainsuiteConfig.organization_id == asset.organization_id
+            )
+        )
+        quota_row = quota_result.one_or_none()
+        quota = quota_row[0] if quota_row is not None else None
+        if quota is not None:
+            count_result = await db.execute(
+                select(func.count(CreativeScoreResult.id)).where(
+                    CreativeScoreResult.organization_id == asset.organization_id,
+                    CreativeScoreResult.scoring_status.in_(["COMPLETE", "PROCESSING", "PENDING"]),
+                )
+            )
+            current_count = count_result.scalar() or 0
+            if current_count >= quota:
+                logger.warning(
+                    "score_asset_now: skipping score_id=%s — org %s has reached scoring quota (%d/%d)",
+                    score_id, asset.organization_id, current_count, quota,
+                )
+                return
+
     endpoint_type = score_row.endpoint_type
 
     if endpoint_type == "UNSUPPORTED":
