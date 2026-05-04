@@ -5,6 +5,7 @@ Provides platform-wide administrative operations:
 - YouTube cookie management (health check + update)
 - SuperAdmin user management (list + promote)
 - Organization read-only list with user counts
+- Scoring controls: global toggle, per-org quota, reset to UNSCORED
 
 All endpoints require SuperAdmin privileges (Depends(get_current_superadmin)).
 Cookie content is NEVER returned in any response — only health status strings.
@@ -13,6 +14,9 @@ Security (T-14-05 through T-14-08):
 - GET /youtube-cookies: health only, no decrypted content in response
 - PUT /youtube-cookies: encrypts before storage, never logs decrypted values
 - POST /users/promote: only existing SuperAdmins can call this endpoint
+
+Scoring controls security:
+- Reset endpoint never touches PROCESSING assets (project rule: live BrainSuite job IDs)
 """
 import logging
 from datetime import datetime
@@ -21,10 +25,12 @@ from typing import Literal, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 
 from app.db.base import get_db
 from app.models.system_config import SystemConfig
+from app.models.brainsuite_config import OrgBrainsuiteConfig
+from app.models.scoring import CreativeScoreResult
 from app.models.user import User, Organization
 from app.api.v1.deps import get_current_superadmin
 from app.core.security import encrypt_token, decrypt_token
@@ -294,3 +300,250 @@ async def get_organizations(
         )
         for row in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Scoring controls — Pydantic models
+# ---------------------------------------------------------------------------
+
+class ScoringOrgStats(BaseModel):
+    org_id: str
+    org_name: str
+    quota: Optional[int]
+    scored_count: int
+    pending_count: int
+
+
+class ScoringConfigResponse(BaseModel):
+    scoring_enabled: bool
+    organizations: List[ScoringOrgStats]
+
+
+class UpdateScoringConfigRequest(BaseModel):
+    scoring_enabled: bool
+
+
+class UpdateOrgQuotaRequest(BaseModel):
+    quota: Optional[int] = None
+
+
+class ResetScoringRequest(BaseModel):
+    statuses: List[str] = ["FAILED"]
+
+
+class ResetScoringResponse(BaseModel):
+    reset_count: int
+
+
+# ---------------------------------------------------------------------------
+# Scoring controls — Endpoints
+# ---------------------------------------------------------------------------
+
+_ALLOWED_RESET_STATUSES = {"FAILED", "COMPLETE"}
+# PROCESSING is intentionally excluded: those assets have live BrainSuite job IDs
+
+
+@router.get("/scoring/config", response_model=ScoringConfigResponse)
+async def get_scoring_config(
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return global scoring toggle and per-org scoring stats (quota + counts)."""
+    cfg_result = await db.execute(select(SystemConfig).limit(1))
+    system_cfg = cfg_result.scalar_one_or_none()
+    scoring_enabled = system_cfg.scoring_enabled if system_cfg is not None else True
+
+    # Fetch all orgs with their brainsuite config quota
+    orgs_result = await db.execute(
+        select(Organization.id, Organization.name, OrgBrainsuiteConfig.scoring_quota)
+        .outerjoin(OrgBrainsuiteConfig, OrgBrainsuiteConfig.organization_id == Organization.id)
+        .order_by(Organization.name)
+    )
+    org_rows = orgs_result.all()
+
+    # Fetch scored counts per org (COMPLETE)
+    scored_result = await db.execute(
+        select(CreativeScoreResult.organization_id, func.count(CreativeScoreResult.id))
+        .where(CreativeScoreResult.scoring_status == "COMPLETE")
+        .group_by(CreativeScoreResult.organization_id)
+    )
+    scored_by_org = {str(row[0]): row[1] for row in scored_result.all()}
+
+    # Fetch pending counts per org (PENDING + PROCESSING)
+    pending_result = await db.execute(
+        select(CreativeScoreResult.organization_id, func.count(CreativeScoreResult.id))
+        .where(CreativeScoreResult.scoring_status.in_(["PENDING", "PROCESSING"]))
+        .group_by(CreativeScoreResult.organization_id)
+    )
+    pending_by_org = {str(row[0]): row[1] for row in pending_result.all()}
+
+    organizations = [
+        ScoringOrgStats(
+            org_id=str(row.id),
+            org_name=row.name,
+            quota=row.scoring_quota,
+            scored_count=scored_by_org.get(str(row.id), 0),
+            pending_count=pending_by_org.get(str(row.id), 0),
+        )
+        for row in org_rows
+    ]
+
+    return ScoringConfigResponse(scoring_enabled=scoring_enabled, organizations=organizations)
+
+
+@router.put("/scoring/config", response_model=ScoringConfigResponse)
+async def update_scoring_config(
+    payload: UpdateScoringConfigRequest,
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update global auto-scoring toggle.
+
+    Sets SystemConfig.scoring_enabled. When False, run_scoring_batch() returns
+    immediately without processing any assets.
+    """
+    cfg_result = await db.execute(select(SystemConfig).limit(1))
+    system_cfg = cfg_result.scalar_one_or_none()
+    if system_cfg is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="System config not initialized",
+        )
+
+    system_cfg.scoring_enabled = payload.scoring_enabled
+    db.add(system_cfg)
+    await db.commit()
+
+    logger.info(
+        "SuperAdmin %s set scoring_enabled=%s",
+        current_user.email,
+        payload.scoring_enabled,
+    )
+
+    # Return refreshed config view (re-use GET logic)
+    return await get_scoring_config(current_user=current_user, db=db)
+
+
+@router.put("/scoring/orgs/{org_id}/quota", response_model=ScoringOrgStats)
+async def update_org_scoring_quota(
+    org_id: str,
+    payload: UpdateOrgQuotaRequest,
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or clear the per-org scoring quota.
+
+    quota=null removes the cap (unlimited).
+    Returns 404 if the org has no BrainSuite config row.
+    """
+    cfg_result = await db.execute(
+        select(OrgBrainsuiteConfig).where(
+            OrgBrainsuiteConfig.organization_id == org_id
+        )
+    )
+    org_cfg = cfg_result.scalar_one_or_none()
+    if org_cfg is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No BrainSuite config found for this organization",
+        )
+
+    org_cfg.scoring_quota = payload.quota
+    db.add(org_cfg)
+    await db.commit()
+
+    logger.info(
+        "SuperAdmin %s set scoring_quota=%s for org %s",
+        current_user.email,
+        payload.quota,
+        org_id,
+    )
+
+    # Fetch org name for response
+    org_result = await db.execute(select(Organization).where(Organization.id == org_id))
+    org = org_result.scalar_one_or_none()
+
+    scored_result = await db.execute(
+        select(func.count(CreativeScoreResult.id))
+        .where(CreativeScoreResult.organization_id == org_id, CreativeScoreResult.scoring_status == "COMPLETE")
+    )
+    scored_count = scored_result.scalar() or 0
+
+    pending_result = await db.execute(
+        select(func.count(CreativeScoreResult.id))
+        .where(CreativeScoreResult.organization_id == org_id, CreativeScoreResult.scoring_status.in_(["PENDING", "PROCESSING"]))
+    )
+    pending_count = pending_result.scalar() or 0
+
+    return ScoringOrgStats(
+        org_id=org_id,
+        org_name=org.name if org else org_id,
+        quota=org_cfg.scoring_quota,
+        scored_count=scored_count,
+        pending_count=pending_count,
+    )
+
+
+@router.post("/scoring/orgs/{org_id}/reset", response_model=ResetScoringResponse)
+async def reset_org_scoring(
+    org_id: str,
+    payload: ResetScoringRequest,
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset scoring for specified statuses back to UNSCORED.
+
+    Allowed statuses: FAILED, COMPLETE.
+    PROCESSING is never reset (project rule: those assets have live BrainSuite job IDs).
+    Default: resets only FAILED assets.
+
+    Clears: total_score, total_rating, score_dimensions, scored_at, error_reason, brainsuite_job_id.
+    """
+    # Validate requested statuses — reject any unknown or forbidden values
+    invalid = [s for s in payload.statuses if s not in _ALLOWED_RESET_STATUSES]
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid statuses: {invalid}. Allowed values: FAILED, COMPLETE. PROCESSING is never reset.",
+        )
+
+    if not payload.statuses:
+        return ResetScoringResponse(reset_count=0)
+
+    # Find matching rows first so we can return the count
+    count_result = await db.execute(
+        select(func.count(CreativeScoreResult.id)).where(
+            CreativeScoreResult.organization_id == org_id,
+            CreativeScoreResult.scoring_status.in_(payload.statuses),
+        )
+    )
+    reset_count = count_result.scalar() or 0
+
+    if reset_count > 0:
+        await db.execute(
+            update(CreativeScoreResult)
+            .where(
+                CreativeScoreResult.organization_id == org_id,
+                CreativeScoreResult.scoring_status.in_(payload.statuses),
+            )
+            .values(
+                scoring_status="UNSCORED",
+                total_score=None,
+                total_rating=None,
+                score_dimensions=None,
+                scored_at=None,
+                error_reason=None,
+                brainsuite_job_id=None,
+            )
+        )
+        await db.commit()
+
+    logger.info(
+        "SuperAdmin %s reset %d assets to UNSCORED for org %s (statuses=%s)",
+        current_user.email,
+        reset_count,
+        org_id,
+        payload.statuses,
+    )
+
+    return ResetScoringResponse(reset_count=reset_count)
