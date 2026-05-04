@@ -1,73 +1,59 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-29T08:31:08Z",
+  "timestamp": "2026-05-04T12:00:00Z",
   "phase": "none",
-  "phase_name": "debugging + feature work",
-  "phase_dir": null,
-  "plan": null,
-  "task": null,
-  "total_tasks": null,
+  "phase_name": "bug fixes — metadata save, campaign_name sync, language chips",
   "status": "paused",
   "completed_tasks": [
-    {"id": 1, "name": "Fix HTTP 500 on manual video redownload — removed stale org_dir param", "status": "done"},
-    {"id": 2, "name": "Fix autofill timing — download_assets_post_commit now propagates URL to CreativeAsset + resets tracking to FAILED", "status": "done"},
-    {"id": 3, "name": "Fix GEMINI_API_KEY not reaching container — added env_file: .env to docker-compose backend", "status": "done"},
-    {"id": 4, "name": "Fix detail dialog stale cache — always background-refresh loadDetail() even with preloaded data", "status": "done"},
-    {"id": 5, "name": "Fix redownloadAsset cache not updated — update assetDetailCache entry on successful redownload", "status": "done"},
-    {"id": 6, "name": "Extend video redownload to Google Ads — both redownload endpoints now support DV360 + GOOGLE_ADS", "status": "done"},
-    {"id": 7, "name": "Add manual autofill trigger at asset level — right-click context menu 'Trigger autofill'", "status": "done"},
-    {"id": 8, "name": "Add manual autofill trigger at connection level — Platform Connections row menu 'Trigger autofill' (all platforms)", "status": "done"},
-    {"id": 9, "name": "Add new backend endpoints: POST /assets/{asset_id}/trigger-autofill and POST /assets/trigger-autofill/{connection_id}", "status": "done"},
-    {"id": 10, "name": "Reset 1551 COMPLETE tracking rows to FAILED so Gemini re-runs with key now available", "status": "done"},
-    {"id": 11, "name": "Fix BACKEND_HOST missing from docker-compose — frontend rebuild was crash-looping", "status": "done"},
-    {"id": 12, "name": "Rebuild frontend container to ship new TypeScript (autofill triggers)", "status": "done"}
+    {"id": 1, "name": "Cookie expiry early-abort + backup cookie fallback", "status": "done"},
+    {"id": 2, "name": "Scoring pre-check: skip assets with missing mandatory fields", "status": "done"},
+    {"id": 3, "name": "Language format normalization (id_ID↔id-ID)", "status": "done"},
+    {"id": 4, "name": "Port 4200 restored in docker-compose.yml", "status": "done"},
+    {"id": 5, "name": "Fix language not showing in Edit Metadata dialog: updated 124 metadata_field_values rows from 2-letter codes (id) to locale format (id_ID). Also updated both seed migrations.", "status": "done"},
+    {"id": 6, "name": "Reset 1522 FAILED scoring assets (brainsuite_app_id AttributeError, fixed in commit dda5d0d) to UNSCORED", "status": "done"},
+    {"id": 7, "name": "Remove metadata chips from asset detail page header (was unintended addition)", "status": "done"},
+    {"id": 8, "name": "DV360 campaign_name never written to CreativeAsset: added campaign_id+campaign_name to _ensure_asset call in harmonizer.py DV360 block; added campaign_name+campaign_id to 'update existing' branch in _ensure_asset. Backfilled 1550 DV360 assets from dv360_raw_performance.", "status": "done"},
+    {"id": 9, "name": "Cleared 1549 stale 'Spring Campaign 2026' asset_metadata_values; bulk-inserted real campaign names from creative_assets.campaign_name", "status": "done"}
   ],
   "remaining_tasks": [
     {
-      "id": 13,
-      "name": "Download missing videos for DV360/Google Ads connections",
-      "status": "human_action_required",
-      "note": "Platform Connections → row menu → 'Download missing videos' on each DV360/Google Ads connection. 1543/1550 videos have no asset_url."
+      "id": 10,
+      "name": "Fix Edit Metadata dialog save — PATCH request never reaches backend",
+      "status": "in_progress",
+      "note": "Zero PATCH logs on backend. Three bugs identified: (A) PATCH request never sent — likely a JS exception in save() or wrong URL; check browser DevTools Network tab for the PATCH request. (B) No afterClosed() handler on dialog.open() in dashboard.component.ts line 1523 — stale cache/UI after save even if save works. (C) Clearing a field sends v='' which is filtered out by save(), backend never deletes the row — need backend DELETE or send null and handle deletion."
     },
     {
-      "id": 14,
-      "name": "Verify Gemini autofill fires after downloads complete",
-      "status": "not_started",
-      "note": "Check backend logs for Gemini API calls, then check asset_metadata_values for language/brand_names/vo fields"
+      "id": 11,
+      "name": "Download 1520 missing DV360/Google Ads videos after cookies refreshed",
+      "status": "blocked",
+      "note": "Human action: update YouTube cookies at /configuration/admin, then trigger 'Download missing videos' on each DV360/Google Ads connection."
     }
   ],
   "blockers": [
     {
-      "description": "1543/1550 video assets have no asset_url — autofill skips vision/audio without binary to analyze",
+      "description": "YouTube cookies expired — 1520 videos still have no asset_url",
       "type": "human_action",
-      "workaround": "Platform Connections → 'Download missing videos' on each DV360/Google Ads connection. Downloads run via yt-dlp in background. After completion, backfill auto-triggers autofill."
-    }
-  ],
-  "human_actions_pending": [
-    {
-      "action": "Click 'Download missing videos' on each DV360 and Google Ads connection in Platform Connections",
-      "context": "1543/1550 video assets have no asset_url. Autofill triggers and runs but asset_bytes is None so vision/audio inference (language, brand_names, vo_transcript, vo_language) is skipped. Videos must be downloaded first.",
-      "blocking": true
+      "workaround": "Update cookies at /configuration/admin → YouTube Cookies, then trigger 'Download missing videos'"
     }
   ],
   "decisions": [
-    {"decision": "Added env_file: .env to docker-compose backend service", "rationale": "Many .env keys were silently never reaching container; env_file ensures all keys available without manual enumeration"},
-    {"decision": "download_assets_post_commit now updates CreativeAsset.asset_url after downloading", "rationale": "Harmonizer ran before downloads so CreativeAsset.asset_url was always empty; propagating after download fixes the timing gap"},
-    {"decision": "detail dialog always calls loadDetail() even with preloaded data", "rationale": "Preloaded path used stale cache forever; background refresh gives instant render + eventually fresh data"},
-    {"decision": "Frontend requires docker-compose up --build to ship TS changes (no hot-reload unlike backend)", "rationale": "Angular is pre-compiled at image build time, not mounted as volume"}
+    {"decision": "metadata_field_values for language fields use xx_XX locale codes (id_ID not id)", "rationale": "Autofill stores locale codes; mat-select requires exact value match. scoring_job.py converts xx_XX→xx-XX via .replace() before sending to BrainSuite API."},
+    {"decision": "metadata_entries removed from asset detail API response", "rationale": "Feature was unintentionally added; user only wants metadata chips in Edit Metadata dialog, not detail header"},
+    {"decision": "Account-level connection defaults deferred", "rationale": "Was a pre-existing feature; needs connection_metadata_defaults table + account config UI + lookup fallback. See memory file."}
   ],
   "uncommitted_files": [
     "backend/app/api/v1/endpoints/assets.py",
+    "backend/app/api/v1/endpoints/dashboard.py",
     "backend/app/services/sync/dv360_sync.py",
-    "backend/app/services/sync/scheduler.py",
+    "backend/app/services/sync/google_ads_sync.py",
+    "backend/app/services/sync/scoring_job.py",
+    "backend/app/services/sync/harmonizer.py",
+    "backend/app/services/brainsuite_score.py",
+    "backend/app/services/brainsuite_static_score.py",
+    "backend/alembic/versions/f2g3h4i5j6k7_seed_brainsuite_metadata_fields.py",
+    "backend/alembic/versions/v3w4x5y6z7a8_backfill_default_metadata_fields.py",
     "docker-compose.yml",
-    "frontend/src/app/core/services/api.service.ts",
-    "frontend/src/app/features/dashboard/dashboard.component.ts",
-    "frontend/src/app/features/configuration/pages/platforms.component.ts",
-    "frontend/src/app/features/dashboard/dialogs/asset-detail-dialog.component.ts",
-    ".planning/.continue-here.md",
-    ".planning/HANDOFF.json"
+    "frontend/src/app/features/dashboard/dialogs/asset-detail-dialog.component.ts"
   ],
-  "next_action": "Verify video downloads are working: Platform Connections → 'Download missing videos' on a DV360 connection, then watch backend logs for yt-dlp activity. Then check: SELECT count(*) FILTER (WHERE asset_url IS NOT NULL AND asset_url != '') FROM creative_assets WHERE asset_format = 'VIDEO'",
-  "context_notes": "All code fixes and features are shipped. The only remaining work is operational: videos need to be downloaded so autofill has binaries to analyze. The backfill fires automatically after downloads complete (wired in this session). GEMINI_API_KEY is confirmed set in container. All 1551 assets are in FAILED status ready for retry."
+  "next_action": "Fix Edit Metadata save: open browser DevTools → Network tab → open Edit Metadata dialog on any asset → change a field → click Save → check if PATCH /api/v1/assets/{id}/metadata appears. If not, check Console for JS errors. Then fix: (A) root cause of missing request, (B) add afterClosed() refresh, (C) handle field clearing via DELETE or null."
 }

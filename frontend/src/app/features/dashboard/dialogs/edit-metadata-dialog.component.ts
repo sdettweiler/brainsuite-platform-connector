@@ -194,19 +194,29 @@ export class EditMetadataDialogComponent implements OnInit {
 
   save(): void {
     this.saving = true;
-    // Filter out blank values for bulk edit
-    const payload: Record<string, string> = {};
-    for (const [k, v] of Object.entries(this.values)) {
-      if (v !== null && v !== undefined && v !== '') {
-        payload[k] = String(v);
+    const isSingle = this.data.assetIds.length === 1;
+    const payload: Record<string, string | null> = {};
+
+    if (isSingle) {
+      // Include all fields: null signals backend to delete the row
+      for (const field of this.metadataFields) {
+        const v = this.values[field.id];
+        payload[field.id] = (v !== null && v !== undefined && v !== '') ? String(v) : null;
+      }
+    } else {
+      // Bulk edit: skip blank fields so existing values on other assets are untouched
+      for (const [k, v] of Object.entries(this.values)) {
+        if (v !== null && v !== undefined && v !== '') {
+          payload[k] = String(v);
+        }
       }
     }
 
-    const endpoint = this.data.assetIds.length === 1
+    const endpoint = isSingle
       ? `/assets/${this.data.assetIds[0]}/metadata`
       : '/assets/bulk-metadata';
 
-    const body = this.data.assetIds.length === 1
+    const body = isSingle
       ? { metadata: payload }
       : { asset_ids: this.data.assetIds, metadata: payload };
 

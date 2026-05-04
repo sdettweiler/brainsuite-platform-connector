@@ -19,6 +19,7 @@ from app.models.platform import PlatformConnection
 from app.models.performance import GoogleAdsRawPerformance
 from app.core.security import decrypt_token
 from app.services.platform.google_ads_oauth import google_ads_oauth
+from app.services.sync.dv360_sync import _CookiesExpiredError
 
 
 logger = logging.getLogger(__name__)
@@ -280,6 +281,8 @@ class GoogleAdsSyncService:
         def _do_download():
             import yt_dlp
 
+            _expired = [False]
+
             class _YDLLogger:
                 def debug(self, msg):
                     if msg.startswith("[debug] "):
@@ -287,7 +290,10 @@ class GoogleAdsSyncService:
                     else:
                         logger.info("yt-dlp: %s", msg)
                 def info(self, msg): logger.info("yt-dlp: %s", msg)
-                def warning(self, msg): logger.warning("yt-dlp: %s", msg)
+                def warning(self, msg):
+                    if "no longer valid" in msg:
+                        _expired[0] = True
+                    logger.warning("yt-dlp: %s", msg)
                 def error(self, msg): logger.warning("yt-dlp error: %s", msg)
 
             ydl_opts = {
@@ -317,6 +323,10 @@ class GoogleAdsSyncService:
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
+            except Exception as e:
+                if _expired[0]:
+                    raise _CookiesExpiredError("YouTube cookies are no longer valid") from e
+                raise
             finally:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
@@ -334,6 +344,8 @@ class GoogleAdsSyncService:
             else:
                 logger.warning("  yt-dlp finished but output file missing: %s", tmp_path)
                 return None, None
+        except _CookiesExpiredError:
+            raise
         except Exception as e:
             logger.warning("Failed to download Google Ads video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
             return None, None

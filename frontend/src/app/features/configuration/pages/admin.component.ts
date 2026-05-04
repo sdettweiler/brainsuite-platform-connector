@@ -624,10 +624,8 @@ export class AdminComponent implements OnInit {
     }
     org.savingQuota = true;
     const url = `/super-admin/scoring/orgs/${org.org_id}/quota`;
-    console.log('[saveQuota] PUT', url, { quota });
     this.api.put<{ org_id: string; quota: number | null }>(url, { quota }).subscribe({
       next: (data) => {
-        console.log('[saveQuota] success', data);
         org.quota = data.quota;
         org.editingQuota = false;
         org.savingQuota = false;
@@ -635,7 +633,6 @@ export class AdminComponent implements OnInit {
         this.snackBar.open(quota === null ? 'Quota removed (unlimited).' : `Quota set to ${quota}.`, 'Close', { duration: 3000 });
       },
       error: (err) => {
-        console.error('[saveQuota] error', err);
         org.savingQuota = false;
         this.snackBar.open(`Failed: ${err?.error?.detail || err?.status || 'unknown error'}`, 'Close');
       },

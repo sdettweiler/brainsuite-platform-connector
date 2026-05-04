@@ -689,6 +689,8 @@ class HarmonizationService:
                         platform="DV360",
                         ad_id=row.ad_id,
                         ad_name=row.ad_name or row.creative_name,
+                        campaign_id=row.campaign_id,
+                        campaign_name=row.campaign_name,
                         creative_id=row.creative_id,
                         ad_account_id=row.ad_account_id,
                         thumbnail_url=row.thumbnail_url,
@@ -915,6 +917,10 @@ class HarmonizationService:
             if _new_asset_ids is not None:
                 _new_asset_ids.append((asset.id, asset.organization_id))
         else:
+            if kwargs.get("campaign_name") and not asset.campaign_name:
+                asset.campaign_name = kwargs.get("campaign_name")
+            if kwargs.get("campaign_id") and not asset.campaign_id:
+                asset.campaign_id = kwargs.get("campaign_id")
             if kwargs.get("thumbnail_url") and not asset.thumbnail_url:
                 asset.thumbnail_url = kwargs.get("thumbnail_url")
             if kwargs.get("asset_url"):

@@ -3,7 +3,10 @@ Creative asset management: projects, metadata, assignments, export.
 """
 from typing import List, Optional
 import asyncio
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, distinct
@@ -286,18 +289,26 @@ async def update_asset_metadata(
 
     for field_id_str, value in payload.metadata.items():
         field_id = uuid.UUID(field_id_str)
-        existing = await db.execute(
-            select(AssetMetadataValue).where(
-                AssetMetadataValue.asset_id == asset_id,
-                AssetMetadataValue.field_id == field_id,
+        if not value:
+            await db.execute(
+                delete(AssetMetadataValue).where(
+                    AssetMetadataValue.asset_id == asset_id,
+                    AssetMetadataValue.field_id == field_id,
+                )
             )
-        )
-        rec = existing.scalar_one_or_none()
-        if rec:
-            rec.value = value
-            db.add(rec)
         else:
-            db.add(AssetMetadataValue(asset_id=asset_id, field_id=field_id, value=value))
+            existing = await db.execute(
+                select(AssetMetadataValue).where(
+                    AssetMetadataValue.asset_id == asset_id,
+                    AssetMetadataValue.field_id == field_id,
+                )
+            )
+            rec = existing.scalar_one_or_none()
+            if rec:
+                rec.value = value
+                db.add(rec)
+            else:
+                db.add(AssetMetadataValue(asset_id=asset_id, field_id=field_id, value=value))
 
     # D-14: Reset scoring status so 15-min batch rescores with updated metadata
     score_result = await db.execute(
@@ -644,7 +655,7 @@ async def redownload_missing_assets(
     and re-download them in the background. Supports DV360 and GOOGLE_ADS.
     """
     from app.models.platform import PlatformConnection
-    from app.services.sync.dv360_sync import DV360SyncService
+    from app.services.sync.dv360_sync import DV360SyncService, _CookiesExpiredError
     from app.services.sync.google_ads_sync import google_ads_sync
 
     conn_result = await db.execute(
@@ -706,8 +717,15 @@ async def redownload_missing_assets(
                 await session.commit()
         await run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id)
 
-    for asset in missing:
-        asyncio.create_task(_download_one(asset))
+    async def _download_all():
+        for asset in missing:
+            try:
+                await _download_one(asset)
+            except _CookiesExpiredError:
+                logger.warning("redownload_missing_assets: YouTube cookies expired — aborting batch after first failure")
+                break
+
+    asyncio.create_task(_download_all())
 
     return {"queued": len(missing), "message": f"Downloading {len(missing)} missing video(s) in background"}
 

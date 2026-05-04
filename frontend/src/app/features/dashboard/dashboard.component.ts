@@ -12,7 +12,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { Subject, debounceTime, takeUntil, forkJoin, interval, switchMap } from 'rxjs';
+import { Subject, debounceTime, takeUntil, forkJoin, interval, switchMap, take, takeWhile } from 'rxjs';
 import { NgxSliderModule, Options } from '@angular-slider/ngx-slider';
 import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
 import * as echarts from 'echarts/core';
@@ -1527,6 +1527,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
         singleAssetName: isSingle ? (asset.ad_name || undefined) : undefined,
         existingValues: isSingle ? (cached?.metadata_values ?? undefined) : undefined,
       },
+    }).afterClosed().subscribe(result => {
+      if (result?.saved) {
+        for (const id of assetIds) {
+          this.assetDetailCache.delete(id);
+        }
+        this.loadData();
+        this.snackBar.open('Metadata saved', 'OK', { duration: 3000 });
+      }
     });
   }
 
@@ -1675,7 +1683,31 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (!asset) return;
     this.contextMenu.visible = false;
     this.api.triggerAutofillForAsset(asset.id).subscribe({
-      next: () => this.snackBar.open('Autofill queued — results will appear shortly', 'OK', { duration: 4000 }),
+      next: () => {
+        this.snackBar.open('Autofill started…', 'OK', { duration: 3000 });
+        interval(3000).pipe(
+          take(40),
+          switchMap(() => this.api.get<any>(`/dashboard/assets/${asset.id}`)),
+          takeWhile(d => !['COMPLETE', 'FAILED'].includes(d.ai_inference_status), true),
+        ).subscribe(d => {
+          const status = d.ai_inference_status;
+          if (status === 'COMPLETE' || status === 'FAILED') {
+            console.log('[Autofill result]', {
+              asset_id: asset.id,
+              ad_name: asset.ad_name,
+              status,
+              metadata_values: d.metadata_values,
+            });
+            this.snackBar.open(
+              status === 'COMPLETE' ? 'Autofill complete' : 'Autofill failed',
+              'OK',
+              { duration: 5000 },
+            );
+            this.assetDetailCache.delete(asset.id);
+            this.loadData();
+          }
+        });
+      },
       error: () => this.snackBar.open('Failed to trigger autofill', 'OK', { duration: 4000 }),
     });
   }

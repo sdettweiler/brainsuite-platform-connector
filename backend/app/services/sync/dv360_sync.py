@@ -57,6 +57,10 @@ from app.models.performance import Dv360RawPerformance
 from app.core.security import decrypt_token
 from app.services.platform.dv360_oauth import dv360_oauth
 
+
+class _CookiesExpiredError(Exception):
+    """Raised when yt-dlp reports YouTube cookies are no longer valid."""
+
 logger = logging.getLogger(__name__)
 
 _SAFE_FILENAME_RE = re.compile(r'[^a-zA-Z0-9_\-]')
@@ -1145,6 +1149,8 @@ class DV360SyncService:
         def _do_download_with_cookies(cookie_data: str):
             import yt_dlp
 
+            _expired = [False]
+
             class _YDLLogger:
                 def debug(self, msg):
                     if msg.startswith("[debug] "):
@@ -1152,7 +1158,10 @@ class DV360SyncService:
                     else:
                         logger.info("yt-dlp: %s", msg)
                 def info(self, msg): logger.info("yt-dlp: %s", msg)
-                def warning(self, msg): logger.warning("yt-dlp: %s", msg)
+                def warning(self, msg):
+                    if "no longer valid" in msg:
+                        _expired[0] = True
+                    logger.warning("yt-dlp: %s", msg)
                 def error(self, msg): logger.warning("yt-dlp error: %s", msg)
 
             ydl_opts = {
@@ -1183,6 +1192,10 @@ class DV360SyncService:
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
+            except Exception as e:
+                if _expired[0]:
+                    raise _CookiesExpiredError("YouTube cookies are no longer valid") from e
+                raise
             finally:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
@@ -1205,6 +1218,23 @@ class DV360SyncService:
                         return duration, served_url
                     else:
                         logger.warning("  yt-dlp finished but output file missing: %s", tmp_path)
+                except _CookiesExpiredError:
+                    if i < len(attempts) - 1:
+                        logger.info("  %s cookies expired for %s — trying backup slot", label, youtube_video_id)
+                        continue
+                    logger.warning("  All cookie slots expired for %s — aborting", youtube_video_id)
+                    if cookies:
+                        try:
+                            from app.services.notifications import create_superadmin_notification
+                            await create_superadmin_notification(
+                                type="COOKIE_FAILED",
+                                title="YouTube cookies expired",
+                                message="yt-dlp download aborted — YouTube cookies are no longer valid. Update cookies in Admin settings.",
+                                data={"deeplink": "/configuration/admin"},
+                            )
+                        except Exception as notif_err:
+                            logger.warning("Failed to send COOKIE_FAILED notification: %s", notif_err)
+                    raise
                 except Exception as e:
                     err_str = str(e)
                     is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
@@ -1218,19 +1248,6 @@ class DV360SyncService:
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
-
-        # Notify all SuperAdmins when all cookie slots are exhausted (D-12, D-13)
-        if cookies:
-            try:
-                from app.services.notifications import create_superadmin_notification
-                await create_superadmin_notification(
-                    type="COOKIE_FAILED",
-                    title="YouTube cookies failed",
-                    message=f"yt-dlp download failed for asset {ad_id} — all cookie slots exhausted or expired. Update cookies in Admin settings.",
-                    data={"deeplink": "/configuration/admin"},
-                )
-            except Exception as notif_err:
-                logger.warning("Failed to send COOKIE_FAILED notification: %s", notif_err)
 
         return None, None
 

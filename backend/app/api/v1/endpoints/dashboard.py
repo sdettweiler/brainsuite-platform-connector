@@ -421,10 +421,9 @@ async def get_asset_detail(
 
     meta_values = {}
     for field_id, field in all_fields.items():
-        if field_id in asset_values:
-            meta_values[str(field_id)] = asset_values[field_id]
-        elif field.default_value:
-            meta_values[str(field_id)] = field.default_value
+        value = asset_values.get(field_id) or field.default_value
+        if value:
+            meta_values[str(field_id)] = value
 
     # Get projects
     proj_result = await db.execute(

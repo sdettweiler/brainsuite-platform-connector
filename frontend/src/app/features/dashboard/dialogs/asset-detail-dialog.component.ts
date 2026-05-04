@@ -112,6 +112,7 @@ interface AssetDetailResponse {
   timeseries: Record<string, AssetTimeseriesPoint[]> | null;
   brainsuite_metadata?: AssetBrainsuiteMetadata;
   ai_inference_status?: string | null;
+  metadata_values?: Record<string, string>;
 }
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
@@ -1242,7 +1243,7 @@ export class AssetDetailDialogComponent implements OnInit, OnDestroy {
 
   get assetMetaList(): { label: string; value: string }[] {
     if (!this.asset) return [];
-    const items = [];
+    const items: { label: string; value: string }[] = [];
     if (this.asset.campaign_objective) items.push({ label: 'Objective', value: this.asset.campaign_objective });
     if (this.asset.campaign_name) items.push({ label: 'Campaign', value: this.asset.campaign_name });
     if (this.asset.asset_format) items.push({ label: 'Format', value: this.asset.asset_format });
