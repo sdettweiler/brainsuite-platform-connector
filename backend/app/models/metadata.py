@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, ForeignKey, DateTime, Text, Integer
+from sqlalchemy import String, Boolean, ForeignKey, DateTime, Text, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.db.base import Base
@@ -23,6 +23,10 @@ class MetadataField(Base):
     auto_fill_type: Mapped[str] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_metadata_fields_org_name"),
+    )
 
     organization: Mapped["Organization"] = relationship("Organization", back_populates="metadata_fields")
     allowed_values: Mapped[list["MetadataFieldValue"]] = relationship(

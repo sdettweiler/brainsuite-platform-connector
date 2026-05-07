@@ -156,14 +156,14 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
 
         # Seed all default metadata fields for new org
         _LANGUAGES = [
-            ("ar", "Arabic"), ("bg", "Bulgarian"), ("cs", "Czech"), ("da", "Danish"),
-            ("de", "German"), ("el", "Greek"), ("en", "English"), ("es", "Spanish"),
-            ("fi", "Finnish"), ("fr", "French"), ("he", "Hebrew"), ("hi", "Hindi"),
-            ("hr", "Croatian"), ("hu", "Hungarian"), ("id", "Indonesian"), ("it", "Italian"),
-            ("ja", "Japanese"), ("ko", "Korean"), ("ms", "Malay"), ("nl", "Dutch"),
-            ("no", "Norwegian"), ("pl", "Polish"), ("pt", "Portuguese"), ("ro", "Romanian"),
-            ("sk", "Slovak"), ("sl", "Slovenian"), ("sv", "Swedish"), ("th", "Thai"),
-            ("tr", "Turkish"), ("vi", "Vietnamese"), ("zh", "Chinese"),
+            ("ar_SA", "Arabic"), ("bg_BG", "Bulgarian"), ("cs_CZ", "Czech"), ("da_DK", "Danish"),
+            ("de_DE", "German"), ("el_GR", "Greek"), ("en_US", "English"), ("es_ES", "Spanish"),
+            ("fi_FI", "Finnish"), ("fr_FR", "French"), ("he_IL", "Hebrew"), ("hi_IN", "Hindi"),
+            ("hr_HR", "Croatian"), ("hu_HU", "Hungarian"), ("id_ID", "Indonesian"), ("it_IT", "Italian"),
+            ("ja_JP", "Japanese"), ("ko_KR", "Korean"), ("ms_MY", "Malay"), ("nl_NL", "Dutch"),
+            ("no_NO", "Norwegian"), ("pl_PL", "Polish"), ("pt_BR", "Portuguese"), ("ro_RO", "Romanian"),
+            ("sk_SK", "Slovak"), ("sl_SI", "Slovenian"), ("sv_SE", "Swedish"), ("th_TH", "Thai"),
+            ("tr_TR", "Turkish"), ("vi_VN", "Vietnamese"), ("zh_CN", "Chinese"),
         ]
 
         # Simple text/select fields with no child values
