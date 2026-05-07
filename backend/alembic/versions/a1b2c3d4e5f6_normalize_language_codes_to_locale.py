@@ -1,6 +1,6 @@
 """Normalize language codes from 2-letter to locale format (en → en_US)
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: a1b2c3d4e5f8
 Revises: z8a9b1c2d3e5
 Create Date: 2026-05-07
 
@@ -10,7 +10,7 @@ fields from bare 2-letter codes (en, id, fr) to xx_XX locale codes
 """
 from alembic import op
 
-revision = 'a1b2c3d4e5f6'
+revision = 'a1b2c3d4e5f8'
 down_revision = 'z8a9b1c2d3e5'
 branch_labels = None
 depends_on = None
