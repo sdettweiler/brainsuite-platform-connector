@@ -135,7 +135,10 @@ async def get_youtube_cookies(
     primary_status = "missing"
     backup_status = "missing"
 
+    runtime_expired = False
     if config:
+        runtime_expired = getattr(config, "youtube_cookies_runtime_expired", False)
+
         if config.youtube_cookies_encrypted:
             try:
                 decrypted = decrypt_token(config.youtube_cookies_encrypted)
@@ -149,6 +152,13 @@ async def get_youtube_cookies(
                 backup_status = _check_cookie_health(decrypted)
             except Exception:
                 backup_status = "missing"
+
+    # Runtime expiry (rejected by YouTube) overrides timestamp-based status
+    if runtime_expired:
+        if primary_status != "missing":
+            primary_status = "expired"
+        if backup_status != "missing":
+            backup_status = "expired"
 
     return CookieHealthResponse(
         primary=CookieSlotHealth(status=primary_status),
@@ -183,6 +193,10 @@ async def update_youtube_cookies(
         config.youtube_cookies_backup_encrypted = encrypt_token(payload.backup)
         logger.info("SuperAdmin updated backup YouTube cookie slot (cookie content not logged)")
 
+    # Clear runtime-expired flag when new cookies are saved
+    if payload.primary is not None or payload.backup is not None:
+        config.youtube_cookies_runtime_expired = False
+
     db.add(config)
     await db.commit()
     await db.refresh(config)
@@ -205,6 +219,7 @@ async def update_youtube_cookies(
         except Exception:
             backup_status = "missing"
 
+    # runtime_expired was just reset to False — no override needed here
     return CookieHealthResponse(
         primary=CookieSlotHealth(status=primary_status),
         backup=CookieSlotHealth(status=backup_status),

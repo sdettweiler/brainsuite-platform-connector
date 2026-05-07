@@ -25,6 +25,7 @@ class SystemConfig(Base):
     youtube_cookies_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     youtube_cookies_backup_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     scoring_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    youtube_cookies_runtime_expired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -755,20 +755,34 @@ async def redownload_asset(
 
     org_id_str = str(asset.organization_id)
     served_url = None
-    if asset.platform == "DV360":
-        from app.services.sync.dv360_sync import DV360SyncService
-        svc = DV360SyncService()
-        _, served_url = await svc._download_video_asset(
-            youtube_video_id=asset.ad_id,
-            org_id=org_id_str,
-            ad_id=asset.ad_id,
-        )
-    elif asset.platform == "GOOGLE_ADS":
-        from app.services.sync.google_ads_sync import google_ads_sync
-        _, served_url = await google_ads_sync._download_video(
-            youtube_video_id=asset.ad_id,
-            org_id=org_id_str,
-            ad_id=asset.ad_id,
+    try:
+        if asset.platform == "DV360":
+            from app.services.sync.dv360_sync import DV360SyncService, _CookiesExpiredError
+            svc = DV360SyncService()
+            _, served_url = await svc._download_video_asset(
+                youtube_video_id=asset.ad_id,
+                org_id=org_id_str,
+                ad_id=asset.ad_id,
+            )
+        elif asset.platform == "GOOGLE_ADS":
+            from app.services.sync.dv360_sync import _CookiesExpiredError
+            from app.services.sync.google_ads_sync import google_ads_sync
+            _, served_url = await google_ads_sync._download_video(
+                youtube_video_id=asset.ad_id,
+                org_id=org_id_str,
+                ad_id=asset.ad_id,
+            )
+    except _CookiesExpiredError:
+        from app.models.system_config import SystemConfig
+        cfg_result = await db.execute(select(SystemConfig).limit(1))
+        cfg = cfg_result.scalar_one_or_none()
+        if cfg:
+            cfg.youtube_cookies_runtime_expired = True
+            db.add(cfg)
+            await db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail="YouTube cookies have expired — update cookies in Admin settings",
         )
 
     if not served_url:
