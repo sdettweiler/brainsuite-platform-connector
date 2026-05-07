@@ -1703,7 +1703,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
               'OK',
               { duration: 5000 },
             );
-            this.assetDetailCache.delete(asset.id);
+            this.assetDetailCache.set(asset.id, d);
             this.loadData();
           }
         });

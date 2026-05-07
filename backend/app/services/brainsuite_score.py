@@ -499,7 +499,7 @@ def build_scoring_payload(
         "channel": channel,
         "assetLanguage": (metadata.get("brainsuite_asset_language") or "en-US").replace("_", "-"),
         "brandNames": brand_names if brand_names else ["Brand"],
-        "projectName": metadata.get("brainsuite_project_name") or "Spring Campaign 2026",
+        "projectName": metadata.get("brainsuite_project_name") or asset_name,
         "assetName": metadata.get("brainsuite_asset_name") or "asset_name",
         "assetStage": metadata.get("brainsuite_asset_stage") or "finalVersion",
     }
