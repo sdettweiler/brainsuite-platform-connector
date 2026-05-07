@@ -7,6 +7,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
 
 interface MetadataField {
@@ -171,16 +173,28 @@ export class EditMetadataDialogComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.api.get<MetadataField[]>('/assets/metadata/fields').subscribe({
-      next: (fields) => {
-        // Normalise allowed_values → field_values so the template works
+    const isSingle = this.data.assetIds.length === 1;
+    const freshValues$ = isSingle
+      ? this.api.get<any>(`/dashboard/assets/${this.data.assetIds[0]}`).pipe(
+          catchError(() => of(null)),
+        )
+      : of(null);
+
+    forkJoin([
+      this.api.get<MetadataField[]>('/assets/metadata/fields'),
+      freshValues$,
+    ]).subscribe({
+      next: ([fields, assetDetail]) => {
         this.metadataFields = fields.map(f => ({
           ...f,
           field_values: f.allowed_values ?? f.field_values ?? [],
         }));
-        // Start from existing asset values (keyed by field UUID)
-        this.values = this.data.existingValues ? { ...this.data.existingValues } : {};
-        // Fall back to default_value for any field not yet set on this asset
+        // Fresh asset values take precedence over stale cache passed via existingValues
+        const freshMeta: Record<string, string> = assetDetail?.metadata_values ?? {};
+        const baseValues = Object.keys(freshMeta).length > 0
+          ? freshMeta
+          : (this.data.existingValues ?? {});
+        this.values = { ...baseValues };
         for (const field of this.metadataFields) {
           if (!this.values[field.id] && field.default_value) {
             this.values[field.id] = field.default_value;
