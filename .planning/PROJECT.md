@@ -8,9 +8,19 @@ A production-ready multi-tenant SaaS platform that connects Meta, TikTok, Google
 
 A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
 
+## Current Milestone: v1.3 SuperAdmin Monitoring & TikTok Downloads
+
+**Goal:** A SuperAdmin can see every background job running on the platform in real time — sync runs, asset downloads, AI autofills, scoring — with progress bars, drill-in detail views, and full error tracebacks; TikTok asset download gap is also closed.
+
+**Target features:**
+- TikTok asset download to MinIO/S3 during sync (gap closure — unblocks AI autofill + BrainSuite scoring for TikTok)
+- PostgreSQL job persistence layer (`background_jobs` table) — all job types instrumented: sync, download, autofill, scoring
+- SSE real-time transport — FastAPI streaming endpoint pushing job updates to browser
+- SuperAdmin monitoring UI at `/configuration/admin` — active/recent jobs grouped by type, per-sync-run progress bars, drill-in panel (full Gemini output, download manifests, error tracebacks, asset links)
+
 ## Current State
 
-**Version:** v1.2 — SHIPPED 2026-04-28
+**Version:** v1.3 — in progress (started 2026-05-07)
 
 **Stack:** Angular 17 + FastAPI + PostgreSQL + Redis + MinIO — fully containerized via Docker Compose
 **Deployment:** Any cloud host or local dev via `docker-compose up`
@@ -73,7 +83,7 @@ A user can connect all their ad accounts, see every creative's performance metri
 
 ### Active
 
-*(no active requirements — v1.3 requirements to be defined via /gsd-new-milestone)*
+*(v1.3 requirements being defined — see REQUIREMENTS.md once generated)*
 
 ### Out of Scope
 
@@ -144,4 +154,4 @@ A user can connect all their ad accounts, see every creative's performance metri
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-28 — v1.2 milestone complete (Phases 11–14, all 20 requirements shipped)*
+*Last updated: 2026-05-07 — v1.3 milestone started (SuperAdmin Monitoring & TikTok Downloads)*
