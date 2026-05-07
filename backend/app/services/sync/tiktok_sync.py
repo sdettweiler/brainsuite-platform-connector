@@ -386,6 +386,7 @@ class TikTokSyncService:
         advertiser_id: str,
         ad_ids: List[str],
     ) -> None:
+        org_id = str(connection.organization_id)
         batch_size = 100
         for i in range(0, len(ad_ids), batch_size):
             batch = ad_ids[i:i + batch_size]
@@ -410,6 +411,12 @@ class TikTokSyncService:
                 display_name = ad.get("display_name")
                 video_id_val = ad.get("video_id")
                 post_link = f"https://www.tiktok.com/@{display_name}/video/{video_id_val}" if display_name and video_id_val else None
+
+                thumbnail_url: Optional[str] = None
+                if isinstance(image_ids_raw, list) and image_ids_raw:
+                    cover_url = await self._fetch_cover_image_url(access_token, advertiser_id, image_ids_raw[:1])
+                    if cover_url:
+                        thumbnail_url = await self._download_tiktok_thumbnail(cover_url, org_id, ad_id)
 
                 await db.execute(
                     update(TikTokRawPerformance)
@@ -440,6 +447,7 @@ class TikTokSyncService:
                         campaign_status=ad.get("operation_status"),
                         call_to_action=ad.get("call_to_action"),
                         post_link=post_link,
+                        **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
                     )
                 )
 
@@ -447,6 +455,65 @@ class TikTokSyncService:
             logger.info(f"  Enriched {len(batch)} ads from /ad/get/")
 
         await db.commit()
+
+    async def _fetch_cover_image_url(
+        self,
+        access_token: str,
+        advertiser_id: str,
+        image_ids: List[str],
+    ) -> Optional[str]:
+        """Fetch the cover image download URL for given image IDs via /file/image/ad/."""
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{TIKTOK_API_BASE}/file/image/ad/",
+                    params={
+                        "advertiser_id": advertiser_id,
+                        "image_ids": json.dumps([str(iid) for iid in image_ids]),
+                    },
+                    headers={"Access-Token": access_token},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") != 0:
+                    logger.warning("TikTok /file/image/ad/ error: %s", data.get("message"))
+                    return None
+                images = data.get("data", {}).get("list", [])
+                if images:
+                    return images[0].get("image_url")
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            logger.warning("Failed to fetch TikTok cover image URL: %s", e)
+        return None
+
+    async def _download_tiktok_thumbnail(
+        self,
+        image_url: str,
+        org_id: str,
+        ad_id: str,
+    ) -> Optional[str]:
+        """Download a TikTok cover image and upload to GCS. Returns served URL or None."""
+        from app.services.object_storage import get_object_storage
+        obj_storage = get_object_storage()
+
+        filename = f"thumb_tiktok_{ad_id}.jpg"
+        relative_path = f"creatives/{org_id}/{filename}"
+
+        if obj_storage.file_exists(relative_path):
+            return obj_storage.served_url(relative_path)
+
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                resp = await client.get(image_url)
+                resp.raise_for_status()
+            if len(resp.content) < 100:
+                logger.warning("TikTok thumbnail for ad %s too small (%d bytes), skipping", ad_id, len(resp.content))
+                return None
+            served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="image/jpeg")
+            logger.info("Downloaded TikTok thumbnail for ad %s: %s (%d bytes)", ad_id, filename, len(resp.content))
+            return served_url
+        except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+            logger.warning("Failed to download TikTok thumbnail for ad %s: %s", ad_id, e, exc_info=True)
+            return None
 
     async def _fetch_ad_info(
         self, access_token: str, advertiser_id: str, ad_ids: List[str]

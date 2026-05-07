@@ -19,7 +19,13 @@ def is_raw_cdn_url(url: Optional[str]) -> bool:
     """Return True if url is a raw platform CDN link we should not persist."""
     if not url:
         return False
-    return "img.youtube.com" in url or "ytimg.com" in url
+    return (
+        "img.youtube.com" in url
+        or "ytimg.com" in url
+        or "p16-ad-sg.ibyteimg.com" in url
+        or "p16-ad.tiktokcdn.com" in url
+        or "p19-ad.tiktokcdn.com" in url
+    )
 
 
 async def extract_first_frame_and_upload(
