@@ -1,8 +1,234 @@
 # Feature Landscape
 
-**Domain:** Creative analytics dashboard for ad agencies (performance marketing)
-**Researched:** 2026-03-25 (v1.1 update; v1.0 research preserved below)
-**Confidence:** MEDIUM–HIGH
+**Domain:** Creative analytics dashboard for ad agencies (performance marketing)  
+**Researched:** 2026-05-07 (v1.3 Monitoring + TikTok Download update; v1.1 and v1.0 research preserved below)  
+**Confidence:** HIGH (v1.3 monitoring patterns) + MEDIUM–HIGH (v1.1–v1.0 legacy research)
+
+---
+
+## v1.3 Feature Research — SuperAdmin Monitoring & TikTok Asset Download
+
+This section covers the real-time job monitoring dashboard for SuperAdmins and the closure of the TikTok asset download gap (unblocking AI autofill and BrainSuite scoring for TikTok creatives).
+
+---
+
+### Table Stakes (SuperAdmin Users Expect These in v1.3)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| **Real-time job list view** | SuperAdmins need to see what's running across all orgs right now; platform observability is critical for SaaS health | Medium | SSE streaming, Angular Material table, filtering by type/status |
+| **Per-job type grouping** | Sync/download/autofill/scoring are fundamentally different operations; need visual separation for quick scanning | Low | Card layout or table sections (sync, download, autofill, scoring) |
+| **Job status indicators** | "Is this running? Failed? Done?" Essential to gauge platform health without hitting backend directly | Low | Badge/chip component with colors (PENDING→yellow, PROCESSING→blue, COMPLETE→green, FAILED→red) |
+| **Per-sync-run progress bar** | "Downloaded 7 of 10 assets" — SuperAdmins need granular progress visibility, not just start/end times | Medium | Material progress bar + counter label (e.g., "7/10 assets downloaded") |
+| **Error visibility & tracebacks** | When jobs fail, SuperAdmins need to understand root cause without SSH'ing into container logs | Medium | Expandable error reason + stack trace in detail panel |
+| **Job drill-in detail panel** | Click a job → see full context (Gemini output, downloaded files, error logs) — essential for debugging issues | Medium–High | Side panel with collapsible sections, JSON viewer for AI output, file manifest table |
+| **TikTok asset download during sync** | TikTok video/image creatives must be downloaded to storage during sync (currently only metadata is synced); unblocks AI autofill + BrainSuite scoring for TikTok | Low–Medium | Already has infrastructure: `_download_tiktok_thumbnail()` exists, just needs wiring to main sync pipeline and job progress tracking |
+
+### Differentiators (Premium Monitoring Capabilities)
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| **Per-entity progress tracking** | Show "7 of 10 assets from TikTok ad account X" breakdown within a multi-tenant sync | Medium–High | Requires job metadata to track per-organization + per-platform granularity; nice-to-have for v1.3 MVP |
+| **Live job count summary cards** | "3 syncing, 2 downloads running, 1 scoring" at a glance without opening table | Low | Summary metrics above job list; auto-update via SSE; high UX value |
+| **Export job history/logs** | Download CSV of recent job runs with duration, status, error summary | Medium | Defer to Phase 2; compliance feature, not blocking |
+| **Job retry controls** | SuperAdmin can retry failed jobs directly from dashboard | Medium–High | Depends on job state serialization; defer to Phase 2 |
+| **Streaming AI inference output preview** | Watch Gemini Vision/Whisper results populate in real time as inference runs | Medium–High | Requires capturing streaming JSON chunks; focus on displaying final result for v1.3 |
+
+### Anti-Features (Do Not Build in v1.3)
+
+| Anti-Feature | Why Avoid | What to Do Instead |
+|--------------|-----------|-------------------|
+| **Job re-triggering/pause/cancel from UI** | Requires job state serialization + async queue replay; risky without transaction safety | Defer to Phase 2; SuperAdmins use direct API calls for critical operations |
+| **Per-org job filtering in detail** | Adds cognitive load to detail panel; platform-wide view is more useful for SuperAdmins | Show global listing first; org context visible in job metadata row |
+| **Multi-select bulk operations** | Requires transaction safety + coordinated state management | Defer to Phase 2; single-job operations only in v1.3 MVP |
+| **Downloadable job logs as files** | Storage/cleanup overhead; logs are already in database | Use text endpoint `/api/v1/admin/jobs/{id}/logs`; let browser save if needed |
+| **WebSocket instead of SSE** | WebSocket adds bidirectional overhead; SSE sufficient for unidirectional updates (jobs → dashboard) | SSE + polling fallback is table stakes; no bidirectional control needed in v1.3 |
+
+### Feature Dependencies
+
+```
+PostgreSQL background_jobs table (new schema)
+├── Stores all job metadata: type, status, progress counts, error, result
+├── Indexed by org_id, type, status, created_at for dashboard queries
+└── Pre-requisite for all monitoring UI features
+
+Job instrumentation across all services
+├── Sync services (Meta, TikTok, Google Ads, DV360) write progress
+├── Download services write file count
+├── AI autofill writes inference results JSON
+├── BrainSuite scoring writes score status
+└── All write to background_jobs table via shared helper
+
+SSE real-time transport
+├── FastAPI streaming endpoint `/api/v1/admin/jobs/stream`
+├── Pushes job updates to Angular in real time
+├── Fallback to polling if SSE connection drops
+└── Pre-requisite for "live" dashboard feel
+
+Angular Material monitoring UI
+├── Real-time job list (table + grouped card sections)
+├── Detail panel with tabs (metadata, output, files, errors)
+├── Summary cards with live counts
+└── Status badges + progress bars
+
+TikTok asset download
+├── Triggered during TikTok sync (existing `_download_tiktok_thumbnail`)
+├── Writes file URLs to CreativeAsset.video_url / image_url
+├── Tracked in background_jobs.progress_count
+└── Enables AI autofill + BrainSuite scoring for TikTok
+
+Detail panel components
+├── JSON viewer for Gemini output (collapsible tree)
+├── Error traceback display (truncated, copyable)
+├── File manifest table (assets + presigned URLs)
+└── All depend on populated background_jobs table
+```
+
+### MVP Recommendation for v1.3
+
+**Prioritize (Critical Path):**
+1. **PostgreSQL background_jobs table** — instrumentation foundation
+   - Fields: id, org_id, job_type, status, progress_count, total_count, error_reason, metadata JSON, created_at, updated_at
+   - Indexes: (org_id, type, status), (status, created_at)
+
+2. **SSE streaming endpoint** — FastAPI `/api/v1/admin/jobs/stream`
+   - Real-time updates; fallback to polling if needed
+   - Batch updates (max 1/500ms) to prevent UI thrashing
+
+3. **SuperAdmin job monitoring UI** — `/configuration/admin/jobs`
+   - Real-time job list (Material table)
+   - Per-type grouping (sync, download, autofill, scoring cards)
+   - Summary cards with live counts
+   - Status badges + progress bars
+   - Drill-in detail panel (metadata, errors, files)
+
+4. **TikTok asset download wiring** — Hook `_download_tiktok_thumbnail()` into sync
+   - Track download count in job progress
+   - Update CreativeAsset.video_url / image_url with S3 URLs
+   - Log errors but don't fail sync if downloads fail
+
+**Defer to Phase 2 (v1.3+):**
+- Per-entity progress tracking (org/account breakdown)
+- Job retry/pause controls
+- Export history + CSV
+- Bulk operations
+
+### Complexity Breakdown by Feature
+
+#### Low Complexity (1–2 days)
+- Job status indicator badges (Material chips)
+- Summary cards displaying live counts
+- Basic Material table layout + sorting/filtering
+- Download manifest table display
+- TikTok thumbnail download wiring (already exists, just needs integration)
+
+#### Medium Complexity (3–5 days)
+- SSE endpoint (FastAPI streaming)
+- Real-time table refresh via RxJS observable
+- Side panel with tabs
+- Job progress bar with numerator/denominator
+- Per-sync-run grouping in table
+- Error traceback display (truncate + monospace font)
+
+#### Medium–High Complexity (5–8 days)
+- background_jobs table schema + indexing
+- Instrumentation across sync/download/autofill/scoring services
+- Progress tracking middleware (wrap existing services)
+- Collapsible JSON viewer for Gemini output (custom ngx component or renderjson library)
+- Change detection tuning for SSE updates
+
+#### High Complexity (Defer)
+- Per-entity progress tracking (breakdown by org/account)
+- Job retry logic + state serialization
+- Multi-select bulk operations + transaction safety
+
+### Dependency on Existing Infrastructure
+
+**Already Available:**
+- SuperAdmin role + JWT claim (Phase 14)
+- Notification service for job alerts
+- Object storage (MinIO/S3) for presigned URLs
+- Angular Material (table, sidenav, progress bar, badge, chip, tab)
+- RxJS for SSE subscriptions
+- TikTok thumbnail download function (`_download_tiktok_thumbnail`)
+- AI autofill Gemini JSON output (stored in CreativeAsset.ai_metadata as JSONB)
+
+**Needs to Be Built:**
+- background_jobs table + migration
+- SSE streaming endpoint + client subscription
+- Job instrumentation in all services
+- Job monitoring UI component (Material table + detail panel)
+- JSON viewer component for AI output
+- File manifest display table
+
+### Risk Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| High SSE update frequency causes UI lag | Batch updates (max 1 per 500ms); use ngZone.runOutsideAngular for subscriptions |
+| Long Gemini JSON objects (>50KB) cause lag | Lazy-load detail panel; show summary count of keys; expand on demand |
+| Traceback truncation breaks debugging | Limit error_reason to 2000 chars in DB; show "... (truncated)" + copyable full text in modal |
+| High concurrent jobs overload dashboard | Pagination: show last 100 jobs; filter by type/status to reduce data |
+| SSE connection drops, users don't notice | Fallback to 30s polling; show connection status badge in header |
+
+### Technology Decisions for v1.3
+
+| Decision | Why | Outcome |
+|----------|-----|---------|
+| SSE vs WebSocket | SSE simpler (unidirectional), sufficient for job status (no bidirectional control needed) | Use SSE; polling fallback available |
+| Collapsible JSON display | Renderjson library (no external deps, lazy-loads objects) vs custom component | Custom ngx component or use existing ngx-json-viewer if available |
+| Detail panel as sidenav vs modal | Sidenav allows side-by-side view of list + details; less disruptive | Use mat-sidenav; open on row selection |
+| Progress bar format | Determinate (numerator/denominator) vs indeterminate spinner | Determinate ("7/10 assets") — users want progress visibility |
+| Job grouping | Separate tables per type vs single table with type column | Card layout with sections per type (better visual hierarchy) |
+| TikTok download storage | Store in MinIO/S3 vs store URL reference only | Download files during sync (unblock AI inference); store S3 URLs in CreativeAsset |
+
+### UI Layout Wireframe
+
+```
+┌─ /configuration/admin/jobs (SuperAdmin only) ──────────────────────────┐
+│ [Status: Connected via SSE] [Last update: 2s ago]                      │
+│                                                                         │
+│ Summary Cards:  [Syncing: 3] [Downloading: 2] [Autofill: 1] [Score: 0]│
+│                                                                         │
+│ ┌─ Sync Runs ──────────────────────────────────────────────────────┐  │
+│ │ Org          Type    Status      Progress         Duration      │  │
+│ │ ──────────────────────────────────────────────────────────────  │  │
+│ │ Agency A     Meta    PROCESSING  [████░░░] 7/10 assets      2m  │  │
+│ │ Brand Co     TikTok  COMPLETE    [█████████] 42/42 assets   5m  │  │
+│ │ ...                                                              │  │
+│ └──────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│ ┌─ Downloads ───────────────────────────────────────────────────────┐  │
+│ │ Org          Type    Status      Progress    Files               │  │
+│ │ ──────────────────────────────────────────────────────────────  │  │
+│ │ Agency A     Meta    PROCESSING  [███░░░░░░] 18/50 videos      │  │
+│ │ ...                                                              │  │
+│ └──────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│ [Sidenav Detail Panel — when row selected]                             │
+│ ┌──────────────────────────────────────┐                              │
+│ │ Job Details                           │                              │
+│ │ ────────────────────────────────────  │                              │
+│ │ [Metadata] [Output] [Files] [Errors]  │                              │
+│ │                                       │                              │
+│ │ Status: PROCESSING                    │                              │
+│ │ Org: Agency A | Type: TikTok Sync     │                              │
+│ │ Progress: 7/10 assets | Duration: 2m  │                              │
+│ │                                       │                              │
+│ │ [Errors Tab Content] ▼                │                              │
+│ │ • 2 failed downloads (timeout)        │                              │
+│ │   Error: Connection reset by peer     │                              │
+│ │   [View full traceback]               │                              │
+│ │                                       │                              │
+│ │ [Files Tab Content]                   │                              │
+│ │ • meta_video_123.mp4 (45 MB)          │                              │
+│ │ • meta_image_456.jpg (2.1 MB)         │                              │
+│ │ [Download manifest CSV]               │                              │
+│ │                                       │                              │
+│ └──────────────────────────────────────┘                              │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -249,6 +475,9 @@ In-app notifications
 
 | Area | Confidence | Notes |
 |------|------------|-------|
+| v1.3 job monitoring UI patterns | HIGH | Real-world admin dashboard patterns confirmed across Celery, BullMQ, Taskforce; SSE vs polling rationale tested in prod SaaS stacks |
+| v1.3 progress bar design (determinate) | HIGH | Industry consensus on determinate vs indeterminate timing rules; Material components directly applicable |
+| TikTok asset download complexity | LOW–MEDIUM | Existing `_download_tiktok_thumbnail()` is already implemented; integration is straightforward, but needs testing |
 | AI metadata inference field-by-field breakdown | MEDIUM | Claude Vision capabilities verified via official Anthropic docs. Field-specific accuracy estimates are based on known VLM capabilities, not BrainSuite-specific testing. Actual accuracy will depend on creative quality and ad platform conventions. |
 | Scatter plot as correct chart for correlation | HIGH | Industry consensus: Segwise, VidMob, Madgicx, and Improvado all use scatter/two-variable correlation for creative analytics. |
 | Polling over SSE for notifications | HIGH | Architecture rationale is sound for the existing FastAPI + Docker Compose stack. SSE is technically viable but the complexity/benefit ratio is poor for this notification frequency. |
@@ -261,6 +490,22 @@ In-app notifications
 
 ## Sources
 
+**v1.3 Job Monitoring & Admin Dashboards:**
+- [Real-Time Dashboards — Jaspersoft](https://www.jaspersoft.com/articles/what-is-a-real-time-dashboard)
+- [SaaS Dashboard Design Best Practices — UX Collective](https://uxdesign.cc/design-thoughtful-dashboards-for-b2b-saas-ff484385960d?gi=157f4f318b9f)
+- [Progress Indicator UX/UI Design — Usersnap](https://usersnap.com/blog/progress-indicators/)
+- [Progress Tracker Design Best Practices — UXPin](https://www.uxpin.com/studio/blog/design-progress-trackers/)
+- [Server-Sent Events in Angular — Medium](https://codewithbilal.medium.com/implementing-server-sent-events-in-angular-a-complete-guide-05d35edc9935)
+- [Monitoring Celery Guide — Cronitor](https://cronitor.io/guides/monitoring-celery)
+- [Flower: Celery Monitoring — GitHub](https://github.com/mher/flower)
+- [Taskforce.sh: BullMQ Dashboard — Taskforce](https://taskforce.sh/)
+- [AWS S3 Batch Job Status Tracking — AWS Documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/batch-ops-job-status.html)
+- [Batch Job Monitoring Best Practices — OneUptime](https://oneuptime.com/blog/post/2026-01-30-batch-processing-monitoring/view)
+- [JSON Collapsible Display — Renderjson GitHub](https://github.com/caldwell/renderjson)
+- [Error Tracking UI Patterns — DataDog](https://docs.datadoghq.com/error_tracking/)
+- [Admin Dashboard UI Guide — ExtraHop](https://docs.extrahop.com/8.3/eh-admin-ui-guide/)
+
+**v1.1 & v1.0 Research (Original Sources):**
 - [Claude Vision — Official Anthropic Documentation](https://platform.claude.com/docs/en/build-with-claude/vision) — HIGH confidence
 - [Creative Analytics: A Complete Guide for Performance Marketers — Improvado, 2026](https://improvado.io/blog/creative-analytics) — MEDIUM confidence
 - [How to Analyze Ad Creative Performance Effectively — Segwise](https://segwise.ai/blog/analyzing-ad-creative-performance-effectively) — MEDIUM confidence
