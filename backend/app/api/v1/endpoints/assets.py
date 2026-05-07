@@ -784,6 +784,7 @@ async def redownload_asset(
         cfg = cfg_result.scalar_one_or_none()
         if cfg:
             cfg.youtube_cookies_runtime_expired = True
+            cfg.youtube_cookies_backup_runtime_expired = True
             db.add(cfg)
             await db.commit()
         raise HTTPException(
