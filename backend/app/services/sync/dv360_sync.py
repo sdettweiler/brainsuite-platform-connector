@@ -1218,6 +1218,15 @@ class DV360SyncService:
                         duration = self._get_video_duration(actual_path)
                         served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
                         logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, label)
+                        try:
+                            from sqlalchemy import update as _sa_update
+                            from app.models.system_config import SystemConfig as _SC
+                            from app.db.base import get_session_factory as _gsf
+                            async with _gsf()() as _sc_db:
+                                await _sc_db.execute(_sa_update(_SC).values(youtube_cookies_download_count=_SC.youtube_cookies_download_count + 1))
+                                await _sc_db.commit()
+                        except Exception as _cnt_err:
+                            logger.debug("Could not increment YT download counter: %s", _cnt_err)
                         from app.services.sync.thumbnail_utils import extract_first_frame_and_upload
                         thumb_path = f"creatives/{org_id}/thumb_dv360_{safe_id}.jpg"
                         frame_thumb = None
@@ -1234,10 +1243,27 @@ class DV360SyncService:
                     if cookies:
                         try:
                             from app.services.notifications import create_superadmin_notification
+                            from app.models.system_config import SystemConfig as _SC2
+                            from app.db.base import get_session_factory as _gsf2
+                            from sqlalchemy import select as _sel
+                            from datetime import datetime as _dt, timezone as _tz
+                            _dl_count, _days = 0, None
+                            try:
+                                async with _gsf2()() as _stats_db:
+                                    _cfg = (await _stats_db.execute(_sel(_SC2).limit(1))).scalar_one_or_none()
+                                    if _cfg:
+                                        _dl_count = _cfg.youtube_cookies_download_count or 0
+                                        if _cfg.youtube_cookies_refreshed_at:
+                                            _days = (_dt.now(_tz.utc) - _cfg.youtube_cookies_refreshed_at).days
+                            except Exception:
+                                pass
+                            _stats = f"expired after {_dl_count} video{'s' if _dl_count != 1 else ''}"
+                            if _days is not None:
+                                _stats += f" and {_days} day{'s' if _days != 1 else ''}"
                             await create_superadmin_notification(
                                 type="COOKIE_FAILED",
                                 title="YouTube cookies expired",
-                                message="yt-dlp download aborted — YouTube cookies are no longer valid. Update cookies in Admin settings.",
+                                message=f"yt-dlp download aborted — YouTube cookies are no longer valid. Update cookies in Admin settings. ({_stats})",
                                 data={"deeplink": "/configuration/admin"},
                             )
                         except Exception as notif_err:

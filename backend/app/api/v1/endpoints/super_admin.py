@@ -20,7 +20,7 @@ Scoring controls security:
 """
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -193,9 +193,11 @@ async def update_youtube_cookies(
         config.youtube_cookies_backup_encrypted = encrypt_token(payload.backup)
         logger.info("SuperAdmin updated backup YouTube cookie slot (cookie content not logged)")
 
-    # Clear runtime-expired flag when new cookies are saved
+    # Reset expiry flag and lifetime stats when new cookies are saved
     if payload.primary is not None or payload.backup is not None:
         config.youtube_cookies_runtime_expired = False
+        config.youtube_cookies_download_count = 0
+        config.youtube_cookies_refreshed_at = datetime.now(timezone.utc)
 
     db.add(config)
     await db.commit()

@@ -344,6 +344,15 @@ class GoogleAdsSyncService:
                 size_mb = os.path.getsize(actual_path) / (1024 * 1024)
                 served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
                 logger.info("  Downloaded Google Ads YouTube video: %s (%.1f MB)", filename, size_mb)
+                try:
+                    from sqlalchemy import update as _sa_update
+                    from app.models.system_config import SystemConfig as _SC
+                    from app.db.base import get_session_factory as _gsf
+                    async with _gsf()() as _sc_db:
+                        await _sc_db.execute(_sa_update(_SC).values(youtube_cookies_download_count=_SC.youtube_cookies_download_count + 1))
+                        await _sc_db.commit()
+                except Exception as _cnt_err:
+                    logger.debug("Could not increment YT download counter: %s", _cnt_err)
                 from app.services.sync.thumbnail_utils import extract_first_frame_and_upload
                 thumb_rel = f"creatives/{org_id}/thumb_yt_{ad_id}.jpg"
                 frame_thumb = None
@@ -354,6 +363,33 @@ class GoogleAdsSyncService:
                 logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
                 return None, None, None
         except _CookiesExpiredError:
+            try:
+                from app.services.notifications import create_superadmin_notification
+                from app.models.system_config import SystemConfig as _SC3
+                from app.db.base import get_session_factory as _gsf3
+                from sqlalchemy import select as _sel3
+                from datetime import datetime as _dt3, timezone as _tz3
+                _dl_count, _days = 0, None
+                try:
+                    async with _gsf3()() as _stats_db:
+                        _cfg = (await _stats_db.execute(_sel3(_SC3).limit(1))).scalar_one_or_none()
+                        if _cfg:
+                            _dl_count = _cfg.youtube_cookies_download_count or 0
+                            if _cfg.youtube_cookies_refreshed_at:
+                                _days = (_dt3.now(_tz3.utc) - _cfg.youtube_cookies_refreshed_at).days
+                except Exception:
+                    pass
+                _stats = f"expired after {_dl_count} video{'s' if _dl_count != 1 else ''}"
+                if _days is not None:
+                    _stats += f" and {_days} day{'s' if _days != 1 else ''}"
+                await create_superadmin_notification(
+                    type="COOKIE_FAILED",
+                    title="YouTube cookies expired",
+                    message=f"yt-dlp download aborted — YouTube cookies are no longer valid. Update cookies in Admin settings. ({_stats})",
+                    data={"deeplink": "/configuration/admin"},
+                )
+            except Exception as _notif_err:
+                logger.warning("Failed to send COOKIE_FAILED notification: %s", _notif_err)
             raise
         except Exception as e:
             logger.warning("Failed to download Google Ads video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
