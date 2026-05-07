@@ -921,8 +921,13 @@ class HarmonizationService:
                 asset.campaign_name = kwargs.get("campaign_name")
             if kwargs.get("campaign_id") and not asset.campaign_id:
                 asset.campaign_id = kwargs.get("campaign_id")
-            if kwargs.get("thumbnail_url") and not asset.thumbnail_url:
-                asset.thumbnail_url = kwargs.get("thumbnail_url")
+            incoming_thumb = kwargs.get("thumbnail_url")
+            if incoming_thumb and (
+                not asset.thumbnail_url
+                or "img.youtube.com" in (asset.thumbnail_url or "")
+                or "ytimg.com" in (asset.thumbnail_url or "")
+            ):
+                asset.thumbnail_url = incoming_thumb
             if kwargs.get("asset_url"):
                 asset.asset_url = kwargs.get("asset_url")
             if kwargs.get("creative_id") and not asset.creative_id:

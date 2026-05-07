@@ -683,17 +683,19 @@ async def redownload_missing_assets(
 
     async def _download_one(asset: CreativeAsset) -> None:
         from app.db.base import get_session_factory
+        from app.services.sync.thumbnail_utils import is_raw_cdn_url
         org_id_str = str(asset.organization_id)
         served_url = None
+        frame_thumb = None
         if asset.platform == "DV360":
             svc = DV360SyncService()
-            _, served_url = await svc._download_video_asset(
+            _, served_url, frame_thumb = await svc._download_video_asset(
                 youtube_video_id=asset.ad_id,
                 org_id=org_id_str,
                 ad_id=asset.ad_id,
             )
         elif asset.platform == "GOOGLE_ADS":
-            _, served_url = await google_ads_sync._download_video(
+            _, served_url, frame_thumb = await google_ads_sync._download_video(
                 youtube_video_id=asset.ad_id,
                 org_id=org_id_str,
                 ad_id=asset.ad_id,
@@ -706,6 +708,8 @@ async def redownload_missing_assets(
             db_asset = res.scalar_one_or_none()
             if db_asset:
                 db_asset.asset_url = served_url
+                if frame_thumb and (not db_asset.thumbnail_url or is_raw_cdn_url(db_asset.thumbnail_url)):
+                    db_asset.thumbnail_url = frame_thumb
                 session.add(db_asset)
                 score_res = await session.execute(
                     select(CreativeScoreResult).where(CreativeScoreResult.creative_asset_id == asset.id)
@@ -753,13 +757,15 @@ async def redownload_asset(
     if asset.platform not in ("DV360", "GOOGLE_ADS"):
         raise HTTPException(status_code=422, detail=f"Re-download not supported for platform {asset.platform}")
 
+    from app.services.sync.thumbnail_utils import is_raw_cdn_url
     org_id_str = str(asset.organization_id)
     served_url = None
+    frame_thumb = None
     try:
         if asset.platform == "DV360":
             from app.services.sync.dv360_sync import DV360SyncService, _CookiesExpiredError
             svc = DV360SyncService()
-            _, served_url = await svc._download_video_asset(
+            _, served_url, frame_thumb = await svc._download_video_asset(
                 youtube_video_id=asset.ad_id,
                 org_id=org_id_str,
                 ad_id=asset.ad_id,
@@ -767,7 +773,7 @@ async def redownload_asset(
         elif asset.platform == "GOOGLE_ADS":
             from app.services.sync.dv360_sync import _CookiesExpiredError
             from app.services.sync.google_ads_sync import google_ads_sync
-            _, served_url = await google_ads_sync._download_video(
+            _, served_url, frame_thumb = await google_ads_sync._download_video(
                 youtube_video_id=asset.ad_id,
                 org_id=org_id_str,
                 ad_id=asset.ad_id,
@@ -789,6 +795,8 @@ async def redownload_asset(
         raise HTTPException(status_code=502, detail="Failed to download video from YouTube — check yt-dlp cookies")
 
     asset.asset_url = served_url
+    if frame_thumb and (not asset.thumbnail_url or is_raw_cdn_url(asset.thumbnail_url)):
+        asset.thumbnail_url = frame_thumb
     db.add(asset)
 
     # Reset scoring so the next batch rescores with the new video

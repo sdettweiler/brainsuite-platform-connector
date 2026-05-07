@@ -696,7 +696,6 @@ class DV360SyncService:
                         metadata[vid] = {
                             "title": data.get("title", ""),
                             "author_name": data.get("author_name", ""),
-                            "thumbnail_url": f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg",
                         }
                     else:
                         logger.debug(f"oEmbed failed for video {vid}: HTTP {resp.status_code}")
@@ -1129,7 +1128,7 @@ class DV360SyncService:
         youtube_video_id: str,
         org_id: str,
         ad_id: str,
-    ) -> Tuple[Optional[float], Optional[str]]:
+    ) -> Tuple[Optional[float], Optional[str], Optional[str]]:
         from app.services.object_storage import get_object_storage
         obj_storage = get_object_storage()
 
@@ -1138,7 +1137,7 @@ class DV360SyncService:
         relative_path = f"creatives/{org_id}/{filename}"
 
         if obj_storage.file_exists(relative_path):
-            return None, obj_storage.served_url(relative_path)
+            return None, obj_storage.served_url(relative_path), None
 
         # Read cookies from DB first, fall back to env vars if DB is empty (D-11)
         cookies = await self._get_cookies_from_db()
@@ -1219,7 +1218,12 @@ class DV360SyncService:
                         duration = self._get_video_duration(actual_path)
                         served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
                         logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, label)
-                        return duration, served_url
+                        from app.services.sync.thumbnail_utils import extract_first_frame_and_upload
+                        thumb_path = f"creatives/{org_id}/thumb_dv360_{safe_id}.jpg"
+                        frame_thumb = None
+                        if not obj_storage.file_exists(thumb_path):
+                            frame_thumb = await extract_first_frame_and_upload(actual_path, org_id, ad_id, "dv360", obj_storage)
+                        return duration, served_url, frame_thumb
                     else:
                         logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
                 except _CookiesExpiredError:
@@ -1252,7 +1256,7 @@ class DV360SyncService:
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
-        return None, None
+        return None, None, None
 
     async def _download_youtube_thumbnail(
         self,
@@ -1719,6 +1723,7 @@ class DV360SyncService:
         if not can_download_video:
             logger.warning("  No valid cookies — attempting cookieless video downloads (may fail for restricted videos)")
 
+        cdn_thumb_ad_ids = set(thumb_results.keys())
         downloaded_videos = set()
         video_results = {}
         video_download_count = 0
@@ -1731,7 +1736,7 @@ class DV360SyncService:
                 if video_download_count > 0:
                     await asyncio.sleep(4)
                 try:
-                    vid_duration, vid_served = await self._download_video_asset(
+                    vid_duration, vid_served, frame_thumb = await self._download_video_asset(
                         yt_vid, org_id, ad_id
                     )
                     video_download_count += 1
@@ -1740,8 +1745,11 @@ class DV360SyncService:
                             "video_url": vid_served,
                             "asset_url": vid_served,
                             "video_duration_seconds": vid_duration,
+                            "frame_thumb": frame_thumb,
                         }
                         downloaded_videos.add(yt_vid)
+                    if frame_thumb and ad_id not in thumb_results:
+                        thumb_results[ad_id] = frame_thumb
                 except Exception as e:
                     video_download_count += 1
                     logger.warning("Video download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
@@ -1755,6 +1763,8 @@ class DV360SyncService:
                     set_vals["asset_url"] = r["asset_url"]
                 if r["video_duration_seconds"] is not None:
                     set_vals["video_duration_seconds"] = r["video_duration_seconds"]
+                if r.get("frame_thumb") and ad_id not in cdn_thumb_ad_ids:
+                    set_vals["thumbnail_url"] = r["frame_thumb"]
                 if set_vals:
                     stmt = (
                         sa_update(Dv360RawPerformance)
@@ -1778,6 +1788,7 @@ class DV360SyncService:
             from app.models.creative import CreativeAsset
             from app.models.ai_inference import AIInferenceTracking
             from datetime import datetime as _dt
+            from app.services.sync.thumbnail_utils import is_raw_cdn_url
 
             for ad_id, served_url in all_downloaded.items():
                 await db.execute(
@@ -1788,6 +1799,22 @@ class DV360SyncService:
                         or_(CreativeAsset.asset_url.is_(None), CreativeAsset.asset_url == ""),
                     )
                     .values(asset_url=served_url)
+                )
+
+            for ad_id, thumb_url in thumb_results.items():
+                await db.execute(
+                    _sa_update(CreativeAsset)
+                    .where(
+                        CreativeAsset.platform_connection_id == connection.id,
+                        CreativeAsset.ad_id == ad_id,
+                        or_(
+                            CreativeAsset.thumbnail_url.is_(None),
+                            CreativeAsset.thumbnail_url == "",
+                            CreativeAsset.thumbnail_url.like("%img.youtube.com%"),
+                            CreativeAsset.thumbnail_url.like("%ytimg.com%"),
+                        ),
+                    )
+                    .values(thumbnail_url=thumb_url)
                 )
 
             updated_ids_result = await db.execute(

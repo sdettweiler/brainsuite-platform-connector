@@ -265,7 +265,7 @@ class GoogleAdsSyncService:
         youtube_video_id: str,
         org_id: str,
         ad_id: str,
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         from app.services.object_storage import get_object_storage
         obj_storage = get_object_storage()
 
@@ -273,7 +273,7 @@ class GoogleAdsSyncService:
         relative_path = f"creatives/{org_id}/{filename}"
 
         if obj_storage.file_exists(relative_path):
-            return None, obj_storage.served_url(relative_path)
+            return None, obj_storage.served_url(relative_path), None
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
@@ -344,15 +344,20 @@ class GoogleAdsSyncService:
                 size_mb = os.path.getsize(actual_path) / (1024 * 1024)
                 served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
                 logger.info("  Downloaded Google Ads YouTube video: %s (%.1f MB)", filename, size_mb)
-                return None, served_url
+                from app.services.sync.thumbnail_utils import extract_first_frame_and_upload
+                thumb_rel = f"creatives/{org_id}/thumb_yt_{ad_id}.jpg"
+                frame_thumb = None
+                if not obj_storage.file_exists(thumb_rel):
+                    frame_thumb = await extract_first_frame_and_upload(actual_path, org_id, ad_id, "yt", obj_storage)
+                return None, served_url, frame_thumb
             else:
                 logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
-                return None, None
+                return None, None, None
         except _CookiesExpiredError:
             raise
         except Exception as e:
             logger.warning("Failed to download Google Ads video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
-            return None, None
+            return None, None, None
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -400,13 +405,11 @@ class GoogleAdsSyncService:
                 _, thumbnail_url = await self._download_thumbnail(
                     youtube_video_id, org_id, ad_id_str
                 )
-                _, video_url = await self._download_video(
+                _, video_url, frame_thumb = await self._download_video(
                     youtube_video_id, org_id, ad_id_str
                 )
-            if not thumbnail_url and youtube_video_id:
-                thumbnail_url = f"https://img.youtube.com/vi/{youtube_video_id}/maxresdefault.jpg"
-            if not video_url and youtube_video_id:
-                video_url = f"https://www.youtube.com/watch?v={youtube_video_id}"
+                if not thumbnail_url and frame_thumb:
+                    thumbnail_url = frame_thumb
 
             rows.append({
                 "platform_connection_id": connection.id,
