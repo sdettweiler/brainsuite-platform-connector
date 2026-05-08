@@ -160,6 +160,6 @@ Plans:
 | 14. YouTube Cookies Admin UI | v1.2 | 3/3 | Complete | 2026-04-27 |
 | 15. TikTok Asset Download | v1.3 | 2/2 | Complete | 2026-05-08 |
 | 16. Job Persistence Schema | v1.3 | 3/3 | Complete | 2026-05-08 |
-| 17. Service Instrumentation | v1.3 | 0/5 | Planned (5 plans) | - |
+| 17. Service Instrumentation | v1.3 | 0/6 | Planned (6 plans) | - |
 | 18. SSE Transport | v1.3 | 0/? | Not started | - |
 | 19. SuperAdmin Monitoring UI | v1.3 | 0/? | Not started | - |

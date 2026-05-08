@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: SuperAdmin Monitoring & TikTok Downloads
 status: executing
-stopped_at: Phase 17 context gathered
-last_updated: "2026-05-08T18:00:50.673Z"
-last_activity: 2026-05-08 — Phase 16 complete (BackgroundJob schema, migration d2e3f4a5b6c7, cleanup service)
+stopped_at: Phase 17 planned
+last_updated: "2026-05-08T19:00:00.000Z"
+last_activity: 2026-05-08 — Phase 17 planned (6 plans in 3 waves, INSTR-01–05)
 progress:
   total_phases: 2
   completed_phases: 2
-  total_plans: 5
+  total_plans: 6
   completed_plans: 5
-  percent: 100
+  percent: 83
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-07 — v1.3 milestone started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** v1.3 — Phase 16 (Job Persistence Schema) ready to execute
+**Current focus:** v1.3 — Phase 17 (Service Instrumentation) ready to execute
 
 ## Current Position
 
-Phase: 16 of 19 (Job Persistence Schema — planned, ready to execute)
-Status: Ready to execute — 3 plans in 2 waves
-Last activity: 2026-05-08 — Phase 16 complete (BackgroundJob schema, migration d2e3f4a5b6c7, cleanup service)
+Phase: 17 of 19 (Service Instrumentation — planned, ready to execute)
+Status: Ready to execute — 6 plans in 3 waves
+Last activity: 2026-05-08 — Phase 17 planned (job_tracker helper + 4 service instrumentations + Wave 3 tests)
 
 ```
-v1.3 Progress: [██░░░░░░░░] 1/5 phases complete
+v1.3 Progress: [████░░░░░░] 2/5 phases complete
 ```
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 15 | TikTok Asset Download | TKTOK-01, TKTOK-02 | ✅ Complete (2026-05-08) |
-| 16 | Job Persistence Schema | JOBS-01, JOBS-02 | Ready to execute (3 plans) |
-| 17 | Service Instrumentation | INSTR-01–05 | Not started |
+| 16 | Job Persistence Schema | JOBS-01, JOBS-02 | ✅ Complete (2026-05-08) |
+| 17 | Service Instrumentation | INSTR-01–05 | Ready to execute (6 plans) |
 | 18 | SSE Transport | SSE-01, SSE-02 | Not started |
 | 19 | SuperAdmin Monitoring UI | MON-01–07 | Not started |
 
@@ -52,7 +52,7 @@ v1.3 Progress: [██░░░░░░░░] 1/5 phases complete
 
 ### Blockers/Concerns
 
-- At Phase 17 start: confirm exact injection points in `scoring_job.py` and `ai_autofill.py` before writing instrumentation
+- Injection points in `scoring_job.py` and `ai_autofill.py` confirmed by Phase 17 research; safe to execute
 - At Phase 18 start: confirm actual SuperAdmin headcount for `--limit-concurrency` and `--workers` tuning
 - At Phase 15 start: verify yt-dlp `chrome-131` impersonation string against live TikTok URL (monthly drift risk)
 
