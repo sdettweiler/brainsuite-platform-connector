@@ -374,7 +374,9 @@ class TikTokSyncService:
                                          "creative_type", "is_spark_ad", "identity_type", "display_name",
                                          "landing_page_url", "video_id", "image_ids", "optimization_goal",
                                          "billing_event", "buying_type", "campaign_budget_mode",
-                                         "campaign_status", "call_to_action", "post_link", "thumbnail_url")}
+                                         "campaign_status", "call_to_action", "post_link", "thumbnail_url",
+                                         # populated by deferred _enrich_from_ad_get — preserve on re-sync
+                                         "asset_url", "video_source_url")}
         update_cols["is_processed"] = False
         stmt = stmt.on_conflict_do_update(
             constraint="uq_tiktok_daily_ad",
