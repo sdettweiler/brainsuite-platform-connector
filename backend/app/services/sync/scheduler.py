@@ -181,15 +181,16 @@ async def run_daily_sync(connection_id: str) -> None:
             return
         except Exception as e:
             logger.error(f"Daily sync fetch failed for connection {connection_id}: {type(e).__name__}: {e}")
-            await db.rollback()
-            job.status = "FAILED"
-            job.error_message = f"{type(e).__name__}: {e}"[:4000]
-            job.completed_at = datetime.utcnow()
-            db.add(job)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            from sqlalchemy import update as _upd
+            async with get_session_factory()() as fresh_db:
+                await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id)).values(sync_status="ERROR"))
+                await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == uuid.UUID(job_id)).values(status="FAILED", error_message=f"{type(e).__name__}: {e}"[:4000], completed_at=datetime.utcnow()))
+                await fresh_db.commit()
             await _notify_connection_status(connection, "ERROR")
-            connection.sync_status = "ERROR"
-            db.add(connection)
-            await db.commit()
             return
 
         if not is_dv360:
@@ -488,15 +489,16 @@ async def run_full_resync(connection_id: str) -> None:
             logger.error(f"Full resync fetch failed for connection {connection_id}: {type(e).__name__}: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            await db.rollback()
-            job.status = "FAILED"
-            job.error_message = f"{type(e).__name__}: {e}"[:4000]
-            job.completed_at = datetime.utcnow()
-            db.add(job)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            from sqlalchemy import update as _upd
+            async with get_session_factory()() as fresh_db:
+                await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id)).values(sync_status="ERROR"))
+                await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == uuid.UUID(job_id)).values(status="FAILED", error_message=f"{type(e).__name__}: {e}"[:4000], completed_at=datetime.utcnow()))
+                await fresh_db.commit()
             await _notify_connection_status(connection, "ERROR")
-            connection.sync_status = "ERROR"
-            db.add(connection)
-            await db.commit()
             return
 
         if not is_dv360 and _token_err is None:
@@ -740,11 +742,16 @@ async def run_initial_sync(connection_id: str) -> None:
 
         except Exception as e:
             logger.error(f"Initial sync fetch failed for {connection_id}: {type(e).__name__}: {e}")
-            await db.rollback()
-            job.status = "FAILED"
-            job.error_message = f"{type(e).__name__}: {e}"[:4000]
-            db.add(job)
-            await db.commit()
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            from sqlalchemy import update as _upd
+            async with get_session_factory()() as fresh_db:
+                await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id)).values(sync_status="ERROR"))
+                await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == uuid.UUID(job_id)).values(status="FAILED", error_message=f"{type(e).__name__}: {e}"[:4000], completed_at=datetime.utcnow()))
+                await fresh_db.commit()
+            await _notify_connection_status(connection, "ERROR")
             return
 
         if not is_dv360:
@@ -970,11 +977,16 @@ async def run_historical_sync(connection_id: str) -> None:
 
         except Exception as e:
             logger.error(f"Historical sync fetch failed for {connection_id}: {type(e).__name__}: {e}")
-            await db.rollback()
-            job.status = "FAILED"
-            job.error_message = f"{type(e).__name__}: {e}"[:4000]
-            db.add(job)
-            await db.commit()
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            from sqlalchemy import update as _upd
+            async with get_session_factory()() as fresh_db:
+                await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id)).values(sync_status="ERROR"))
+                await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == uuid.UUID(job_id)).values(status="FAILED", error_message=f"{type(e).__name__}: {e}"[:4000], completed_at=datetime.utcnow()))
+                await fresh_db.commit()
+            await _notify_connection_status(connection, "ERROR")
             return
 
         if not is_dv360:
