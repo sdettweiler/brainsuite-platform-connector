@@ -11,7 +11,7 @@ def test_cleanup_job_registration():
     mock_settings = MagicMock()
     mock_settings.SCHEDULER_ENABLED = True
 
-    with patch("app.services.sync.scheduler._settings", mock_settings), \
+    with patch("app.core.config.settings", mock_settings), \
          patch("app.services.sync.scheduler.scheduler", mock_scheduler):
         from app.services.sync.scheduler import startup_scheduler
         startup_scheduler()
