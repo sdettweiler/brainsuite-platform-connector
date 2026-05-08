@@ -15,6 +15,7 @@ from app.models.scoring import CreativeScoreResult
 from app.models.ai_inference import AIInferenceTracking
 from app.models.brainsuite_config import OrgBrainsuiteConfig, OrgBrainsuiteFieldMapping
 from app.models.system_config import SystemConfig
+from app.models.jobs import BackgroundJob
 
 __all__ = [
     "User", "Organization", "OrganizationRole", "RefreshToken",
@@ -29,4 +30,5 @@ __all__ = [
     "OrgBrainsuiteConfig",
     "OrgBrainsuiteFieldMapping",
     "SystemConfig",
+    "BackgroundJob",
 ]
