@@ -14,7 +14,7 @@ import glob
 def test_phase16_migration_file_exists():
     """Phase 16 migration file exists in alembic/versions with correct revision chain."""
     versions_dir = os.path.join(
-        os.path.dirname(__file__), "../../../alembic/versions"
+        os.path.dirname(__file__), "../../alembic/versions"
     )
     migration_files = glob.glob(os.path.join(versions_dir, "*background_jobs*.py"))
     assert len(migration_files) == 1, (
