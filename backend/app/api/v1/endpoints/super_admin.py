@@ -189,14 +189,13 @@ async def update_youtube_cookies(
         config.youtube_cookies_backup_encrypted = encrypt_token(payload.backup)
         logger.info("SuperAdmin updated backup YouTube cookie slot (cookie content not logged)")
 
-    # Reset each slot's expiry flag independently; stats reset on any update
+    # Reset each slot's expiry flag independently; stats/refreshed_at only reset when primary is replaced
     if payload.primary is not None:
         config.youtube_cookies_runtime_expired = False
-    if payload.backup is not None:
-        config.youtube_cookies_backup_runtime_expired = False
-    if payload.primary is not None or payload.backup is not None:
         config.youtube_cookies_download_count = 0
         config.youtube_cookies_refreshed_at = datetime.now(timezone.utc)
+    if payload.backup is not None:
+        config.youtube_cookies_backup_runtime_expired = False
 
     db.add(config)
     await db.commit()
@@ -220,7 +219,12 @@ async def update_youtube_cookies(
         except Exception:
             backup_status = "missing"
 
-    # runtime_expired was just reset to False — no override needed here
+    # Apply runtime_expired override per slot (same logic as GET)
+    if config.youtube_cookies_runtime_expired and primary_status != "missing":
+        primary_status = "expired"
+    if config.youtube_cookies_backup_runtime_expired and backup_status != "missing":
+        backup_status = "expired"
+
     return CookieHealthResponse(
         primary=CookieSlotHealth(status=primary_status),
         backup=CookieSlotHealth(status=backup_status),
