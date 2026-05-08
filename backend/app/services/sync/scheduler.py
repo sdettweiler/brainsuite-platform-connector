@@ -511,6 +511,7 @@ async def run_full_resync(connection_id: str) -> None:
                 dv360_info["refresh_token_encrypted"],
                 dv360_info["advertiser_id"],
                 dv360_info["date_from"], dv360_info["date_to"],
+                force_refetch_metadata=True,
             )
         except Exception as e:
             logger.error(f"DV360 full resync report fetch failed: {type(e).__name__}: {e}")
@@ -745,6 +746,7 @@ async def run_initial_sync(connection_id: str) -> None:
                 dv360_info["access_token"], dv360_info["connection_id"],
                 dv360_info["refresh_token_encrypted"],
                 dv360_info["advertiser_id"], date_from, date_to,
+                force_refetch_metadata=True,
             )
         except Exception as e:
             logger.error(f"DV360 initial sync report fetch failed: {type(e).__name__}: {e}")
@@ -960,6 +962,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 dv360_info["refresh_token_encrypted"],
                 dv360_info["advertiser_id"],
                 dv360_info["date_from"], dv360_info["date_to"],
+                force_refetch_metadata=True,
             )
         except Exception as e:
             logger.error(f"DV360 historical sync report fetch failed: {type(e).__name__}: {e}")

@@ -105,6 +105,7 @@ class DV360SyncService:
         advertiser_id: str,
         date_from: date,
         date_to: date,
+        force_refetch_metadata: bool = False,
     ) -> Dict[str, Any]:
         entity_maps = await self._fetch_entity_metadata(access_token, advertiser_id)
 
@@ -134,20 +135,27 @@ class DV360SyncService:
         except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as e:
             logger.warning("DV360: Conversion report failed (non-fatal, Floodlight may not be configured): %s: %s", type(e).__name__, e, exc_info=True)
 
-        known_ids = set(entity_maps.youtube_metadata.keys())
-        new_ids = csv_video_ids - known_ids
-        if new_ids:
-            logger.info(f"DV360: {len(new_ids)} video IDs from CSV not in adGroupAds, fetching metadata")
-            extra_meta = await self._fetch_youtube_metadata(list(new_ids))
-            merged_yt_meta = {**entity_maps.youtube_metadata, **extra_meta}
-            merged_vid_meta = dict(entity_maps.video_metadata)
-            for vid in new_ids:
-                if vid not in merged_vid_meta:
-                    merged_vid_meta[vid] = {"ad_type_label": "", "ad_name": "", "line_item_id": ""}
-            entity_maps = entity_maps._replace(
-                youtube_metadata=merged_yt_meta,
-                video_metadata=merged_vid_meta,
-            )
+        # For full resyncs fetch oEmbed for all account videos; for daily only fill gaps.
+        known_video_ids = set(entity_maps.video_metadata.keys())
+        if force_refetch_metadata:
+            oembed_ids = known_video_ids | csv_video_ids
+        else:
+            oembed_ids = csv_video_ids - known_video_ids
+
+        youtube_metadata: Dict[str, Dict[str, Any]] = {}
+        if oembed_ids:
+            logger.info(f"DV360: fetching oEmbed for {len(oembed_ids)} video IDs ({'full account' if force_refetch_metadata else 'report only'})")
+            youtube_metadata = await self._fetch_youtube_metadata(list(oembed_ids))
+
+        video_metadata = dict(entity_maps.video_metadata)
+        for vid in csv_video_ids:
+            if vid not in video_metadata:
+                video_metadata[vid] = {"ad_type_label": "", "ad_name": "", "line_item_id": ""}
+
+        entity_maps = entity_maps._replace(
+            youtube_metadata=youtube_metadata,
+            video_metadata=video_metadata,
+        )
 
         return {
             "perf_records": perf_records,
@@ -271,6 +279,8 @@ class DV360SyncService:
 
             ad_groups = results[4] if isinstance(results[4], dict) else {}
             ad_group_ads = results[5] if isinstance(results[5], list) else []
+            if not ad_group_ads and line_items:
+                logger.warning("DV360 v4: adGroupAds returned empty but %d line items exist — video metadata may be incomplete", len(line_items))
             if isinstance(results[6], str):
                 advertiser_timezone = results[6]
 
@@ -327,8 +337,6 @@ class DV360SyncService:
             f"timezone={advertiser_timezone}"
         )
 
-        youtube_metadata = await self._fetch_youtube_metadata(list(all_video_ids))
-
         return EntityMaps(
             campaigns=campaigns,
             insertion_orders=insertion_orders,
@@ -336,7 +344,7 @@ class DV360SyncService:
             creatives=creatives,
             line_item_videos=line_item_videos,
             advertiser_timezone=advertiser_timezone,
-            youtube_metadata=youtube_metadata,
+            youtube_metadata={},
             video_metadata=video_metadata,
         )
 
@@ -680,12 +688,13 @@ class DV360SyncService:
         video_ids: List[str],
     ) -> Dict[str, Dict[str, Any]]:
         """Fetch video title and thumbnail via YouTube oEmbed (no auth required)."""
-        metadata: Dict[str, Dict[str, Any]] = {}
         if not video_ids:
-            return metadata
+            return {}
 
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            for vid in video_ids:
+        sem = asyncio.Semaphore(20)
+
+        async def _fetch_one(client: httpx.AsyncClient, vid: str):
+            async with sem:
                 try:
                     resp = await client.get(
                         "https://www.youtube.com/oembed",
@@ -693,15 +702,19 @@ class DV360SyncService:
                     )
                     if resp.status_code == 200:
                         data = resp.json()
-                        metadata[vid] = {
-                            "title": data.get("title", ""),
-                            "author_name": data.get("author_name", ""),
-                        }
+                        return vid, {"title": data.get("title", ""), "author_name": data.get("author_name", "")}
+                    if resp.status_code not in (401, 403, 404):
+                        logger.warning("oEmbed HTTP %s for video %s — may be transient", resp.status_code, vid)
                     else:
-                        logger.debug(f"oEmbed failed for video {vid}: HTTP {resp.status_code}")
+                        logger.debug("oEmbed failed for video %s: HTTP %s", vid, resp.status_code)
                 except (httpx.RequestError, httpx.HTTPStatusError) as e:
                     logger.debug("oEmbed failed for video %s: %s", vid, e)
+            return vid, None
 
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            results = await asyncio.gather(*[_fetch_one(client, vid) for vid in video_ids])
+
+        metadata = {vid: data for vid, data in results if data is not None}
         logger.info(f"YouTube oEmbed: fetched metadata for {len(metadata)}/{len(video_ids)} videos")
         return metadata
 
