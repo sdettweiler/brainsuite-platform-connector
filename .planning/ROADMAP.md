@@ -46,7 +46,7 @@
 **Milestone Goal:** A SuperAdmin can see every background job running on the platform in real time — sync runs, asset downloads, AI autofills, scoring — with progress bars, drill-in detail views, and full error tracebacks; TikTok asset download gap is closed.
 
 - [x] **Phase 15: TikTok Asset Download** - Close the TikTok video and image download gap to unblock AI autofill and BrainSuite scoring (complete 2026-05-08)
-- [ ] **Phase 16: Job Persistence Schema** - PostgreSQL `background_jobs` table with indexes, autovacuum tuning, and cleanup job
+- [x] **Phase 16: Job Persistence Schema** - PostgreSQL `background_jobs` table with indexes, autovacuum tuning, and cleanup job (complete 2026-05-08)
 - [ ] **Phase 17: Service Instrumentation** - Wire all four job types (sync, download, autofill, scoring) to write job records with progress
 - [ ] **Phase 18: SSE Transport** - FastAPI streaming endpoint with keepalive heartbeats and connection lifecycle management
 - [ ] **Phase 19: SuperAdmin Monitoring UI** - Angular job monitor at /configuration/admin with real-time updates and drill-in detail panels
@@ -146,7 +146,7 @@ Plans:
 | 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 4/4 | Complete | 2026-04-21 |
 | 14. YouTube Cookies Admin UI | v1.2 | 3/3 | Complete | 2026-04-27 |
 | 15. TikTok Asset Download | v1.3 | 2/2 | Complete | 2026-05-08 |
-| 16. Job Persistence Schema | v1.3 | 0/3 | Not started | - |
+| 16. Job Persistence Schema | v1.3 | 3/3 | Complete | 2026-05-08 |
 | 17. Service Instrumentation | v1.3 | 0/? | Not started | - |
 | 18. SSE Transport | v1.3 | 0/? | Not started | - |
 | 19. SuperAdmin Monitoring UI | v1.3 | 0/? | Not started | - |
