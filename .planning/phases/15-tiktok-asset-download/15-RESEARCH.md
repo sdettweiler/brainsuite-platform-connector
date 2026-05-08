@@ -422,22 +422,25 @@ await db.execute(
 
 **User confirmation needed:** Assumptions A1, A2, A3, A4 before implementation begins. Recommendation: validate `/file/video/ad/` and `/file/image/ad/` endpoints against TikTok sandbox before coding Phase 15.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Spark Ad Video Download Endpoint**
    - What we know: `tiktok_creator_auth_code` field exists and is populated for Spark ads
    - What's unclear: Does `/file/video/ad/` work with Spark ads? Do we need to use a different endpoint or pass auth_code as a parameter?
    - Recommendation: Test `/file/video/ad/` with a known Spark ad in TikTok sandbox. If it fails, investigate TikTok Business API docs for creator-specific video endpoints.
+   - **RESOLVED:** D-02 mandates skip-silently fallback; no Spark ad API endpoint found during research. Implemented as `if not is_spark` guard in `_enrich_from_ad_get` — `asset_url` left as None for Spark ads.
 
 2. **Image Resolution for Image-Only Ads**
    - What we know: `/file/image/ad/` returns image URLs for image_ids
    - What's unclear: Are these full-resolution images suitable for scoring, or are they thumbnail-sized (like the cover image)?
    - Recommendation: Download an image-only ad asset and inspect dimensions. If < 400x300px, escalate as limitation.
+   - **RESOLVED:** Accepted risk — images from `/file/image/ad/` are used as-is; a size-guard (reject responses < 100 bytes as corrupt) is included in `_download_image_asset`. Escalation path documented in VALIDATION.md manual-only section. TikTok image-only ads flow to AI autofill; BrainSuite scoring of TikTok images was never in scope (UNSUPPORTED status by design per Phase 5 D-11).
 
 3. **Download Time Impact on Sync Duration**
    - What we know: Inline download adds HTTP latency to sync runtime (D-04 decision)
    - What's unclear: For accounts with 500+ video ads, how much does sync duration increase? Is it acceptable?
    - Recommendation: Monitor Phase 15 UAT on large accounts. If sync > 30 minutes, consider post-commit deferred task pattern (like Meta).
+   - **RESOLVED:** Accepted risk per D-04 decision (inline download). Deferred task strategy available if UAT reveals sync > 30 minutes on large accounts. Monitoring during UAT is documented in VALIDATION.md manual-only section.
 
 ## Environment Availability
 
