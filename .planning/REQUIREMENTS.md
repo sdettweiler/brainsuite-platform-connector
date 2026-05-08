@@ -7,8 +7,8 @@
 
 ### TikTok Asset Download (TKTOK)
 
-- [ ] **TKTOK-01**: User sees TikTok video creatives in the dashboard after sync (video files downloaded to MinIO/S3, stored as video_url on CreativeAsset)
-- [ ] **TKTOK-02**: User sees TikTok image creatives in the dashboard after sync (image files downloaded to MinIO/S3, stored as image_url on CreativeAsset)
+- [x] **TKTOK-01**: User sees TikTok video creatives in the dashboard after sync (video files downloaded to MinIO/S3, stored as video_url on CreativeAsset) — Validated in Phase 15 (2026-05-08)
+- [x] **TKTOK-02**: User sees TikTok image creatives in the dashboard after sync (image files downloaded to MinIO/S3, stored as image_url on CreativeAsset) — Validated in Phase 15 (2026-05-08)
 
 ### Job Persistence Layer (JOBS)
 
@@ -74,8 +74,8 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| TKTOK-01 | Phase 15 | Pending |
-| TKTOK-02 | Phase 15 | Pending |
+| TKTOK-01 | Phase 15 | Complete (2026-05-08) |
+| TKTOK-02 | Phase 15 | Complete (2026-05-08) |
 | JOBS-01 | Phase 16 | Pending |
 | JOBS-02 | Phase 16 | Pending |
 | INSTR-01 | Phase 17 | Pending |

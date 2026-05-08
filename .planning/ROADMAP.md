@@ -45,7 +45,7 @@
 
 **Milestone Goal:** A SuperAdmin can see every background job running on the platform in real time — sync runs, asset downloads, AI autofills, scoring — with progress bars, drill-in detail views, and full error tracebacks; TikTok asset download gap is closed.
 
-- [ ] **Phase 15: TikTok Asset Download** - Close the TikTok video and image download gap to unblock AI autofill and BrainSuite scoring
+- [x] **Phase 15: TikTok Asset Download** - Close the TikTok video and image download gap to unblock AI autofill and BrainSuite scoring (complete 2026-05-08)
 - [ ] **Phase 16: Job Persistence Schema** - PostgreSQL `background_jobs` table with indexes, autovacuum tuning, and cleanup job
 - [ ] **Phase 17: Service Instrumentation** - Wire all four job types (sync, download, autofill, scoring) to write job records with progress
 - [ ] **Phase 18: SSE Transport** - FastAPI streaming endpoint with keepalive heartbeats and connection lifecycle management
@@ -53,7 +53,7 @@
 
 ## Phase Details
 
-### Phase 15: TikTok Asset Download
+### ✅ Phase 15: TikTok Asset Download (complete 2026-05-08)
 **Goal**: TikTok video and image creatives are downloaded to MinIO/S3 during sync, closing the gap that blocks AI autofill and BrainSuite scoring for TikTok assets
 **Depends on**: Phase 14 (existing sync pipeline)
 **Requirements**: TKTOK-01, TKTOK-02
