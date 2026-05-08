@@ -505,19 +505,37 @@ class GoogleAdsSyncService:
     ) -> None:
         """Download thumbnails + videos for queued ads and UPDATE rows. Called after sync commit."""
         from sqlalchemy import update as sa_update
+        cookies_expired = False
         for ad_id, info in asset_queue.items():
             youtube_video_id = info.get("youtube_video_id")
             org_id = info.get("org_id")
             if not youtube_video_id or not org_id:
                 continue
+
+            # Thumbnail is a plain HTTP fetch from img.youtube.com — no cookies needed.
+            # Always attempt independently so it lands even when video download fails.
+            thumbnail_url: Optional[str] = None
             try:
                 _, thumbnail_url = await self._download_thumbnail(youtube_video_id, org_id, ad_id)
-                _, video_url, frame_thumb = await self._download_video(youtube_video_id, org_id, ad_id)
-                if not thumbnail_url and frame_thumb:
-                    thumbnail_url = frame_thumb
             except Exception as e:
-                logger.warning("Asset download failed for ad %s: %s", ad_id, e)
-                continue
+                logger.warning("Thumbnail download failed for ad %s: %s", ad_id, e)
+
+            # Video download requires yt-dlp + cookies. On _CookiesExpiredError we abort
+            # remaining video downloads but still persist the thumbnail we already have.
+            video_url: Optional[str] = None
+            frame_thumb: Optional[str] = None
+            if not cookies_expired:
+                try:
+                    _, video_url, frame_thumb = await self._download_video(youtube_video_id, org_id, ad_id)
+                except _CookiesExpiredError:
+                    cookies_expired = True
+                    logger.warning("YouTube cookies expired — skipping video downloads for remaining ads in queue")
+                except Exception as e:
+                    logger.warning("Video download failed for ad %s: %s", ad_id, e)
+
+            if not thumbnail_url and frame_thumb:
+                thumbnail_url = frame_thumb
+
             update_vals: Dict[str, Any] = {}
             if video_url:
                 update_vals["video_url"] = video_url
@@ -533,6 +551,8 @@ class GoogleAdsSyncService:
                     .values(**update_vals)
                 )
         await db.commit()
+        if cookies_expired:
+            raise _CookiesExpiredError("YouTube cookies expired during asset download")
 
 
 google_ads_sync = GoogleAdsSyncService()
