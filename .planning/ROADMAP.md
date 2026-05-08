@@ -78,9 +78,16 @@ Plans:
   3. Alembic migration runs cleanly on a fresh database and on the existing production schema
 **Plans**: 3 plans
 Plans:
+**Wave 1**
 - [ ] 16-01-PLAN.md — BackgroundJob model (jobs.py), __init__.py export, Wave-0 test scaffolds
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 16-02-PLAN.md — Alembic migration with autovacuum tuning + BLOCKING alembic upgrade head verification
 - [ ] 16-03-PLAN.md — Maintenance service (maintenance.py) + scheduler registration (JOBS-02)
+
+**Cross-cutting constraints:**
+- BackgroundJob model must be importable via `from app.models.jobs import BackgroundJob` before migration or maintenance code runs
+- All status values must be: PENDING, RUNNING, COMPLETE, FAILED (consistent with SyncJob)
 
 ### Phase 17: Service Instrumentation
 **Goal**: All four background job types (sync, download, autofill, scoring) write job records with real-time progress updates throughout execution
