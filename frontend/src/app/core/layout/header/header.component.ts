@@ -46,8 +46,12 @@ interface NotificationItem {
           <div class="notif-header" (click)="$event.stopPropagation()">
             <span>Notifications</span>
             <div class="notif-header-actions">
-              <button *ngIf="unreadCount > 0" mat-button class="mark-all-btn" (click)="markAllRead()">Mark all read</button>
-              <button *ngIf="notifications.length > 0" mat-button class="mark-all-btn" (click)="clearAll()">Clear all</button>
+              <button *ngIf="unreadCount > 0" mat-icon-button class="notif-action-btn" matTooltip="Mark all read" matTooltipPosition="below" (click)="markAllRead()">
+                <i class="bi bi-eye"></i>
+              </button>
+              <button *ngIf="notifications.length > 0" mat-icon-button class="notif-action-btn notif-action-btn--danger" matTooltip="Clear all" matTooltipPosition="below" (click)="clearAll()">
+                <i class="bi bi-trash"></i>
+              </button>
             </div>
           </div>
           <mat-divider />
@@ -256,16 +260,19 @@ interface NotificationItem {
     .notif-header-actions {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 2px;
     }
 
-    .mark-all-btn {
-      font-size: 12px !important;
-      color: var(--accent) !important;
-      min-width: auto !important;
-      padding: 0 8px !important;
-      height: 28px !important;
-      line-height: 28px !important;
+    .notif-action-btn {
+      width: 30px !important;
+      height: 30px !important;
+      line-height: 30px !important;
+      color: var(--text-secondary, #888) !important;
+      opacity: 0.7;
+      transition: opacity 0.15s, color 0.15s;
+      i { font-size: 15px; }
+      &:hover { opacity: 1; color: var(--accent) !important; }
+      &--danger:hover { color: #e53935 !important; }
     }
 
     .notif-empty {
