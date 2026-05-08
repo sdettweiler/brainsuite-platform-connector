@@ -45,7 +45,10 @@ interface NotificationItem {
         <mat-menu #notifMenu="matMenu" xPosition="before" class="notif-menu">
           <div class="notif-header" (click)="$event.stopPropagation()">
             <span>Notifications</span>
-            <button *ngIf="unreadCount > 0" mat-button class="mark-all-btn" (click)="markAllRead()">Mark all read</button>
+            <div class="notif-header-actions">
+              <button *ngIf="unreadCount > 0" mat-button class="mark-all-btn" (click)="markAllRead()">Mark all read</button>
+              <button *ngIf="notifications.length > 0" mat-button class="mark-all-btn" (click)="clearAll()">Clear all</button>
+            </div>
           </div>
           <mat-divider />
           <div *ngIf="notifications.length === 0" class="notif-empty" (click)="$event.stopPropagation()">
@@ -250,6 +253,12 @@ interface NotificationItem {
       span { font-weight: 600; font-size: 14px; }
     }
 
+    .notif-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
     .mark-all-btn {
       font-size: 12px !important;
       color: var(--accent) !important;
@@ -426,6 +435,15 @@ export class HeaderComponent implements OnInit, OnDestroy {
     this.api.post('/users/notifications/read-all', {}).subscribe({
       next: () => {
         this.notifications.forEach(n => n.is_read = true);
+        this.unreadCount = 0;
+      },
+    });
+  }
+
+  clearAll(): void {
+    this.api.delete('/users/notifications').subscribe({
+      next: () => {
+        this.notifications = [];
         this.unreadCount = 0;
       },
     });

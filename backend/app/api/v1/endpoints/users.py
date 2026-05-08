@@ -420,3 +420,16 @@ async def mark_all_notifications_read(
         db.add(notif)
     await db.commit()
     return {"detail": "All notifications marked as read"}
+
+
+@router.delete("/notifications")
+async def clear_all_notifications(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import delete as _del
+    result = await db.execute(
+        _del(Notification).where(Notification.user_id == current_user.id)
+    )
+    await db.commit()
+    return {"deleted": result.rowcount}

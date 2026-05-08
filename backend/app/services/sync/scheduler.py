@@ -1181,6 +1181,24 @@ def remove_connection_schedule(connection_id: str) -> None:
         scheduler.remove_job(job_id)
 
 
+async def purge_read_notifications() -> None:
+    """Delete read notifications older than 3 days."""
+    from sqlalchemy import delete
+    from app.models.user import Notification
+    cutoff = datetime.utcnow() - timedelta(days=3)
+    async with get_session_factory()() as db:
+        result = await db.execute(
+            delete(Notification).where(
+                Notification.is_read == True,
+                Notification.created_at < cutoff,
+            )
+        )
+        deleted = result.rowcount
+        if deleted:
+            await db.commit()
+            logger.info(f"Purged {deleted} read notifications older than 3 days")
+
+
 async def startup_scheduler(db_session=None) -> None:
     """Load all active connections and schedule their daily syncs.
     Also triggers initial sync for any connections that missed it."""
@@ -1213,6 +1231,13 @@ async def startup_scheduler(db_session=None) -> None:
             max_instances=10,
         )
         logger.info("Registered scoring_batch job (every 15 minutes)")
+        scheduler.add_job(
+            purge_read_notifications,
+            trigger=CronTrigger(hour=3, minute=0),
+            id="purge_read_notifications",
+            replace_existing=True,
+        )
+        logger.info("Registered purge_read_notifications job (daily at 03:00 UTC)")
     else:
         logger.info("SCHEDULER_ENABLED=False — skipping scoring_batch registration")
 
