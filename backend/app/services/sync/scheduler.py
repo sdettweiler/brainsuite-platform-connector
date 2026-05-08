@@ -82,6 +82,33 @@ async def _notify_connection_status(connection, new_status: str) -> None:
         ))
 
 
+async def _supersede_running_jobs(connection_id: str) -> int:
+    """Mark any RUNNING SyncJobs for this connection as FAILED (superseded). Returns count superseded."""
+    from sqlalchemy import update
+    from app.models.performance import SyncJob
+    import uuid
+    async with get_session_factory()() as db:
+        result = await db.execute(
+            update(SyncJob)
+            .where(
+                SyncJob.platform_connection_id == uuid.UUID(connection_id),
+                SyncJob.status == "RUNNING",
+            )
+            .values(
+                status="FAILED",
+                error_message="Superseded by new sync",
+                completed_at=datetime.utcnow(),
+            )
+            .returning(SyncJob.id)
+        )
+        rows = result.fetchall()
+        count = len(rows)
+        if count:
+            await db.commit()
+            logger.info(f"Superseded {count} running sync job(s) for connection {connection_id}")
+        return count
+
+
 async def run_daily_sync(connection_id: str) -> None:
     """Execute daily sync for a single platform connection."""
     from sqlalchemy import select
@@ -102,6 +129,8 @@ async def run_daily_sync(connection_id: str) -> None:
     is_dv360 = False
     dv360_report_data = None
     dv360_info = None
+
+    await _supersede_running_jobs(connection_id)
 
     async with get_session_factory()() as db:
         result = await db.execute(
@@ -419,6 +448,8 @@ async def run_full_resync(connection_id: str) -> None:
     _terr_org_id = None
     _terr_platform = None
 
+    await _supersede_running_jobs(connection_id)
+
     async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(
@@ -695,6 +726,8 @@ async def run_initial_sync(connection_id: str) -> None:
     conn_id_for_assets = None
     trigger_historical = False
 
+    await _supersede_running_jobs(connection_id)
+
     async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id))
@@ -918,6 +951,8 @@ async def run_historical_sync(connection_id: str) -> None:
     dv360_info = None
     dv360_asset_queue = None
     conn_id_for_assets = None
+
+    await _supersede_running_jobs(connection_id)
 
     async with get_session_factory()() as db:
         result = await db.execute(
