@@ -48,6 +48,7 @@ class GoogleAdsSyncService:
 
         total_fetched = 0
         total_upserted = 0
+        all_asset_queue: Dict[str, Dict[str, str]] = {}
 
         chunk_start = date_from
         while chunk_start <= date_to:
@@ -55,14 +56,15 @@ class GoogleAdsSyncService:
             records = await self._fetch_video_ad_performance(
                 access_token, customer_id, chunk_start, chunk_end
             )
-            upserted = await self._upsert_records(
+            upserted, chunk_queue = await self._upsert_records(
                 db, connection, records, sync_job_id, asset_map, org_id
             )
+            all_asset_queue.update(chunk_queue)
             total_fetched += len(records)
             total_upserted += upserted
             chunk_start = chunk_end + timedelta(days=1)
 
-        return {"fetched": total_fetched, "upserted": total_upserted}
+        return {"fetched": total_fetched, "upserted": total_upserted, "_asset_queue": all_asset_queue}
 
     async def _fetch_youtube_asset_map(
         self, access_token: str, customer_id: str
@@ -405,11 +407,12 @@ class GoogleAdsSyncService:
         sync_job_id: Optional[str],
         asset_map: Optional[Dict[str, str]] = None,
         org_id: Optional[str] = None,
-    ) -> int:
+    ) -> Tuple[int, Dict[str, Dict[str, str]]]:
         if not records:
-            return 0
+            return 0, {}
 
         asset_map = asset_map or {}
+        asset_queue: Dict[str, Dict[str, str]] = {}
 
         rows = []
         for r in records:
@@ -435,17 +438,8 @@ class GoogleAdsSyncService:
             youtube_video_id = self._extract_youtube_id(ad, asset_map)
             ad_id_str = str(ad.get("id", ""))
 
-            video_url = None
-            thumbnail_url = None
-            if youtube_video_id and org_id:
-                _, thumbnail_url = await self._download_thumbnail(
-                    youtube_video_id, org_id, ad_id_str
-                )
-                _, video_url, frame_thumb = await self._download_video(
-                    youtube_video_id, org_id, ad_id_str
-                )
-                if not thumbnail_url and frame_thumb:
-                    thumbnail_url = frame_thumb
+            if youtube_video_id and org_id and ad_id_str not in asset_queue:
+                asset_queue[ad_id_str] = {"youtube_video_id": youtube_video_id, "org_id": org_id}
 
             rows.append({
                 "platform_connection_id": connection.id,
@@ -460,8 +454,8 @@ class GoogleAdsSyncService:
                 "ad_id": ad_id_str,
                 "ad_name": ad.get("name"),
                 "video_id": youtube_video_id,
-                "video_url": video_url,
-                "thumbnail_url": thumbnail_url,
+                "video_url": None,
+                "thumbnail_url": None,
                 "placement_type": campaign.get("advertisingChannelType"),
                 "currency": connection.currency,
                 "spend": spend,
@@ -495,13 +489,50 @@ class GoogleAdsSyncService:
                 "roas": stmt.excluded.roas,
                 "video_views": stmt.excluded.video_views,
                 "video_id": stmt.excluded.video_id,
-                "video_url": stmt.excluded.video_url,
-                "thumbnail_url": stmt.excluded.thumbnail_url,
+                # video_url / thumbnail_url intentionally omitted: preserve any
+                # already-downloaded URLs on re-sync; post-commit task fills NULLs.
                 "is_processed": False,
             }
         )
         await db.execute(stmt)
-        return len(rows)
+        return len(rows), asset_queue
+
+    async def download_assets_post_commit(
+        self,
+        db: AsyncSession,
+        connection: PlatformConnection,
+        asset_queue: Dict[str, Dict[str, str]],
+    ) -> None:
+        """Download thumbnails + videos for queued ads and UPDATE rows. Called after sync commit."""
+        from sqlalchemy import update as sa_update
+        for ad_id, info in asset_queue.items():
+            youtube_video_id = info.get("youtube_video_id")
+            org_id = info.get("org_id")
+            if not youtube_video_id or not org_id:
+                continue
+            try:
+                _, thumbnail_url = await self._download_thumbnail(youtube_video_id, org_id, ad_id)
+                _, video_url, frame_thumb = await self._download_video(youtube_video_id, org_id, ad_id)
+                if not thumbnail_url and frame_thumb:
+                    thumbnail_url = frame_thumb
+            except Exception as e:
+                logger.warning("Asset download failed for ad %s: %s", ad_id, e)
+                continue
+            update_vals: Dict[str, Any] = {}
+            if video_url:
+                update_vals["video_url"] = video_url
+            if thumbnail_url:
+                update_vals["thumbnail_url"] = thumbnail_url
+            if update_vals:
+                await db.execute(
+                    sa_update(GoogleAdsRawPerformance)
+                    .where(
+                        GoogleAdsRawPerformance.ad_id == ad_id,
+                        GoogleAdsRawPerformance.platform_connection_id == connection.id,
+                    )
+                    .values(**update_vals)
+                )
+        await db.commit()
 
 
 google_ads_sync = GoogleAdsSyncService()

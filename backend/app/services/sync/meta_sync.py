@@ -167,13 +167,10 @@ class MetaSyncService:
             await self._enrich_ad_dimensions(
                 db, connection, access_token, list(all_ad_ids)
             )
-            logger.info(f"  Fetching creatives for {len(all_ad_ids)} unique ads")
-            await self._fetch_and_store_creatives(
-                db, connection, access_token, account_id, list(all_ad_ids)
-            )
+            # Creative asset download deferred to post-commit task to release DB session.
 
         logger.info(f"Meta sync complete: fetched={total_fetched}, upserted={total_upserted}")
-        return {"fetched": total_fetched, "upserted": total_upserted}
+        return {"fetched": total_fetched, "upserted": total_upserted, "_creative_ad_ids": list(all_ad_ids) if all_ad_ids else []}
 
     async def _fetch_insights(
         self,
@@ -868,6 +865,32 @@ class MetaSyncService:
             logger.info(f"  Updated creatives for batch of {len(batch)} ads")
 
         await db.commit()
+
+    async def fetch_and_store_creatives_deferred(
+        self,
+        connection_id,
+        ad_ids: List[str],
+    ) -> None:
+        """Post-commit creative fetch: opens own DB session so it doesn't hold the sync session."""
+        from app.db.base import get_session_factory
+        from app.models.platform import PlatformConnection
+        from sqlalchemy import select
+        import uuid
+        try:
+            async with get_session_factory()() as db:
+                conn = (await db.execute(
+                    select(PlatformConnection).where(
+                        PlatformConnection.id == (connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id)))
+                    )
+                )).scalar_one_or_none()
+                if not conn:
+                    return
+                access_token = decrypt_token(conn.access_token_encrypted)
+                account_id = f"act_{conn.ad_account_id}"
+                logger.info(f"Meta deferred creative fetch: {len(ad_ids)} ads for {account_id}")
+                await self._fetch_and_store_creatives(db, conn, access_token, account_id, ad_ids)
+        except Exception as e:
+            logger.warning("Meta deferred creative fetch failed (non-fatal): %s", e)
 
     async def _batch_fetch_ad_creatives(
         self,

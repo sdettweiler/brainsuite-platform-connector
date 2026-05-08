@@ -151,12 +151,10 @@ class TikTokSyncService:
             total_upserted += upserted
             chunk_start = chunk_end + timedelta(days=1)
 
-        if all_ad_ids:
-            logger.info(f"  Fetching ad info for {len(all_ad_ids)} unique ads via /ad/get/")
-            await self._enrich_from_ad_get(db, connection, access_token, advertiser_id, list(all_ad_ids))
+        # Ad creative enrichment (thumbnails) deferred to post-commit task to release DB session.
 
         logger.info(f"TikTok sync complete: fetched={total_fetched}, upserted={total_upserted}")
-        return {"fetched": total_fetched, "upserted": total_upserted}
+        return {"fetched": total_fetched, "upserted": total_upserted, "_creative_ad_ids": list(all_ad_ids) if all_ad_ids else []}
 
     async def _fetch_ad_reports(
         self,
@@ -455,6 +453,32 @@ class TikTokSyncService:
             logger.info(f"  Enriched {len(batch)} ads from /ad/get/")
 
         await db.commit()
+
+    async def enrich_creatives_deferred(
+        self,
+        connection_id,
+        ad_ids: List[str],
+    ) -> None:
+        """Post-commit creative enrichment: opens own DB session so it doesn't hold the sync session."""
+        from app.db.base import get_session_factory
+        from app.models.platform import PlatformConnection
+        from sqlalchemy import select
+        import uuid
+        try:
+            async with get_session_factory()() as db:
+                conn = (await db.execute(
+                    select(PlatformConnection).where(
+                        PlatformConnection.id == (connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id)))
+                    )
+                )).scalar_one_or_none()
+                if not conn:
+                    return
+                access_token = decrypt_token(conn.access_token_encrypted)
+                advertiser_id = conn.ad_account_id
+                logger.info(f"TikTok deferred creative enrichment: {len(ad_ids)} ads for {advertiser_id}")
+                await self._enrich_from_ad_get(db, conn, access_token, advertiser_id, ad_ids)
+        except Exception as e:
+            logger.warning("TikTok deferred creative enrichment failed (non-fatal): %s", e)
 
     async def _fetch_cover_image_url(
         self,

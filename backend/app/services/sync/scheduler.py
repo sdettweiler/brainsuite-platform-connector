@@ -213,6 +213,12 @@ async def run_daily_sync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
+                if platform == "GOOGLE_ADS" and result.get("_asset_queue"):
+                    asyncio.create_task(_run_google_ads_asset_downloads(connection.id, result["_asset_queue"]))
+                elif platform == "META" and result.get("_creative_ad_ids"):
+                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, result["_creative_ad_ids"]))
+                elif platform == "TIKTOK" and result.get("_creative_ad_ids"):
+                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, result["_creative_ad_ids"]))
                 logger.info(f"Daily sync completed for {connection.platform} {connection.ad_account_id}: {result}")
 
             except Exception as e:
@@ -321,6 +327,36 @@ async def run_daily_sync(connection_id: str) -> None:
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
+
+
+async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> None:
+    from app.services.sync.google_ads_sync import google_ads_sync
+    from sqlalchemy import select
+    from app.models.platform import PlatformConnection
+    import uuid
+    try:
+        async with get_session_factory()() as db:
+            result = await db.execute(
+                select(PlatformConnection).where(
+                    PlatformConnection.id == (connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id)))
+                )
+            )
+            connection = result.scalar_one_or_none()
+            if not connection:
+                return
+            await google_ads_sync.download_assets_post_commit(db, connection, asset_queue)
+    except Exception as e:
+        logger.warning(f"Google Ads asset download failed (non-fatal): {e}")
+
+
+async def _run_meta_creatives_deferred(connection_id, ad_ids: list) -> None:
+    from app.services.sync.meta_sync import meta_sync
+    await meta_sync.fetch_and_store_creatives_deferred(connection_id, ad_ids)
+
+
+async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list) -> None:
+    from app.services.sync.tiktok_sync import tiktok_sync
+    await tiktok_sync.enrich_creatives_deferred(connection_id, ad_ids)
 
 
 async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
@@ -488,6 +524,12 @@ async def run_full_resync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
+                if connection.platform == "GOOGLE_ADS" and sync_result.get("_asset_queue"):
+                    asyncio.create_task(_run_google_ads_asset_downloads(connection.id, sync_result["_asset_queue"]))
+                elif connection.platform == "META" and sync_result.get("_creative_ad_ids"):
+                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
+                elif connection.platform == "TIKTOK" and sync_result.get("_creative_ad_ids"):
+                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
                 logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
             except Exception as e:
                 logger.error(f"Full resync harmonization failed for connection {connection_id}: {type(e).__name__}: {e}")
@@ -730,6 +772,12 @@ async def run_initial_sync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
+                if connection.platform == "GOOGLE_ADS" and sync_result.get("_asset_queue"):
+                    asyncio.create_task(_run_google_ads_asset_downloads(connection.id, sync_result["_asset_queue"]))
+                elif connection.platform == "META" and sync_result.get("_creative_ad_ids"):
+                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
+                elif connection.platform == "TIKTOK" and sync_result.get("_creative_ad_ids"):
+                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
                 trigger_historical = True
             except Exception as e:
                 logger.error(f"Initial sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
@@ -946,6 +994,12 @@ async def run_historical_sync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
+                if connection.platform == "GOOGLE_ADS" and sync_result.get("_asset_queue"):
+                    asyncio.create_task(_run_google_ads_asset_downloads(connection.id, sync_result["_asset_queue"]))
+                elif connection.platform == "META" and sync_result.get("_creative_ad_ids"):
+                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
+                elif connection.platform == "TIKTOK" and sync_result.get("_creative_ad_ids"):
+                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
             except Exception as e:
                 logger.error(f"Historical sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
                 await db.rollback()
