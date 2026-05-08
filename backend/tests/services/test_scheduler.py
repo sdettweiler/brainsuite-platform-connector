@@ -4,7 +4,8 @@ from unittest.mock import MagicMock, patch, call
 from apscheduler.triggers.cron import CronTrigger
 
 
-def test_cleanup_job_registration():
+@pytest.mark.asyncio
+async def test_cleanup_job_registration():
     """cleanup_background_jobs is registered with CronTrigger(hour=3, minute=0)
     inside the SCHEDULER_ENABLED guard in startup_scheduler()."""
     mock_scheduler = MagicMock()
@@ -14,7 +15,7 @@ def test_cleanup_job_registration():
     with patch("app.core.config.settings", mock_settings), \
          patch("app.services.sync.scheduler.scheduler", mock_scheduler):
         from app.services.sync.scheduler import startup_scheduler
-        startup_scheduler()
+        await startup_scheduler()
 
     # Extract all add_job calls and find the cleanup_background_jobs one
     add_job_calls = mock_scheduler.add_job.call_args_list
