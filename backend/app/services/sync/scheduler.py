@@ -1231,6 +1231,14 @@ async def startup_scheduler(db_session=None) -> None:
             max_instances=10,
         )
         logger.info("Registered scoring_batch job (every 15 minutes)")
+        from app.services.sync.maintenance import cleanup_old_background_jobs
+        scheduler.add_job(
+            cleanup_old_background_jobs,
+            trigger=CronTrigger(hour=3, minute=0),
+            id="cleanup_background_jobs",
+            replace_existing=True,
+        )
+        logger.info("Registered cleanup_background_jobs job (daily at 03:00 UTC)")
         scheduler.add_job(
             purge_read_notifications,
             trigger=CronTrigger(hour=3, minute=0),
