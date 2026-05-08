@@ -423,6 +423,43 @@ class TikTokSyncService:
                     if cover_url:
                         thumbnail_url = await self._download_tiktok_thumbnail(cover_url, org_id, ad_id)
 
+                # --- Download full-resolution video or image asset (D-01, D-03, D-04, D-06) ---
+                asset_url: Optional[str] = None
+                video_source_url: Optional[str] = None
+
+                try:
+                    if video_id_val and not is_spark:
+                        # Standard video ad: fetch download URL then download bytes to S3
+                        raw_video_url = await self._fetch_video_download_url(
+                            access_token, advertiser_id, [str(video_id_val)]
+                        )
+                        if raw_video_url:
+                            asset_url = await self._download_video_asset(raw_video_url, org_id, ad_id)
+                            video_source_url = raw_video_url  # Store API URL per D-06
+
+                    elif image_ids_raw and not video_id_val:
+                        # Image-only ad: download full-resolution image to asset_url (D-03)
+                        # Parse image_ids as list or comma-separated string (Pitfall 4 handling)
+                        image_ids_list = (
+                            image_ids_raw if isinstance(image_ids_raw, list)
+                            else (image_ids_raw.split(",") if image_ids_raw else [])
+                        )
+                        if image_ids_list:
+                            image_url = await self._fetch_cover_image_url(
+                                access_token, advertiser_id, image_ids_list[:1]
+                            )
+                            if image_url:
+                                asset_url = await self._download_image_asset(image_url, org_id, ad_id)
+
+                    # Spark ads: skip download per D-02 (leave asset_url=None)
+                    # is_spark=True handled implicitly by not entering either branch above
+
+                except Exception as e:
+                    logger.warning("Asset download failed for ad %s (non-fatal, sync continues): %s", ad_id, e, exc_info=True)
+                    asset_url = None
+                    video_source_url = None
+                # --- END asset download ---
+
                 await db.execute(
                     update(TikTokRawPerformance)
                     .where(
@@ -453,6 +490,8 @@ class TikTokSyncService:
                         call_to_action=ad.get("call_to_action"),
                         post_link=post_link,
                         **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
+                        **({"asset_url": asset_url} if asset_url else {}),
+                        **({"video_source_url": video_source_url} if video_source_url else {}),
                     )
                 )
 
@@ -518,6 +557,103 @@ class TikTokSyncService:
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             logger.warning("Failed to fetch TikTok cover image URL: %s", e)
         return None
+
+    async def _fetch_video_download_url(
+        self,
+        access_token: str,
+        advertiser_id: str,
+        video_ids: List[str],
+    ) -> Optional[str]:
+        """Fetch the video download URL for given video ID via /file/video/ad/.
+        Returns download URL or None if unavailable (non-fatal).
+        Decision D-01: Use TikTok API endpoint, not yt-dlp.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{TIKTOK_API_BASE}/file/video/ad/",
+                    params={
+                        "advertiser_id": advertiser_id,
+                        "video_ids": json.dumps([str(vid) for vid in video_ids]),
+                    },
+                    headers={"Access-Token": access_token},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") != 0:
+                    logger.warning("TikTok /file/video/ad/ error: %s", data.get("message"))
+                    return None
+                videos = data.get("data", {}).get("list", [])
+                if videos:
+                    return videos[0].get("video_url")
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            logger.warning("Failed to fetch TikTok video URL for advertiser %s: %s", advertiser_id, e)
+        return None
+
+    async def _download_video_asset(
+        self,
+        url: str,
+        org_id: str,
+        ad_id: str,
+    ) -> Optional[str]:
+        """Download a TikTok video from URL, upload to S3/MinIO. Returns served URL or None.
+        Storage path: creatives/{org_id}/video_tiktok_{ad_id}.mp4
+        Decision D-04: Inline download; failures are non-fatal (log + return None).
+        Decision D-06: Result stored in asset_url (scoring/autofill input, not thumbnail).
+        """
+        from app.services.object_storage import get_object_storage
+        obj_storage = get_object_storage()
+
+        filename = f"video_tiktok_{ad_id}.mp4"
+        relative_path = f"creatives/{org_id}/{filename}"
+
+        if obj_storage.file_exists(relative_path):
+            return obj_storage.served_url(relative_path)
+
+        try:
+            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+            served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="video/mp4")
+            logger.info("Downloaded TikTok video for ad %s: %s (%d bytes)", ad_id, filename, len(resp.content))
+            return served_url
+        except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+            logger.warning("Failed to download TikTok video for ad %s: %s", ad_id, e, exc_info=True)
+            return None
+
+    async def _download_image_asset(
+        self,
+        image_url: str,
+        org_id: str,
+        ad_id: str,
+    ) -> Optional[str]:
+        """Download a TikTok full-resolution image and upload to S3/MinIO. Returns served URL or None.
+        Storage path: creatives/{org_id}/image_tiktok_{ad_id}.jpg
+        Decision D-03: Full-resolution image for scoring/autofill input; separate from thumbnail_url.
+        Decision D-04: Failures are non-fatal (log + return None).
+        """
+        from app.services.object_storage import get_object_storage
+        obj_storage = get_object_storage()
+
+        filename = f"image_tiktok_{ad_id}.jpg"
+        relative_path = f"creatives/{org_id}/{filename}"
+
+        if obj_storage.file_exists(relative_path):
+            return obj_storage.served_url(relative_path)
+
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                resp = await client.get(image_url)
+                resp.raise_for_status()
+            if len(resp.content) < 100:
+                logger.warning("TikTok image for ad %s too small (%d bytes), skipping", ad_id, len(resp.content))
+                return None
+            served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="image/jpeg")
+            logger.info("Downloaded TikTok image for ad %s: %s (%d bytes)", ad_id, filename, len(resp.content))
+            return served_url
+        except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+            logger.warning("Failed to download TikTok image for ad %s: %s", ad_id, e, exc_info=True)
+            return None
 
     async def _download_tiktok_thumbnail(
         self,
