@@ -437,7 +437,7 @@ class TikTokSyncService:
                             asset_url = await self._download_video_asset(raw_video_url, org_id, ad_id)
                             video_source_url = raw_video_url  # Store API URL per D-06
 
-                    elif image_ids_raw and not video_id_val:
+                    elif image_ids_raw and not video_id_val and not is_spark:
                         # Image-only ad: download full-resolution image to asset_url (D-03)
                         # Parse image_ids as list or comma-separated string (Pitfall 4 handling)
                         image_ids_list = (
@@ -451,8 +451,7 @@ class TikTokSyncService:
                             if image_url:
                                 asset_url = await self._download_image_asset(image_url, org_id, ad_id)
 
-                    # Spark ads: skip download per D-02 (leave asset_url=None)
-                    # is_spark=True handled implicitly by not entering either branch above
+                    # Spark ads (is_spark=True): skip download per D-02 (leave asset_url=None)
 
                 except Exception as e:
                     logger.warning("Asset download failed for ad %s (non-fatal, sync continues): %s", ad_id, e, exc_info=True)
