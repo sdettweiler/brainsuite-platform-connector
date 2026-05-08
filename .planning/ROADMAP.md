@@ -99,7 +99,17 @@ Plans:
   3. After an AI autofill run, the job record's output field contains the full Gemini + Whisper field output (field name, determined value, raw response)
   4. After a scoring run, the job record's output field contains per-asset outcomes (asset_id, status, score value)
   5. Every job record stores the internal job ID and any external API job IDs (BrainSuite job ID, platform sync run ID) in the metadata field
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+
+**Wave 1**
+- [ ] 17-01-PLAN.md — job_tracker.py helpers + test_instrumentation.py Wave-0 stubs
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 17-02-PLAN.md — Sync instrumentation (all 4 entry points in scheduler.py) — INSTR-01, INSTR-05
+- [ ] 17-03-PLAN.md — Download instrumentation (_run_google_ads_asset_downloads, _run_dv360_asset_downloads) — INSTR-02
+- [ ] 17-04-PLAN.md — Autofill instrumentation (run_autofill_for_asset) — INSTR-03
+- [ ] 17-05-PLAN.md — Scoring instrumentation (_process_asset) — INSTR-04, INSTR-05
 
 ### Phase 18: SSE Transport
 **Goal**: The backend streams real-time job updates to connected SuperAdmin browsers via Server-Sent Events, with connection leaks and proxy timeouts prevented
@@ -147,6 +157,6 @@ Plans:
 | 14. YouTube Cookies Admin UI | v1.2 | 3/3 | Complete | 2026-04-27 |
 | 15. TikTok Asset Download | v1.3 | 2/2 | Complete | 2026-05-08 |
 | 16. Job Persistence Schema | v1.3 | 3/3 | Complete | 2026-05-08 |
-| 17. Service Instrumentation | v1.3 | 0/? | Not started | - |
+| 17. Service Instrumentation | v1.3 | 0/5 | Planned (5 plans) | - |
 | 18. SSE Transport | v1.3 | 0/? | Not started | - |
 | 19. SuperAdmin Monitoring UI | v1.3 | 0/? | Not started | - |
