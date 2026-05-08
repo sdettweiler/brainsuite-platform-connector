@@ -279,6 +279,30 @@ class GoogleAdsSyncService:
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
+        # Load cookies from DB (primary → backup), fall back to env var — same priority as DV360.
+        cookies_data = ""
+        try:
+            from app.db.base import get_session_factory as _gsf_yt
+            from app.models.system_config import SystemConfig as _SC_yt
+            from sqlalchemy import select as _sel_yt
+            async with _gsf_yt()() as _yt_db:
+                _cfg = (await _yt_db.execute(_sel_yt(_SC_yt).limit(1))).scalar_one_or_none()
+                if _cfg:
+                    if _cfg.youtube_cookies_encrypted:
+                        try:
+                            cookies_data = decrypt_token(_cfg.youtube_cookies_encrypted)
+                        except Exception:
+                            pass
+                    if not cookies_data and _cfg.youtube_cookies_backup_encrypted:
+                        try:
+                            cookies_data = decrypt_token(_cfg.youtube_cookies_backup_encrypted)
+                        except Exception:
+                            pass
+        except Exception as _ck_err:
+            logger.warning("Failed to read YT cookies from DB, falling back to env var: %s", _ck_err)
+        if not cookies_data:
+            cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
+
         tmpdir = tempfile.mkdtemp()
         tmp_base = os.path.join(tmpdir, "video")
 
@@ -312,7 +336,6 @@ class GoogleAdsSyncService:
                 "remote_components": {"ejs:github": True},
                 "logger": _YDLLogger(),
             }
-            cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
             cookie_file = None
             if cookies_data:
                 cleaned = "\n".join(
