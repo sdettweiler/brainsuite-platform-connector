@@ -702,14 +702,24 @@ async def redownload_missing_assets(
             )
         if not served_url:
             return
+        cdn_thumb = None
+        try:
+            if asset.platform == "DV360":
+                svc2 = DV360SyncService()
+                _, cdn_thumb = await svc2._download_youtube_thumbnail(asset.ad_id, org_id_str, asset.ad_id)
+            elif asset.platform == "GOOGLE_ADS":
+                _, cdn_thumb = await google_ads_sync._download_thumbnail(asset.ad_id, org_id_str, asset.ad_id)
+        except Exception as _te:
+            logger.warning("redownload_missing_assets: thumbnail fetch failed for %s: %s", asset.id, _te)
+        best_thumb = cdn_thumb or frame_thumb
         SessionFactory = get_session_factory()
         async with SessionFactory() as session:
             res = await session.execute(select(CreativeAsset).where(CreativeAsset.id == asset.id))
             db_asset = res.scalar_one_or_none()
             if db_asset:
                 db_asset.asset_url = served_url
-                if frame_thumb and (not db_asset.thumbnail_url or is_raw_cdn_url(db_asset.thumbnail_url)):
-                    db_asset.thumbnail_url = frame_thumb
+                if best_thumb and (not db_asset.thumbnail_url or is_raw_cdn_url(db_asset.thumbnail_url)):
+                    db_asset.thumbnail_url = best_thumb
                 session.add(db_asset)
                 score_res = await session.execute(
                     select(CreativeScoreResult).where(CreativeScoreResult.creative_asset_id == asset.id)
@@ -795,9 +805,23 @@ async def redownload_asset(
     if not served_url:
         raise HTTPException(status_code=502, detail="Failed to download video from YouTube — check yt-dlp cookies")
 
+    # Prefer CDN thumbnail (img.youtube.com); fall back to extracted video frame.
+    cdn_thumb = None
+    try:
+        if asset.platform == "DV360":
+            from app.services.sync.dv360_sync import DV360SyncService as _DV3
+            _, cdn_thumb = await _DV3()._download_youtube_thumbnail(asset.ad_id, org_id_str, asset.ad_id)
+        elif asset.platform == "GOOGLE_ADS":
+            from app.services.sync.google_ads_sync import google_ads_sync as _ga
+            _, cdn_thumb = await _ga._download_thumbnail(asset.ad_id, org_id_str, asset.ad_id)
+    except Exception as _te:
+        logger.warning("redownload_asset: thumbnail fetch failed for %s: %s", asset_id, _te)
+
+    best_thumb = cdn_thumb or frame_thumb
+
     asset.asset_url = served_url
-    if frame_thumb and (not asset.thumbnail_url or is_raw_cdn_url(asset.thumbnail_url)):
-        asset.thumbnail_url = frame_thumb
+    if best_thumb and (not asset.thumbnail_url or is_raw_cdn_url(asset.thumbnail_url)):
+        asset.thumbnail_url = best_thumb
     db.add(asset)
 
     # Reset scoring so the next batch rescores with the new video
