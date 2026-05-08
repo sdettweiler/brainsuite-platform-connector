@@ -332,8 +332,10 @@ async def run_daily_sync(connection_id: str) -> None:
 
 async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> None:
     from app.services.sync.google_ads_sync import google_ads_sync
-    from sqlalchemy import select
+    from app.services.sync.dv360_sync import _CookiesExpiredError
+    from sqlalchemy import select, update as _upd
     from app.models.platform import PlatformConnection
+    from app.models.system_config import SystemConfig
     import uuid
     try:
         async with get_session_factory()() as db:
@@ -346,6 +348,11 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
             if not connection:
                 return
             await google_ads_sync.download_assets_post_commit(db, connection, asset_queue)
+    except _CookiesExpiredError:
+        async with get_session_factory()() as fresh_db:
+            await fresh_db.execute(_upd(SystemConfig).values(youtube_cookies_runtime_expired=True))
+            await fresh_db.commit()
+        logger.warning("Google Ads asset download aborted: YouTube cookies expired — flag written to DB")
     except Exception as e:
         logger.warning(f"Google Ads asset download failed (non-fatal): {e}")
 
@@ -361,10 +368,11 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list) -> None:
 
 
 async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
-    from app.services.sync.dv360_sync import dv360_sync
+    from app.services.sync.dv360_sync import dv360_sync, _CookiesExpiredError
     from app.services.ai_autofill import backfill_failed_autofill_for_connection
-    from sqlalchemy import select
+    from sqlalchemy import select, update as _upd
     from app.models.platform import PlatformConnection
+    from app.models.system_config import SystemConfig
     import uuid
     try:
         async with get_session_factory()() as db:
@@ -378,6 +386,11 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
                 return
             await dv360_sync.download_assets_post_commit(db, connection, asset_queue)
         asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id))
+    except _CookiesExpiredError:
+        async with get_session_factory()() as fresh_db:
+            await fresh_db.execute(_upd(SystemConfig).values(youtube_cookies_runtime_expired=True))
+            await fresh_db.commit()
+        logger.warning("DV360 asset download aborted: YouTube cookies expired — flag written to DB")
     except Exception as e:
         logger.warning(f"DV360 asset download failed (non-fatal): {e}")
 
