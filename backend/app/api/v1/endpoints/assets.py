@@ -695,8 +695,21 @@ async def redownload_missing_assets(
                 ad_id=asset.ad_id,
             )
         elif asset.platform == "GOOGLE_ADS":
+            from app.models.performance import GoogleAdsRawPerformance
+            from app.db.base import get_session_factory as _gsf_bulk
+            async with _gsf_bulk()() as _lookup_db:
+                _ga_yt_id = (await _lookup_db.execute(
+                    select(GoogleAdsRawPerformance.video_id).where(
+                        GoogleAdsRawPerformance.ad_id == asset.ad_id,
+                        GoogleAdsRawPerformance.platform_connection_id == asset.platform_connection_id,
+                        GoogleAdsRawPerformance.video_id.isnot(None),
+                    ).limit(1)
+                )).scalar_one_or_none()
+            if not _ga_yt_id:
+                logger.warning("redownload_missing_assets: no YouTube video ID for asset %s (ad_id=%s)", asset.id, asset.ad_id)
+                return
             _, served_url, frame_thumb = await google_ads_sync._download_video(
-                youtube_video_id=asset.ad_id,
+                youtube_video_id=_ga_yt_id,
                 org_id=org_id_str,
                 ad_id=asset.ad_id,
             )
@@ -708,7 +721,7 @@ async def redownload_missing_assets(
                 svc2 = DV360SyncService()
                 _, cdn_thumb = await svc2._download_youtube_thumbnail(asset.ad_id, org_id_str, asset.ad_id)
             elif asset.platform == "GOOGLE_ADS":
-                _, cdn_thumb = await google_ads_sync._download_thumbnail(asset.ad_id, org_id_str, asset.ad_id)
+                _, cdn_thumb = await google_ads_sync._download_thumbnail(_ga_yt_id, org_id_str, asset.ad_id)
         except Exception as _te:
             logger.warning("redownload_missing_assets: thumbnail fetch failed for %s: %s", asset.id, _te)
         best_thumb = cdn_thumb or frame_thumb
@@ -781,6 +794,22 @@ async def redownload_asset(
     org_id_str = str(asset.organization_id)
     served_url = None
     frame_thumb = None
+
+    # Google Ads: ad_id is the numeric Google Ads ad ID, not the YouTube video ID.
+    # Look up the real YouTube video ID from google_ads_raw_performance.
+    _ga_yt_id = None
+    if asset.platform == "GOOGLE_ADS":
+        from app.models.performance import GoogleAdsRawPerformance
+        _ga_yt_id = (await db.execute(
+            select(GoogleAdsRawPerformance.video_id).where(
+                GoogleAdsRawPerformance.ad_id == asset.ad_id,
+                GoogleAdsRawPerformance.platform_connection_id == asset.platform_connection_id,
+                GoogleAdsRawPerformance.video_id.isnot(None),
+            ).limit(1)
+        )).scalar_one_or_none()
+        if not _ga_yt_id:
+            raise HTTPException(status_code=422, detail="YouTube video ID not found for this Google Ads asset")
+
     try:
         if asset.platform == "DV360":
             from app.services.sync.dv360_sync import DV360SyncService, _CookiesExpiredError
@@ -794,7 +823,7 @@ async def redownload_asset(
             from app.services.sync.dv360_sync import _CookiesExpiredError
             from app.services.sync.google_ads_sync import google_ads_sync
             _, served_url, frame_thumb = await google_ads_sync._download_video(
-                youtube_video_id=asset.ad_id,
+                youtube_video_id=_ga_yt_id,
                 org_id=org_id_str,
                 ad_id=asset.ad_id,
             )
@@ -823,7 +852,7 @@ async def redownload_asset(
             _, cdn_thumb = await _DV3()._download_youtube_thumbnail(asset.ad_id, org_id_str, asset.ad_id)
         elif asset.platform == "GOOGLE_ADS":
             from app.services.sync.google_ads_sync import google_ads_sync as _ga
-            _, cdn_thumb = await _ga._download_thumbnail(asset.ad_id, org_id_str, asset.ad_id)
+            _, cdn_thumb = await _ga._download_thumbnail(_ga_yt_id, org_id_str, asset.ad_id)
     except Exception as _te:
         logger.warning("redownload_asset: thumbnail fetch failed for %s: %s", asset_id, _te)
 
