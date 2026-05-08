@@ -66,7 +66,7 @@
 **Plans**: 2 plans
 Plans:
 - [x] 15-01-PLAN.md — Implement TikTok video + image download methods and extend _enrich_from_ad_get (complete 2026-05-08)
-- [ ] 15-02-PLAN.md — Verify scoring gate across all 4 platforms (D-05)
+- [x] 15-02-PLAN.md — Verify scoring gate across all 4 platforms (D-05) (complete 2026-05-08)
 
 ### Phase 16: Job Persistence Schema
 **Goal**: The platform persists every background job run in PostgreSQL, with table bloat prevention built in from day one
