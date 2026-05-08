@@ -53,6 +53,7 @@ async def purge_connection_data(db: AsyncSession, connection_id: str, org_id: st
 
     if creative_asset_ids:
         placeholders = ",".join(f"'{aid}'" for aid in creative_asset_ids)
+        delete_steps.append(("ai_inference_tracking", f"DELETE FROM ai_inference_tracking WHERE asset_id IN ({placeholders})"))
         delete_steps.append(("asset_metadata_values", f"DELETE FROM asset_metadata_values WHERE asset_id IN ({placeholders})"))
         delete_steps.append(("asset_project_mappings", f"DELETE FROM asset_project_mappings WHERE asset_id IN ({placeholders})"))
 
