@@ -729,6 +729,16 @@ async def redownload_missing_assets(
                     score_row.scoring_status = "UNSCORED"
                     session.add(score_row)
                 await session.commit()
+                from datetime import datetime as _dt_af2
+                from sqlalchemy.dialects.postgresql import insert as pg_insert2
+                await session.execute(
+                    pg_insert2(AIInferenceTracking)
+                    .values(id=uuid.uuid4(), asset_id=asset.id, org_id=asset.organization_id,
+                            ai_inference_status="FAILED", created_at=_dt_af2.utcnow(), updated_at=_dt_af2.utcnow())
+                    .on_conflict_do_update(index_elements=["asset_id"],
+                                           set_={"ai_inference_status": "FAILED", "updated_at": _dt_af2.utcnow()})
+                )
+                await session.commit()
         await run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id)
 
     async def _download_all():
@@ -835,7 +845,19 @@ async def redownload_asset(
 
     await db.commit()
 
-    # Kick off autofill in the background (non-blocking)
+    # Reset autofill tracking so autofill re-runs with the new video/thumbnail.
+    # Without this, the COMPLETE guard in _autofill() silently skips the asset.
+    from datetime import datetime as _dt_af
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    await db.execute(
+        pg_insert(AIInferenceTracking)
+        .values(id=uuid.uuid4(), asset_id=asset.id, org_id=asset.organization_id,
+                ai_inference_status="FAILED", created_at=_dt_af.utcnow(), updated_at=_dt_af.utcnow())
+        .on_conflict_do_update(index_elements=["asset_id"],
+                               set_={"ai_inference_status": "FAILED", "updated_at": _dt_af.utcnow()})
+    )
+    await db.commit()
+
     asyncio.create_task(run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id))
 
     return {"asset_id": str(asset_id), "asset_url": served_url, "thumbnail_url": asset.thumbnail_url}
