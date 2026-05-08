@@ -204,8 +204,7 @@ class MetaSyncService:
                         logger.error(f"Meta API error: {error_info}")
                         if error_info.get("code") in _META_TOKEN_ERROR_CODES:
                             raise MetaTokenError(str(error_info.get("message", error_info)))
-                        api_errors.append(str(error_info.get("message", error_info)))
-                        break
+                        raise MetaAPIError(str(error_info.get("message", error_info)))
 
                     records.extend(data.get("data", []))
 
@@ -571,7 +570,9 @@ class MetaSyncService:
                        for c in MetaRawPerformance.__table__.columns
                        if c.name not in ("id", "platform_connection_id", "report_date",
                                          "ad_id", "ad_account_id", "publisher_platform",
-                                         "platform_position", "retrieved_at")}
+                                         "platform_position", "retrieved_at",
+                                         # populated by deferred creative fetch — preserve on re-sync
+                                         "creative_id", "ad_format", "thumbnail_url", "asset_url")}
         update_cols["is_processed"] = False
         stmt = stmt.on_conflict_do_update(
             constraint="uq_meta_daily_ad_breakdown",
@@ -885,6 +886,9 @@ class MetaSyncService:
                 )).scalar_one_or_none()
                 if not conn:
                     return
+                from datetime import datetime, timezone
+                if conn.token_expiry and conn.token_expiry < datetime.now(timezone.utc):
+                    logger.warning("Meta deferred creative fetch: access token expired for connection %s — enrichment may fail", connection_id)
                 access_token = decrypt_token(conn.access_token_encrypted)
                 account_id = f"act_{conn.ad_account_id}"
                 logger.info(f"Meta deferred creative fetch: {len(ad_ids)} ads for {account_id}")

@@ -367,7 +367,14 @@ class TikTokSyncService:
         update_cols = {c.name: getattr(stmt.excluded, c.name)
                        for c in TikTokRawPerformance.__table__.columns
                        if c.name not in ("id", "platform_connection_id", "report_date",
-                                         "ad_id", "ad_account_id", "retrieved_at")}
+                                         "ad_id", "ad_account_id", "retrieved_at",
+                                         # populated by deferred enrich_from_ad_get — preserve on re-sync
+                                         "campaign_id", "campaign_name", "ad_group_id", "ad_group_name",
+                                         "ad_name", "campaign_objective", "ad_status", "ad_format",
+                                         "creative_type", "is_spark_ad", "identity_type", "display_name",
+                                         "landing_page_url", "video_id", "image_ids", "optimization_goal",
+                                         "billing_event", "buying_type", "campaign_budget_mode",
+                                         "campaign_status", "call_to_action", "post_link", "thumbnail_url")}
         update_cols["is_processed"] = False
         stmt = stmt.on_conflict_do_update(
             constraint="uq_tiktok_daily_ad",
@@ -473,6 +480,9 @@ class TikTokSyncService:
                 )).scalar_one_or_none()
                 if not conn:
                     return
+                from datetime import datetime, timezone
+                if conn.token_expiry and conn.token_expiry < datetime.now(timezone.utc):
+                    logger.warning("TikTok deferred creative enrichment: access token expired for connection %s — enrichment may fail", connection_id)
                 access_token = decrypt_token(conn.access_token_encrypted)
                 advertiser_id = conn.ad_account_id
                 logger.info(f"TikTok deferred creative enrichment: {len(ad_ids)} ads for {advertiser_id}")
