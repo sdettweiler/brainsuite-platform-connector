@@ -65,7 +65,7 @@
   5. TikTok asset download and scoring respects the SuperAdmin auto-scoring toggle (global enable/disable); verify all platforms (Meta, TikTok, Google Ads, DV360) honour the same gate
 **Plans**: 2 plans
 Plans:
-- [ ] 15-01-PLAN.md — Implement TikTok video + image download methods and extend _enrich_from_ad_get
+- [x] 15-01-PLAN.md — Implement TikTok video + image download methods and extend _enrich_from_ad_get (complete 2026-05-08)
 - [ ] 15-02-PLAN.md — Verify scoring gate across all 4 platforms (D-05)
 
 ### Phase 16: Job Persistence Schema
