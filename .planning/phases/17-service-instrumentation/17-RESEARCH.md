@@ -750,7 +750,7 @@ All assumptions tied to CONTEXT.md D-XX decisions. No user validation needed bef
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should autofill output include the raw Gemini API response?**
    - What we know: D-10 specifies structured `{"fields": [...], "whisper_transcript": "...", "language": "..."}`. No raw response blob.

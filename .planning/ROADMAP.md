@@ -99,7 +99,7 @@ Plans:
   3. After an AI autofill run, the job record's output field contains the full Gemini + Whisper field output (field name, determined value, raw response)
   4. After a scoring run, the job record's output field contains per-asset outcomes (asset_id, status, score value)
   5. Every job record stores the internal job ID and any external API job IDs (BrainSuite job ID, platform sync run ID) in the metadata field
-**Plans**: 5 plans
+**Plans**: 6 plans
 Plans:
 
 **Wave 1**
@@ -107,9 +107,12 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 17-02-PLAN.md — Sync instrumentation (all 4 entry points in scheduler.py) — INSTR-01, INSTR-05
-- [ ] 17-03-PLAN.md — Download instrumentation (_run_google_ads_asset_downloads, _run_dv360_asset_downloads) — INSTR-02
+- [ ] 17-03-PLAN.md — Download instrumentation (all 4 helpers: Google Ads, DV360, TikTok, Meta) — INSTR-02
 - [ ] 17-04-PLAN.md — Autofill instrumentation (run_autofill_for_asset) — INSTR-03
 - [ ] 17-05-PLAN.md — Scoring instrumentation (_process_asset) — INSTR-04, INSTR-05
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 17-06-PLAN.md — All 7 instrumentation test assertions (test_instrumentation.py) — INSTR-01, INSTR-02, INSTR-03, INSTR-04, INSTR-05
 
 ### Phase 18: SSE Transport
 **Goal**: The backend streams real-time job updates to connected SuperAdmin browsers via Server-Sent Events, with connection leaks and proxy timeouts prevented
