@@ -1668,8 +1668,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.api.redownloadAsset(asset.id).subscribe({
       next: (res) => {
         asset.asset_url = res.asset_url;
+        if (res.thumbnail_url) asset.thumbnail_url = res.thumbnail_url;
         const cached = this.assetDetailCache.get(asset.id) as any;
-        if (cached) cached.asset_url = res.asset_url;
+        if (cached) {
+          cached.asset_url = res.asset_url;
+          if (res.thumbnail_url) cached.thumbnail_url = res.thumbnail_url;
+        }
         this.snackBar.open('Video downloaded — autofill and scoring queued', 'OK', { duration: 4000 });
       },
       error: (err) => {

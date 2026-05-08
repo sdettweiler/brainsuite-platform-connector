@@ -19,8 +19,8 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/scoring/${assetId}/rescore`, {});
   }
 
-  redownloadAsset(assetId: string): Observable<{ asset_id: string; asset_url: string }> {
-    return this.http.post<{ asset_id: string; asset_url: string }>(`${this.base}/assets/${assetId}/redownload`, {});
+  redownloadAsset(assetId: string): Observable<{ asset_id: string; asset_url: string; thumbnail_url: string | null }> {
+    return this.http.post<{ asset_id: string; asset_url: string; thumbnail_url: string | null }>(`${this.base}/assets/${assetId}/redownload`, {});
   }
 
   redownloadMissingAssets(connectionId: string): Observable<{ queued: number; message: string }> {

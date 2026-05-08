@@ -838,7 +838,7 @@ async def redownload_asset(
     # Kick off autofill in the background (non-blocking)
     asyncio.create_task(run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id))
 
-    return {"asset_id": str(asset_id), "asset_url": served_url}
+    return {"asset_id": str(asset_id), "asset_url": served_url, "thumbnail_url": asset.thumbnail_url}
 
 
 @router.post("/trigger-autofill/{connection_id}")
