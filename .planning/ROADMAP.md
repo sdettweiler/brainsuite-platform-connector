@@ -63,7 +63,10 @@
   3. A failed download for one TikTok asset does not block or abort the rest of the sync run
   4. AI autofill and BrainSuite scoring pipelines process TikTok assets (video_url/image_url is available as input)
   5. TikTok asset download and scoring respects the SuperAdmin auto-scoring toggle (global enable/disable); verify all platforms (Meta, TikTok, Google Ads, DV360) honour the same gate
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 15-01-PLAN.md — Implement TikTok video + image download methods and extend _enrich_from_ad_get
+- [ ] 15-02-PLAN.md — Verify scoring gate across all 4 platforms (D-05)
 
 ### Phase 16: Job Persistence Schema
 **Goal**: The platform persists every background job run in PostgreSQL, with table bloat prevention built in from day one
@@ -131,7 +134,7 @@
 | 12. Credentials + App Name Settings UI | v1.2 | 3/3 | Complete | 2026-04-17 |
 | 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 4/4 | Complete | 2026-04-21 |
 | 14. YouTube Cookies Admin UI | v1.2 | 3/3 | Complete | 2026-04-27 |
-| 15. TikTok Asset Download | v1.3 | 0/? | Not started | - |
+| 15. TikTok Asset Download | v1.3 | 0/2 | Not started | - |
 | 16. Job Persistence Schema | v1.3 | 0/? | Not started | - |
 | 17. Service Instrumentation | v1.3 | 0/? | Not started | - |
 | 18. SSE Transport | v1.3 | 0/? | Not started | - |
