@@ -279,8 +279,8 @@ class GoogleAdsSyncService:
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
-        # Load cookies from DB (primary → backup), fall back to env var — same priority as DV360.
-        cookies_data = ""
+        # Load cookies as a list (primary → backup) — same logic as DV360.
+        cookies: List[str] = []
         try:
             from app.db.base import get_session_factory as _gsf_yt
             from app.models.system_config import SystemConfig as _SC_yt
@@ -290,23 +290,28 @@ class GoogleAdsSyncService:
                 if _cfg:
                     if _cfg.youtube_cookies_encrypted:
                         try:
-                            cookies_data = decrypt_token(_cfg.youtube_cookies_encrypted)
+                            cookies.append(decrypt_token(_cfg.youtube_cookies_encrypted))
                         except Exception:
                             pass
-                    if not cookies_data and _cfg.youtube_cookies_backup_encrypted:
+                    if _cfg.youtube_cookies_backup_encrypted:
                         try:
-                            cookies_data = decrypt_token(_cfg.youtube_cookies_backup_encrypted)
+                            cookies.append(decrypt_token(_cfg.youtube_cookies_backup_encrypted))
                         except Exception:
                             pass
         except Exception as _ck_err:
             logger.warning("Failed to read YT cookies from DB, falling back to env var: %s", _ck_err)
-        if not cookies_data:
-            cookies_data = os.environ.get("YOUTUBE_COOKIES", "")
+        if not cookies:
+            env_primary = os.environ.get("YOUTUBE_COOKIES", "").strip()
+            env_backup = os.environ.get("YOUTUBE_COOKIES_BACKUP", "").strip()
+            if env_primary:
+                cookies.append(env_primary)
+            if env_backup:
+                cookies.append(env_backup)
 
         tmpdir = tempfile.mkdtemp()
         tmp_base = os.path.join(tmpdir, "video")
 
-        def _do_download():
+        def _do_download_with_cookies(cookie_data: str):
             import yt_dlp
 
             _expired = [False]
@@ -326,20 +331,18 @@ class GoogleAdsSyncService:
 
             ydl_opts = {
                 "outtmpl": f"{tmp_base}.%(ext)s",
-                "format": "bv*+ba/b",
+                "format": "best/b",
                 "quiet": True,
                 "no_warnings": True,
                 "socket_timeout": 30,
-                "merge_output_format": "mp4",
                 "ignore_no_formats_error": True,
-                "js_runtimes": {"node": {}},
                 "remote_components": {"ejs:github": True},
                 "logger": _YDLLogger(),
             }
             cookie_file = None
-            if cookies_data:
+            if cookie_data:
                 cleaned = "\n".join(
-                    line.lstrip() for line in cookies_data.splitlines()
+                    line.lstrip() for line in cookie_data.splitlines()
                 )
                 cookie_file = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".txt", delete=False
@@ -358,10 +361,25 @@ class GoogleAdsSyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
-        logger.info("  Attempting Google Ads video download: %s (ad=%s)", youtube_video_id, ad_id)
+        attempts = cookies if cookies else [""]
+        loop = asyncio.get_event_loop()
         try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _do_download)
+            for i, cookie in enumerate(attempts):
+                label = "no cookies" if not cookie else ("primary" if i == 0 else "backup")
+                logger.info("  Attempting Google Ads video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
+                try:
+                    await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))
+                    break
+                except _CookiesExpiredError:
+                    if i < len(attempts) - 1:
+                        logger.warning("  Google Ads: cookie attempt %d failed (expired), trying next", i + 1)
+                        continue
+                    raise
+                except Exception as _attempt_err:
+                    if i < len(attempts) - 1:
+                        logger.warning("  Google Ads: cookie attempt %d failed (%s), trying next", i + 1, type(_attempt_err).__name__)
+                        continue
+                    raise
 
             matches = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0]
             actual_path = matches[0] if matches else None
