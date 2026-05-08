@@ -46,10 +46,10 @@ interface NotificationItem {
           <div class="notif-header" (click)="$event.stopPropagation()">
             <span>Notifications</span>
             <div class="notif-header-actions">
-              <button *ngIf="unreadCount > 0" mat-icon-button class="notif-action-btn" matTooltip="Mark all read" matTooltipPosition="below" (click)="markAllRead()">
+              <button *ngIf="unreadCount > 0" class="notif-action-btn" matTooltip="Mark all read" matTooltipPosition="below" (click)="markAllRead()">
                 <i class="bi bi-eye"></i>
               </button>
-              <button *ngIf="notifications.length > 0" mat-icon-button class="notif-action-btn notif-action-btn--danger" matTooltip="Clear all" matTooltipPosition="below" (click)="clearAll()">
+              <button *ngIf="notifications.length > 0" class="notif-action-btn notif-action-btn--danger" matTooltip="Clear all" matTooltipPosition="below" (click)="clearAll()">
                 <i class="bi bi-trash"></i>
               </button>
             </div>
@@ -264,15 +264,21 @@ interface NotificationItem {
     }
 
     .notif-action-btn {
-      width: 30px !important;
-      height: 30px !important;
-      line-height: 30px !important;
-      color: var(--text-secondary, #888) !important;
-      opacity: 0.7;
-      transition: opacity 0.15s, color 0.15s;
-      i { font-size: 15px; }
-      &:hover { opacity: 1; color: var(--accent) !important; }
-      &--danger:hover { color: #e53935 !important; }
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      cursor: pointer;
+      color: #aaa;
+      transition: background 0.15s, color 0.15s;
+      i { font-size: 14px; pointer-events: none; }
+      &:hover { background: rgba(0,0,0,0.06); color: var(--accent); }
+      &.notif-action-btn--danger:hover { background: rgba(229,57,53,0.08); color: #e53935; }
     }
 
     .notif-empty {
