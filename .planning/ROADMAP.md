@@ -76,7 +76,11 @@ Plans:
   1. The `background_jobs` table exists with all required columns (type, org_id, status, progress_current, progress_total, output JSONB, error, started_at, ended_at) and composite indexes
   2. Job records older than 30 days are automatically deleted by a nightly APScheduler cleanup job
   3. Alembic migration runs cleanly on a fresh database and on the existing production schema
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 16-01-PLAN.md — BackgroundJob model (jobs.py), __init__.py export, Wave-0 test scaffolds
+- [ ] 16-02-PLAN.md — Alembic migration with autovacuum tuning + BLOCKING alembic upgrade head verification
+- [ ] 16-03-PLAN.md — Maintenance service (maintenance.py) + scheduler registration (JOBS-02)
 
 ### Phase 17: Service Instrumentation
 **Goal**: All four background job types (sync, download, autofill, scoring) write job records with real-time progress updates throughout execution
@@ -134,8 +138,8 @@ Plans:
 | 12. Credentials + App Name Settings UI | v1.2 | 3/3 | Complete | 2026-04-17 |
 | 13. Field Mapping Editor + Mandatory Field Enforcement | v1.2 | 4/4 | Complete | 2026-04-21 |
 | 14. YouTube Cookies Admin UI | v1.2 | 3/3 | Complete | 2026-04-27 |
-| 15. TikTok Asset Download | v1.3 | 0/2 | Not started | - |
-| 16. Job Persistence Schema | v1.3 | 0/? | Not started | - |
+| 15. TikTok Asset Download | v1.3 | 2/2 | Complete | 2026-05-08 |
+| 16. Job Persistence Schema | v1.3 | 0/3 | Not started | - |
 | 17. Service Instrumentation | v1.3 | 0/? | Not started | - |
 | 18. SSE Transport | v1.3 | 0/? | Not started | - |
 | 19. SuperAdmin Monitoring UI | v1.3 | 0/? | Not started | - |
