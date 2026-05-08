@@ -74,21 +74,21 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| TKTOK-01 | TBD | Pending |
-| TKTOK-02 | TBD | Pending |
-| JOBS-01 | TBD | Pending |
-| JOBS-02 | TBD | Pending |
-| INSTR-01 | TBD | Pending |
-| INSTR-02 | TBD | Pending |
-| INSTR-03 | TBD | Pending |
-| INSTR-04 | TBD | Pending |
-| INSTR-05 | TBD | Pending |
-| SSE-01 | TBD | Pending |
-| SSE-02 | TBD | Pending |
-| MON-01 | TBD | Pending |
-| MON-02 | TBD | Pending |
-| MON-03 | TBD | Pending |
-| MON-04 | TBD | Pending |
-| MON-05 | TBD | Pending |
-| MON-06 | TBD | Pending |
-| MON-07 | TBD | Pending |
+| TKTOK-01 | Phase 15 | Pending |
+| TKTOK-02 | Phase 15 | Pending |
+| JOBS-01 | Phase 16 | Pending |
+| JOBS-02 | Phase 16 | Pending |
+| INSTR-01 | Phase 17 | Pending |
+| INSTR-02 | Phase 17 | Pending |
+| INSTR-03 | Phase 17 | Pending |
+| INSTR-04 | Phase 17 | Pending |
+| INSTR-05 | Phase 17 | Pending |
+| SSE-01 | Phase 18 | Pending |
+| SSE-02 | Phase 18 | Pending |
+| MON-01 | Phase 19 | Pending |
+| MON-02 | Phase 19 | Pending |
+| MON-03 | Phase 19 | Pending |
+| MON-04 | Phase 19 | Pending |
+| MON-05 | Phase 19 | Pending |
+| MON-06 | Phase 19 | Pending |
+| MON-07 | Phase 19 | Pending |
