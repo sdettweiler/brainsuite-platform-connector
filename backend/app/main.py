@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response, RedirectResponse, JSONResponse
 from pathlib import PurePosixPath
 from urllib.parse import unquote
@@ -133,9 +132,6 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-_CREATIVES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static", "creatives"))
-os.makedirs(_CREATIVES_DIR, exist_ok=True)
-app.mount("/static/creatives", StaticFiles(directory=_CREATIVES_DIR), name="creatives")
 
 
 @app.get("/health")

@@ -53,6 +53,22 @@ services:
       timeout: 5s
       retries: 5
 
+  minio-init:
+    image: minio/mc:latest
+    container_name: brainsuite_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin123} &&
+      mc mb --ignore-existing local/${S3_BUCKET_NAME:-brainsuite-assets} &&
+      mc anonymous set download local/${S3_BUCKET_NAME:-brainsuite-assets}
+      "
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-minioadmin123}
+
   # ─── Backend ─────────────────────────────────────────────────────────────────
   backend:
     build:
@@ -69,6 +85,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-brainsuite}:${POSTGRES_PASSWORD:-brainsuite_dev}@db:5432/${POSTGRES_DB:-platform_connectors}
       SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-brainsuite}:${POSTGRES_PASSWORD:-brainsuite_dev}@db:5432/${POSTGRES_DB:-platform_connectors}
