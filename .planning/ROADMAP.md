@@ -147,9 +147,9 @@ Plans:
 **Plans**: 6 plans
 
 **Wave 1** *(parallel — no dependencies)*
-- [ ] 19-01-PLAN.md — Pydantic schemas (JobListItem + JobDetail) + 9 test stubs in test_jobs_api.py
-- [ ] 19-03-PLAN.md — JobMonitorService (SSE + in-memory Map + REST helpers) — MON-01, MON-02
-- [ ] 19-04-PLAN.md — Route + sidebar registration (/configuration/jobs + Job Monitor nav item)
+- [x] 19-01-PLAN.md — Pydantic schemas (JobListItem + JobDetail) + 9 test stubs in test_jobs_api.py
+- [x] 19-03-PLAN.md — JobMonitorService (SSE + in-memory Map + REST helpers) — MON-01, MON-02
+- [x] 19-04-PLAN.md — Route + sidebar registration (/configuration/jobs + Job Monitor nav item)
 
 **Wave 2** *(blocked on 19-01)*
 - [ ] 19-02-PLAN.md — REST endpoints (GET /jobs, GET /jobs/{id}, DELETE /jobs) + 9 passing tests — MON-01, MON-02, MON-05, MON-07
@@ -182,4 +182,4 @@ Plans:
 | 16. Job Persistence Schema | v1.3 | 3/3 | Complete | 2026-05-08 |
 | 17. Service Instrumentation | v1.3 | 6/6 | Complete | 2026-05-11 |
 | 18. SSE Transport | v1.3 | 2/2 | Complete | 2026-05-11 |
-| 19. SuperAdmin Monitoring UI | v1.3 | 0/6 | Not started | - |
+| 19. SuperAdmin Monitoring UI | v1.3 | 3/6 | In Progress|  |
