@@ -48,7 +48,7 @@
 - [x] **Phase 15: TikTok Asset Download** - Close the TikTok video and image download gap to unblock AI autofill and BrainSuite scoring (complete 2026-05-08)
 - [x] **Phase 16: Job Persistence Schema** - PostgreSQL `background_jobs` table with indexes, autovacuum tuning, and cleanup job (complete 2026-05-08)
 - [x] **Phase 17: Service Instrumentation** - Wire all four job types (sync, download, autofill, scoring) to write job records with progress (complete 2026-05-11)
-- [ ] **Phase 18: SSE Transport** - FastAPI streaming endpoint with keepalive heartbeats and connection lifecycle management
+- [x] **Phase 18: SSE Transport** - FastAPI streaming endpoint with keepalive heartbeats and connection lifecycle management (complete 2026-05-11)
 - [ ] **Phase 19: SuperAdmin Monitoring UI** - Angular job monitor at /configuration/admin with real-time updates and drill-in detail panels
 
 ## Phase Details
@@ -168,5 +168,5 @@ Plans:
 | 15. TikTok Asset Download | v1.3 | 2/2 | Complete | 2026-05-08 |
 | 16. Job Persistence Schema | v1.3 | 3/3 | Complete | 2026-05-08 |
 | 17. Service Instrumentation | v1.3 | 6/6 | Complete | 2026-05-11 |
-| 18. SSE Transport | v1.3 | 0/2 | Not started | - |
+| 18. SSE Transport | v1.3 | 2/2 | Complete | 2026-05-11 |
 | 19. SuperAdmin Monitoring UI | v1.3 | 0/? | Not started | - |
