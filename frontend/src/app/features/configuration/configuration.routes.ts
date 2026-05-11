@@ -28,6 +28,11 @@ export const CONFIGURATION_ROUTES: Routes = [
         loadComponent: () => import('./pages/admin.component').then(m => m.AdminComponent),
         canActivate: [IsSuperAdminGuard],
       },
+      {
+        path: 'jobs',
+        loadComponent: () => import('./pages/job-monitor/job-monitor.component').then(m => m.JobMonitorComponent),
+        canActivate: [IsSuperAdminGuard],
+      },
     ],
   },
 ];

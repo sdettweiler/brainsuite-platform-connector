@@ -75,6 +75,7 @@ export class ConfigurationShellComponent implements OnInit {
       this.navItems = [...this.baseNavItems];
       if (user?.is_superuser) {
         this.navItems.push({ path: 'admin', label: 'Admin', icon: 'shield-lock' });
+        this.navItems.push({ path: 'jobs', label: 'Job Monitor', icon: 'activity' });
       }
     });
   }
