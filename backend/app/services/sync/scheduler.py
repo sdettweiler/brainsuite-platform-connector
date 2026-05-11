@@ -15,6 +15,7 @@ import pytz
 from app.db.base import get_session_factory
 from app.services.ai_autofill import run_autofill_for_asset, backfill_failed_autofill_for_connection
 from app.services.notifications import create_org_notification
+from app.services.sync.job_tracker import create_background_job, update_background_job
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,10 @@ async def run_daily_sync(connection_id: str) -> None:
 
     await _supersede_running_jobs(connection_id)
 
+    # Phase 17: bg_job_id must be accessible to both the first-phase async-with
+    # block and the DV360 second-phase blocks below (D-01, Python scoping).
+    bg_job_id = None
+
     async with get_session_factory()() as db:
         result = await db.execute(
             select(PlatformConnection).where(
@@ -159,6 +164,20 @@ async def run_daily_sync(connection_id: str) -> None:
         db.add(job)
         await db.flush()
         job_id = str(job.id)
+
+        # Phase 17: Create BackgroundJob alongside SyncJob (D-01, D-03)
+        bg_job_id = await create_background_job(
+            job_type="sync_daily",
+            org_id=connection.organization_id,
+            platform_connection_id=connection.id,
+            metadata={"sync_job_id": job_id, "platform": connection.platform},
+        )
+        await update_background_job(
+            bg_job_id,
+            status="RUNNING",
+            progress_total=1,
+            progress_current=0,
+        )
 
         try:
             if is_dv360:
@@ -206,6 +225,15 @@ async def run_daily_sync(connection_id: str) -> None:
                 await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == connection.id).values(sync_status="EXPIRED"))
                 await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == job.id).values(status="FAILED", error_message=f"TokenError: {e}"[:4000], completed_at=datetime.utcnow()))
                 await fresh_db.commit()
+            # Phase 17: Mark BackgroundJob FAILED (D-13)
+            if bg_job_id is not None:
+                import traceback as _tb
+                await update_background_job(
+                    bg_job_id,
+                    status="FAILED",
+                    progress_current=1,
+                    error={"type": "MetaTokenError", "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                )
             await _notify_connection_status(connection, "EXPIRED")
             return
         except Exception as e:
@@ -219,6 +247,15 @@ async def run_daily_sync(connection_id: str) -> None:
                 await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id)).values(sync_status="ERROR"))
                 await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == uuid.UUID(job_id)).values(status="FAILED", error_message=f"{type(e).__name__}: {e}"[:4000], completed_at=datetime.utcnow()))
                 await fresh_db.commit()
+            # Phase 17: Mark BackgroundJob FAILED (D-13)
+            if bg_job_id is not None:
+                import traceback as _tb
+                await update_background_job(
+                    bg_job_id,
+                    status="FAILED",
+                    progress_current=1,
+                    error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                )
             await _notify_connection_status(connection, "ERROR")
             return
 
@@ -239,6 +276,19 @@ async def run_daily_sync(connection_id: str) -> None:
                 db.add(job)
 
                 await db.commit()
+                # Phase 17: Mark BackgroundJob COMPLETE (D-12 output schema)
+                if bg_job_id is not None:
+                    await update_background_job(
+                        bg_job_id,
+                        status="COMPLETE",
+                        progress_current=1,
+                        output={
+                            "platform": connection.platform.lower(),
+                            "sync_job_id": job_id,
+                            "records_fetched": job.records_fetched or 0,
+                            "records_processed": harmonized,
+                        },
+                    )
                 new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
@@ -262,6 +312,15 @@ async def run_daily_sync(connection_id: str) -> None:
                 connection.sync_status = "ERROR"
                 db.add(connection)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
 
     if is_dv360 and dv360_info:
         try:
@@ -290,6 +349,15 @@ async def run_daily_sync(connection_id: str) -> None:
                     conn.sync_status = "ERROR"
                     db.add(conn)
                 await db.commit()
+            # Phase 17: Mark BackgroundJob FAILED (D-13)
+            if bg_job_id is not None:
+                import traceback as _tb
+                await update_background_job(
+                    bg_job_id,
+                    status="FAILED",
+                    progress_current=1,
+                    error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                )
             return
 
         async with get_session_factory()() as db:
@@ -321,6 +389,15 @@ async def run_daily_sync(connection_id: str) -> None:
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
                 return
 
             dv360_asset_queue = sync_result.get("_asset_queue")
@@ -336,6 +413,19 @@ async def run_daily_sync(connection_id: str) -> None:
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob COMPLETE (D-12 output schema)
+                if bg_job_id is not None:
+                    await update_background_job(
+                        bg_job_id,
+                        status="COMPLETE",
+                        progress_current=1,
+                        output={
+                            "platform": conn.platform.lower(),
+                            "sync_job_id": dv360_info["job_id"],
+                            "records_fetched": sj.records_fetched or 0,
+                            "records_processed": harmonized,
+                        },
+                    )
                 new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
@@ -354,6 +444,15 @@ async def run_daily_sync(connection_id: str) -> None:
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
@@ -447,6 +546,9 @@ async def run_full_resync(connection_id: str) -> None:
     _terr_job_id = None
     _terr_org_id = None
     _terr_platform = None
+    # Phase 17: bg_job_id must be accessible in both the first-phase async-with
+    # block and the DV360 second-phase blocks below (D-01, Python scoping).
+    bg_job_id = None
 
     await _supersede_running_jobs(connection_id)
 
@@ -481,6 +583,20 @@ async def run_full_resync(connection_id: str) -> None:
         db.add(job)
         await db.flush()
         job_id = str(job.id)
+
+        # Phase 17: Create BackgroundJob alongside SyncJob (D-01, D-03)
+        bg_job_id = await create_background_job(
+            job_type="sync_full",
+            org_id=connection.organization_id,
+            platform_connection_id=connection.id,
+            metadata={"sync_job_id": job_id, "platform": connection.platform},
+        )
+        await update_background_job(
+            bg_job_id,
+            status="RUNNING",
+            progress_total=1,
+            progress_current=0,
+        )
 
         try:
             if is_dv360:
@@ -542,6 +658,15 @@ async def run_full_resync(connection_id: str) -> None:
                 await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id)).values(sync_status="ERROR"))
                 await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == uuid.UUID(job_id)).values(status="FAILED", error_message=f"{type(e).__name__}: {e}"[:4000], completed_at=datetime.utcnow()))
                 await fresh_db.commit()
+            # Phase 17: Mark BackgroundJob FAILED (D-13)
+            if bg_job_id is not None:
+                import traceback as _tb
+                await update_background_job(
+                    bg_job_id,
+                    status="FAILED",
+                    progress_current=1,
+                    error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                )
             await _notify_connection_status(connection, "ERROR")
             return
 
@@ -566,6 +691,19 @@ async def run_full_resync(connection_id: str) -> None:
                     data={"platform": connection.platform, "connection_id": str(connection.id)},
                 ))
                 await db.commit()
+                # Phase 17: Mark BackgroundJob COMPLETE (D-12 output schema)
+                if bg_job_id is not None:
+                    await update_background_job(
+                        bg_job_id,
+                        status="COMPLETE",
+                        progress_current=1,
+                        output={
+                            "platform": connection.platform.lower(),
+                            "sync_job_id": job_id,
+                            "records_fetched": job.records_fetched or 0,
+                            "records_processed": harmonized,
+                        },
+                    )
                 new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
@@ -590,6 +728,15 @@ async def run_full_resync(connection_id: str) -> None:
                 connection.sync_status = "ERROR"
                 db.add(connection)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
 
     if is_dv360 and dv360_info:
         try:
@@ -618,6 +765,15 @@ async def run_full_resync(connection_id: str) -> None:
                     conn.sync_status = "ERROR"
                     db.add(conn)
                 await db.commit()
+            # Phase 17: Mark BackgroundJob FAILED (D-13)
+            if bg_job_id is not None:
+                import traceback as _tb
+                await update_background_job(
+                    bg_job_id,
+                    status="FAILED",
+                    progress_current=1,
+                    error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                )
             return
 
         async with get_session_factory()() as db:
@@ -649,6 +805,15 @@ async def run_full_resync(connection_id: str) -> None:
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
                 return
 
             dv360_asset_queue = sync_result.get("_asset_queue")
@@ -671,6 +836,19 @@ async def run_full_resync(connection_id: str) -> None:
                     data={"platform": conn.platform, "connection_id": str(conn.id)},
                 ))
                 await db.commit()
+                # Phase 17: Mark BackgroundJob COMPLETE (D-12 output schema)
+                if bg_job_id is not None:
+                    await update_background_job(
+                        bg_job_id,
+                        status="COMPLETE",
+                        progress_current=1,
+                        output={
+                            "platform": conn.platform.lower(),
+                            "sync_job_id": dv360_info["job_id"],
+                            "records_fetched": sj.records_fetched or 0,
+                            "records_processed": harmonized,
+                        },
+                    )
                 new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
@@ -689,6 +867,15 @@ async def run_full_resync(connection_id: str) -> None:
                 conn.sync_status = "ERROR"
                 db.add(conn)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
 
     if _token_err and _terr_conn_id:
         from sqlalchemy import update as _upd
@@ -696,6 +883,14 @@ async def run_full_resync(connection_id: str) -> None:
             await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == _terr_conn_id).values(sync_status="EXPIRED"))
             await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == _terr_job_id).values(status="FAILED", error_message=f"TokenError: {_token_err}"[:4000], completed_at=datetime.utcnow()))
             await fresh_db.commit()
+        # Phase 17: Mark BackgroundJob FAILED for MetaTokenError (D-13)
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                status="FAILED",
+                progress_current=1,
+                error={"type": "MetaTokenError", "message": str(_token_err), "traceback": ""},
+            )
         platform_name = PLATFORM_DISPLAY.get(_terr_platform, str(_terr_platform).title())
         asyncio.create_task(create_org_notification(org_id=_terr_org_id, type="TOKEN_EXPIRED", title=f"{platform_name} Token Expired", message=f"Your {platform_name} access token has expired. Reconnect to resume syncing.", data={"platform": _terr_platform, "connection_id": str(_terr_conn_id)}))
         return
@@ -725,6 +920,9 @@ async def run_initial_sync(connection_id: str) -> None:
     dv360_asset_queue = None
     conn_id_for_assets = None
     trigger_historical = False
+    # Phase 17: bg_job_id must be accessible in both the first-phase async-with
+    # block and the DV360 second-phase blocks below (D-01, Python scoping).
+    bg_job_id = None
 
     await _supersede_running_jobs(connection_id)
 
@@ -751,6 +949,20 @@ async def run_initial_sync(connection_id: str) -> None:
         db.add(job)
         await db.flush()
         job_id = str(job.id)
+
+        # Phase 17: Create BackgroundJob alongside SyncJob (D-01, D-03)
+        bg_job_id = await create_background_job(
+            job_type="sync_initial",
+            org_id=connection.organization_id,
+            platform_connection_id=connection.id,
+            metadata={"sync_job_id": job_id, "platform": connection.platform},
+        )
+        await update_background_job(
+            bg_job_id,
+            status="RUNNING",
+            progress_total=1,
+            progress_current=0,
+        )
 
         try:
             if is_dv360:
@@ -797,6 +1009,15 @@ async def run_initial_sync(connection_id: str) -> None:
                 await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id)).values(sync_status="ERROR"))
                 await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == uuid.UUID(job_id)).values(status="FAILED", error_message=f"{type(e).__name__}: {e}"[:4000], completed_at=datetime.utcnow()))
                 await fresh_db.commit()
+            # Phase 17: Mark BackgroundJob FAILED (D-13)
+            if bg_job_id is not None:
+                import traceback as _tb
+                await update_background_job(
+                    bg_job_id,
+                    status="FAILED",
+                    progress_current=1,
+                    error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                )
             await _notify_connection_status(connection, "ERROR")
             return
 
@@ -821,6 +1042,19 @@ async def run_initial_sync(connection_id: str) -> None:
                     data={"platform": connection.platform, "connection_id": str(connection.id)},
                 ))
                 await db.commit()
+                # Phase 17: Mark BackgroundJob COMPLETE (D-12 output schema)
+                if bg_job_id is not None:
+                    await update_background_job(
+                        bg_job_id,
+                        status="COMPLETE",
+                        progress_current=1,
+                        output={
+                            "platform": connection.platform.lower(),
+                            "sync_job_id": job_id,
+                            "records_fetched": job.records_fetched or 0,
+                            "records_processed": harmonized,
+                        },
+                    )
                 new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
@@ -839,6 +1073,15 @@ async def run_initial_sync(connection_id: str) -> None:
                 job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 db.add(job)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
 
     if is_dv360 and dv360_info:
         try:
@@ -861,6 +1104,15 @@ async def run_initial_sync(connection_id: str) -> None:
                     sj.completed_at = datetime.utcnow()
                     db.add(sj)
                 await db.commit()
+            # Phase 17: Mark BackgroundJob FAILED (D-13)
+            if bg_job_id is not None:
+                import traceback as _tb
+                await update_background_job(
+                    bg_job_id,
+                    status="FAILED",
+                    progress_current=1,
+                    error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                )
             return
 
         async with get_session_factory()() as db:
@@ -889,6 +1141,15 @@ async def run_initial_sync(connection_id: str) -> None:
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
                 return
 
             dv360_asset_queue = sync_result.get("_asset_queue")
@@ -911,6 +1172,19 @@ async def run_initial_sync(connection_id: str) -> None:
                     data={"platform": conn.platform, "connection_id": str(conn.id)},
                 ))
                 await db.commit()
+                # Phase 17: Mark BackgroundJob COMPLETE (D-12 output schema)
+                if bg_job_id is not None:
+                    await update_background_job(
+                        bg_job_id,
+                        status="COMPLETE",
+                        progress_current=1,
+                        output={
+                            "platform": conn.platform.lower(),
+                            "sync_job_id": dv360_info["job_id"],
+                            "records_fetched": sj.records_fetched or 0,
+                            "records_processed": harmonized,
+                        },
+                    )
                 new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
@@ -927,6 +1201,15 @@ async def run_initial_sync(connection_id: str) -> None:
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
 
     if trigger_historical:
         asyncio.create_task(run_historical_sync(connection_id))
@@ -951,6 +1234,9 @@ async def run_historical_sync(connection_id: str) -> None:
     dv360_info = None
     dv360_asset_queue = None
     conn_id_for_assets = None
+    # Phase 17: bg_job_id must be accessible in both the first-phase async-with
+    # block and the DV360 second-phase blocks below (D-01, Python scoping).
+    bg_job_id = None
 
     await _supersede_running_jobs(connection_id)
 
@@ -986,6 +1272,20 @@ async def run_historical_sync(connection_id: str) -> None:
         connection.historical_sync_started_at = datetime.utcnow()
         db.add(connection)
         await db.flush()
+
+        # Phase 17: Create BackgroundJob alongside SyncJob (D-01, D-03)
+        bg_job_id = await create_background_job(
+            job_type="sync_historical",
+            org_id=connection.organization_id,
+            platform_connection_id=connection.id,
+            metadata={"sync_job_id": job_id, "platform": connection.platform},
+        )
+        await update_background_job(
+            bg_job_id,
+            status="RUNNING",
+            progress_total=1,
+            progress_current=0,
+        )
 
         try:
             if is_dv360:
@@ -1034,6 +1334,15 @@ async def run_historical_sync(connection_id: str) -> None:
                 await fresh_db.execute(_upd(PlatformConnection).where(PlatformConnection.id == uuid.UUID(connection_id)).values(sync_status="ERROR"))
                 await fresh_db.execute(_upd(SyncJob).where(SyncJob.id == uuid.UUID(job_id)).values(status="FAILED", error_message=f"{type(e).__name__}: {e}"[:4000], completed_at=datetime.utcnow()))
                 await fresh_db.commit()
+            # Phase 17: Mark BackgroundJob FAILED (D-13)
+            if bg_job_id is not None:
+                import traceback as _tb
+                await update_background_job(
+                    bg_job_id,
+                    status="FAILED",
+                    progress_current=1,
+                    error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                )
             await _notify_connection_status(connection, "ERROR")
             return
 
@@ -1050,6 +1359,19 @@ async def run_historical_sync(connection_id: str) -> None:
                 job.records_processed = harmonized
                 db.add(job)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob COMPLETE (D-12 output schema)
+                if bg_job_id is not None:
+                    await update_background_job(
+                        bg_job_id,
+                        status="COMPLETE",
+                        progress_current=1,
+                        output={
+                            "platform": connection.platform.lower(),
+                            "sync_job_id": job_id,
+                            "records_fetched": job.records_fetched or 0,
+                            "records_processed": harmonized,
+                        },
+                    )
                 new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
@@ -1067,6 +1389,15 @@ async def run_historical_sync(connection_id: str) -> None:
                 job.error_message = f"Harmonization: {type(e).__name__}: {e}"[:4000]
                 db.add(job)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
 
     if is_dv360 and dv360_info:
         try:
@@ -1090,6 +1421,15 @@ async def run_historical_sync(connection_id: str) -> None:
                     sj.completed_at = datetime.utcnow()
                     db.add(sj)
                 await db.commit()
+            # Phase 17: Mark BackgroundJob FAILED (D-13)
+            if bg_job_id is not None:
+                import traceback as _tb
+                await update_background_job(
+                    bg_job_id,
+                    status="FAILED",
+                    progress_current=1,
+                    error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                )
             return
 
         async with get_session_factory()() as db:
@@ -1118,6 +1458,15 @@ async def run_historical_sync(connection_id: str) -> None:
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
                 return
 
             dv360_asset_queue = sync_result.get("_asset_queue")
@@ -1132,6 +1481,19 @@ async def run_historical_sync(connection_id: str) -> None:
                 sj.records_processed = harmonized
                 db.add(sj)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob COMPLETE (D-12 output schema)
+                if bg_job_id is not None:
+                    await update_background_job(
+                        bg_job_id,
+                        status="COMPLETE",
+                        progress_current=1,
+                        output={
+                            "platform": conn.platform.lower(),
+                            "sync_job_id": dv360_info["job_id"],
+                            "records_fetched": sj.records_fetched or 0,
+                            "records_processed": harmonized,
+                        },
+                    )
                 new_asset_ids = {aid for aid, _ in new_assets}
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
@@ -1146,6 +1508,15 @@ async def run_historical_sync(connection_id: str) -> None:
                 sj.completed_at = datetime.utcnow()
                 db.add(sj)
                 await db.commit()
+                # Phase 17: Mark BackgroundJob FAILED (D-13)
+                if bg_job_id is not None:
+                    import traceback as _tb
+                    await update_background_job(
+                        bg_job_id,
+                        status="FAILED",
+                        progress_current=1,
+                        error={"type": type(e).__name__, "message": str(e), "traceback": _tb.format_exc()[:10000]},
+                    )
 
     if dv360_asset_queue and conn_id_for_assets:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
