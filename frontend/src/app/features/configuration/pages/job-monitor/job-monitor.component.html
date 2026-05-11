@@ -1,0 +1,133 @@
+<div class="page-container">
+  <!-- Page header -->
+  <div class="page-header">
+    <h2>Job Monitor</h2>
+    <div class="sse-badge" aria-live="polite" *ngIf="connectionStatus$ | async as status">
+      <ng-container *ngIf="status === 'live'">
+        <span class="sse-dot sse-dot-live"></span>
+        Live
+      </ng-container>
+      <ng-container *ngIf="status === 'reconnecting'">
+        <mat-progress-spinner diameter="12" mode="indeterminate"></mat-progress-spinner>
+        Reconnecting&hellip;
+      </ng-container>
+      <ng-container *ngIf="status === 'disconnected'">
+        <span class="sse-dot sse-dot-disconnected"></span>
+        Disconnected
+      </ng-container>
+    </div>
+  </div>
+
+  <!-- 4-tab layout -->
+  <mat-tab-group (selectedIndexChange)="onTabChange($event)" animationDuration="0">
+    <mat-tab *ngFor="let label of TAB_LABELS; let i = index" [label]="label">
+      <!-- Tab label template with count badge -->
+      <ng-template mat-tab-label>
+        {{ label }}
+        <span class="tab-count-badge"
+              *ngIf="(jobs$ | async) as allJobs"
+              [style.display]="getActiveCount(allJobs, i) > 0 ? 'inline-block' : 'none'"
+              [attr.aria-label]="getActiveCount(allJobs, i) + ' active jobs'">
+          {{ getActiveCount(allJobs, i) }}
+        </span>
+      </ng-template>
+
+      <!-- Tab body -->
+      <ng-container *ngIf="jobs$ | async as allJobs">
+        <!-- Filter row + action buttons -->
+        <div class="tab-actions">
+          <div class="filter-chips">
+            <mat-chip-listbox>
+              <mat-chip-option (click)="onStatusFilter(null)" [selected]="selectedStatus === null">All</mat-chip-option>
+              <mat-chip-option (click)="onStatusFilter('RUNNING')" [selected]="selectedStatus === 'RUNNING'">Running</mat-chip-option>
+              <mat-chip-option (click)="onStatusFilter('COMPLETE')" [selected]="selectedStatus === 'COMPLETE'">Completed</mat-chip-option>
+              <mat-chip-option (click)="onStatusFilter('FAILED')" [selected]="selectedStatus === 'FAILED'">Failed</mat-chip-option>
+            </mat-chip-listbox>
+          </div>
+          <div class="action-btns">
+            <button mat-stroked-button class="btn-clear-completed"
+                    [disabled]="!hasJobsOfStatus(allJobs, 'COMPLETE')"
+                    (click)="clearJobs('COMPLETE', allJobs)">Clear completed</button>
+            <button mat-stroked-button class="btn-clear-failed"
+                    [disabled]="!hasJobsOfStatus(allJobs, 'FAILED')"
+                    (click)="clearJobs('FAILED', allJobs)">Clear failed</button>
+          </div>
+        </div>
+
+        <!-- Skeleton loading state -->
+        <ng-container *ngIf="(connectionStatus$ | async) === 'reconnecting' && allJobs.length === 0">
+          <div class="skeleton-block" *ngFor="let _ of [1,2,3]"></div>
+        </ng-container>
+
+        <!-- Job table -->
+        <ng-container *ngIf="!((connectionStatus$ | async) === 'reconnecting' && allJobs.length === 0)">
+          <ng-container *ngIf="getFilteredJobs(allJobs) as jobs">
+            <!-- Empty state -->
+            <div class="empty-state" *ngIf="jobs.length === 0">
+              <i class="bi" [ngClass]="selectedStatus ? 'bi-funnel' : 'bi-inbox'"></i>
+              <h3>{{ selectedStatus ? 'No matching jobs' : 'No jobs yet' }}</h3>
+              <p>{{ selectedStatus ? 'Try selecting a different status filter.' : 'Jobs will appear here when sync, download, autofill, or scoring runs begin.' }}</p>
+            </div>
+
+            <!-- Table -->
+            <table class="job-table" *ngIf="jobs.length > 0">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Org</th>
+                  <th>Started</th>
+                  <th>Duration</th>
+                  <th>Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let job of jobs"
+                    class="job-row"
+                    role="button"
+                    tabindex="0"
+                    (click)="selectJob(job)"
+                    (keydown.enter)="selectJob(job)"
+                    (keydown.space)="selectJob(job)">
+                  <td>
+                    <span class="badge"
+                          [class.badge-info]="job.status === 'RUNNING'"
+                          [class.badge-warning]="job.status === 'PENDING'"
+                          [class.badge-success]="job.status === 'COMPLETE'"
+                          [class.badge-error]="job.status === 'FAILED'">
+                      {{ job.status }}
+                    </span>
+                  </td>
+                  <td><span class="org-id">{{ getOrgShort(job.org_id) }}</span></td>
+                  <td>{{ formatDate(job.started_at) }}</td>
+                  <td>{{ getDuration(job) }}</td>
+                  <td>
+                    <ng-container *ngIf="showProgressBar(job)">
+                      <mat-progress-bar
+                        [mode]="getProgressMode(job)"
+                        [value]="getProgressValue(job)"
+                        [attr.aria-label]="getProgressMode(job) === 'indeterminate' ? 'Job in progress' : null">
+                      </mat-progress-bar>
+                      <div class="progress-label" *ngIf="getProgressMode(job) === 'determinate'">
+                        {{ job.progress_current }} / {{ job.progress_total }}
+                      </div>
+                    </ng-container>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Pagination -->
+            <div class="pagination" *ngIf="getTotalForTab(allJobs) > PAGE_SIZE">
+              <span>Showing {{ currentOffset + 1 }}&ndash;{{ currentOffset + getFilteredJobs(allJobs).length }} of {{ getTotalForTab(allJobs) }} jobs</span>
+              <button mat-stroked-button (click)="onPrevPage()" [disabled]="currentOffset === 0">Previous</button>
+              <button mat-stroked-button (click)="onNextPage(getTotalForTab(allJobs))" [disabled]="currentOffset + PAGE_SIZE >= getTotalForTab(allJobs)">Next</button>
+            </div>
+          </ng-container>
+        </ng-container>
+      </ng-container>
+    </mat-tab>
+  </mat-tab-group>
+
+  <!-- Detail panel (Plan 06 wires this) -->
+  <!-- <app-job-detail-panel [jobId]="selectedJobId" [isOpen]="selectedJobId !== null" (closed)="onPanelClosed()"></app-job-detail-panel> -->
+</div>
