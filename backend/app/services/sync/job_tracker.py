@@ -14,6 +14,7 @@ from typing import Optional
 
 from app.db.base import get_session_factory
 from app.models.jobs import BackgroundJob
+from app.core.redis import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,14 @@ async def create_background_job(
         await db.flush()
         job_id = job.id
         await db.commit()
+
+    # D-01: Notify SSE subscribers of new job. Failures must not block job creation.
+    try:
+        redis = get_redis()
+        await redis.publish("sse:job_updates", str(job_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SSE publish failed for job %s: %s", job_id, exc)
+
     return job_id
 
 
@@ -103,3 +112,10 @@ async def update_background_job(
 
         db.add(job)
         await db.commit()
+
+    # D-01: Notify SSE subscribers of job update. Failures must not block update.
+    try:
+        redis = get_redis()
+        await redis.publish("sse:job_updates", str(job_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SSE publish failed for job %s: %s", job_id, exc)
