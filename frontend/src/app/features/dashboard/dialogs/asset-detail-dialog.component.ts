@@ -420,7 +420,7 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                       <video *ngIf="assetIsVideo() && asset?.asset_url"
                         [src]="asset!.asset_url!" controls class="ce-media-asset"></video>
                       <img *ngIf="!assetIsVideo() || !asset?.asset_url"
-                        [src]="asset?.asset_url || asset?.thumbnail_url || '/assets/images/placeholder.svg'"
+                        [src]="asset.asset_url || asset.thumbnail_url || '/assets/images/placeholder.svg'"
                         class="ce-media-asset" alt="Creative"/>
                     </ng-container>
                     <!-- Visualization modes -->
