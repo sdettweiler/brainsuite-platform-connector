@@ -128,8 +128,11 @@ async def test_complete_guard():
     org_id = uuid.uuid4()
 
     with patch("app.services.ai_autofill.get_session_factory") as mock_sf, \
-         patch("app.services.ai_autofill.genai") as mock_genai:
+         patch("app.services.ai_autofill.genai") as mock_genai, \
+         patch("app.services.ai_autofill.create_background_job", new_callable=AsyncMock) as mock_create_bg, \
+         patch("app.services.ai_autofill.update_background_job", new_callable=AsyncMock):
 
+        mock_create_bg.return_value = uuid.uuid4()
         db_session = AsyncMock()
         exec_result_tracking = MagicMock()
         exec_result_tracking.scalar_one_or_none.return_value = _make_tracking("COMPLETE")
@@ -158,8 +161,11 @@ async def test_no_autofill_fields():
 
     with patch("app.services.ai_autofill.get_session_factory") as mock_sf, \
          patch("app.services.ai_autofill._set_status", new_callable=AsyncMock) as mock_set_status, \
-         patch("app.services.ai_autofill.genai") as mock_genai:
+         patch("app.services.ai_autofill.genai") as mock_genai, \
+         patch("app.services.ai_autofill.create_background_job", new_callable=AsyncMock) as mock_create_bg, \
+         patch("app.services.ai_autofill.update_background_job", new_callable=AsyncMock):
 
+        mock_create_bg.return_value = uuid.uuid4()
         db_session = _make_db_session_mock(tracking_status="PENDING", fields=[])
         mock_sf.return_value.return_value = db_session
 
@@ -519,8 +525,11 @@ async def test_exception_sets_failed():
     org_id = uuid.uuid4()
 
     with patch("app.services.ai_autofill._autofill", new_callable=AsyncMock) as mock_autofill, \
-         patch("app.services.ai_autofill._set_status", new_callable=AsyncMock) as mock_set_status:
+         patch("app.services.ai_autofill._set_status", new_callable=AsyncMock) as mock_set_status, \
+         patch("app.services.ai_autofill.create_background_job", new_callable=AsyncMock) as mock_create_bg, \
+         patch("app.services.ai_autofill.update_background_job", new_callable=AsyncMock):
 
+        mock_create_bg.return_value = uuid.uuid4()
         mock_autofill.side_effect = RuntimeError("Gemini connection error")
 
         await run_autofill_for_asset(asset_id, org_id)
