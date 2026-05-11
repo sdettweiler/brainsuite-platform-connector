@@ -9,8 +9,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { JobMonitorService, JobSnapshot, SseStatus } from '../../../../core/services/job-monitor.service';
-// JobDetailPanelComponent imported here; its file does not exist yet — comment out temporarily if TS errors:
-// import { JobDetailPanelComponent } from './job-detail-panel/job-detail-panel.component';
+import { JobDetailPanelComponent } from './job-detail-panel/job-detail-panel.component';
 
 @Component({
   standalone: true,
@@ -24,7 +23,7 @@ import { JobMonitorService, JobSnapshot, SseStatus } from '../../../../core/serv
     MatButtonModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
-    // JobDetailPanelComponent,  // uncomment after Plan 06
+    JobDetailPanelComponent,
   ],
   templateUrl: './job-monitor.component.html',
   styleUrls: ['./job-monitor.component.scss'],
