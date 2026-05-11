@@ -127,10 +127,10 @@ Plans:
 Plans:
 
 **Wave 1**
-- [ ] 18-01-PLAN.md — Wave 0 test stubs (test_sse.py) + Redis PUBLISH wiring in job_tracker.py + sse-starlette in requirements.txt
+- [x] 18-01-PLAN.md — Wave 0 test stubs (test_sse.py) + Redis PUBLISH wiring in job_tracker.py + sse-starlette in requirements.txt
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 18-02-PLAN.md — get_current_superadmin_sse dependency + jobs.py SSE endpoint + router registration + 5 green tests
+- [x] 18-02-PLAN.md — get_current_superadmin_sse dependency + jobs.py SSE endpoint + router registration + 5 green tests
 
 ### Phase 19: SuperAdmin Monitoring UI
 **Goal**: SuperAdmins can view, filter, and drill into all background jobs in real time at /configuration/admin, including progress bars, error tracebacks, and full output details
