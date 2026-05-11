@@ -8,6 +8,7 @@ import asyncio
 import logging
 import os
 import re
+import traceback
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
@@ -35,6 +36,7 @@ from app.services.brainsuite_static_score import (
 )
 from app.services.object_storage import get_object_storage
 from app.services.notifications import create_org_notification
+from app.services.sync.job_tracker import create_background_job, update_background_job
 
 logger = logging.getLogger(__name__)
 
@@ -312,6 +314,12 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
         getattr(asset, "platform", "?"),
         getattr(asset, "asset_format", "?"),
     )
+
+    # Phase 17: Declare bg_job_id before try so except handlers can reference it (INSTR-04).
+    # Guard paths (_mark_unscored) return early inside the try without ever calling
+    # create_background_job — skipped assets are not scoring runs per INSTR-04 scope.
+    bg_job_id = None
+
     try:
         # [Phase 11 / PIPE-01] Load org BrainSuite config — graceful UNSCORED on missing/incomplete (D-02)
         org_config = None
@@ -390,6 +398,25 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                     f"Mandatory field(s) missing: {', '.join(missing_fields)}",
                 )
                 return
+
+        # Phase 17: Create BackgroundJob per asset (D-07, INSTR-04, INSTR-05).
+        # Placed after both guard paths so skipped assets do NOT create a BackgroundJob
+        # (skipped assets are not scoring runs; they are not failures or successes).
+        bg_job_id = await create_background_job(
+            job_type="scoring",
+            org_id=asset.organization_id,
+            platform_connection_id=getattr(asset, "platform_connection_id", None),
+            metadata={
+                "asset_id": str(asset_id),
+                "creative_score_result_id": str(score_id),
+            },
+        )
+        await update_background_job(
+            bg_job_id,
+            status="RUNNING",
+            progress_total=1,
+            progress_current=0,
+        )
 
         client_secret = decrypt_token(org_config.client_secret_encrypted)
         org_id_str = str(asset.organization_id)
@@ -522,6 +549,20 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 score_row.updated_at = datetime.now(timezone.utc)
             await db.commit()
 
+        # Phase 17: Mark BackgroundJob COMPLETE with D-08 output (INSTR-04, INSTR-05)
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                status="COMPLETE",
+                progress_current=1,
+                output={
+                    "score": score_data["total_score"],
+                    "endpoint_type": endpoint_type,
+                    "brainsuite_job_id": str(job_id),
+                    "dimensions": score_data["score_dimensions"],
+                },
+            )
+
         logger.info(
             "Scoring complete for asset %s: score=%.1f rating=%s",
             asset_id,
@@ -533,6 +574,17 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
         error_reason = str(exc)[:500]
         logger.warning("BrainSuite job error for asset %s (endpoint_type=%s): %s", asset_id, endpoint_type, error_reason)
         await _mark_failed(score_id, error_reason)
+        # Phase 17: Mark BackgroundJob FAILED (D-13 — empty traceback for BrainSuiteJobError)
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                status="FAILED",
+                error={
+                    "type": "BrainSuiteJobError",
+                    "message": error_reason,
+                    "traceback": "",
+                },
+            )
 
     except Exception as exc:
         error_reason = f"{type(exc).__name__}: {str(exc)[:500]}"
@@ -542,6 +594,17 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
             exc_info=True,
         )
         await _mark_failed(score_id, error_reason)
+        # Phase 17: Mark BackgroundJob FAILED (D-13 — truncate traceback at 10KB)
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                status="FAILED",
+                error={
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                    "traceback": traceback.format_exc()[:10000],
+                },
+            )
 
 
 async def run_backfill_task() -> None:
