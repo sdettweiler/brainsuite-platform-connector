@@ -49,7 +49,7 @@
 - [x] **Phase 16: Job Persistence Schema** - PostgreSQL `background_jobs` table with indexes, autovacuum tuning, and cleanup job (complete 2026-05-08)
 - [x] **Phase 17: Service Instrumentation** - Wire all four job types (sync, download, autofill, scoring) to write job records with progress (complete 2026-05-11)
 - [x] **Phase 18: SSE Transport** - FastAPI streaming endpoint with keepalive heartbeats and connection lifecycle management (complete 2026-05-11)
-- [ ] **Phase 19: SuperAdmin Monitoring UI** - Angular job monitor at /configuration/admin with real-time updates and drill-in detail panels
+- [ ] **Phase 19: SuperAdmin Monitoring UI** - Angular job monitor at /configuration/jobs with real-time updates and drill-in detail panels
 
 ## Phase Details
 
@@ -133,19 +133,32 @@ Plans:
 - [x] 18-02-PLAN.md — get_current_superadmin_sse dependency + jobs.py SSE endpoint + router registration + 5 green tests
 
 ### Phase 19: SuperAdmin Monitoring UI
-**Goal**: SuperAdmins can view, filter, and drill into all background jobs in real time at /configuration/admin, including progress bars, error tracebacks, and full output details
+**Goal**: SuperAdmins can view, filter, and drill into all background jobs in real time at /configuration/jobs, including progress bars, error tracebacks, and full output details
 **Depends on**: Phase 18
 **Requirements**: MON-01, MON-02, MON-03, MON-04, MON-05, MON-06, MON-07
 **Success Criteria** (what must be TRUE):
-  1. The /configuration/admin page displays all active and recent jobs grouped by type (sync / download / autofill / scoring) and updates without a page refresh via SSE
+  1. The /configuration/jobs page displays all active and recent jobs grouped by type (sync / download / autofill / scoring) and updates without a page refresh via SSE
   2. In-progress download and sync jobs show a determinate progress bar (e.g. "7 / 10 assets") that advances in real time
   3. Drilling into an autofill job shows the full Gemini field output (field names, determined values, raw API response) in a readable panel
   4. Drilling into a download job shows a manifest of downloaded assets with links to each file
   5. Drilling into a failed job shows the full error traceback (copyable to clipboard, truncated at 10 KB)
   6. Drilling into a scoring job shows per-asset score outcomes and any per-asset failures
   7. Every job detail view displays the internal job ID and any external API job IDs (e.g. BrainSuite job ID)
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 6 plans
+
+**Wave 1** *(parallel — no dependencies)*
+- [ ] 19-01-PLAN.md — Pydantic schemas (JobListItem + JobDetail) + 9 test stubs in test_jobs_api.py
+- [ ] 19-03-PLAN.md — JobMonitorService (SSE + in-memory Map + REST helpers) — MON-01, MON-02
+- [ ] 19-04-PLAN.md — Route + sidebar registration (/configuration/jobs + Job Monitor nav item)
+
+**Wave 2** *(blocked on 19-01)*
+- [ ] 19-02-PLAN.md — REST endpoints (GET /jobs, GET /jobs/{id}, DELETE /jobs) + 9 passing tests — MON-01, MON-02, MON-05, MON-07
+
+**Wave 3** *(blocked on 19-03 + 19-04)*
+- [ ] 19-05-PLAN.md — Job monitor page component (tabs, filter, table, progress bars, clear actions, SSE badge) — MON-01, MON-02
+
+**Wave 4** *(blocked on 19-05)*
+- [ ] 19-06-PLAN.md — Job detail panel (slide-in, type-specific drill-ins, error traceback, copy buttons) — MON-03, MON-04, MON-05, MON-06, MON-07
 
 ## Progress
 
@@ -169,4 +182,4 @@ Plans:
 | 16. Job Persistence Schema | v1.3 | 3/3 | Complete | 2026-05-08 |
 | 17. Service Instrumentation | v1.3 | 6/6 | Complete | 2026-05-11 |
 | 18. SSE Transport | v1.3 | 2/2 | Complete | 2026-05-11 |
-| 19. SuperAdmin Monitoring UI | v1.3 | 0/? | Not started | - |
+| 19. SuperAdmin Monitoring UI | v1.3 | 0/6 | Not started | - |
