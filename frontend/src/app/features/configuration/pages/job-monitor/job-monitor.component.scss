@@ -1,0 +1,173 @@
+.page-container {
+  padding: 24px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+
+  h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+  }
+}
+
+.sse-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+
+  .sse-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+  }
+
+  .sse-dot-live {
+    background: var(--success);
+  }
+
+  .sse-dot-disconnected {
+    background: var(--error);
+  }
+}
+
+.tab-count-badge {
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+}
+
+.tab-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0 8px;
+}
+
+.action-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-clear-completed {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+  font-size: 13px;
+}
+
+.btn-clear-failed {
+  border-color: var(--error) !important;
+  color: var(--error) !important;
+  font-size: 13px;
+}
+
+.job-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  thead {
+    background: var(--bg-hover);
+  }
+
+  th {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-secondary);
+  }
+
+  td {
+    font-size: 14px;
+    color: var(--text-primary);
+  }
+}
+
+.job-row {
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+}
+
+.org-id {
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.progress-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px 0;
+
+  i {
+    font-size: 48px;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 16px;
+  }
+
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0 0 8px;
+  }
+
+  p {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin: 0;
+  }
+}
+
+.skeleton-block {
+  height: 48px;
+  background: var(--bg-card);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
