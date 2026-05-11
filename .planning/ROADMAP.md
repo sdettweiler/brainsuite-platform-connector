@@ -103,7 +103,7 @@ Plans:
 Plans:
 
 **Wave 1**
-- [ ] 17-01-PLAN.md — job_tracker.py helpers + test_instrumentation.py Wave-0 stubs
+- [x] 17-01-PLAN.md — job_tracker.py helpers + test_instrumentation.py Wave-0 stubs (complete 2026-05-11)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 17-02-PLAN.md — Sync instrumentation (all 4 entry points in scheduler.py) — INSTR-01, INSTR-05
