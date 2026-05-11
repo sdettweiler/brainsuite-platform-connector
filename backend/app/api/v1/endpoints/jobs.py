@@ -164,7 +164,6 @@ async def stream_jobs(
     """
     return EventSourceResponse(
         sse_generator(request, current_user),
-        ping=15,          # HTTP-level keep-alive (separate from D-08 app-level ping)
-        send_timeout=60,
+        ping=15,
         headers={"Cache-Control": "no-cache"},
     )
