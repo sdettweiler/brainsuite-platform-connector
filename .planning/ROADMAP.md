@@ -123,7 +123,14 @@ Plans:
   2. The SSE endpoint sends a keepalive heartbeat on a regular interval so proxy connections do not time out during idle periods
   3. Closing the browser tab or navigating away releases the server-side SSE connection (no persistent worker slot leak)
   4. The SSE endpoint is guarded by the SuperAdmin JWT claim and rejects non-SuperAdmin connections
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+
+**Wave 1**
+- [ ] 18-01-PLAN.md — Wave 0 test stubs (test_sse.py) + Redis PUBLISH wiring in job_tracker.py + sse-starlette in requirements.txt
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 18-02-PLAN.md — get_current_superadmin_sse dependency + jobs.py SSE endpoint + router registration + 5 green tests
 
 ### Phase 19: SuperAdmin Monitoring UI
 **Goal**: SuperAdmins can view, filter, and drill into all background jobs in real time at /configuration/admin, including progress bars, error tracebacks, and full output details
@@ -161,5 +168,5 @@ Plans:
 | 15. TikTok Asset Download | v1.3 | 2/2 | Complete | 2026-05-08 |
 | 16. Job Persistence Schema | v1.3 | 3/3 | Complete | 2026-05-08 |
 | 17. Service Instrumentation | v1.3 | 6/6 | Complete | 2026-05-11 |
-| 18. SSE Transport | v1.3 | 0/? | Not started | - |
+| 18. SSE Transport | v1.3 | 0/2 | Not started | - |
 | 19. SuperAdmin Monitoring UI | v1.3 | 0/? | Not started | - |
