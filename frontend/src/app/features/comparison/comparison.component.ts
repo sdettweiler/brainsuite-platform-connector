@@ -1,17 +1,12 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
-import { MatSelectModule } from '@angular/material/select';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
-import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
 
 interface AssetDetail {
   id: string;
@@ -20,10 +15,8 @@ interface AssetDetail {
   asset_format: string;
   thumbnail_url: string;
   asset_url?: string;
-  campaign_name: string;
-  objective?: string;
+  campaign_name?: string;
   ace_score?: number;
-  ace_score_confidence?: string;
   brainsuite_metadata?: Record<string, any>;
   timeseries: Array<{
     date: string;
@@ -56,6 +49,13 @@ interface KpiOption {
   format: 'currency' | 'number' | 'percent' | 'decimal';
 }
 
+const PLATFORM_ICONS: Record<string, string> = {
+  META: '/assets/images/icon-meta.png',
+  TIKTOK: '/assets/images/icon-tiktok.png',
+  GOOGLE_ADS: '/assets/images/icon-google-ads.png',
+  DV360: '/assets/images/icon-dv360.png',
+};
+
 const PLATFORM_COLORS: Record<string, string> = {
   META: '#1877F2',
   TIKTOK: '#010101',
@@ -68,9 +68,8 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
 @Component({
   standalone: true,
   imports: [
-    CommonModule, FormsModule, MatButtonModule,
-    MatSelectModule, MatFormFieldModule, MatInputModule,
-    MatDatepickerModule, MatNativeDateModule, MatTooltipModule, MatProgressSpinnerModule,
+    CommonModule, MatButtonModule, MatTooltipModule, MatProgressSpinnerModule,
+    DateRangePickerComponent,
   ],
   template: `
     <div class="comparison-page">
@@ -86,21 +85,12 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
           </div>
         </div>
         <div class="header-right">
-          <!-- Date range -->
-          <div class="date-range">
-            <mat-form-field appearance="outline" class="date-field">
-              <mat-label>From</mat-label>
-              <input matInput [matDatepicker]="dpFrom" [(ngModel)]="dateFrom" (dateChange)="reload()" />
-              <mat-datepicker-toggle matSuffix [for]="dpFrom"></mat-datepicker-toggle>
-              <mat-datepicker #dpFrom></mat-datepicker>
-            </mat-form-field>
-            <mat-form-field appearance="outline" class="date-field">
-              <mat-label>To</mat-label>
-              <input matInput [matDatepicker]="dpTo" [(ngModel)]="dateTo" (dateChange)="reload()" />
-              <mat-datepicker-toggle matSuffix [for]="dpTo"></mat-datepicker-toggle>
-              <mat-datepicker #dpTo></mat-datepicker>
-            </mat-form-field>
-          </div>
+          <app-date-range-picker
+            [dateFrom]="dateFrom"
+            [dateTo]="dateTo"
+            [selectedPreset]="selectedPreset"
+            (dateChange)="onDateRangeChange($event)"
+          ></app-date-range-picker>
         </div>
       </div>
 
@@ -126,32 +116,36 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
       <!-- Main comparison grid -->
       <div *ngIf="!loading" class="comparison-content">
         <!-- Asset header cards -->
-        <div class="asset-headers">
-          <!-- Empty corner for labels column -->
+        <div class="asset-headers" [style.grid-template-columns]="'200px repeat(' + assets.length + ', 1fr)'">
           <div class="corner-cell"></div>
 
           <div *ngFor="let asset of assets; let i = index" class="asset-header-card">
             <div class="asset-color-bar" [style.background]="chartColors[i]"></div>
             <div class="asset-thumb-wrapper">
               <img
-                *ngIf="asset.asset_url || asset.thumbnail_url; else noThumb"
-                [src]="asset.asset_url || asset.thumbnail_url"
+                *ngIf="asset.thumbnail_url; else noThumb"
+                [src]="asset.thumbnail_url"
                 [alt]="asset.ad_name"
                 class="asset-thumb"
                 (error)="onThumbError($event)"
               />
               <ng-template #noThumb>
                 <div class="thumb-placeholder">
-                  <i class="bi bi-file-earmark-x" style="font-size: 32px;"></i>
+                  <i class="bi bi-file-earmark-x"></i>
                 </div>
               </ng-template>
-              <div class="platform-badge" [style.background]="getPlatformColor(asset.platform)">
-                {{ asset.platform.substring(0, 2) }}
-              </div>
             </div>
             <div class="asset-header-info">
-              <p class="asset-name" [matTooltip]="asset.ad_name">{{ asset.ad_name }}</p>
-              <p class="asset-meta">{{ asset.asset_format }} &middot; {{ asset.campaign_name }}</p>
+              <div class="asset-name-row">
+                <img
+                  *ngIf="getPlatformIcon(asset.platform)"
+                  [src]="getPlatformIcon(asset.platform)"
+                  [alt]="asset.platform"
+                  class="platform-icon"
+                />
+                <p class="asset-name" [matTooltip]="asset.ad_name">{{ asset.ad_name }}</p>
+              </div>
+              <p class="asset-meta">{{ asset.asset_format }}</p>
               <div class="ace-badge" *ngIf="asset.ace_score" [class]="getAceClass(asset.ace_score)">
                 ACE {{ asset.ace_score }}
               </div>
@@ -179,15 +173,20 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
         <div class="kpi-table-section">
           <div class="section-title">Performance Summary</div>
           <div class="kpi-table">
-            <div class="kpi-table-header">
+            <div class="kpi-table-header" [style.grid-template-columns]="'200px repeat(' + assets.length + ', 1fr)'">
               <div class="metric-col">Metric</div>
               <div *ngFor="let asset of assets; let i = index" class="value-col">
                 <div class="col-indicator" [style.background]="chartColors[i]"></div>
-                <span class="col-name">{{ truncateName(asset.ad_name, 20) }}</span>
+                <span class="col-name">{{ truncateName(asset.ad_name, 22) }}</span>
               </div>
             </div>
 
-            <div *ngFor="let row of kpiRows" class="kpi-table-row" [class.highlighted]="row.highlight">
+            <div
+              *ngFor="let row of kpiRows"
+              class="kpi-table-row"
+              [class.highlighted]="row.highlight"
+              [style.grid-template-columns]="'200px repeat(' + assets.length + ', 1fr)'"
+            >
               <div class="metric-col">{{ row.label }}</div>
               <div *ngFor="let asset of assets; let i = index" class="value-col">
                 <span class="kpi-value" [class.best]="isBest(row.key, asset.id, row.higher)">
@@ -205,15 +204,19 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
             <span class="dummy-badge">Simulated Data</span>
           </div>
           <div class="kpi-table">
-            <div class="kpi-table-header">
+            <div class="kpi-table-header" [style.grid-template-columns]="'200px repeat(' + assets.length + ', 1fr)'">
               <div class="metric-col">Score</div>
               <div *ngFor="let asset of assets; let i = index" class="value-col">
                 <div class="col-indicator" [style.background]="chartColors[i]"></div>
-                <span class="col-name">{{ truncateName(asset.ad_name, 20) }}</span>
+                <span class="col-name">{{ truncateName(asset.ad_name, 22) }}</span>
               </div>
             </div>
 
-            <div *ngFor="let row of brainsuiteRows" class="kpi-table-row">
+            <div
+              *ngFor="let row of brainsuiteRows"
+              class="kpi-table-row"
+              [style.grid-template-columns]="'200px repeat(' + assets.length + ', 1fr)'"
+            >
               <div class="metric-col">{{ row.label }}</div>
               <div *ngFor="let asset of assets" class="value-col">
                 <div class="bs-score-bar">
@@ -239,8 +242,6 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
 
     .header-left { display: flex; align-items: flex-start; gap: 12px; }
     .header-right { display: flex; align-items: center; gap: 12px; }
-    .date-range { display: flex; align-items: center; gap: 8px; }
-    .date-field { width: 160px; }
 
     .kpi-bar {
       display: flex; align-items: center; gap: 12px;
@@ -266,7 +267,6 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
     /* Asset headers */
     .asset-headers {
       display: grid;
-      grid-template-columns: 160px repeat(auto-fill, minmax(220px, 1fr));
       gap: 12px;
     }
 
@@ -280,26 +280,26 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
     .asset-color-bar { height: 4px; }
 
     .asset-thumb-wrapper {
-      position: relative; height: 120px;
+      position: relative; height: 130px; background: var(--bg-secondary);
     }
 
-    .asset-thumb { width: 100%; height: 100%; object-fit: cover; }
+    .asset-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
 
     .thumb-placeholder {
       width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-      background: var(--bg-secondary);
       i.bi { font-size: 32px; color: var(--text-muted); }
     }
 
-    .platform-badge {
-      position: absolute; top: 8px; right: 8px; width: 24px; height: 24px;
-      border-radius: 50%; display: flex; align-items: center; justify-content: center;
-      font-size: 9px; font-weight: 700; color: white;
+    .asset-header-info { padding: 10px 12px 0; }
+
+    .asset-name-row {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
     }
 
-    .asset-header-info { padding: 10px 12px 0; }
+    .platform-icon { width: 16px; height: 16px; object-fit: contain; flex-shrink: 0; }
+
     .asset-name {
-      font-size: 13px; font-weight: 600; margin: 0 0 4px;
+      font-size: 13px; font-weight: 600; margin: 0;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .asset-meta { font-size: 11px; color: var(--text-secondary); margin: 0 0 8px; }
@@ -315,7 +315,7 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
 
     /* Chart */
     .chart-section {
-      display: grid; grid-template-columns: 160px 1fr;
+      display: grid; grid-template-columns: 200px 1fr;
       background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
       overflow: hidden;
     }
@@ -353,7 +353,6 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
 
     .kpi-table-header, .kpi-table-row {
       display: grid;
-      grid-template-columns: 160px repeat(auto-fill, minmax(180px, 1fr));
     }
 
     .kpi-table-header {
@@ -368,7 +367,7 @@ const CHART_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853'];
       > div { padding: 10px 16px; font-size: 13px; }
     }
 
-    .metric-col { color: var(--text-secondary); font-size: 12px !important; }
+    .metric-col { color: var(--text-secondary); font-size: 12px !important; display: flex; align-items: center; }
 
     .value-col { display: flex; align-items: center; gap: 6px; }
 
@@ -398,8 +397,9 @@ export class ComparisonComponent implements OnInit {
   loading = true;
   chartReady = false;
 
-  dateFrom: Date;
-  dateTo: Date;
+  dateFrom: string;
+  dateTo: string;
+  selectedPreset = 'custom';
   selectedKpi = 'spend';
 
   chartColors = CHART_COLORS;
@@ -450,15 +450,20 @@ export class ComparisonComponent implements OnInit {
     private auth: AuthService,
   ) {
     const now = new Date();
-    this.dateTo = now;
-    this.dateFrom = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    this.dateTo = this.fmt(yesterday);
+    const from = new Date(now);
+    from.setDate(from.getDate() - 30);
+    this.dateFrom = this.fmt(from);
   }
 
   ngOnInit(): void {
     this.route.queryParams.subscribe(params => {
       const ids = params['assetIds'];
-      if (params['dateFrom']) this.dateFrom = new Date(params['dateFrom']);
-      if (params['dateTo']) this.dateTo = new Date(params['dateTo']);
+      if (params['dateFrom']) this.dateFrom = params['dateFrom'];
+      if (params['dateTo']) this.dateTo = params['dateTo'];
+      if (params['dateFrom'] || params['dateTo']) this.selectedPreset = 'custom';
       if (ids) {
         this.assetIds = ids.split(',').filter((id: string) => id.trim());
         this.loadComparison();
@@ -471,13 +476,11 @@ export class ComparisonComponent implements OnInit {
   loadComparison(): void {
     if (this.assetIds.length < 2) { this.loading = false; return; }
     this.loading = true;
-    const df = this.formatDate(this.dateFrom);
-    const dt = this.formatDate(this.dateTo);
 
     this.api.post<any>('/dashboard/compare', {
       asset_ids: this.assetIds,
-      date_from: df,
-      date_to: dt,
+      date_from: this.dateFrom,
+      date_to: this.dateTo,
     }).subscribe({
       next: (data) => {
         this.assets = data.assets ?? data;
@@ -488,7 +491,10 @@ export class ComparisonComponent implements OnInit {
     });
   }
 
-  reload(): void {
+  onDateRangeChange(event: DateRangeChange): void {
+    this.dateFrom = event.dateFrom;
+    this.dateTo = event.dateTo;
+    this.selectedPreset = event.preset;
     this.loadComparison();
   }
 
@@ -504,10 +510,7 @@ export class ComparisonComponent implements OnInit {
   }
 
   renderChart(): void {
-    // Lightweight SVG chart (no external dependency needed for MVP)
     this.chartReady = true;
-    // In a full implementation, use Chart.js or ng2-charts here.
-    // For MVP, we render a simple SVG line chart inline.
     const canvas = document.querySelector('.comparison-chart') as HTMLCanvasElement;
     if (!canvas || this.assets.length === 0) return;
 
@@ -530,7 +533,6 @@ export class ComparisonComponent implements OnInit {
 
     ctx.clearRect(0, 0, W, H);
 
-    // Gather all dates
     const allDates = [...new Set(this.assets.flatMap(a => a.timeseries.map(t => t.date)))].sort();
     if (allDates.length === 0) return;
 
@@ -541,7 +543,6 @@ export class ComparisonComponent implements OnInit {
     const xScale = (i: number) => pad.left + (i / (allDates.length - 1 || 1)) * (W - pad.left - pad.right);
     const yScale = (v: number) => pad.top + (1 - v / (maxVal || 1)) * (H - pad.top - pad.bottom);
 
-    // Grid lines
     ctx.strokeStyle = 'rgba(128,128,128,0.15)';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
@@ -549,7 +550,6 @@ export class ComparisonComponent implements OnInit {
       ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
     }
 
-    // Lines
     this.assets.forEach((asset, idx) => {
       const color = this.chartColors[idx] || '#999';
       const data = allDates.map(date => {
@@ -568,7 +568,6 @@ export class ComparisonComponent implements OnInit {
       });
       ctx.stroke();
 
-      // Dots at last point
       const lastX = xScale(data.length - 1);
       const lastY = yScale(data[data.length - 1]);
       ctx.fillStyle = color;
@@ -577,24 +576,22 @@ export class ComparisonComponent implements OnInit {
       ctx.fill();
     });
 
-    // X axis labels (first / last)
     ctx.fillStyle = 'rgba(128,128,128,0.8)';
     ctx.font = '11px system-ui';
     ctx.textAlign = 'left';
     ctx.fillText(allDates[0], pad.left, H - 8);
     ctx.textAlign = 'right';
     ctx.fillText(allDates[allDates.length - 1], W - pad.right, H - 8);
-
-    this.chartReady = true;
   }
 
+  // CTR/VTR come as percentages from backend (e.g. 5.32 = 5.32%) — no * 100
   formatValue(key: string, totals: any): string {
     const v = totals?.[key];
     if (v === null || v === undefined) return '—';
-    const opt = this.kpiOptions.find(k => k.key === key) || this.kpiRows.find(k => k.key === key) as any;
-    const fmt = opt?.format || 'number';
+    const row = [...this.kpiOptions, ...this.kpiRows].find(k => k.key === key) as any;
+    const fmt = row?.format || 'number';
     if (fmt === 'currency') return this.currencySymbol + this.formatNum(v);
-    if (fmt === 'percent') return (v * 100).toFixed(2) + '%';
+    if (fmt === 'percent') return Number(v).toFixed(2) + '%';
     if (fmt === 'decimal') return Number(v).toFixed(2) + 'x';
     return this.formatNum(v);
   }
@@ -606,10 +603,10 @@ export class ComparisonComponent implements OnInit {
   }
 
   isBest(key: string, assetId: string, higherIsBetter = true): boolean {
-    const values = this.assets.map(a => (a.totals as any)[key] ?? (higherIsBetter ? -Infinity : Infinity));
+    const values = this.assets.map(a => (a.totals as any)?.[key] ?? (higherIsBetter ? -Infinity : Infinity));
     const best = higherIsBetter ? Math.max(...values) : Math.min(...values);
     const asset = this.assets.find(a => a.id === assetId);
-    const val = asset ? (asset.totals as any)[key] : null;
+    const val = asset ? (asset.totals as any)?.[key] : null;
     return val !== null && val !== undefined && val === best;
   }
 
@@ -635,6 +632,10 @@ export class ComparisonComponent implements OnInit {
     return 'ace-low';
   }
 
+  getPlatformIcon(platform: string): string {
+    return PLATFORM_ICONS[platform] || '';
+  }
+
   getPlatformColor(platform: string): string {
     return PLATFORM_COLORS[platform] || '#888';
   }
@@ -647,8 +648,11 @@ export class ComparisonComponent implements OnInit {
     return name.length > len ? name.substring(0, len) + '…' : name;
   }
 
-  formatDate(d: Date): string {
-    return d.toISOString().split('T')[0];
+  private fmt(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   }
 
   onThumbError(event: Event): void {
