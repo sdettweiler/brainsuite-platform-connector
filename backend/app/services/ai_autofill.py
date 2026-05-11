@@ -27,6 +27,7 @@ from app.models.ai_inference import AIInferenceTracking
 from app.models.metadata import MetadataField
 from app.models.creative import CreativeAsset, AssetMetadataValue
 from app.services.object_storage import get_object_storage
+from app.services.sync.job_tracker import create_background_job, update_background_job
 
 logger = logging.getLogger(__name__)
 
@@ -116,14 +117,47 @@ class AudioResult(BaseModel):
 async def run_autofill_for_asset(asset_id: uuid.UUID, org_id: uuid.UUID) -> None:
     """Entry point — called via asyncio.create_task() from sync services.
 
-    Wraps _autofill() in a top-level try/except so exceptions are logged
-    and the tracking row is set to FAILED rather than silently swallowed
-    (Pitfall 3 from RESEARCH.md).
+    Creates a BackgroundJob record (D-06, INSTR-03), then wraps _autofill() so
+    exceptions are logged and the BackgroundJob is set to FAILED rather than
+    silently swallowed.
     """
+    import traceback as _tb
+
+    bg_job_id = await create_background_job(
+        job_type="autofill",
+        org_id=org_id,
+        metadata={"asset_id": str(asset_id)},
+    )
+    await update_background_job(
+        bg_job_id,
+        status="RUNNING",
+        progress_total=1,    # D-06: autofill is 1 unit of work
+        progress_current=0,
+    )
+
     try:
-        await _autofill(asset_id, org_id)
+        autofill_output = await _autofill(asset_id, org_id)
+        await update_background_job(
+            bg_job_id,
+            status="COMPLETE",
+            progress_current=1,
+            output=autofill_output or {
+                "fields": [],
+                "whisper_transcript": None,
+                "language": None,
+            },
+        )
     except Exception as exc:
         logger.exception("auto-fill failed for asset_id=%s: %s", asset_id, exc)
+        await update_background_job(
+            bg_job_id,
+            status="FAILED",
+            error={
+                "type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": _tb.format_exc()[:10000],
+            },
+        )
         await _set_status(asset_id, "FAILED")
 
 
@@ -131,8 +165,12 @@ async def run_autofill_for_asset(asset_id: uuid.UUID, org_id: uuid.UUID) -> None
 # Core orchestration
 # ---------------------------------------------------------------------------
 
-async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> None:
-    """4-phase auto-fill: read → download → infer → write."""
+async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> Optional[dict]:
+    """4-phase auto-fill: read → download → infer → write.
+
+    Returns a D-10 output dict on success, or None on early-return paths
+    (e.g. already COMPLETE, no fields configured).
+    """
 
     # ------------------------------------------------------------------
     # Phase 1: DB read (close session before any HTTP calls)
@@ -192,7 +230,9 @@ async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> None:
             return
 
         # Collect data before session closes
-        field_data = [(f.id, f.auto_fill_type, f.default_value) for f in fields]
+        # 4-tuple: (field_id, auto_fill_type, default_value, field_name) — name used
+        # to build D-10 output fields list for BackgroundJob instrumentation (INSTR-03)
+        field_data = [(f.id, f.auto_fill_type, f.default_value, f.name) for f in fields]
         asset_format = asset.asset_format or "IMAGE"
         asset_url = asset.asset_url or ""
         campaign_name = asset.campaign_name
@@ -208,8 +248,8 @@ async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> None:
     if s3_key.startswith("objects/"):
         s3_key = s3_key[len("objects/"):]
 
-    needs_vision = any(t in AUTO_FILL_TYPE_VISION for _, t, _ in field_data)
-    needs_audio = any(t in AUTO_FILL_TYPE_AUDIO for _, t, _ in field_data)
+    needs_vision = any(t in AUTO_FILL_TYPE_VISION for _, t, _, _fn in field_data)
+    needs_audio = any(t in AUTO_FILL_TYPE_AUDIO for _, t, _, _fn in field_data)
 
     asset_bytes: Optional[bytes] = None
 
@@ -239,7 +279,7 @@ async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> None:
     # ------------------------------------------------------------------
     values_to_write: dict[uuid.UUID, str] = {}
 
-    for field_id, auto_fill_type, default_value in field_data:
+    for field_id, auto_fill_type, default_value, field_name in field_data:
         value = None
 
         if auto_fill_type == "language":
@@ -270,6 +310,32 @@ async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> None:
 
     await _write_values(values_to_write, asset_id)
     await _set_status(asset_id, "COMPLETE")
+
+    # Build D-10 autofill output for BackgroundJob instrumentation (INSTR-03)
+    _SOURCE_MAP = {
+        "language": "gemini",
+        "brand_names": "gemini",
+        "vo_transcript": "whisper",
+        "vo_language": "whisper",
+        "campaign_name": "sync",
+        "ad_name": "sync",
+        "fixed_value": "fixed",
+    }
+    fields_output = []
+    for field_id, auto_fill_type, default_value, field_name in field_data:
+        if field_id in values_to_write:
+            fields_output.append({
+                "name": field_name,
+                "value": values_to_write[field_id],
+                "source": _SOURCE_MAP.get(auto_fill_type, "unknown"),
+                "confidence": None,
+            })
+
+    return {
+        "fields": fields_output,
+        "whisper_transcript": audio_result.get("text") if audio_result else None,
+        "language": vision_result.get("language") if vision_result else None,
+    }
 
 
 # ---------------------------------------------------------------------------
