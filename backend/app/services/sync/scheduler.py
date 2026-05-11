@@ -498,6 +498,7 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
         # Phase 17: Process assets one at a time; increment progress after each (D-05, D-15)
         downloaded = []
         failed = []
+        cookie_expired_count = 0
         for idx, (asset_id, asset_info) in enumerate(asset_queue.items(), start=1):
             single_queue = {asset_id: asset_info}
             try:
@@ -505,11 +506,17 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
                     await google_ads_sync.download_assets_post_commit(db, connection, single_queue)
                 downloaded.append({"asset_id": str(asset_id), "url": ""})
             except _CookiesExpiredError:
-                raise
+                cookie_expired_count += 1
+                failed.append({"asset_id": str(asset_id), "error": "YouTube cookies expired"})
             except Exception as asset_err:
                 failed.append({"asset_id": str(asset_id), "error": str(asset_err)})
             # Fresh session per increment (D-15)
             await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
+
+        # Only declare global cookie expiry if every video failed with a cookie error.
+        # A single success proves the cookies are alive; per-video failures are access restrictions.
+        if cookie_expired_count > 0 and len(downloaded) == 0:
+            raise _CookiesExpiredError("All Google Ads video downloads failed with cookie errors")
 
         # Phase 17: Mark COMPLETE with D-11 output manifest
         output = {"downloaded": downloaded, "failed": failed}
@@ -725,6 +732,7 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
         # Phase 17: Process assets one at a time; increment progress after each (D-05, D-15)
         downloaded = []
         failed = []
+        cookie_expired_count = 0
         for idx, (asset_id, asset_info) in enumerate(asset_queue.items(), start=1):
             single_queue = {asset_id: asset_info}
             try:
@@ -732,11 +740,17 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
                     await dv360_sync.download_assets_post_commit(db, connection, single_queue)
                 downloaded.append({"asset_id": str(asset_id), "url": ""})
             except _CookiesExpiredError:
-                raise
+                cookie_expired_count += 1
+                failed.append({"asset_id": str(asset_id), "error": "YouTube cookies expired"})
             except Exception as asset_err:
                 failed.append({"asset_id": str(asset_id), "error": str(asset_err)})
             # Fresh session per increment (D-15)
             await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
+
+        # Only declare global cookie expiry if every video failed with a cookie error.
+        # A single success proves the cookies are alive; per-video failures are access restrictions.
+        if cookie_expired_count > 0 and len(downloaded) == 0:
+            raise _CookiesExpiredError("All DV360 video downloads failed with cookie errors")
 
         asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id))
 
