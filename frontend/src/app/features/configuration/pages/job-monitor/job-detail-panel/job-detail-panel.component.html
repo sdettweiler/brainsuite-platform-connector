@@ -1,0 +1,140 @@
+<!-- Backdrop -->
+<div class="slide-panel-backdrop" [class.active]="isOpen" (click)="onBackdropClick()"></div>
+
+<!-- Panel -->
+<div class="slide-panel" [class.open]="isOpen" role="dialog" aria-modal="true">
+  <!-- Header -->
+  <div class="panel-header" *ngIf="jobDetail">
+    <div class="header-left">
+      <span class="job-type-chip" [ngClass]="getChipClass(jobDetail.job_type)">{{ jobDetail.job_type }}</span>
+      <span class="badge"
+            [class.badge-info]="jobDetail.status === 'RUNNING'"
+            [class.badge-warning]="jobDetail.status === 'PENDING'"
+            [class.badge-success]="jobDetail.status === 'COMPLETE'"
+            [class.badge-error]="jobDetail.status === 'FAILED'">
+        {{ jobDetail.status }}
+      </span>
+      <div class="job-id-row">
+        <span>{{ getJobId() }}</span>
+        <button class="copy-btn" aria-label="Copy job ID" (click)="copyJobId()">
+          <i class="bi bi-clipboard"></i>
+        </button>
+      </div>
+      <div class="times-row">
+        Started: {{ formatDate(jobDetail.started_at) }} &middot; Ended: {{ formatDate(jobDetail.ended_at) }} &middot; Duration: {{ getDuration() }}
+      </div>
+    </div>
+    <button class="close-btn" type="button" aria-label="Close panel" (click)="onClose()">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
+
+  <!-- Loading state -->
+  <div class="spinner-center" *ngIf="loading">
+    <mat-spinner diameter="28"></mat-spinner>
+  </div>
+
+  <!-- Body -->
+  <div class="panel-body" *ngIf="jobDetail && !loading">
+
+    <!-- References (external IDs) -->
+    <ng-container *ngIf="getExternalIds().length > 0">
+      <div class="section-label">References</div>
+      <table class="ref-table">
+        <tr *ngFor="let ref of getExternalIds()">
+          <td>{{ ref.key }}</td>
+          <td>{{ ref.value }}</td>
+        </tr>
+      </table>
+    </ng-container>
+
+    <!-- Sync drill-in -->
+    <ng-container *ngIf="isSyncJob() && jobDetail.output">
+      <div class="section-label">Sync Details</div>
+      <table class="detail-table">
+        <tr><td>Platform</td><td>{{ jobDetail.output['platform'] }}</td></tr>
+        <tr><td>Sync Job ID</td><td>{{ jobDetail.output['sync_job_id'] }}</td></tr>
+        <tr><td>Records Fetched</td><td>{{ jobDetail.output['records_fetched'] }}</td></tr>
+        <tr><td>Records Processed</td><td>{{ jobDetail.output['records_processed'] }}</td></tr>
+      </table>
+    </ng-container>
+
+    <!-- Download drill-in -->
+    <ng-container *ngIf="isDownloadJob()">
+      <div class="section-label">Downloaded Assets</div>
+      <ul class="asset-list">
+        <li *ngFor="let asset of getDownloadedAssets()">
+          <span class="asset-id-mono">{{ asset.asset_id }}</span>
+          <a [href]="asset.url" target="_blank" rel="noopener noreferrer"
+             class="asset-link" aria-label="Open asset in storage (opens in new tab)">Open in storage</a>
+        </li>
+      </ul>
+      <details *ngIf="getFailedDownloads().length > 0">
+        <summary>Failed Downloads ({{ getFailedDownloads().length }})</summary>
+        <ul class="asset-list">
+          <li *ngFor="let f of getFailedDownloads()" style="color: var(--error)">
+            {{ f.asset_id }}: {{ f.error }}
+          </li>
+        </ul>
+      </details>
+    </ng-container>
+
+    <!-- Autofill drill-in -->
+    <ng-container *ngIf="isAutofillJob()">
+      <div class="section-label">Field Output</div>
+      <table class="fields-table">
+        <thead><tr><th>Field</th><th>Value</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let field of getAutofillFields()">
+            <td>{{ field.field_name }}</td>
+            <td>{{ field.value }}</td>
+            <td>
+              <span class="badge" [class.badge-info]="field.source === 'gemini'" [class.badge-neutral]="field.source === 'whisper'">
+                {{ field.source }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <details *ngIf="getWhisperTranscript()">
+        <summary>Whisper Transcript</summary>
+        <pre style="font-size:13px; color:var(--text-secondary); white-space:pre-wrap; max-height:200px; overflow-y:auto">{{ getWhisperTranscript() }}</pre>
+      </details>
+      <div *ngIf="getLanguage()" style="font-size:13px; color:var(--text-secondary); margin-top:8px">Language: {{ getLanguage() }}</div>
+    </ng-container>
+
+    <!-- Scoring drill-in -->
+    <ng-container *ngIf="isScoringJob()">
+      <div class="section-label">Per-Asset Outcomes</div>
+      <table class="score-table">
+        <thead><tr><th>Asset ID</th><th>Score</th><th>Endpoint Type</th><th>Status</th></tr></thead>
+        <tbody>
+          <ng-container *ngFor="let asset of getScoringAssets()">
+            <tr>
+              <td><span style="font-family:monospace;font-size:13px">{{ asset.asset_id?.substring(0,12) }}&hellip;</span></td>
+              <td>{{ asset.score !== null && asset.score !== undefined ? asset.score : '&mdash;' }}</td>
+              <td style="font-size:13px;color:var(--text-secondary)">{{ asset.endpoint_type }}</td>
+              <td>
+                <span class="badge" [class.badge-success]="asset.score != null" [class.badge-error]="asset.score == null">
+                  {{ asset.score != null ? 'Scored' : 'Failed' }}
+                </span>
+              </td>
+            </tr>
+            <tr class="error-row" *ngIf="asset.error">
+              <td colspan="4">{{ asset.error }}</td>
+            </tr>
+          </ng-container>
+        </tbody>
+      </table>
+    </ng-container>
+
+    <!-- Error traceback (any failed job) -->
+    <ng-container *ngIf="hasError()">
+      <div class="section-label section-label-error">Error Traceback</div>
+      <pre class="traceback-block">{{ getTruncatedTraceback() }}</pre>
+      <button mat-stroked-button style="border-color:var(--error);color:var(--error);font-size:13px;margin-top:8px"
+              aria-label="Copy traceback" (click)="copyTraceback()">Copy traceback</button>
+    </ng-container>
+
+  </div>
+</div>
