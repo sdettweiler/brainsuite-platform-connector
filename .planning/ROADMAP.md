@@ -112,7 +112,7 @@ Plans:
 - [x] 17-05-PLAN.md — Scoring instrumentation (_process_asset) — INSTR-04, INSTR-05 (complete 2026-05-11)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 17-06-PLAN.md — All 7 instrumentation test assertions (test_instrumentation.py) — INSTR-01, INSTR-02, INSTR-03, INSTR-04, INSTR-05
+- [x] 17-06-PLAN.md — All 7 instrumentation test assertions (test_instrumentation.py) — INSTR-01, INSTR-02, INSTR-03, INSTR-04, INSTR-05 (complete 2026-05-11)
 
 ### Phase 18: SSE Transport
 **Goal**: The backend streams real-time job updates to connected SuperAdmin browsers via Server-Sent Events, with connection leaks and proxy timeouts prevented
