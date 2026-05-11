@@ -152,7 +152,7 @@ Plans:
 - [x] 19-04-PLAN.md — Route + sidebar registration (/configuration/jobs + Job Monitor nav item)
 
 **Wave 2** *(blocked on 19-01)*
-- [ ] 19-02-PLAN.md — REST endpoints (GET /jobs, GET /jobs/{id}, DELETE /jobs) + 9 passing tests — MON-01, MON-02, MON-05, MON-07
+- [x] 19-02-PLAN.md — REST endpoints (GET /jobs, GET /jobs/{id}, DELETE /jobs) + 9 passing tests — MON-01, MON-02, MON-05, MON-07
 
 **Wave 3** *(blocked on 19-03 + 19-04)*
 - [ ] 19-05-PLAN.md — Job monitor page component (tabs, filter, table, progress bars, clear actions, SSE badge) — MON-01, MON-02
@@ -182,4 +182,4 @@ Plans:
 | 16. Job Persistence Schema | v1.3 | 3/3 | Complete | 2026-05-08 |
 | 17. Service Instrumentation | v1.3 | 6/6 | Complete | 2026-05-11 |
 | 18. SSE Transport | v1.3 | 2/2 | Complete | 2026-05-11 |
-| 19. SuperAdmin Monitoring UI | v1.3 | 3/6 | In Progress|  |
+| 19. SuperAdmin Monitoring UI | v1.3 | 4/6 | In Progress|  |
