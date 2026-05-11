@@ -106,10 +106,10 @@ Plans:
 - [x] 17-01-PLAN.md — job_tracker.py helpers + test_instrumentation.py Wave-0 stubs (complete 2026-05-11)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 17-02-PLAN.md — Sync instrumentation (all 4 entry points in scheduler.py) — INSTR-01, INSTR-05
-- [ ] 17-03-PLAN.md — Download instrumentation (all 4 helpers: Google Ads, DV360, TikTok, Meta) — INSTR-02
-- [ ] 17-04-PLAN.md — Autofill instrumentation (run_autofill_for_asset) — INSTR-03
-- [ ] 17-05-PLAN.md — Scoring instrumentation (_process_asset) — INSTR-04, INSTR-05
+- [x] 17-02-PLAN.md — Sync instrumentation (all 4 entry points in scheduler.py) — INSTR-01, INSTR-05 (complete 2026-05-11)
+- [x] 17-03-PLAN.md — Download instrumentation (all 4 helpers: Google Ads, DV360, TikTok, Meta) — INSTR-02 (complete 2026-05-11)
+- [x] 17-04-PLAN.md — Autofill instrumentation (run_autofill_for_asset) — INSTR-03 (complete 2026-05-11)
+- [x] 17-05-PLAN.md — Scoring instrumentation (_process_asset) — INSTR-04, INSTR-05 (complete 2026-05-11)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 17-06-PLAN.md — All 7 instrumentation test assertions (test_instrumentation.py) — INSTR-01, INSTR-02, INSTR-03, INSTR-04, INSTR-05
