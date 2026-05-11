@@ -327,13 +327,17 @@ class GoogleAdsSyncService:
                     if "no longer valid" in msg:
                         _expired[0] = True
                     logger.warning("yt-dlp: %s", msg)
-                def error(self, msg): logger.warning("yt-dlp error: %s", msg)
+                def error(self, msg):
+                    if "no longer valid" in msg:
+                        _expired[0] = True
+                    logger.warning("yt-dlp error: %s", msg)
 
             ydl_opts = {
                 "outtmpl": f"{tmp_base}.%(ext)s",
                 "format": "best/b",
                 "quiet": True,
-                "no_warnings": True,
+                # no_warnings intentionally omitted: suppresses report_warning() even with
+                # a custom logger, blocking "no longer valid" detection via warning().
                 "socket_timeout": 30,
                 "ignore_no_formats_error": True,
                 "remote_components": {"ejs:github": True},
@@ -562,6 +566,8 @@ class GoogleAdsSyncService:
         """Download thumbnails + videos for queued ads and UPDATE rows. Called after sync commit."""
         from sqlalchemy import update as sa_update
         cookies_expired = False
+        video_failures: Dict[str, str] = {}
+        video_successes: int = 0
         for ad_id, info in asset_queue.items():
             youtube_video_id = info.get("youtube_video_id")
             org_id = info.get("org_id")
@@ -583,10 +589,13 @@ class GoogleAdsSyncService:
             if not cookies_expired:
                 try:
                     _, video_url, frame_thumb = await self._download_video(youtube_video_id, org_id, ad_id)
+                    if video_url:
+                        video_successes += 1
                 except _CookiesExpiredError:
                     cookies_expired = True
                     logger.warning("YouTube cookies expired — skipping video downloads for remaining ads in queue")
                 except Exception as e:
+                    video_failures[ad_id] = f"{type(e).__name__}: {e}"
                     logger.warning("Video download failed for ad %s: %s", ad_id, e)
 
             if not thumbnail_url and frame_thumb:
@@ -609,6 +618,12 @@ class GoogleAdsSyncService:
         await db.commit()
         if cookies_expired:
             raise _CookiesExpiredError("YouTube cookies expired during asset download")
+        if video_failures and video_successes == 0:
+            raise Exception(
+                f"{len(video_failures)} Google Ads video download(s) failed: "
+                + "; ".join(f"{k}: {v}" for k, v in list(video_failures.items())[:3])
+                + ("..." if len(video_failures) > 3 else "")
+            )
 
 
 google_ads_sync = GoogleAdsSyncService()

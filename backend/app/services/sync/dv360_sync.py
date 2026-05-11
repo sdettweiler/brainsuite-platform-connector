@@ -1176,7 +1176,10 @@ class DV360SyncService:
                     if "no longer valid" in msg:
                         _expired[0] = True
                     logger.warning("yt-dlp: %s", msg)
-                def error(self, msg): logger.warning("yt-dlp error: %s", msg)
+                def error(self, msg):
+                    if "no longer valid" in msg:
+                        _expired[0] = True
+                    logger.warning("yt-dlp error: %s", msg)
 
             ydl_opts = {
                 "outtmpl": f"{tmp_base}.%(ext)s",
@@ -1184,7 +1187,9 @@ class DV360SyncService:
                 # "best" picks the highest-quality single stream (typically 720p/1080p mp4).
                 "format": "best/b",
                 "quiet": True,
-                "no_warnings": True,
+                # no_warnings intentionally omitted: yt-dlp's report_warning() returns early
+                # when no_warnings=True, suppressing the custom logger's warning() call even
+                # with a custom logger attached. We need warning() to detect "no longer valid".
                 "socket_timeout": 30,
                 "ignore_no_formats_error": True,
                 "remote_components": {"ejs:github": True},
@@ -1770,6 +1775,7 @@ class DV360SyncService:
         cdn_thumb_ad_ids = set(thumb_results.keys())
         downloaded_videos = set()
         video_results = {}
+        video_failures: dict = {}
         video_download_count = 0
         for ad_id, info in queue.items():
             yt_vid = info.get("youtube_video_id", "")
@@ -1781,7 +1787,7 @@ class DV360SyncService:
                     await asyncio.sleep(4)
                 try:
                     vid_duration, vid_served, frame_thumb = await self._download_video_asset(
-                        yt_vid, org_id, ad_id
+                        yt_vid, org_id, yt_vid
                     )
                     video_download_count += 1
                     if vid_served:
@@ -1794,8 +1800,12 @@ class DV360SyncService:
                         downloaded_videos.add(yt_vid)
                     if frame_thumb and ad_id not in thumb_results:
                         thumb_results[ad_id] = frame_thumb
+                except _CookiesExpiredError:
+                    video_download_count += 1
+                    raise  # propagate so scheduler tracks it correctly, not as a generic failure
                 except Exception as e:
                     video_download_count += 1
+                    video_failures[ad_id] = f"{type(e).__name__}: {e}"
                     logger.warning("Video download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
 
         if video_results:
@@ -1882,6 +1892,15 @@ class DV360SyncService:
 
             await db.commit()
             logger.info(f"  CreativeAsset URLs propagated and autofill reset for {len(updated_ids)} assets")
+
+        # Surface real errors to the scheduler — don't silently succeed when all video downloads failed.
+        # Thumbnails and CreativeAsset URLs above are already committed, so partial results are preserved.
+        if video_failures and not video_results:
+            raise Exception(
+                f"{len(video_failures)} DV360 video download(s) failed: "
+                + "; ".join(f"{k}: {v}" for k, v in list(video_failures.items())[:3])
+                + ("..." if len(video_failures) > 3 else "")
+            )
 
     async def _upsert_conversion_records(
         self,

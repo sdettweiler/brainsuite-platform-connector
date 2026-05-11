@@ -513,9 +513,10 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
             # Fresh session per increment (D-15)
             await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
 
-        # Only declare global cookie expiry if every video failed with a cookie error.
-        # A single success proves the cookies are alive; per-video failures are access restrictions.
-        if cookie_expired_count > 0 and len(downloaded) == 0:
+        # Only declare global cookie expiry when every single failure was a cookie error
+        # and nothing succeeded. Mixed failures (some cookie, some non-cookie) mean the
+        # issue is per-video access restrictions, not expired credentials.
+        if cookie_expired_count > 0 and len(downloaded) == 0 and len(failed) == cookie_expired_count:
             raise _CookiesExpiredError("All Google Ads video downloads failed with cookie errors")
 
         # Phase 17: Mark COMPLETE with D-11 output manifest
@@ -529,6 +530,24 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
 
     except _CookiesExpiredError:
         async with get_session_factory()() as fresh_db:
+            _sc_row = (await fresh_db.execute(select(SystemConfig).limit(1))).scalar_one_or_none()
+            _ts_still_valid = False
+            if _sc_row and _sc_row.youtube_cookies_encrypted:
+                try:
+                    from app.core.security import decrypt_token as _dt_sec
+                    from datetime import datetime as _dt_now
+                    _raw = _dt_sec(_sc_row.youtube_cookies_encrypted)
+                    _now = _dt_now.now().timestamp()
+                    _ts_still_valid = any(
+                        int(p[4]) > _now
+                        for ln in _raw.splitlines()
+                        if not ln.strip().startswith("#") and len(p := ln.strip().split("\t")) >= 7
+                        and p[4].isdigit() and int(p[4]) > 0
+                    )
+                except Exception:
+                    pass
+            if _ts_still_valid:
+                logger.warning("Google Ads asset download: yt-dlp reported cookies invalid but timestamps are still valid — likely IP/rate-limiting, not true expiry")
             await fresh_db.execute(_upd(SystemConfig).values(youtube_cookies_runtime_expired=True))
             await fresh_db.commit()
         logger.warning("Google Ads asset download aborted: YouTube cookies expired — flag written to DB")
@@ -747,9 +766,10 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
             # Fresh session per increment (D-15)
             await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
 
-        # Only declare global cookie expiry if every video failed with a cookie error.
-        # A single success proves the cookies are alive; per-video failures are access restrictions.
-        if cookie_expired_count > 0 and len(downloaded) == 0:
+        # Only declare global cookie expiry when every single failure was a cookie error
+        # and nothing succeeded. Mixed failures (some cookie, some non-cookie) mean the
+        # issue is per-video access restrictions, not expired credentials.
+        if cookie_expired_count > 0 and len(downloaded) == 0 and len(failed) == cookie_expired_count:
             raise _CookiesExpiredError("All DV360 video downloads failed with cookie errors")
 
         asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id))
@@ -765,6 +785,24 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
 
     except _CookiesExpiredError:
         async with get_session_factory()() as fresh_db:
+            _sc_row = (await fresh_db.execute(select(SystemConfig).limit(1))).scalar_one_or_none()
+            _ts_still_valid = False
+            if _sc_row and _sc_row.youtube_cookies_encrypted:
+                try:
+                    from app.core.security import decrypt_token as _dt_sec
+                    from datetime import datetime as _dt_now
+                    _raw = _dt_sec(_sc_row.youtube_cookies_encrypted)
+                    _now = _dt_now.now().timestamp()
+                    _ts_still_valid = any(
+                        int(p[4]) > _now
+                        for ln in _raw.splitlines()
+                        if not ln.strip().startswith("#") and len(p := ln.strip().split("\t")) >= 7
+                        and p[4].isdigit() and int(p[4]) > 0
+                    )
+                except Exception:
+                    pass
+            if _ts_still_valid:
+                logger.warning("DV360 asset download: yt-dlp reported cookies invalid but timestamps are still valid — likely IP/rate-limiting, not true expiry")
             await fresh_db.execute(_upd(SystemConfig).values(youtube_cookies_runtime_expired=True))
             await fresh_db.commit()
         logger.warning("DV360 asset download aborted: YouTube cookies expired — flag written to DB")
