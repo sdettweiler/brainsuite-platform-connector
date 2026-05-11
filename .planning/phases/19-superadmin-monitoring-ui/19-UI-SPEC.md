@@ -1,7 +1,7 @@
 ---
 phase: 19
 slug: superadmin-monitoring-ui
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-05-11
@@ -47,6 +47,7 @@ Exceptions:
 - Slide panel width: 600px, max-width 90vw (exact match of field-mappings-panel.component.ts)
 - SSE badge dot: 8px diameter circle
 - Progress bar height: 4px (Angular Material determinate default)
+- Chip inner horizontal padding: 12px — matches Angular Material chip default inset; traceback pre block: 12px — compact code-block inset
 
 ---
 
@@ -104,6 +105,12 @@ Source: styles.scss `.badge` variants; admin.component.ts badge usage patterns.
 
 ---
 
+## Visuals
+
+Primary focal point: the accent-colored active tab underline + count badge draws the eye on first load.
+
+---
+
 ## Component Inventory
 
 ### 1. Sidebar Nav Item
@@ -154,9 +161,9 @@ Tab count badge style:
 - Background: `var(--accent-light)` rgba(255,119,0,0.15)
 - Text: `var(--accent)` #FF7700
 - Font: 11px, weight 600
-- Padding: 2px 6px
+- Padding: 4px 8px
 - Border-radius: 10px
-- Margin-left: 6px
+- Margin-left: 8px
 
 Source: CONTEXT.md D-04; existing tab override rules in styles.scss (.mat-mdc-tab).
 
@@ -199,8 +206,8 @@ Three states:
 | Disconnected | 8px red dot (`var(--error)`) + text "Disconnected" | onerror fired after 3 attempts |
 
 Text: 13px, weight 400, `var(--text-secondary)`.
-Dot: `display: inline-block`, `border-radius: 50%`, `width: 8px`, `height: 8px`, `margin-right: 6px`.
-Container: `display: flex`, `align-items: center`, `gap: 6px`.
+Dot: `display: inline-block`, `border-radius: 50%`, `width: 8px`, `height: 8px`, `margin-right: 8px`.
+Container: `display: flex`, `align-items: center`, `gap: 8px`.
 
 Source: CONTEXT.md D-17, D-18.
 
