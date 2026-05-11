@@ -5,22 +5,27 @@ SuperAdmin browsers. Authentication via ?token=<access_jwt> query parameter
 (D-04: EventSource cannot send custom headers).
 
 Decision references: D-01 through D-10 in .planning/phases/18-sse-transport/18-CONTEXT.md
+
+REST endpoints for job list, detail, and bulk delete are appended below (Phase 19).
 """
 import asyncio
 import json
 import logging
 import uuid
 from datetime import datetime, timedelta
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
-from app.api.v1.deps import get_current_superadmin_sse
+from app.api.v1.deps import get_current_superadmin, get_current_superadmin_sse
 from app.core.redis import get_redis
-from app.db.base import get_session_factory
+from app.db.base import get_db, get_session_factory
 from app.models.jobs import BackgroundJob
 from app.models.user import User
+from app.schemas.jobs import JobDetail, JobListItem
 
 logger = logging.getLogger(__name__)
 
@@ -167,3 +172,58 @@ async def stream_jobs(
         ping=15,
         headers={"Cache-Control": "no-cache"},
     )
+
+
+# ---------------------------------------------------------------------------
+# REST endpoints (Phase 19) — D-07 from 19-CONTEXT.md
+# ---------------------------------------------------------------------------
+
+@router.get("", response_model=List[JobListItem])
+async def list_jobs(
+    job_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+) -> List[BackgroundJob]:
+    """List background jobs (SuperAdmin only). Global scope — no org filter (D-05)."""
+    q = select(BackgroundJob).order_by(BackgroundJob.started_at.desc())
+    if job_type is not None:
+        q = q.where(BackgroundJob.job_type == job_type)
+    if status is not None:
+        q = q.where(BackgroundJob.status == status)
+    q = q.limit(limit).offset(offset)
+    result = await db.execute(q)
+    return result.scalars().all()
+
+
+@router.get("/{job_id}", response_model=JobDetail)
+async def get_job(
+    job_id: uuid.UUID,
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+) -> BackgroundJob:
+    """Get full job detail including output and error JSONB (SuperAdmin only)."""
+    job = await db.get(BackgroundJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.delete("", status_code=204, response_class=Response)
+async def delete_jobs(
+    job_type: str = Query(...),
+    status: str = Query(...),
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Bulk delete background jobs by type + status (SuperAdmin only). Returns 204."""
+    await db.execute(
+        delete(BackgroundJob).where(
+            BackgroundJob.job_type == job_type,
+            BackgroundJob.status == status,
+        )
+    )
+    await db.commit()
+    return Response(status_code=204)
