@@ -534,8 +534,16 @@ class GoogleAdsSyncService:
                 "impressions": stmt.excluded.impressions,
                 "clicks": stmt.excluded.clicks,
                 "conversions": stmt.excluded.conversions,
+                "conversion_value": stmt.excluded.conversion_value,
+                "cvr": stmt.excluded.cvr,
                 "roas": stmt.excluded.roas,
                 "video_views": stmt.excluded.video_views,
+                "view_rate": stmt.excluded.view_rate,
+                "video_view_through_rate": stmt.excluded.video_view_through_rate,
+                "video_quartile_p25": stmt.excluded.video_quartile_p25,
+                "video_quartile_p50": stmt.excluded.video_quartile_p50,
+                "video_quartile_p75": stmt.excluded.video_quartile_p75,
+                "video_quartile_p100": stmt.excluded.video_quartile_p100,
                 "video_id": stmt.excluded.video_id,
                 # video_url / thumbnail_url intentionally omitted: preserve any
                 # already-downloaded URLs on re-sync; post-commit task fills NULLs.

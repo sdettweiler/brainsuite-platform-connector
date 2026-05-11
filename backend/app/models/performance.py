@@ -45,6 +45,8 @@ class MetaRawPerformance(Base):
     post_link: Mapped[str] = mapped_column(Text, nullable=True)
     instagram_actor_id: Mapped[str] = mapped_column(String(255), nullable=True)
     branded_content_sponsor_page_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    creator_ad_permission_type: Mapped[str] = mapped_column(String(100), nullable=True)
+    branded_content_promoted_page_id: Mapped[str] = mapped_column(String(255), nullable=True)
     creative_width_px: Mapped[int] = mapped_column(Integer, nullable=True)
     creative_height_px: Mapped[int] = mapped_column(Integer, nullable=True)
     video_length_sec: Mapped[float] = mapped_column(Float, nullable=True)

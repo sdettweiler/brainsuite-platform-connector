@@ -71,6 +71,7 @@ INSIGHTS_FIELDS = [
     "cost_per_thruplay",
     "estimated_ad_recallers",
     "estimated_ad_recall_rate",
+    "estimated_ad_recall_lift",
     "cost_per_estimated_ad_recallers",
     "actions",
     "action_values",
@@ -84,7 +85,7 @@ INSIGHTS_FIELDS = [
 AD_ENRICHMENT_FIELDS = [
     "configured_status",
     "effective_status",
-    "creative{id,name,body,title,link_url,image_url,image_hash,video_id,call_to_action_type,object_story_spec,instagram_permalink_url,instagram_actor_id,object_type}",
+    "creative{id,name,body,title,link_url,image_url,image_hash,video_id,call_to_action_type,object_story_spec,instagram_permalink_url,instagram_actor_id,object_type,branded_content}",
     "adset{bid_strategy,billing_event,destination_type,optimization_goal}",
 ]
 
@@ -528,7 +529,7 @@ class MetaSyncService:
                 "estimated_ad_recallers": self._safe_int(r.get("estimated_ad_recallers")),
                 "estimated_ad_recall_rate": self._safe_float(r.get("estimated_ad_recall_rate")),
                 "cost_per_estimated_ad_recaller": self._safe_decimal(r.get("cost_per_estimated_ad_recallers")),
-                "estimated_ad_recall_lift": self._safe_int(r.get("estimated_ad_recallers")),
+                "estimated_ad_recall_lift": self._safe_float(r.get("estimated_ad_recall_lift")),
                 "post_engagement": post_engagement,
                 "page_engagement": page_engagement,
                 "reactions": reactions,
@@ -645,6 +646,8 @@ class MetaSyncService:
                             "instagram_actor_id": creative.get("instagram_actor_id"),
                             "ad_format": ad_format,
                             "branded_content_sponsor_page_id": sponsor_page_id,
+                            "creator_ad_permission_type": (creative.get("branded_content") or {}).get("creator_ad_permission_type"),
+                            "branded_content_promoted_page_id": (creative.get("branded_content") or {}).get("promoted_page_id"),
                         }
                         ad_info_map[ad_id] = dims
 

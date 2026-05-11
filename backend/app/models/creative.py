@@ -54,6 +54,10 @@ class CreativeAsset(Base):
     # Platform-specific extra metadata
     platform_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
 
+    # Creator/brand content classification
+    is_creator_content: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    content_source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)

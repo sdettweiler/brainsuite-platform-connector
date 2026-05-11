@@ -1487,7 +1487,7 @@ class DV360SyncService:
                 campaign_name = f"Campaign {campaign_id}"
 
             parsed_date = r.get("_parsed_date")
-            ad_id = csv_yt_video_id if csv_yt_video_id else csv_li_id
+            ad_id = csv_li_id
 
             if ad_id not in asset_download_queue:
                 asset_download_queue[ad_id] = {
@@ -1929,7 +1929,7 @@ class DV360SyncService:
                     csv_yt_video_id = li_videos[0].get("youtube_video_id", "")
 
             parsed_date = r.get("_parsed_date")
-            ad_id = csv_yt_video_id if csv_yt_video_id else csv_li_id
+            ad_id = csv_li_id
 
             total_conv = safe_float(
                 r.get("Total Conversions") or r.get("Conversions")

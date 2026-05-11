@@ -151,6 +151,8 @@ class HarmonizationService:
                     creative_id=raw.creative_id,
                     placement=raw.placement,
                     first_seen_at=report_date,
+                    is_creator_content=bool(raw.creator_ad_permission_type) if raw.creator_ad_permission_type else None,
+                    content_source="CREATOR" if raw.creator_ad_permission_type else None,
                     _new_asset_ids=_new_asset_ids,
                 )
 
@@ -260,7 +262,7 @@ class HarmonizationService:
                     "video_p100": raw.video_p100_watched,
                     "video_completion_rate": video_completion_rate,
                     "video_avg_watch_time_seconds": video_avg_watch_seconds,
-                    "cost_per_view": cost_per_thruplay,
+                    "cost_per_view": None,
                     "thruplay": raw.video_thruplay_watched,
                     "cost_per_thruplay": cost_per_thruplay,
                     "focused_view": None,
@@ -371,6 +373,8 @@ class HarmonizationService:
                     thumbnail_url=raw.thumbnail_url,
                     asset_url=raw.creative_url or raw.asset_url,
                     first_seen_at=raw.report_date,
+                    is_creator_content=raw.is_spark_ad if raw.is_spark_ad is not None else None,
+                    content_source="SPARK" if raw.is_spark_ad else None,
                     _new_asset_ids=_new_asset_ids,
                 )
 
@@ -432,7 +436,7 @@ class HarmonizationService:
                     "cvr": raw.cvr,
                     "cost_per_conversion": convert(raw.cost_per_conversion),
                     "roas": raw.roas,
-                    "purchases": (raw.cta_purchase or 0) + (raw.vta_purchase or 0) if raw.cta_purchase or raw.vta_purchase else None,
+                    "purchases": (raw.cta_purchase or 0) + (raw.vta_purchase or 0) if (raw.cta_purchase is not None or raw.vta_purchase is not None) else None,
                     "purchase_value": convert(raw.total_purchase_value),
                     "purchase_roas": raw.purchase_roas,
                     "leads": raw.app_event_generate_lead,
@@ -456,12 +460,13 @@ class HarmonizationService:
                     "unique_ctr": None,
                     "inline_link_clicks": None,
                     "inline_link_click_ctr": None,
-                    "video_3_sec_watched": raw.video_watched_2s,
+                    "video_3_sec_watched": None,
                     "video_30_sec_watched": None,
                     "platform_extras": {
                         "engagement_rate": raw.engagement_rate,
                         "swipe_rate": raw.swipe_rate,
                         "is_spark_ad": raw.is_spark_ad,
+                        "video_watched_2s": raw.video_watched_2s,
                         "focused_view_15s": raw.focused_view_15s,
                         "focused_view_rate": raw.focused_view_rate,
                         "result": raw.result,
@@ -774,7 +779,7 @@ class HarmonizationService:
                         "comments": None,
                         "shares": None,
                         "follows": None,
-                        "conversions": int(row.total_conversions) if row.total_conversions is not None else None,
+                        "conversions": float(row.total_conversions) if row.total_conversions is not None else None,
                         "conversion_value": convert(row.conversion_value),
                         "cvr": None,
                         "cost_per_conversion": convert(row.cost_per_conversion),
@@ -889,6 +894,8 @@ class HarmonizationService:
                 video_duration=kwargs.get("video_duration"),
                 first_seen_at=first_seen,
                 last_seen_at=first_seen,
+                is_creator_content=kwargs.get("is_creator_content"),
+                content_source=kwargs.get("content_source"),
             )
             db.add(asset)
             await db.flush()
@@ -934,6 +941,10 @@ class HarmonizationService:
                 asset.creative_id = kwargs.get("creative_id")
             if kwargs.get("asset_format") and not asset.asset_format:
                 asset.asset_format = kwargs.get("asset_format")
+            if kwargs.get("is_creator_content") is not None and asset.is_creator_content is None:
+                asset.is_creator_content = kwargs.get("is_creator_content")
+            if kwargs.get("content_source") and not asset.content_source:
+                asset.content_source = kwargs.get("content_source")
             if kwargs.get("first_seen_at"):
                 first_seen = kwargs.get("first_seen_at")
                 if isinstance(first_seen, str):

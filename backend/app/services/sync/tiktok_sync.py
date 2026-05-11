@@ -413,7 +413,7 @@ class TikTokSyncService:
 
                 ad_format = ad.get("ad_format")
                 creative_type = ad.get("creative_type")
-                is_spark = ad.get("identity_type") in ("CUSTOMIZED_USER", "AUTH_CODE")
+                is_spark = ad.get("identity_type") == "AUTH_CODE"
 
                 display_name = ad.get("display_name")
                 video_id_val = ad.get("video_id")
