@@ -296,9 +296,9 @@ async def run_daily_sync(connection_id: str) -> None:
                 if platform == "GOOGLE_ADS" and result.get("_asset_queue"):
                     asyncio.create_task(_run_google_ads_asset_downloads(connection.id, result["_asset_queue"]))
                 elif platform == "META" and result.get("_creative_ad_ids"):
-                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, result["_creative_ad_ids"]))
+                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, result["_creative_ad_ids"], org_id=connection.organization_id))
                 elif platform == "TIKTOK" and result.get("_creative_ad_ids"):
-                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, result["_creative_ad_ids"]))
+                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, result["_creative_ad_ids"], org_id=connection.organization_id))
                 logger.info(f"Daily sync completed for {connection.platform} {connection.ad_account_id}: {result}")
 
             except Exception as e:
@@ -465,6 +465,11 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
     from app.models.platform import PlatformConnection
     from app.models.system_config import SystemConfig
     import uuid
+    import traceback as _tb
+
+    connection = None
+    bg_job_id = None
+
     try:
         async with get_session_factory()() as db:
             result = await db.execute(
@@ -475,24 +480,209 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
             connection = result.scalar_one_or_none()
             if not connection:
                 return
-            await google_ads_sync.download_assets_post_commit(db, connection, asset_queue)
+
+        # Phase 17: Create BackgroundJob before downloads begin (D-05)
+        bg_job_id = await create_background_job(
+            job_type="download",
+            org_id=connection.organization_id,
+            platform_connection_id=connection.id,
+            metadata={"platform": "google_ads", "asset_count": len(asset_queue)},
+        )
+        await update_background_job(
+            bg_job_id,
+            status="RUNNING",
+            progress_total=len(asset_queue),
+            progress_current=0,
+        )
+
+        # Phase 17: Process assets one at a time; increment progress after each (D-05, D-15)
+        downloaded = []
+        failed = []
+        for idx, (asset_id, asset_info) in enumerate(asset_queue.items(), start=1):
+            single_queue = {asset_id: asset_info}
+            try:
+                async with get_session_factory()() as db:
+                    await google_ads_sync.download_assets_post_commit(db, connection, single_queue)
+                downloaded.append({"asset_id": str(asset_id), "url": ""})
+            except _CookiesExpiredError:
+                raise
+            except Exception as asset_err:
+                failed.append({"asset_id": str(asset_id), "error": str(asset_err)})
+            # Fresh session per increment (D-15)
+            await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
+
+        # Phase 17: Mark COMPLETE with D-11 output manifest
+        output = {"downloaded": downloaded, "failed": failed}
+        await update_background_job(
+            bg_job_id,
+            status="COMPLETE",
+            progress_current=len(asset_queue),
+            output=output,
+        )
+
     except _CookiesExpiredError:
         async with get_session_factory()() as fresh_db:
             await fresh_db.execute(_upd(SystemConfig).values(youtube_cookies_runtime_expired=True))
             await fresh_db.commit()
         logger.warning("Google Ads asset download aborted: YouTube cookies expired — flag written to DB")
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                status="FAILED",
+                error={
+                    "type": "_CookiesExpiredError",
+                    "message": "YouTube cookies expired",
+                    "traceback": "",
+                },
+                output={
+                    "downloaded": [],
+                    "failed": [{"asset_id": str(aid), "error": "YouTube cookies expired"} for aid in asset_queue.keys()],
+                },
+            )
     except Exception as e:
         logger.warning(f"Google Ads asset download failed (non-fatal): {e}")
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                status="FAILED",
+                error={
+                    "type": type(e).__name__,
+                    "message": str(e),
+                    "traceback": _tb.format_exc()[:10000],
+                },
+                output={
+                    "downloaded": [],
+                    "failed": [{"asset_id": str(aid), "error": str(e)} for aid in asset_queue.keys()],
+                },
+            )
 
 
-async def _run_meta_creatives_deferred(connection_id, ad_ids: list) -> None:
+async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None) -> None:
     from app.services.sync.meta_sync import meta_sync
-    await meta_sync.fetch_and_store_creatives_deferred(connection_id, ad_ids)
+    import uuid
+    import traceback as _tb
+
+    bg_job_id = None
+
+    try:
+        conn_uuid = connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id))
+        org_uuid = org_id if isinstance(org_id, uuid.UUID) else uuid.UUID(str(org_id)) if org_id else None
+
+        # Phase 17: Create BackgroundJob before creative fetch begins (D-05)
+        bg_job_id = await create_background_job(
+            job_type="download",
+            org_id=org_uuid,
+            platform_connection_id=conn_uuid,
+            metadata={"platform": "meta", "asset_count": len(ad_ids)},
+        )
+        await update_background_job(
+            bg_job_id,
+            status="RUNNING",
+            progress_total=len(ad_ids),
+            progress_current=0,
+        )
+
+        # Phase 17: Process ad_ids one at a time; increment progress after each (D-05, D-15)
+        downloaded = []
+        failed = []
+        for idx, ad_id in enumerate(ad_ids, start=1):
+            try:
+                await meta_sync.fetch_and_store_creatives_deferred(connection_id, [ad_id])
+                downloaded.append({"asset_id": str(ad_id), "url": ""})
+            except Exception as asset_err:
+                failed.append({"asset_id": str(ad_id), "error": str(asset_err)})
+            # Fresh session per increment (D-15)
+            await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
+
+        # Phase 17: Mark COMPLETE with D-11 output manifest
+        output = {"downloaded": downloaded, "failed": failed}
+        await update_background_job(
+            bg_job_id,
+            status="COMPLETE",
+            progress_current=len(ad_ids),
+            output=output,
+        )
+
+    except Exception as e:
+        logger.warning(f"Meta creatives deferred fetch failed (non-fatal): {e}")
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                status="FAILED",
+                error={
+                    "type": type(e).__name__,
+                    "message": str(e),
+                    "traceback": _tb.format_exc()[:10000],
+                },
+                output={
+                    "downloaded": [],
+                    "failed": [{"asset_id": str(aid), "error": str(e)} for aid in ad_ids],
+                },
+            )
 
 
-async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list) -> None:
+async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=None) -> None:
     from app.services.sync.tiktok_sync import tiktok_sync
-    await tiktok_sync.enrich_creatives_deferred(connection_id, ad_ids)
+    import uuid
+    import traceback as _tb
+
+    bg_job_id = None
+
+    try:
+        conn_uuid = connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id))
+        org_uuid = org_id if isinstance(org_id, uuid.UUID) else uuid.UUID(str(org_id)) if org_id else None
+
+        # Phase 17: Create BackgroundJob before creative fetch begins (D-05)
+        bg_job_id = await create_background_job(
+            job_type="download",
+            org_id=org_uuid,
+            platform_connection_id=conn_uuid,
+            metadata={"platform": "tiktok", "asset_count": len(ad_ids)},
+        )
+        await update_background_job(
+            bg_job_id,
+            status="RUNNING",
+            progress_total=len(ad_ids),
+            progress_current=0,
+        )
+
+        # Phase 17: Process ad_ids one at a time; increment progress after each (D-05, D-15)
+        downloaded = []
+        failed = []
+        for idx, ad_id in enumerate(ad_ids, start=1):
+            try:
+                await tiktok_sync.enrich_creatives_deferred(connection_id, [ad_id])
+                downloaded.append({"asset_id": str(ad_id), "url": ""})
+            except Exception as asset_err:
+                failed.append({"asset_id": str(ad_id), "error": str(asset_err)})
+            # Fresh session per increment (D-15)
+            await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
+
+        # Phase 17: Mark COMPLETE with D-11 output manifest
+        output = {"downloaded": downloaded, "failed": failed}
+        await update_background_job(
+            bg_job_id,
+            status="COMPLETE",
+            progress_current=len(ad_ids),
+            output=output,
+        )
+
+    except Exception as e:
+        logger.warning(f"TikTok creatives deferred fetch failed (non-fatal): {e}")
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                status="FAILED",
+                error={
+                    "type": type(e).__name__,
+                    "message": str(e),
+                    "traceback": _tb.format_exc()[:10000],
+                },
+                output={
+                    "downloaded": [],
+                    "failed": [{"asset_id": str(aid), "error": str(e)} for aid in ad_ids],
+                },
+            )
 
 
 async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
@@ -502,6 +692,11 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
     from app.models.platform import PlatformConnection
     from app.models.system_config import SystemConfig
     import uuid
+    import traceback as _tb
+
+    connection = None
+    bg_job_id = None
+
     try:
         async with get_session_factory()() as db:
             result = await db.execute(
@@ -512,15 +707,83 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
             connection = result.scalar_one_or_none()
             if not connection:
                 return
-            await dv360_sync.download_assets_post_commit(db, connection, asset_queue)
+
+        # Phase 17: Create BackgroundJob before downloads begin (D-05)
+        bg_job_id = await create_background_job(
+            job_type="download",
+            org_id=connection.organization_id,
+            platform_connection_id=connection.id,
+            metadata={"platform": "dv360", "asset_count": len(asset_queue)},
+        )
+        await update_background_job(
+            bg_job_id,
+            status="RUNNING",
+            progress_total=len(asset_queue),
+            progress_current=0,
+        )
+
+        # Phase 17: Process assets one at a time; increment progress after each (D-05, D-15)
+        downloaded = []
+        failed = []
+        for idx, (asset_id, asset_info) in enumerate(asset_queue.items(), start=1):
+            single_queue = {asset_id: asset_info}
+            try:
+                async with get_session_factory()() as db:
+                    await dv360_sync.download_assets_post_commit(db, connection, single_queue)
+                downloaded.append({"asset_id": str(asset_id), "url": ""})
+            except _CookiesExpiredError:
+                raise
+            except Exception as asset_err:
+                failed.append({"asset_id": str(asset_id), "error": str(asset_err)})
+            # Fresh session per increment (D-15)
+            await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
+
         asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id))
+
+        # Phase 17: Mark COMPLETE with D-11 output manifest
+        output = {"downloaded": downloaded, "failed": failed}
+        await update_background_job(
+            bg_job_id,
+            status="COMPLETE",
+            progress_current=len(asset_queue),
+            output=output,
+        )
+
     except _CookiesExpiredError:
         async with get_session_factory()() as fresh_db:
             await fresh_db.execute(_upd(SystemConfig).values(youtube_cookies_runtime_expired=True))
             await fresh_db.commit()
         logger.warning("DV360 asset download aborted: YouTube cookies expired — flag written to DB")
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                status="FAILED",
+                error={
+                    "type": "_CookiesExpiredError",
+                    "message": "YouTube cookies expired",
+                    "traceback": "",
+                },
+                output={
+                    "downloaded": [],
+                    "failed": [{"asset_id": str(aid), "error": "YouTube cookies expired"} for aid in asset_queue.keys()],
+                },
+            )
     except Exception as e:
         logger.warning(f"DV360 asset download failed (non-fatal): {e}")
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                status="FAILED",
+                error={
+                    "type": type(e).__name__,
+                    "message": str(e),
+                    "traceback": _tb.format_exc()[:10000],
+                },
+                output={
+                    "downloaded": [],
+                    "failed": [{"asset_id": str(aid), "error": str(e)} for aid in asset_queue.keys()],
+                },
+            )
 
 
 async def run_full_resync(connection_id: str) -> None:
@@ -711,9 +974,9 @@ async def run_full_resync(connection_id: str) -> None:
                 if connection.platform == "GOOGLE_ADS" and sync_result.get("_asset_queue"):
                     asyncio.create_task(_run_google_ads_asset_downloads(connection.id, sync_result["_asset_queue"]))
                 elif connection.platform == "META" and sync_result.get("_creative_ad_ids"):
-                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
+                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, sync_result["_creative_ad_ids"], org_id=connection.organization_id))
                 elif connection.platform == "TIKTOK" and sync_result.get("_creative_ad_ids"):
-                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
+                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, sync_result["_creative_ad_ids"], org_id=connection.organization_id))
                 logger.info(f"Full resync completed for {connection.platform} {connection.ad_account_id}: {sync_result}")
             except Exception as e:
                 logger.error(f"Full resync harmonization failed for connection {connection_id}: {type(e).__name__}: {e}")
@@ -1062,9 +1325,9 @@ async def run_initial_sync(connection_id: str) -> None:
                 if connection.platform == "GOOGLE_ADS" and sync_result.get("_asset_queue"):
                     asyncio.create_task(_run_google_ads_asset_downloads(connection.id, sync_result["_asset_queue"]))
                 elif connection.platform == "META" and sync_result.get("_creative_ad_ids"):
-                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
+                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, sync_result["_creative_ad_ids"], org_id=connection.organization_id))
                 elif connection.platform == "TIKTOK" and sync_result.get("_creative_ad_ids"):
-                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
+                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, sync_result["_creative_ad_ids"], org_id=connection.organization_id))
                 trigger_historical = True
             except Exception as e:
                 logger.error(f"Initial sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
@@ -1379,9 +1642,9 @@ async def run_historical_sync(connection_id: str) -> None:
                 if connection.platform == "GOOGLE_ADS" and sync_result.get("_asset_queue"):
                     asyncio.create_task(_run_google_ads_asset_downloads(connection.id, sync_result["_asset_queue"]))
                 elif connection.platform == "META" and sync_result.get("_creative_ad_ids"):
-                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
+                    asyncio.create_task(_run_meta_creatives_deferred(connection.id, sync_result["_creative_ad_ids"], org_id=connection.organization_id))
                 elif connection.platform == "TIKTOK" and sync_result.get("_creative_ad_ids"):
-                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, sync_result["_creative_ad_ids"]))
+                    asyncio.create_task(_run_tiktok_creatives_deferred(connection.id, sync_result["_creative_ad_ids"], org_id=connection.organization_id))
             except Exception as e:
                 logger.error(f"Historical sync harmonization failed for {connection_id}: {type(e).__name__}: {e}")
                 await db.rollback()
