@@ -816,6 +816,8 @@ async def compare_assets(
                 func.sum(HarmonizedPerformance.spend).label("spend"),
                 func.sum(HarmonizedPerformance.impressions).label("impressions"),
                 func.sum(HarmonizedPerformance.clicks).label("clicks"),
+                func.sum(HarmonizedPerformance.video_views).label("video_views"),
+                func.sum(HarmonizedPerformance.conversions).label("conversions"),
                 func.sum(HarmonizedPerformance.conversion_value).label("conversion_value"),
             ).where(
                 HarmonizedPerformance.asset_id == asset_id,
@@ -830,11 +832,19 @@ async def compare_assets(
             s = float(row.spend or 0)
             imp = float(row.impressions or 0)
             cl = float(row.clicks or 0)
+            vv = int(row.video_views or 0)
             cv = float(row.conversion_value or 0)
+            co = int(row.conversions or 0)
             ts_data.append({
                 "date": row.report_date.isoformat(),
                 "spend": s,
+                "impressions": int(imp),
+                "clicks": int(cl),
                 "ctr": (cl / imp * 100) if imp else 0,
+                "cpm": (s / imp * 1000) if imp else 0,
+                "video_views": vv,
+                "vtr": (vv / imp * 100) if imp else 0,
+                "conversions": co,
                 "roas": (cv / s) if s else 0,
             })
 
@@ -846,7 +856,7 @@ async def compare_assets(
             "thumbnail_url": asset.thumbnail_url,
             "asset_url": asset.asset_url,
             "total_score": None,
-            "performance": {
+            "totals": {
                 "spend": float(perf.spend or 0),
                 "impressions": int(perf.impressions or 0),
                 "clicks": int(perf.clicks or 0),

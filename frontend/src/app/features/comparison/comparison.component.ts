@@ -457,6 +457,8 @@ export class ComparisonComponent implements OnInit {
   ngOnInit(): void {
     this.route.queryParams.subscribe(params => {
       const ids = params['assetIds'];
+      if (params['dateFrom']) this.dateFrom = new Date(params['dateFrom']);
+      if (params['dateTo']) this.dateTo = new Date(params['dateTo']);
       if (ids) {
         this.assetIds = ids.split(',').filter((id: string) => id.trim());
         this.loadComparison();
@@ -472,13 +474,13 @@ export class ComparisonComponent implements OnInit {
     const df = this.formatDate(this.dateFrom);
     const dt = this.formatDate(this.dateTo);
 
-    this.api.post<AssetDetail[]>('/dashboard/compare', {
+    this.api.post<any>('/dashboard/compare', {
       asset_ids: this.assetIds,
       date_from: df,
       date_to: dt,
     }).subscribe({
       next: (data) => {
-        this.assets = data;
+        this.assets = data.assets ?? data;
         this.loading = false;
         setTimeout(() => this.renderChart(), 100);
       },
