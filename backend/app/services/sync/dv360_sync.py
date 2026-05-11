@@ -1236,7 +1236,12 @@ class DV360SyncService:
                             from app.models.system_config import SystemConfig as _SC
                             from app.db.base import get_session_factory as _gsf
                             async with _gsf()() as _sc_db:
-                                await _sc_db.execute(_sa_update(_SC).values(youtube_cookies_download_count=_SC.youtube_cookies_download_count + 1))
+                                _upd_vals: dict = {"youtube_cookies_download_count": _SC.youtube_cookies_download_count + 1}
+                                if label == "primary":
+                                    _upd_vals["youtube_cookies_runtime_expired"] = False
+                                elif label == "backup":
+                                    _upd_vals["youtube_cookies_backup_runtime_expired"] = False
+                                await _sc_db.execute(_sa_update(_SC).values(**_upd_vals))
                                 await _sc_db.commit()
                         except Exception as _cnt_err:
                             logger.debug("Could not increment YT download counter: %s", _cnt_err)

@@ -363,12 +363,14 @@ class GoogleAdsSyncService:
 
         attempts = cookies if cookies else [""]
         loop = asyncio.get_event_loop()
+        winning_slot: int | None = None
         try:
             for i, cookie in enumerate(attempts):
                 label = "no cookies" if not cookie else ("primary" if i == 0 else "backup")
                 logger.info("  Attempting Google Ads video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
                 try:
                     await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))
+                    winning_slot = i
                     break
                 except _CookiesExpiredError:
                     if i < len(attempts) - 1:
@@ -392,7 +394,12 @@ class GoogleAdsSyncService:
                     from app.models.system_config import SystemConfig as _SC
                     from app.db.base import get_session_factory as _gsf
                     async with _gsf()() as _sc_db:
-                        await _sc_db.execute(_sa_update(_SC).values(youtube_cookies_download_count=_SC.youtube_cookies_download_count + 1))
+                        _upd_vals: dict = {"youtube_cookies_download_count": _SC.youtube_cookies_download_count + 1}
+                        if winning_slot == 0:
+                            _upd_vals["youtube_cookies_runtime_expired"] = False
+                        elif winning_slot == 1:
+                            _upd_vals["youtube_cookies_backup_runtime_expired"] = False
+                        await _sc_db.execute(_sa_update(_SC).values(**_upd_vals))
                         await _sc_db.commit()
                 except Exception as _cnt_err:
                     logger.debug("Could not increment YT download counter: %s", _cnt_err)
