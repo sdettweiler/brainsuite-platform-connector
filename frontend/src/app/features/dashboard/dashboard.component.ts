@@ -140,23 +140,17 @@ interface CorrelationAsset {
         </mat-form-field>
 
         <!-- Ad Account filter -->
-        <div class="filter-field account-filter-wrapper" *ngIf="adAccounts.length > 0">
-          <div class="account-filter-trigger" (click)="adAccountDropdownOpen = !adAccountDropdownOpen" [class.active]="selectedAdAccountIds.size > 0">
-            <span class="account-filter-label">{{adAccountFilterLabel}}</span>
-            <i class="bi bi-chevron-down"></i>
-          </div>
-          <div class="account-filter-dropdown" *ngIf="adAccountDropdownOpen">
-            <div class="account-option" (click)="selectedAdAccountIds.clear(); adAccountDropdownOpen = false; onFilterChange()">
-              <span class="account-check" [class.checked]="selectedAdAccountIds.size === 0">&#10003;</span>
-              All Accounts
-            </div>
-            <div class="account-option" *ngFor="let acc of adAccounts" (click)="toggleAdAccount(acc.ad_account_id)">
-              <span class="account-check" [class.checked]="selectedAdAccountIds.has(acc.ad_account_id)">&#10003;</span>
-              <span class="account-name">{{acc.ad_account_name}}</span>
-              <span class="account-platform-badge">{{acc.platform}}</span>
-            </div>
-          </div>
-        </div>
+        <mat-form-field appearance="outline" class="filter-field" *ngIf="adAccounts.length > 0">
+          <mat-label>Account</mat-label>
+          <mat-select multiple [(ngModel)]="selectedAdAccountIds" (selectionChange)="onFilterChange()">
+            <mat-select-trigger>
+              {{selectedAdAccountIds.length === 0 ? 'All' : selectedAdAccountIds.length + ' selected'}}
+            </mat-select-trigger>
+            <mat-option *ngFor="let acc of adAccounts" [value]="acc.ad_account_id">
+              {{acc.ad_account_name}}
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
 
         <!-- Sort -->
         <mat-form-field appearance="outline" class="filter-field">
@@ -1041,8 +1035,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   selectedPlatforms = new Set(['META', 'TIKTOK', 'GOOGLE_ADS', 'DV360']);
   selectedFormat = '';
   adAccounts: { ad_account_id: string; ad_account_name: string; platform: string }[] = [];
-  selectedAdAccountIds = new Set<string>();
-  adAccountDropdownOpen = false;
+  selectedAdAccountIds: string[] = [];
   sortBy = 'spend';
   sortOrder = 'desc';
   page = 1;
@@ -1368,7 +1361,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.selectedFormat) params.formats = this.selectedFormat;
     if (this.scoreMin > 0) params['score_min'] = this.scoreMin;
     if (this.scoreMax < 100) params['score_max'] = this.scoreMax;
-    if (this.selectedAdAccountIds.size > 0) params['ad_account_ids'] = [...this.selectedAdAccountIds].join(',');
+    if (this.selectedAdAccountIds.length > 0) params['ad_account_ids'] = this.selectedAdAccountIds.join(',');
 
     this.api.get<DashboardAssetsResponse>('/dashboard/assets', params).subscribe({
       next: (d) => {
@@ -1483,24 +1476,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   isPlatformActive(key: string): boolean {
     return this.selectedPlatforms.has(key);
-  }
-
-  toggleAdAccount(id: string): void {
-    if (this.selectedAdAccountIds.has(id)) {
-      this.selectedAdAccountIds.delete(id);
-    } else {
-      this.selectedAdAccountIds.add(id);
-    }
-    this.onFilterChange();
-  }
-
-  isAdAccountActive(id: string): boolean {
-    return this.selectedAdAccountIds.size === 0 || this.selectedAdAccountIds.has(id);
-  }
-
-  get adAccountFilterLabel(): string {
-    if (this.selectedAdAccountIds.size === 0) return 'All Accounts';
-    return `${this.selectedAdAccountIds.size} Account${this.selectedAdAccountIds.size > 1 ? 's' : ''}`;
   }
 
   toggleSortOrder(): void {
