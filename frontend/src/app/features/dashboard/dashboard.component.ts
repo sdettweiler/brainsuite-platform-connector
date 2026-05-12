@@ -957,6 +957,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   selectedPlatforms = new Set(['META', 'TIKTOK', 'GOOGLE_ADS', 'DV360']);
   selectedFormat = '';
+  adAccounts: { ad_account_id: string; ad_account_name: string; platform: string }[] = [];
+  selectedAdAccountIds = new Set<string>();
+  adAccountDropdownOpen = false;
   sortBy = 'spend';
   sortOrder = 'desc';
   page = 1;
@@ -1028,6 +1031,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
       debounceTime(400),
       takeUntil(this.destroy$)
     ).subscribe(() => this.onFilterChange());
+
+    // Load ad accounts for filter dropdown
+    this.api.get<any[]>('/platform/connections').subscribe({
+      next: (conns) => {
+        this.adAccounts = conns.map(c => ({
+          ad_account_id: c.ad_account_id,
+          ad_account_name: c.ad_account_name || c.ad_account_id,
+          platform: c.platform,
+        }));
+      },
+    });
 
     // Handle query params (from homepage navigation or direct link)
     this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe(params => {
@@ -1270,6 +1284,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.selectedFormat) params.formats = this.selectedFormat;
     if (this.scoreMin > 0) params['score_min'] = this.scoreMin;
     if (this.scoreMax < 100) params['score_max'] = this.scoreMax;
+    if (this.selectedAdAccountIds.size > 0) params['ad_account_ids'] = [...this.selectedAdAccountIds].join(',');
 
     this.api.get<DashboardAssetsResponse>('/dashboard/assets', params).subscribe({
       next: (d) => {
@@ -1384,6 +1399,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   isPlatformActive(key: string): boolean {
     return this.selectedPlatforms.has(key);
+  }
+
+  toggleAdAccount(id: string): void {
+    if (this.selectedAdAccountIds.has(id)) {
+      this.selectedAdAccountIds.delete(id);
+    } else {
+      this.selectedAdAccountIds.add(id);
+    }
+    this.onFilterChange();
+  }
+
+  isAdAccountActive(id: string): boolean {
+    return this.selectedAdAccountIds.size === 0 || this.selectedAdAccountIds.has(id);
+  }
+
+  get adAccountFilterLabel(): string {
+    if (this.selectedAdAccountIds.size === 0) return 'All Accounts';
+    return `${this.selectedAdAccountIds.size} Account${this.selectedAdAccountIds.size > 1 ? 's' : ''}`;
   }
 
   toggleSortOrder(): void {
