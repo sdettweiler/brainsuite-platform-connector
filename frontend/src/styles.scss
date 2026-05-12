@@ -255,6 +255,8 @@ p  { margin: 0; }
 
 // Compact toolbar filter fields — match date picker height/radius
 .filter-field.mat-mdc-form-field {
+  margin-bottom: 0 !important;
+  align-self: center;
   .mdc-text-field--outlined {
     height: 36px !important;
   }
