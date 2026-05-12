@@ -253,6 +253,26 @@ p  { margin: 0; }
   background: transparent !important;
 }
 
+// Toolbar dropdown menus (format, accounts, sort)
+.tbd-menu.mat-mdc-menu-panel {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+  min-width: 160px !important;
+  .mat-mdc-menu-item {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    font-family: 'Nunito Sans', 'Avenir Next', sans-serif !important;
+    color: var(--text-primary) !important;
+    min-height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+    &:hover { background: var(--accent-light) !important; }
+    .mat-mdc-menu-item-text { display: flex; align-items: center; gap: 6px; }
+  }
+}
+
 
 input:-webkit-autofill,
 input:-webkit-autofill:hover,

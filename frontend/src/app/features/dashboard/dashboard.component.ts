@@ -129,57 +129,40 @@ interface CorrelationAsset {
         </div>
 
         <!-- Format filter -->
-        <div class="tbd">
-          <button type="button" class="tbd-trigger" (mousedown)="$event.preventDefault(); formatDropdownOpen = !formatDropdownOpen">
-            <span>{{formatLabel}}</span>
-            <i class="bi bi-chevron-down tbd-arrow"></i>
-          </button>
-          <div class="tbd-panel" *ngIf="formatDropdownOpen">
-            <div class="tbd-option" (click)="selectedFormat = ''; formatDropdownOpen = false; onFilterChange()">
-              <span class="tbd-check" [class.checked]="selectedFormat === ''">&#10003;</span>All Formats
-            </div>
-            <div class="tbd-option" (click)="selectedFormat = 'IMAGE'; formatDropdownOpen = false; onFilterChange()">
-              <span class="tbd-check" [class.checked]="selectedFormat === 'IMAGE'">&#10003;</span>Image
-            </div>
-            <div class="tbd-option" (click)="selectedFormat = 'VIDEO'; formatDropdownOpen = false; onFilterChange()">
-              <span class="tbd-check" [class.checked]="selectedFormat === 'VIDEO'">&#10003;</span>Video
-            </div>
-            <div class="tbd-option" (click)="selectedFormat = 'CAROUSEL'; formatDropdownOpen = false; onFilterChange()">
-              <span class="tbd-check" [class.checked]="selectedFormat === 'CAROUSEL'">&#10003;</span>Carousel
-            </div>
-          </div>
-        </div>
+        <button class="tbd-trigger" [matMenuTriggerFor]="formatMenu">
+          {{formatLabel}}<i class="bi bi-chevron-down tbd-arrow"></i>
+        </button>
+        <mat-menu #formatMenu="matMenu" class="tbd-menu">
+          <button mat-menu-item (click)="selectedFormat = ''; onFilterChange()"><span class="tbd-check" [class.checked]="selectedFormat === ''">&#10003;</span>All Formats</button>
+          <button mat-menu-item (click)="selectedFormat = 'IMAGE'; onFilterChange()"><span class="tbd-check" [class.checked]="selectedFormat === 'IMAGE'">&#10003;</span>Image</button>
+          <button mat-menu-item (click)="selectedFormat = 'VIDEO'; onFilterChange()"><span class="tbd-check" [class.checked]="selectedFormat === 'VIDEO'">&#10003;</span>Video</button>
+          <button mat-menu-item (click)="selectedFormat = 'CAROUSEL'; onFilterChange()"><span class="tbd-check" [class.checked]="selectedFormat === 'CAROUSEL'">&#10003;</span>Carousel</button>
+        </mat-menu>
 
         <!-- Ad Account filter -->
-        <div class="tbd" *ngIf="adAccounts.length > 0">
-          <button type="button" class="tbd-trigger" (mousedown)="$event.preventDefault(); adAccountDropdownOpen = !adAccountDropdownOpen">
-            <span>{{selectedAdAccountIds.length === 0 ? 'All Accounts' : selectedAdAccountIds.length + ' Account' + (selectedAdAccountIds.length > 1 ? 's' : '')}}</span>
-            <i class="bi bi-chevron-down tbd-arrow"></i>
+        <ng-container *ngIf="adAccounts.length > 0">
+          <button class="tbd-trigger" [matMenuTriggerFor]="accountMenu">
+            {{selectedAdAccountIds.length === 0 ? 'All Accounts' : selectedAdAccountIds.length + ' Account' + (selectedAdAccountIds.length > 1 ? 's' : '')}}<i class="bi bi-chevron-down tbd-arrow"></i>
           </button>
-          <div class="tbd-panel" *ngIf="adAccountDropdownOpen">
-            <div class="tbd-option" (click)="selectedAdAccountIds = []; adAccountDropdownOpen = false; onFilterChange()">
-              <span class="tbd-check" [class.checked]="selectedAdAccountIds.length === 0">&#10003;</span>All Accounts
-            </div>
-            <div class="tbd-option" *ngFor="let acc of adAccounts" (click)="toggleAdAccount(acc.ad_account_id)">
+          <mat-menu #accountMenu="matMenu" class="tbd-menu">
+            <button mat-menu-item (click)="$event.stopPropagation(); selectedAdAccountIds = []; onFilterChange()"><span class="tbd-check" [class.checked]="selectedAdAccountIds.length === 0">&#10003;</span>All Accounts</button>
+            <button mat-menu-item *ngFor="let acc of adAccounts" (click)="$event.stopPropagation(); toggleAdAccount(acc.ad_account_id)">
               <span class="tbd-check" [class.checked]="selectedAdAccountIds.includes(acc.ad_account_id)">&#10003;</span>
               <span class="tbd-name">{{acc.ad_account_name}}</span>
               <span class="tbd-badge">{{acc.platform}}</span>
-            </div>
-          </div>
-        </div>
+            </button>
+          </mat-menu>
+        </ng-container>
 
         <!-- Sort -->
-        <div class="tbd">
-          <button type="button" class="tbd-trigger" (mousedown)="$event.preventDefault(); sortDropdownOpen = !sortDropdownOpen">
-            <span>{{sortLabel}}</span>
-            <i class="bi bi-chevron-down tbd-arrow"></i>
+        <button class="tbd-trigger" [matMenuTriggerFor]="sortMenu">
+          {{sortLabel}}<i class="bi bi-chevron-down tbd-arrow"></i>
+        </button>
+        <mat-menu #sortMenu="matMenu" class="tbd-menu">
+          <button mat-menu-item *ngFor="let o of sortOptions" (click)="sortBy = o.value; onFilterChange()">
+            <span class="tbd-check" [class.checked]="sortBy === o.value">&#10003;</span>{{o.label}}
           </button>
-          <div class="tbd-panel" *ngIf="sortDropdownOpen">
-            <div class="tbd-option" *ngFor="let o of sortOptions" (click)="sortBy = o.value; sortDropdownOpen = false; onFilterChange()">
-              <span class="tbd-check" [class.checked]="sortBy === o.value">&#10003;</span>{{o.label}}
-            </div>
-          </div>
-        </div>
+        </mat-menu>
 
         <button
           class="sort-dir-btn"
