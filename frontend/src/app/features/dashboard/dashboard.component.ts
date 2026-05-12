@@ -130,7 +130,7 @@ interface CorrelationAsset {
 
         <!-- Format filter -->
         <div class="tbd">
-          <button type="button" class="tbd-trigger" (click)="formatDropdownOpen = !formatDropdownOpen">
+          <button type="button" class="tbd-trigger" (mousedown)="$event.preventDefault(); formatDropdownOpen = !formatDropdownOpen">
             <span>{{formatLabel}}</span>
             <i class="bi bi-chevron-down tbd-arrow"></i>
           </button>
@@ -152,7 +152,7 @@ interface CorrelationAsset {
 
         <!-- Ad Account filter -->
         <div class="tbd" *ngIf="adAccounts.length > 0">
-          <button type="button" class="tbd-trigger" (click)="adAccountDropdownOpen = !adAccountDropdownOpen">
+          <button type="button" class="tbd-trigger" (mousedown)="$event.preventDefault(); adAccountDropdownOpen = !adAccountDropdownOpen">
             <span>{{selectedAdAccountIds.length === 0 ? 'All Accounts' : selectedAdAccountIds.length + ' Account' + (selectedAdAccountIds.length > 1 ? 's' : '')}}</span>
             <i class="bi bi-chevron-down tbd-arrow"></i>
           </button>
@@ -170,7 +170,7 @@ interface CorrelationAsset {
 
         <!-- Sort -->
         <div class="tbd">
-          <button type="button" class="tbd-trigger" (click)="sortDropdownOpen = !sortDropdownOpen">
+          <button type="button" class="tbd-trigger" (mousedown)="$event.preventDefault(); sortDropdownOpen = !sortDropdownOpen">
             <span>{{sortLabel}}</span>
             <i class="bi bi-chevron-down tbd-arrow"></i>
           </button>
