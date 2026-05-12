@@ -1116,8 +1116,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     ).subscribe(() => this.onFilterChange());
 
     // Load ad accounts for filter dropdown
-    this.api.get<any[]>('/platform/connections').subscribe({
-      next: (conns) => {
+    this.api.get<{ items: any[] }>('/platform/connections').subscribe({
+      next: (res) => {
+        const conns = res.items || [];
         this.adAccounts = conns.map(c => ({
           ad_account_id: c.ad_account_id,
           ad_account_name: c.ad_account_name || c.ad_account_id,
