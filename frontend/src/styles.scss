@@ -256,7 +256,12 @@ p  { margin: 0; }
 // Compact toolbar filter fields — match date picker height/radius
 .filter-field.mat-mdc-form-field {
   margin-bottom: 0 !important;
+  height: 36px !important;
   align-self: center;
+  .mat-mdc-text-field-wrapper {
+    height: 36px !important;
+    padding: 0 !important;
+  }
   .mdc-text-field--outlined {
     height: 36px !important;
   }
@@ -286,7 +291,27 @@ p  { margin: 0; }
     color: var(--text-primary) !important;
     font-family: inherit !important;
   }
-  .mat-mdc-select-arrow { color: var(--text-secondary) !important; }
+  // Replace solid SVG arrow with line chevron matching date picker / account filter
+  .mat-mdc-select-arrow-wrapper {
+    height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+  .mat-mdc-select-arrow {
+    width: 0 !important;
+    height: 0 !important;
+    border: none !important;
+    svg { display: none !important; }
+    &::after {
+      content: '';
+      display: block;
+      width: 8px;
+      height: 8px;
+      border-right: 1.5px solid var(--text-secondary);
+      border-bottom: 1.5px solid var(--text-secondary);
+      transform: rotate(45deg) translateY(-3px);
+    }
+  }
 }
 
 input:-webkit-autofill,
