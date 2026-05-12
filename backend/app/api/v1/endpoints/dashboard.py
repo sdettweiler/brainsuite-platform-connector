@@ -195,6 +195,7 @@ async def get_dashboard_assets(
     page_size: int = Query(default=50, ge=1, le=250),
     score_min: Optional[float] = Query(default=None, ge=0, le=100),
     score_max: Optional[float] = Query(default=None, ge=0, le=100),
+    ad_account_ids: Optional[str] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -207,6 +208,7 @@ async def get_dashboard_assets(
     platform_list = [p.strip().upper() for p in platforms.split(",")] if platforms else None
     format_list = [f.strip().upper() for f in formats.split(",")] if formats else None
     objective_list = [o.strip() for o in objectives.split(",")] if objectives else None
+    account_id_list = [a.strip() for a in ad_account_ids.split(",")] if ad_account_ids else None
 
     # Aggregate performance per asset for the date range
     perf_subq = (
@@ -295,6 +297,8 @@ async def get_dashboard_assets(
             )
         )
 
+    if account_id_list:
+        query = query.where(CreativeAsset.ad_account_id.in_(account_id_list))
     if score_min is not None:
         query = query.where(CreativeScoreResult.total_score >= score_min)
     if score_max is not None:
