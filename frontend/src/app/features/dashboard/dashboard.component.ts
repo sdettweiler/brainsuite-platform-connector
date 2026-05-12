@@ -130,10 +130,10 @@ interface CorrelationAsset {
 
         <!-- Format filter -->
         <div class="tbd">
-          <div class="tbd-trigger" (click)="formatDropdownOpen = !formatDropdownOpen">
+          <button type="button" class="tbd-trigger" (click)="formatDropdownOpen = !formatDropdownOpen">
             <span>{{formatLabel}}</span>
             <i class="bi bi-chevron-down tbd-arrow"></i>
-          </div>
+          </button>
           <div class="tbd-panel" *ngIf="formatDropdownOpen">
             <div class="tbd-option" (click)="selectedFormat = ''; formatDropdownOpen = false; onFilterChange()">
               <span class="tbd-check" [class.checked]="selectedFormat === ''">&#10003;</span>All Formats
@@ -152,10 +152,10 @@ interface CorrelationAsset {
 
         <!-- Ad Account filter -->
         <div class="tbd" *ngIf="adAccounts.length > 0">
-          <div class="tbd-trigger" (click)="adAccountDropdownOpen = !adAccountDropdownOpen">
+          <button type="button" class="tbd-trigger" (click)="adAccountDropdownOpen = !adAccountDropdownOpen">
             <span>{{selectedAdAccountIds.length === 0 ? 'All Accounts' : selectedAdAccountIds.length + ' Account' + (selectedAdAccountIds.length > 1 ? 's' : '')}}</span>
             <i class="bi bi-chevron-down tbd-arrow"></i>
-          </div>
+          </button>
           <div class="tbd-panel" *ngIf="adAccountDropdownOpen">
             <div class="tbd-option" (click)="selectedAdAccountIds = []; adAccountDropdownOpen = false; onFilterChange()">
               <span class="tbd-check" [class.checked]="selectedAdAccountIds.length === 0">&#10003;</span>All Accounts
@@ -170,10 +170,10 @@ interface CorrelationAsset {
 
         <!-- Sort -->
         <div class="tbd">
-          <div class="tbd-trigger" (click)="sortDropdownOpen = !sortDropdownOpen">
+          <button type="button" class="tbd-trigger" (click)="sortDropdownOpen = !sortDropdownOpen">
             <span>{{sortLabel}}</span>
             <i class="bi bi-chevron-down tbd-arrow"></i>
-          </div>
+          </button>
           <div class="tbd-panel" *ngIf="sortDropdownOpen">
             <div class="tbd-option" *ngFor="let o of sortOptions" (click)="sortBy = o.value; sortDropdownOpen = false; onFilterChange()">
               <span class="tbd-check" [class.checked]="sortBy === o.value">&#10003;</span>{{o.label}}
@@ -516,6 +516,7 @@ interface CorrelationAsset {
       padding: 6px 12px;
       border-radius: 8px;
       border: 1px solid var(--border);
+      outline: none;
       background: var(--bg-card);
       color: var(--text-primary);
       cursor: pointer;
