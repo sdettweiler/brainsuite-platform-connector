@@ -163,7 +163,7 @@ export class JobMonitorComponent implements OnInit, OnDestroy {
       });
   }
 
-  getProgressMode(job: JobSnapshot): string {
+  getProgressMode(job: JobSnapshot): 'determinate' | 'indeterminate' {
     return (job.progress_total ?? 0) > 0 ? 'determinate' : 'indeterminate';
   }
 
