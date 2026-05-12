@@ -140,17 +140,24 @@ interface CorrelationAsset {
         </mat-form-field>
 
         <!-- Ad Account filter -->
-        <mat-form-field appearance="outline" class="filter-field" *ngIf="adAccounts.length > 0">
-          <mat-label>Account</mat-label>
-          <mat-select multiple [(ngModel)]="selectedAdAccountIds" (selectionChange)="onFilterChange()">
-            <mat-select-trigger>
-              {{selectedAdAccountIds.length === 0 ? 'All' : selectedAdAccountIds.length + ' selected'}}
-            </mat-select-trigger>
-            <mat-option *ngFor="let acc of adAccounts" [value]="acc.ad_account_id">
-              {{acc.ad_account_name}}
-            </mat-option>
-          </mat-select>
-        </mat-form-field>
+        <div class="account-filter" *ngIf="adAccounts.length > 0">
+          <div class="account-filter-trigger" (click)="adAccountDropdownOpen = !adAccountDropdownOpen">
+            <span class="account-filter-label">Account</span>
+            <span class="account-filter-value">{{selectedAdAccountIds.length === 0 ? 'All' : selectedAdAccountIds.length + ' selected'}}</span>
+            <i class="bi bi-chevron-down account-filter-arrow"></i>
+          </div>
+          <div class="account-filter-dropdown" *ngIf="adAccountDropdownOpen">
+            <div class="account-option" (click)="selectedAdAccountIds = []; adAccountDropdownOpen = false; onFilterChange()">
+              <span class="account-check" [class.checked]="selectedAdAccountIds.length === 0">&#10003;</span>
+              All Accounts
+            </div>
+            <div class="account-option" *ngFor="let acc of adAccounts" (click)="toggleAdAccount(acc.ad_account_id)">
+              <span class="account-check" [class.checked]="selectedAdAccountIds.includes(acc.ad_account_id)">&#10003;</span>
+              <span class="account-name">{{acc.ad_account_name}}</span>
+              <span class="account-platform-badge">{{acc.platform}}</span>
+            </div>
+          </div>
+        </div>
 
         <!-- Sort -->
         <mat-form-field appearance="outline" class="filter-field">
@@ -492,67 +499,89 @@ interface CorrelationAsset {
 
     .filter-field { width: 130px; }
 
-    .account-filter-wrapper {
+    .account-filter {
       position: relative;
-      display: inline-flex;
-      align-items: center;
-      width: auto;
+      width: 130px;
+      flex-shrink: 0;
     }
     .account-filter-trigger {
+      position: relative;
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px 12px;
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 6px;
+      height: 56px;
+      padding: 20px 10px 4px 12px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
       cursor: pointer;
-      font-size: 14px;
-      color: var(--text-primary, #fff);
       background: transparent;
-      min-width: 130px;
-      white-space: nowrap;
+      box-sizing: border-box;
       user-select: none;
-      &:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
-      &.active { border-color: var(--accent, #6366f1); color: var(--accent, #6366f1); }
-      .bi-chevron-down { font-size: 11px; margin-left: auto; }
+      &:hover { border-color: var(--accent); }
+    }
+    .account-filter-label {
+      position: absolute;
+      top: -0.45em;
+      left: 8px;
+      font-size: 11px;
+      color: var(--accent);
+      background: var(--bg-card);
+      padding: 0 4px;
+      line-height: 1;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .account-filter-value {
+      flex: 1;
+      color: var(--text-primary);
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .account-filter-arrow {
+      font-size: 11px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
     }
     .account-filter-dropdown {
       position: absolute;
       top: calc(100% + 4px);
       left: 0;
       z-index: 1000;
-      background: var(--surface-2, #1e1e2e);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
       min-width: 220px;
       max-height: 280px;
       overflow-y: auto;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
       padding: 4px 0;
     }
     .account-option {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 14px;
+      gap: 6px;
+      padding: 6px 12px;
       cursor: pointer;
-      font-size: 13px;
-      color: var(--text-primary, #e0e0e0);
-      &:hover { background: rgba(255,255,255,0.06); }
+      font-size: 12px;
+      color: var(--text-primary);
+      &:hover { background: var(--accent-light); }
     }
     .account-check {
-      width: 16px;
+      width: 14px;
       text-align: center;
       color: transparent;
-      &.checked { color: var(--accent, #6366f1); }
+      font-size: 12px;
+      flex-shrink: 0;
+      &.checked { color: var(--accent); }
     }
     .account-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .account-platform-badge {
-      font-size: 10px;
-      padding: 1px 5px;
+      font-size: 9px;
+      padding: 1px 4px;
       border-radius: 3px;
       background: rgba(255,255,255,0.1);
-      color: var(--text-secondary, #aaa);
+      color: var(--text-secondary);
       flex-shrink: 0;
     }
 
@@ -1036,6 +1065,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   selectedFormat = '';
   adAccounts: { ad_account_id: string; ad_account_name: string; platform: string }[] = [];
   selectedAdAccountIds: string[] = [];
+  adAccountDropdownOpen = false;
   sortBy = 'spend';
   sortOrder = 'desc';
   page = 1;
@@ -1476,6 +1506,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   isPlatformActive(key: string): boolean {
     return this.selectedPlatforms.has(key);
+  }
+
+  toggleAdAccount(id: string): void {
+    const idx = this.selectedAdAccountIds.indexOf(id);
+    if (idx >= 0) {
+      this.selectedAdAccountIds.splice(idx, 1);
+    } else {
+      this.selectedAdAccountIds.push(id);
+    }
+    this.onFilterChange();
   }
 
   toggleSortOrder(): void {
