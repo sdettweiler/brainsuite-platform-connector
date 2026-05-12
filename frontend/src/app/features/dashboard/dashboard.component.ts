@@ -129,47 +129,57 @@ interface CorrelationAsset {
         </div>
 
         <!-- Format filter -->
-        <mat-form-field appearance="outline" class="filter-field">
-          <mat-select [(ngModel)]="selectedFormat" (selectionChange)="onFilterChange()">
-            <mat-option value="">All Formats</mat-option>
-            <mat-option value="IMAGE">Image</mat-option>
-            <mat-option value="VIDEO">Video</mat-option>
-            <mat-option value="CAROUSEL">Carousel</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <div class="tbd">
+          <div class="tbd-trigger" (click)="formatDropdownOpen = !formatDropdownOpen">
+            <span>{{formatLabel}}</span>
+            <i class="bi bi-chevron-down tbd-arrow"></i>
+          </div>
+          <div class="tbd-panel" *ngIf="formatDropdownOpen">
+            <div class="tbd-option" (click)="selectedFormat = ''; formatDropdownOpen = false; onFilterChange()">
+              <span class="tbd-check" [class.checked]="selectedFormat === ''">&#10003;</span>All Formats
+            </div>
+            <div class="tbd-option" (click)="selectedFormat = 'IMAGE'; formatDropdownOpen = false; onFilterChange()">
+              <span class="tbd-check" [class.checked]="selectedFormat === 'IMAGE'">&#10003;</span>Image
+            </div>
+            <div class="tbd-option" (click)="selectedFormat = 'VIDEO'; formatDropdownOpen = false; onFilterChange()">
+              <span class="tbd-check" [class.checked]="selectedFormat === 'VIDEO'">&#10003;</span>Video
+            </div>
+            <div class="tbd-option" (click)="selectedFormat = 'CAROUSEL'; formatDropdownOpen = false; onFilterChange()">
+              <span class="tbd-check" [class.checked]="selectedFormat === 'CAROUSEL'">&#10003;</span>Carousel
+            </div>
+          </div>
+        </div>
 
         <!-- Ad Account filter -->
-        <div class="account-filter" *ngIf="adAccounts.length > 0">
-          <div class="account-filter-trigger" (click)="adAccountDropdownOpen = !adAccountDropdownOpen">
-            <span class="account-filter-value">{{selectedAdAccountIds.length === 0 ? 'All Accounts' : selectedAdAccountIds.length + ' Account' + (selectedAdAccountIds.length > 1 ? 's' : '')}}</span>
-            <i class="bi bi-chevron-down account-filter-arrow"></i>
+        <div class="tbd" *ngIf="adAccounts.length > 0">
+          <div class="tbd-trigger" (click)="adAccountDropdownOpen = !adAccountDropdownOpen">
+            <span>{{selectedAdAccountIds.length === 0 ? 'All Accounts' : selectedAdAccountIds.length + ' Account' + (selectedAdAccountIds.length > 1 ? 's' : '')}}</span>
+            <i class="bi bi-chevron-down tbd-arrow"></i>
           </div>
-          <div class="account-filter-dropdown" *ngIf="adAccountDropdownOpen">
-            <div class="account-option" (click)="selectedAdAccountIds = []; adAccountDropdownOpen = false; onFilterChange()">
-              <span class="account-check" [class.checked]="selectedAdAccountIds.length === 0">&#10003;</span>
-              All Accounts
+          <div class="tbd-panel" *ngIf="adAccountDropdownOpen">
+            <div class="tbd-option" (click)="selectedAdAccountIds = []; adAccountDropdownOpen = false; onFilterChange()">
+              <span class="tbd-check" [class.checked]="selectedAdAccountIds.length === 0">&#10003;</span>All Accounts
             </div>
-            <div class="account-option" *ngFor="let acc of adAccounts" (click)="toggleAdAccount(acc.ad_account_id)">
-              <span class="account-check" [class.checked]="selectedAdAccountIds.includes(acc.ad_account_id)">&#10003;</span>
-              <span class="account-name">{{acc.ad_account_name}}</span>
-              <span class="account-platform-badge">{{acc.platform}}</span>
+            <div class="tbd-option" *ngFor="let acc of adAccounts" (click)="toggleAdAccount(acc.ad_account_id)">
+              <span class="tbd-check" [class.checked]="selectedAdAccountIds.includes(acc.ad_account_id)">&#10003;</span>
+              <span class="tbd-name">{{acc.ad_account_name}}</span>
+              <span class="tbd-badge">{{acc.platform}}</span>
             </div>
           </div>
         </div>
 
         <!-- Sort -->
-        <mat-form-field appearance="outline" class="filter-field">
-          <mat-select [(ngModel)]="sortBy" (selectionChange)="onFilterChange()">
-            <mat-option value="spend">Sort: Spend</mat-option>
-            <mat-option value="ctr">Sort: CTR</mat-option>
-            <mat-option value="roas">Sort: ROAS</mat-option>
-            <mat-option value="cpm">Sort: CPM</mat-option>
-            <mat-option value="vtr">Sort: VTR</mat-option>
-            <mat-option value="total_score">Sort: ACE Score</mat-option>
-            <mat-option value="platform">Sort: Platform</mat-option>
-            <mat-option value="format">Sort: Format</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <div class="tbd">
+          <div class="tbd-trigger" (click)="sortDropdownOpen = !sortDropdownOpen">
+            <span>{{sortLabel}}</span>
+            <i class="bi bi-chevron-down tbd-arrow"></i>
+          </div>
+          <div class="tbd-panel" *ngIf="sortDropdownOpen">
+            <div class="tbd-option" *ngFor="let o of sortOptions" (click)="sortBy = o.value; sortDropdownOpen = false; onFilterChange()">
+              <span class="tbd-check" [class.checked]="sortBy === o.value">&#10003;</span>{{o.label}}
+            </div>
+          </div>
+        </div>
 
         <button
           class="sort-dir-btn"
@@ -494,13 +504,12 @@ interface CorrelationAsset {
       &:hover { background: var(--accent-hover); }
     }
 
-    .filter-field { width: 130px; }
-
-    .account-filter {
+    // Shared toolbar dropdown — used by Format, Account, Sort
+    .tbd {
       position: relative;
       flex-shrink: 0;
     }
-    .account-filter-trigger {
+    .tbd-trigger {
       display: flex;
       align-items: center;
       gap: 8px;
@@ -519,46 +528,39 @@ interface CorrelationAsset {
       transition: all 0.15s;
       &:hover { border-color: var(--accent); background: var(--bg-hover); }
     }
-    .account-filter-value {
-      color: var(--text-primary);
-      font-size: 13px;
-      font-weight: 500;
-      font-family: inherit;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .account-filter-arrow {
+    .tbd-arrow {
       font-size: 12px;
       color: var(--text-secondary);
       flex-shrink: 0;
     }
-    .account-filter-dropdown {
+    .tbd-panel {
       position: absolute;
       top: calc(100% + 4px);
       left: 0;
       z-index: 1000;
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 4px;
-      min-width: 220px;
+      border-radius: 8px;
+      min-width: 160px;
       max-height: 280px;
       overflow-y: auto;
       box-shadow: 0 4px 16px rgba(0,0,0,0.4);
       padding: 4px 0;
     }
-    .account-option {
+    .tbd-option {
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 12px;
+      padding: 7px 12px;
       cursor: pointer;
       font-size: 13px;
+      font-weight: 500;
       font-family: inherit;
       color: var(--text-primary);
+      white-space: nowrap;
       &:hover { background: var(--accent-light); }
     }
-    .account-check {
+    .tbd-check {
       width: 14px;
       text-align: center;
       color: transparent;
@@ -566,8 +568,8 @@ interface CorrelationAsset {
       flex-shrink: 0;
       &.checked { color: var(--accent); }
     }
-    .account-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .account-platform-badge {
+    .tbd-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tbd-badge {
       font-size: 9px;
       padding: 1px 4px;
       border-radius: 3px;
@@ -1057,6 +1059,28 @@ export class DashboardComponent implements OnInit, OnDestroy {
   adAccounts: { ad_account_id: string; ad_account_name: string; platform: string }[] = [];
   selectedAdAccountIds: string[] = [];
   adAccountDropdownOpen = false;
+  formatDropdownOpen = false;
+  sortDropdownOpen = false;
+
+  sortOptions = [
+    { value: 'spend', label: 'Spend' },
+    { value: 'ctr', label: 'CTR' },
+    { value: 'roas', label: 'ROAS' },
+    { value: 'cpm', label: 'CPM' },
+    { value: 'vtr', label: 'VTR' },
+    { value: 'total_score', label: 'ACE Score' },
+    { value: 'platform', label: 'Platform' },
+    { value: 'format', label: 'Format' },
+  ];
+
+  get formatLabel(): string {
+    const map: Record<string, string> = { '': 'All Formats', IMAGE: 'Image', VIDEO: 'Video', CAROUSEL: 'Carousel' };
+    return map[this.selectedFormat] ?? this.selectedFormat;
+  }
+
+  get sortLabel(): string {
+    return 'Sort: ' + (this.sortOptions.find(o => o.value === this.sortBy)?.label ?? this.sortBy);
+  }
   sortBy = 'spend';
   sortOrder = 'desc';
   page = 1;
