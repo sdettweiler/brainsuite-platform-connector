@@ -259,18 +259,52 @@ p  { margin: 0; }
   border: 1px solid var(--border) !important;
   border-radius: 8px !important;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
-  min-width: 160px !important;
+  min-width: 200px !important;
+  max-width: 320px !important;
+  .mat-mdc-menu-content { padding: 4px 0 !important; }
   .mat-mdc-menu-item {
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    font-family: 'Nunito Sans', 'Avenir Next', sans-serif !important;
-    color: var(--text-primary) !important;
     min-height: 36px !important;
-    display: flex !important;
-    align-items: center !important;
+    height: 36px !important;
+    padding: 0 12px !important;
     &:hover { background: var(--accent-light) !important; }
-    .mat-mdc-menu-item-text { display: flex; align-items: center; gap: 6px; }
+    .mat-mdc-menu-item-text {
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      font-family: 'Nunito Sans', 'Avenir Next', sans-serif !important;
+      color: var(--text-primary) !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      line-height: 1 !important;
+    }
+    // override mdc ripple label size
+    .mdc-list-item__primary-text {
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      white-space: nowrap !important;
+      color: var(--text-primary) !important;
+    }
   }
+}
+.tbd-check {
+  width: 14px;
+  text-align: center;
+  color: transparent;
+  font-size: 13px;
+  flex-shrink: 0;
+  &.checked { color: var(--accent); }
+}
+.tbd-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.tbd-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.1);
+  color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 
