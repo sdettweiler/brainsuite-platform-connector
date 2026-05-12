@@ -130,9 +130,8 @@ interface CorrelationAsset {
 
         <!-- Format filter -->
         <mat-form-field appearance="outline" class="filter-field">
-          <mat-label>Format</mat-label>
           <mat-select [(ngModel)]="selectedFormat" (selectionChange)="onFilterChange()">
-            <mat-option value="">All</mat-option>
+            <mat-option value="">All Formats</mat-option>
             <mat-option value="IMAGE">Image</mat-option>
             <mat-option value="VIDEO">Video</mat-option>
             <mat-option value="CAROUSEL">Carousel</mat-option>
@@ -142,8 +141,7 @@ interface CorrelationAsset {
         <!-- Ad Account filter -->
         <div class="account-filter" *ngIf="adAccounts.length > 0">
           <div class="account-filter-trigger" (click)="adAccountDropdownOpen = !adAccountDropdownOpen">
-            <span class="account-filter-label">Account</span>
-            <span class="account-filter-value">{{selectedAdAccountIds.length === 0 ? 'All' : selectedAdAccountIds.length + ' selected'}}</span>
+            <span class="account-filter-value">{{selectedAdAccountIds.length === 0 ? 'All Accounts' : selectedAdAccountIds.length + ' Account' + (selectedAdAccountIds.length > 1 ? 's' : '')}}</span>
             <i class="bi bi-chevron-down account-filter-arrow"></i>
           </div>
           <div class="account-filter-dropdown" *ngIf="adAccountDropdownOpen">
@@ -161,16 +159,15 @@ interface CorrelationAsset {
 
         <!-- Sort -->
         <mat-form-field appearance="outline" class="filter-field">
-          <mat-label>Sort by</mat-label>
           <mat-select [(ngModel)]="sortBy" (selectionChange)="onFilterChange()">
-            <mat-option value="spend">Spend</mat-option>
-            <mat-option value="ctr">CTR</mat-option>
-            <mat-option value="roas">ROAS</mat-option>
-            <mat-option value="cpm">CPM</mat-option>
-            <mat-option value="vtr">VTR</mat-option>
-            <mat-option value="total_score">ACE Score</mat-option>
-            <mat-option value="platform">Platform</mat-option>
-            <mat-option value="format">Format</mat-option>
+            <mat-option value="spend">Sort: Spend</mat-option>
+            <mat-option value="ctr">Sort: CTR</mat-option>
+            <mat-option value="roas">Sort: ROAS</mat-option>
+            <mat-option value="cpm">Sort: CPM</mat-option>
+            <mat-option value="vtr">Sort: VTR</mat-option>
+            <mat-option value="total_score">Sort: ACE Score</mat-option>
+            <mat-option value="platform">Sort: Platform</mat-option>
+            <mat-option value="format">Sort: Format</mat-option>
           </mat-select>
         </mat-form-field>
 
@@ -501,47 +498,38 @@ interface CorrelationAsset {
 
     .account-filter {
       position: relative;
-      width: 130px;
       flex-shrink: 0;
     }
     .account-filter-trigger {
-      position: relative;
       display: flex;
       align-items: center;
-      min-height: 48px;
-      padding: 20px 10px 4px 12px;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 8px;
       border: 1px solid var(--border);
-      border-radius: 4px;
-      cursor: pointer;
-      background: transparent;
-      box-sizing: border-box;
-      user-select: none;
-      font-family: inherit;
-      &:hover { border-color: var(--accent); }
-    }
-    .account-filter-label {
-      position: absolute;
-      top: -0.45em;
-      left: 8px;
-      font-size: 11px;
-      color: var(--accent);
       background: var(--bg-card);
-      padding: 0 4px;
-      line-height: 1;
-      pointer-events: none;
+      color: var(--text-primary);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      height: 36px;
       white-space: nowrap;
+      font-family: inherit;
+      user-select: none;
+      transition: all 0.15s;
+      &:hover { border-color: var(--accent); background: var(--bg-hover); }
     }
     .account-filter-value {
-      flex: 1;
       color: var(--text-primary);
-      font-size: 14px;
+      font-size: 13px;
+      font-weight: 500;
       font-family: inherit;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .account-filter-arrow {
-      font-size: 11px;
+      font-size: 12px;
       color: var(--text-secondary);
       flex-shrink: 0;
     }

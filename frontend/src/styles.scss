@@ -253,6 +253,40 @@ p  { margin: 0; }
   background: transparent !important;
 }
 
+// Compact toolbar filter fields — match date picker height/radius
+.filter-field.mat-mdc-form-field {
+  .mdc-text-field--outlined {
+    height: 36px !important;
+  }
+  .mdc-notched-outline__leading {
+    border-radius: 8px 0 0 8px !important;
+    min-width: 8px !important;
+  }
+  .mdc-notched-outline__notch {
+    border-top: 1px solid var(--border) !important;
+  }
+  .mdc-notched-outline__trailing {
+    border-radius: 0 8px 8px 0 !important;
+  }
+  .mat-mdc-form-field-infix {
+    min-height: 36px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+  .mat-mdc-floating-label,
+  .mdc-floating-label { display: none !important; }
+  .mat-mdc-select-value-text,
+  .mat-mdc-select-placeholder {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: var(--text-primary) !important;
+    font-family: inherit !important;
+  }
+  .mat-mdc-select-arrow { color: var(--text-secondary) !important; }
+}
+
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
