@@ -31,6 +31,10 @@ from app.services.sync.job_tracker import create_background_job, update_backgrou
 
 logger = logging.getLogger(__name__)
 
+# Limits concurrent autofill executions to prevent DB connection pool exhaustion.
+# Each run opens ~2-3 sequential DB sessions; pool size is 10+20=30.
+_autofill_semaphore = asyncio.Semaphore(5)
+
 # ---------------------------------------------------------------------------
 # Constants: auto_fill_type routing sets
 # ---------------------------------------------------------------------------
@@ -121,7 +125,19 @@ async def run_autofill_for_asset(asset_id: uuid.UUID, org_id: uuid.UUID) -> None
     exceptions are logged and the BackgroundJob is set to FAILED rather than
     silently swallowed.
     """
+    async with _autofill_semaphore:
+        await _run_autofill_for_asset_inner(asset_id, org_id)
+
+
+async def _run_autofill_for_asset_inner(asset_id: uuid.UUID, org_id: uuid.UUID) -> None:
     import traceback as _tb
+
+    # Never run autofill on an asset with no downloaded content — asset_url must
+    # be a non-empty served URL (not a raw CDN URL or empty string).
+    async with get_session_factory()() as _pre_db:
+        _asset = await _pre_db.get(CreativeAsset, asset_id)
+        if not _asset or not (_asset.asset_url or "").strip():
+            return
 
     bg_job_id = await create_background_job(
         job_type="autofill",
@@ -136,7 +152,7 @@ async def run_autofill_for_asset(asset_id: uuid.UUID, org_id: uuid.UUID) -> None
     )
 
     try:
-        autofill_output = await _autofill(asset_id, org_id)
+        autofill_output = await asyncio.wait_for(_autofill(asset_id, org_id), timeout=300)
         await update_background_job(
             bg_job_id,
             status="COMPLETE",
@@ -242,6 +258,7 @@ async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> Optional[dict]:
     # ------------------------------------------------------------------
     # Phase 2: Download asset binary (no DB session held)
     # ------------------------------------------------------------------
+    import time as _time
     storage = get_object_storage()
     # Derive S3 key: strip leading "/" and remove "objects/" prefix
     s3_key = asset_url.lstrip("/")
@@ -254,7 +271,9 @@ async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> Optional[dict]:
     asset_bytes: Optional[bytes] = None
 
     if (needs_vision or needs_audio) and s3_key:
+        _t0 = _time.monotonic()
         asset_bytes, _ = storage.download_blob(s3_key)
+        logger.warning("autofill [%s] download: %.1fs (%d bytes)", asset_id, _time.monotonic() - _t0, len(asset_bytes) if asset_bytes else 0)
 
     # ------------------------------------------------------------------
     # Phase 3: Run inference (no DB session held)
@@ -263,16 +282,36 @@ async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> Optional[dict]:
     audio_result: dict = {}
 
     if settings.GEMINI_API_KEY:
+        # Prepare inputs synchronously first (CPU-bound, shared asset_bytes)
+        mood_board: Optional[bytes] = None
+        audio_bytes: Optional[bytes] = None
         if needs_vision and asset_bytes:
+            _t0 = _time.monotonic()
             key_frames = _extract_key_frames(asset_bytes, asset_format)
             if key_frames:
                 mood_board = _compose_mood_board(key_frames)
-                vision_result = await _run_vision(mood_board)
-
+            logger.warning("autofill [%s] frame_extraction: %.1fs (%d frames)", asset_id, _time.monotonic() - _t0, len(key_frames) if key_frames else 0)
         if needs_audio and asset_bytes:
-            audio_bytes = await _extract_audio_bytes(asset_bytes)
-            if audio_bytes and len(audio_bytes) >= 1000:
-                audio_result = await _run_audio(audio_bytes)
+            _t0 = _time.monotonic()
+            extracted = await _extract_audio_bytes(asset_bytes)
+            if extracted and len(extracted) >= 1000:
+                audio_bytes = extracted
+            logger.warning("autofill [%s] audio_extraction: %.1fs (%d bytes)", asset_id, _time.monotonic() - _t0, len(audio_bytes) if audio_bytes else 0)
+
+        # Run Gemini calls concurrently — vision and audio are independent
+        async def _vision_task() -> dict:
+            _t = _time.monotonic()
+            r = await _run_vision(mood_board) if mood_board else {}
+            logger.warning("autofill [%s] gemini_vision: %.1fs", asset_id, _time.monotonic() - _t)
+            return r
+
+        async def _audio_task() -> dict:
+            _t = _time.monotonic()
+            r = await _run_audio(audio_bytes) if audio_bytes else {}
+            logger.warning("autofill [%s] gemini_audio: %.1fs", asset_id, _time.monotonic() - _t)
+            return r
+
+        vision_result, audio_result = await asyncio.gather(_vision_task(), _audio_task())
 
     # ------------------------------------------------------------------
     # Phase 4: Route values and write to DB
@@ -389,9 +428,9 @@ async def _set_status(asset_id: uuid.UUID, status: str) -> None:
 # ---------------------------------------------------------------------------
 
 _VISION_PROMPT = (
-    "This is a mood board composed from frames sampled at 1 frame per second "
-    "from a video ad creative. Each cell in the grid is a chronological frame.\n\n"
-    "Return:\n"
+    "This is a mood board composed from frames sampled from a video ad creative. "
+    "Each cell in the grid is a chronological frame.\n\n"
+    "Return a JSON object with:\n"
     "- language: The PRIMARY language of the ad's TARGET AUDIENCE — "
     "the language used in body copy, subtitles, and the majority of on-screen text "
     "across the frames. Ignore incidental English (brand names, product names, "
@@ -415,23 +454,32 @@ async def _run_vision(mood_board: bytes) -> dict:
     if settings.GEMINI_API_KEY:
         try:
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            response = await client.aio.models.generate_content(
-                model=_GEMINI_MODEL,
-                contents=genai_types.Content(parts=[
-                    genai_types.Part.from_bytes(data=mood_board, mime_type="image/jpeg"),
-                    genai_types.Part.from_text(text=_VISION_PROMPT),
-                ]),
-                config=genai_types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=VisionResult,
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=_GEMINI_MODEL,
+                    contents=genai_types.Content(parts=[
+                        genai_types.Part.from_bytes(data=mood_board, mime_type="image/jpeg"),
+                        genai_types.Part.from_text(text=_VISION_PROMPT),
+                    ]),
+                    config=genai_types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=VisionResult,
+                    ),
                 ),
+                timeout=120,
             )
-            parsed: VisionResult = response.parsed  # type: ignore[assignment]
-            if parsed is not None:
-                return {
-                    "language": _to_locale(parsed.language),
-                    "brand_names": parsed.brand_names,
-                }
+            if response.prompt_feedback and response.prompt_feedback.block_reason:
+                logger.warning(
+                    "Gemini vision blocked (%s), trying GPT-4o fallback",
+                    response.prompt_feedback.block_reason,
+                )
+            else:
+                parsed: VisionResult = response.parsed  # type: ignore[assignment]
+                if parsed is not None:
+                    return {
+                        "language": _to_locale(parsed.language),
+                        "brand_names": parsed.brand_names,
+                    }
         except Exception as exc:
             logger.warning("Gemini vision failed, trying GPT-4o fallback: %s", exc)
 
@@ -516,16 +564,19 @@ async def _run_audio(audio_bytes: bytes) -> dict:
     if settings.GEMINI_API_KEY:
         try:
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            response = await client.aio.models.generate_content(
-                model=_GEMINI_MODEL,
-                contents=genai_types.Content(parts=[
-                    genai_types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"),
-                    genai_types.Part.from_text(text=_AUDIO_PROMPT),
-                ]),
-                config=genai_types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=AudioResult,
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=_GEMINI_MODEL,
+                    contents=genai_types.Content(parts=[
+                        genai_types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"),
+                        genai_types.Part.from_text(text=_AUDIO_PROMPT),
+                    ]),
+                    config=genai_types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=AudioResult,
+                    ),
                 ),
+                timeout=180,
             )
             parsed: AudioResult = response.parsed  # type: ignore[assignment]
             if parsed is not None:
@@ -591,12 +642,12 @@ def _downsample_image(image_bytes: bytes, content_type: str) -> bytes:
 
 
 _MOOD_BOARD_COLS = 5
-_MOOD_BOARD_THUMB_W = 240   # px per cell
-_MOOD_BOARD_THUMB_H = 135   # 16:9
+_MOOD_BOARD_THUMB_W = 640   # px per cell — large enough for text/brand names to remain legible
+_MOOD_BOARD_THUMB_H = 360   # 16:9
 _MOOD_BOARD_GAP = 6         # px between cells
 _MOOD_BOARD_PAD = 10        # px outer border
 _MOOD_BOARD_BG = (18, 18, 18)
-_MAX_FRAMES = 60            # 1 fps cap — never more than 60 frames
+_MAX_FRAMES = 30            # 5 cols × 6 rows — ~3244×2210px board, ~4K output to Gemini
 
 
 def _extract_key_frames(
@@ -628,9 +679,16 @@ def _extract_key_frames(
             meta = next(reader)
             w, h = meta["size"]
             fps = meta.get("fps", 25) or 25
+            duration = meta.get("duration") or 0
 
-            # stride = frames between samples to get ~1 frame per second
-            stride = max(1, round(fps))
+            # Adapt stride so _MAX_FRAMES frames are spread across the full video.
+            # For short videos (≤60s) this is ~1fps; for longer videos the interval grows
+            # so the mood board covers the whole ad, not just the first minute.
+            if duration and duration > 0:
+                total_frames = duration * fps
+                stride = max(1, round(total_frames / _MAX_FRAMES))
+            else:
+                stride = max(1, round(fps))
 
             frames: list[bytes] = []
             for i, raw in enumerate(reader):
