@@ -508,7 +508,7 @@ interface CorrelationAsset {
       position: relative;
       display: flex;
       align-items: center;
-      height: 56px;
+      min-height: 48px;
       padding: 20px 10px 4px 12px;
       border: 1px solid var(--border);
       border-radius: 4px;
@@ -516,6 +516,7 @@ interface CorrelationAsset {
       background: transparent;
       box-sizing: border-box;
       user-select: none;
+      font-family: inherit;
       &:hover { border-color: var(--accent); }
     }
     .account-filter-label {
@@ -534,6 +535,7 @@ interface CorrelationAsset {
       flex: 1;
       color: var(--text-primary);
       font-size: 14px;
+      font-family: inherit;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
