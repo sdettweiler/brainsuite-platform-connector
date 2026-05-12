@@ -23,6 +23,10 @@
       <div class="times-row">
         Started: {{ formatDate(jobDetail.started_at) }} &middot; Ended: {{ formatDate(jobDetail.ended_at) }} &middot; Duration: {{ getDuration() }}
       </div>
+      <div class="org-row" *ngIf="jobDetail.org_name">
+        <i class="bi bi-building" style="font-size:12px;color:var(--text-muted);margin-right:4px"></i>
+        <span style="font-size:13px;color:var(--text-secondary)">{{ jobDetail.org_name }}</span>
+      </div>
     </div>
     <button class="close-btn" type="button" aria-label="Close panel" (click)="onClose()">
       <i class="bi bi-x-lg"></i>
@@ -49,24 +53,42 @@
     </ng-container>
 
     <!-- Sync drill-in -->
-    <ng-container *ngIf="isSyncJob() && jobDetail.output">
-      <div class="section-label">Sync Details</div>
+    <ng-container *ngIf="isSyncJob()">
+      <div class="section-label">Account</div>
       <table class="detail-table">
-        <tr><td>Platform</td><td>{{ jobDetail.output['platform'] }}</td></tr>
-        <tr><td>Sync Job ID</td><td>{{ jobDetail.output['sync_job_id'] }}</td></tr>
-        <tr><td>Records Fetched</td><td>{{ jobDetail.output['records_fetched'] }}</td></tr>
-        <tr><td>Records Processed</td><td>{{ jobDetail.output['records_processed'] }}</td></tr>
+        <tr *ngIf="jobDetail.org_name"><td>Organisation</td><td>{{ jobDetail.org_name }}</td></tr>
+        <tr *ngIf="jobDetail.connection_name"><td>Ad Account</td><td>{{ jobDetail.connection_name }}</td></tr>
+        <tr *ngIf="jobDetail.platform_ad_account_id"><td>Platform Account ID</td><td style="font-family:monospace">{{ jobDetail.platform_ad_account_id }}</td></tr>
       </table>
+      <ng-container *ngIf="jobDetail.output">
+        <div class="section-label">Sync Details</div>
+        <table class="detail-table">
+          <tr><td>Platform</td><td>{{ jobDetail.output['platform'] }}</td></tr>
+          <tr><td>Sync Job ID</td><td>{{ jobDetail.output['sync_job_id'] }}</td></tr>
+          <tr><td>Records Fetched</td><td>{{ jobDetail.output['records_fetched'] }}</td></tr>
+          <tr><td>Records Processed</td><td>{{ jobDetail.output['records_processed'] }}</td></tr>
+        </table>
+      </ng-container>
     </ng-container>
 
     <!-- Download drill-in -->
     <ng-container *ngIf="isDownloadJob()">
+      <div class="section-label">Account</div>
+      <table class="detail-table">
+        <tr *ngIf="jobDetail.org_name"><td>Organisation</td><td>{{ jobDetail.org_name }}</td></tr>
+        <tr *ngIf="jobDetail.connection_name"><td>Ad Account</td><td>{{ jobDetail.connection_name }}</td></tr>
+        <tr *ngIf="jobDetail.platform_ad_account_id"><td>Platform Account ID</td><td style="font-family:monospace">{{ jobDetail.platform_ad_account_id }}</td></tr>
+      </table>
       <div class="section-label">Downloaded Assets</div>
+      <p *ngIf="hasCorruptedDownloads()" style="font-size:12px;color:var(--text-muted);margin:0 0 8px">Some items could not be identified (corrupted job data).</p>
       <ul class="asset-list">
         <li *ngFor="let asset of getDownloadedAssets()">
-          <span class="asset-id-mono">{{ asset.asset_id }}</span>
+          <span class="asset-type-badge" *ngIf="asset.asset_format">{{ asset.asset_format }}</span>
+          <span class="asset-name-text" *ngIf="asset.asset_name">{{ asset.asset_name }}</span>
+          <span class="asset-id-mono" *ngIf="!asset.asset_name">{{ asset.asset_id }}</span>
           <a [href]="asset.url" target="_blank" rel="noopener noreferrer"
-             class="asset-link" aria-label="Open asset in storage (opens in new tab)">Open in storage</a>
+             class="asset-link" aria-label="Open asset in storage (opens in new tab)"
+             *ngIf="asset.url">Open in storage</a>
         </li>
       </ul>
       <details *ngIf="getFailedDownloads().length > 0">
@@ -81,12 +103,25 @@
 
     <!-- Autofill drill-in -->
     <ng-container *ngIf="isAutofillJob()">
+      <!-- Asset preview -->
+      <ng-container *ngIf="getAssetPreviewUrl()">
+        <div class="asset-preview-header">
+          <button class="asset-name-link" *ngIf="jobDetail.asset_name" (click)="navigateToDashboard()">
+            {{ jobDetail.asset_name }}
+          </button>
+          <span class="asset-type-badge" *ngIf="jobDetail.asset_format">{{ jobDetail.asset_format }}</span>
+        </div>
+        <div class="asset-preview-wrap">
+          <img *ngIf="!isVideoAsset()" [src]="getAssetPreviewUrl()" class="asset-preview-img" alt="Asset preview" loading="lazy" />
+          <video *ngIf="isVideoAsset()" [src]="getAssetPreviewUrl()" class="asset-preview-img" controls [poster]="getAssetThumbnailUrl() || ''" preload="metadata"></video>
+        </div>
+      </ng-container>
       <div class="section-label">Field Output</div>
       <table class="fields-table">
         <thead><tr><th>Field</th><th>Value</th><th>Source</th></tr></thead>
         <tbody>
           <tr *ngFor="let field of getAutofillFields()">
-            <td>{{ field.field_name }}</td>
+            <td>{{ field.name }}</td>
             <td>{{ field.value }}</td>
             <td>
               <span class="badge" [class.badge-info]="field.source === 'gemini'" [class.badge-neutral]="field.source === 'whisper'">
@@ -105,13 +140,34 @@
 
     <!-- Scoring drill-in -->
     <ng-container *ngIf="isScoringJob()">
-      <div class="section-label">Per-Asset Outcomes</div>
+      <!-- Asset preview -->
+      <ng-container *ngIf="getAssetPreviewUrl()">
+        <div class="asset-preview-header">
+          <button class="asset-name-link" *ngIf="jobDetail.asset_name" (click)="navigateToDashboard()">
+            {{ jobDetail.asset_name }}
+            <i class="bi bi-box-arrow-up-right" style="font-size:11px;margin-left:4px"></i>
+          </button>
+          <span class="asset-type-badge" *ngIf="jobDetail.asset_format">{{ jobDetail.asset_format }}</span>
+        </div>
+        <div class="asset-preview-wrap">
+          <img *ngIf="!isVideoAsset()" [src]="getAssetPreviewUrl()" class="asset-preview-img" alt="Asset preview" loading="lazy" />
+          <video *ngIf="isVideoAsset()" [src]="getAssetPreviewUrl()" class="asset-preview-img" controls [poster]="getAssetThumbnailUrl() || ''" preload="metadata"></video>
+        </div>
+      </ng-container>
+      <div class="section-label">Scoring Result</div>
       <table class="score-table">
-        <thead><tr><th>Asset ID</th><th>Score</th><th>Endpoint Type</th><th>Status</th></tr></thead>
+        <thead><tr><th>Asset</th><th>Score</th><th>Endpoint Type</th><th>Status</th></tr></thead>
         <tbody>
           <ng-container *ngFor="let asset of getScoringAssets()">
             <tr>
-              <td><span style="font-family:monospace;font-size:13px">{{ asset.asset_id?.substring(0,12) }}&hellip;</span></td>
+              <td>
+                <button class="asset-name-link" *ngIf="asset.asset_name || jobDetail.asset_name" (click)="navigateToDashboard()">
+                  {{ asset.asset_name || jobDetail.asset_name }}
+                </button>
+                <span *ngIf="!asset.asset_name && !jobDetail.asset_name" style="font-family:monospace;font-size:13px">
+                  {{ asset.asset_id?.substring(0,12) }}&hellip;
+                </span>
+              </td>
               <td>{{ asset.score !== null && asset.score !== undefined ? asset.score : '&mdash;' }}</td>
               <td style="font-size:13px;color:var(--text-secondary)">{{ asset.endpoint_type }}</td>
               <td>
@@ -126,6 +182,20 @@
           </ng-container>
         </tbody>
       </table>
+      <!-- Score dimensions breakdown -->
+      <ng-container *ngIf="getScoringDimensions().length > 0">
+        <div class="section-label">Dimensions</div>
+        <table class="score-table">
+          <thead><tr><th>Dimension</th><th>Score</th><th>Rating</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let dim of getScoringDimensions()">
+              <td style="text-transform:capitalize">{{ dim.name.replace('_', ' ') }}</td>
+              <td>{{ dim.score !== null ? dim.score : '—' }}</td>
+              <td>{{ dim.rating || '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </ng-container>
     </ng-container>
 
     <!-- Error traceback (any failed job) -->

@@ -9,6 +9,7 @@ export interface JobSnapshot {
   job_id: string;
   job_type: string;
   org_id: string;
+  org_name: string | null;
   status: string;
   progress_current: number;
   progress_total: number | null;

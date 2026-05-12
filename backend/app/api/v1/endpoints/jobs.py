@@ -23,8 +23,10 @@ from sse_starlette.sse import EventSourceResponse
 from app.api.v1.deps import get_current_superadmin, get_current_superadmin_sse
 from app.core.redis import get_redis
 from app.db.base import get_db, get_session_factory
+from app.models.creative import CreativeAsset
 from app.models.jobs import BackgroundJob
-from app.models.user import User
+from app.models.platform import PlatformConnection
+from app.models.user import Organization, User
 from app.schemas.jobs import JobDetail, JobListItem
 
 logger = logging.getLogger(__name__)
@@ -35,10 +37,10 @@ _HEARTBEAT_INTERVAL_SECONDS = 30  # D-08
 _PUBSUB_POLL_TIMEOUT_SECONDS = 5.0  # Short timeout so disconnect is detected promptly
 
 
-def serialize_job_event(job: BackgroundJob) -> str:
+def serialize_job_event(job: BackgroundJob, org_name: Optional[str] = None) -> str:
     """Serialize BackgroundJob to minimal D-06 SSE event payload.
 
-    Includes ONLY: job_id, job_type, org_id, status, progress_current,
+    Includes ONLY: job_id, job_type, org_id, org_name, status, progress_current,
     progress_total, started_at, ended_at.
 
     Does NOT include output or error — those are fetched via REST in Phase 19.
@@ -47,6 +49,7 @@ def serialize_job_event(job: BackgroundJob) -> str:
         "job_id": str(job.id),
         "job_type": job.job_type,
         "org_id": str(job.org_id),
+        "org_name": org_name,
         "status": job.status,
         "progress_current": job.progress_current,
         "progress_total": job.progress_total,
@@ -71,22 +74,23 @@ async def sse_generator(request: Request, current_user: User):
     """
     pubsub = None
     try:
-        # D-07: 24h burst on connect
+        # D-07: 24h burst on connect — JOIN with Organization to include org_name
         cutoff = datetime.utcnow() - timedelta(hours=24)
         async with get_session_factory()() as db:
             result = await db.execute(
-                select(BackgroundJob)
+                select(BackgroundJob, Organization.name.label("org_name"))
+                .outerjoin(Organization, Organization.id == BackgroundJob.org_id)
                 .where(BackgroundJob.started_at > cutoff)
                 .order_by(BackgroundJob.started_at.desc())
             )
-            recent_jobs = result.scalars().all()
+            recent_jobs = result.all()
 
-        for job in recent_jobs:
+        for job, org_name in recent_jobs:
             if await request.is_disconnected():
                 return
             yield {
                 "event": "job_update",
-                "data": serialize_job_event(job),
+                "data": serialize_job_event(job, org_name),
                 "id": str(job.id),
             }
 
@@ -118,12 +122,15 @@ async def sse_generator(request: Request, current_user: User):
                 else:
                     async with get_session_factory()() as db:
                         job = await db.get(BackgroundJob, job_uuid)
+                        if job:
+                            org = await db.get(Organization, job.org_id)
+                            org_name = org.name if org else None
                     if job:
                         if await request.is_disconnected():
                             break
                         yield {
                             "event": "job_update",
-                            "data": serialize_job_event(job),
+                            "data": serialize_job_event(job, org_name),
                             "id": str(job.id),
                         }
 
@@ -186,16 +193,35 @@ async def list_jobs(
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_superadmin),
     db: AsyncSession = Depends(get_db),
-) -> List[BackgroundJob]:
-    """List background jobs (SuperAdmin only). Global scope — no org filter (D-05)."""
-    q = select(BackgroundJob).order_by(BackgroundJob.started_at.desc())
+) -> List[JobListItem]:
+    """List background jobs with org name (SuperAdmin only). Global scope — no org filter (D-05)."""
+    q = (
+        select(BackgroundJob, Organization.name.label("org_name"))
+        .outerjoin(Organization, Organization.id == BackgroundJob.org_id)
+        .order_by(BackgroundJob.started_at.desc())
+    )
     if job_type is not None:
         q = q.where(BackgroundJob.job_type == job_type)
     if status is not None:
         q = q.where(BackgroundJob.status == status)
     q = q.limit(limit).offset(offset)
     result = await db.execute(q)
-    return result.scalars().all()
+    rows = result.all()
+    return [
+        JobListItem(
+            id=job.id,
+            job_type=job.job_type,
+            org_id=job.org_id,
+            status=job.status,
+            progress_current=job.progress_current,
+            progress_total=job.progress_total,
+            started_at=job.started_at,
+            ended_at=job.ended_at,
+            metadata_=job.metadata_,
+            org_name=org_name,
+        )
+        for job, org_name in rows
+    ]
 
 
 @router.get("/{job_id}", response_model=JobDetail)
@@ -203,12 +229,87 @@ async def get_job(
     job_id: uuid.UUID,
     current_user: User = Depends(get_current_superadmin),
     db: AsyncSession = Depends(get_db),
-) -> BackgroundJob:
-    """Get full job detail including output and error JSONB (SuperAdmin only)."""
+) -> JobDetail:
+    """Get full job detail with enriched org, connection, and asset info (SuperAdmin only)."""
     job = await db.get(BackgroundJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+
+    org = await db.get(Organization, job.org_id)
+    org_name = org.name if org else None
+
+    connection_name: Optional[str] = None
+    platform_ad_account_id: Optional[str] = None
+    if job.platform_connection_id:
+        conn = await db.get(PlatformConnection, job.platform_connection_id)
+        if conn:
+            connection_name = conn.ad_account_name
+            platform_ad_account_id = conn.ad_account_id
+
+    asset_name: Optional[str] = None
+    asset_url: Optional[str] = None
+    asset_format: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    asset_id_str = (job.metadata_ or {}).get("asset_id")
+    if asset_id_str:
+        try:
+            asset = await db.get(CreativeAsset, uuid.UUID(asset_id_str))
+            if asset:
+                asset_name = asset.ad_name
+                asset_url = asset.asset_url
+                asset_format = asset.asset_format
+                thumbnail_url = asset.thumbnail_url
+        except (ValueError, AttributeError):
+            pass
+
+    # For download jobs: enrich output.downloaded with asset names.
+    # asset_id in the list is an internal UUID for Google Ads, but a platform ad_id
+    # string for Meta/TikTok — try both lookup paths.
+    output = job.output
+    if job.job_type == "download" and isinstance(output, dict):
+        downloaded = output.get("downloaded") or []
+        enriched = []
+        for item in downloaded:
+            aid_str = item.get("asset_id")
+            name = None
+            fmt = None
+            if aid_str:
+                a = None
+                try:
+                    a = await db.get(CreativeAsset, uuid.UUID(aid_str))
+                except (ValueError, AttributeError):
+                    pass
+                if a is None:
+                    res = await db.execute(
+                        select(CreativeAsset).where(CreativeAsset.ad_id == aid_str).limit(1)
+                    )
+                    a = res.scalar_one_or_none()
+                if a:
+                    name = a.ad_name
+                    fmt = a.asset_format
+            enriched.append({**item, "asset_name": name, "asset_format": fmt})
+        output = {**output, "downloaded": enriched}
+
+    return JobDetail(
+        id=job.id,
+        job_type=job.job_type,
+        org_id=job.org_id,
+        status=job.status,
+        progress_current=job.progress_current,
+        progress_total=job.progress_total,
+        started_at=job.started_at,
+        ended_at=job.ended_at,
+        metadata_=job.metadata_,
+        output=output,
+        error=job.error,
+        org_name=org_name,
+        connection_name=connection_name,
+        platform_ad_account_id=platform_ad_account_id,
+        asset_name=asset_name,
+        asset_url=asset_url,
+        asset_format=asset_format,
+        thumbnail_url=thumbnail_url,
+    )
 
 
 @router.delete("", status_code=204, response_class=Response)

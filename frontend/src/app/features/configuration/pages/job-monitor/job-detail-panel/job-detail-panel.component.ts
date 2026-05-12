@@ -1,8 +1,10 @@
 import {
+  ChangeDetectorRef,
   Component, Input, Output, EventEmitter,
   OnChanges, OnDestroy, OnInit, SimpleChanges, HostListener,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
 import { MatButtonModule } from '@angular/material/button';
@@ -13,9 +15,10 @@ import { JobMonitorService, JobSnapshot } from '../../../../../core/services/job
 // Full job detail shape returned by GET /jobs/{id}
 interface JobDetail {
   id: string;
-  job_id?: string;    // alias — the REST endpoint returns 'id'; use whichever is present
+  job_id?: string;
   job_type: string;
   org_id: string;
+  org_name: string | null;
   status: string;
   progress_current: number;
   progress_total: number | null;
@@ -24,6 +27,12 @@ interface JobDetail {
   metadata_: Record<string, unknown> | null;
   output: Record<string, unknown> | null;
   error: { traceback?: string; message?: string } | null;
+  connection_name: string | null;
+  platform_ad_account_id: string | null;
+  asset_name: string | null;
+  asset_url: string | null;
+  asset_format: string | null;
+  thumbnail_url: string | null;
 }
 
 const TRACEBACK_MAX_BYTES = 10240;
@@ -102,6 +111,32 @@ const KNOWN_EXTERNAL_ID_KEYS = ['brainsuite_job_id', 'sync_job_id', 'platform_sy
     }
     .spinner-center { display: flex; justify-content: center; align-items: center; height: 200px; }
     summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); margin: 8px 0; }
+    .org-row { display: flex; align-items: center; }
+    .asset-name-text { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+    .asset-type-badge {
+      display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+      background: rgba(66,133,244,0.1); color: #4285F4;
+    }
+    .asset-preview-header {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px; margin-top: 16px;
+    }
+    .asset-name-link {
+      background: none; border: none; cursor: pointer; padding: 0;
+      font-size: 14px; font-weight: 500; color: var(--accent); text-align: left;
+    }
+    .asset-name-link:hover { text-decoration: underline; }
+    .asset-preview-wrap { margin-bottom: 16px; }
+    .asset-preview-img {
+      max-width: 100%; max-height: 240px; border-radius: 6px;
+      border: 1px solid var(--border); display: block; object-fit: cover;
+    }
+    .asset-preview-video-wrap { position: relative; display: inline-block; }
+    .video-badge {
+      position: absolute; bottom: 8px; left: 8px;
+      background: rgba(0,0,0,0.6); color: #fff; border-radius: 4px;
+      font-size: 12px; padding: 2px 8px;
+    }
     .close-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 20px; padding: 4px; }
     .close-btn:hover { color: var(--text-primary); }
     a[target="_blank"] { color: var(--accent); }
@@ -120,6 +155,8 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
   constructor(
     private jobMonitorService: JobMonitorService,
     private snackBar: MatSnackBar,
+    private cdr: ChangeDetectorRef,
+    private router: Router,
   ) {}
 
   @HostListener('document:keydown.escape')
@@ -170,11 +207,15 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
         next: (detail) => {
           this.jobDetail = detail;
           this.loading = false;
-          if (detail.error?.traceback) {
-            this.fullTraceback = detail.error.traceback;
+          if (detail.error?.traceback || detail.error?.message) {
+            this.fullTraceback = detail.error.traceback || detail.error.message || '';
           }
+          this.cdr.markForCheck();
         },
-        error: () => { this.loading = false; },
+        error: () => {
+          this.loading = false;
+          this.cdr.markForCheck();
+        },
       });
   }
 
@@ -209,7 +250,20 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   getDownloadedAssets(): any[] {
-    return (this.jobDetail?.output as any)?.downloaded ?? [];
+    const items: any[] = (this.jobDetail?.output as any)?.downloaded ?? [];
+    // Filter out corrupted rows where asset_id is a dict key string rather than a real ID
+    return items.filter(item => {
+      const id: string = item?.asset_id ?? '';
+      return id.length > 8 || item?.asset_name;
+    });
+  }
+
+  hasCorruptedDownloads(): boolean {
+    const items: any[] = (this.jobDetail?.output as any)?.downloaded ?? [];
+    return items.some(item => {
+      const id: string = item?.asset_id ?? '';
+      return id.length > 0 && id.length <= 8 && !item?.asset_name;
+    });
   }
 
   getFailedDownloads(): any[] {
@@ -217,7 +271,53 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   getScoringAssets(): any[] {
-    return (this.jobDetail?.output as any)?.assets ?? [];
+    // Scoring jobs store a single-asset result (flat dict), not an assets array.
+    // Normalise to a one-element array for the template.
+    const out = this.jobDetail?.output as any;
+    if (!out) return [];
+    if (Array.isArray(out.assets)) return out.assets;
+    if (out.score !== undefined || out.endpoint_type) {
+      return [{
+        asset_id: (this.jobDetail?.metadata_ as any)?.asset_id ?? null,
+        asset_name: this.jobDetail?.asset_name ?? null,
+        score: out.score ?? null,
+        endpoint_type: out.endpoint_type ?? null,
+        error: null,
+      }];
+    }
+    return [];
+  }
+
+  getScoringDimensions(): Array<{name: string; score: number | null; rating: string | null}> {
+    const legResults = (this.jobDetail?.output as any)?.dimensions?.legResults;
+    if (!Array.isArray(legResults) || legResults.length === 0) return [];
+    const categories = legResults[0]?.executiveSummary?.categories;
+    if (!Array.isArray(categories)) return [];
+    return categories.map((cat: any) => ({
+      name: cat.name ?? '',
+      score: cat.score ?? null,
+      rating: cat.rating ?? null,
+    }));
+  }
+
+  getAssetPreviewUrl(): string | null {
+    return this.jobDetail?.asset_url ?? null;
+  }
+
+  getAssetThumbnailUrl(): string | null {
+    return this.jobDetail?.thumbnail_url ?? this.jobDetail?.asset_url ?? null;
+  }
+
+  isVideoAsset(): boolean {
+    return (this.jobDetail?.asset_format || '').toUpperCase() === 'VIDEO';
+  }
+
+  navigateToDashboard(): void {
+    const assetId = (this.jobDetail?.metadata_ as any)?.asset_id;
+    if (assetId) {
+      this.router.navigate(['/dashboard'], { queryParams: { assetId } });
+      this.closed.emit();
+    }
   }
 
   getTruncatedTraceback(): string {
@@ -252,5 +352,5 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
   isDownloadJob(): boolean { return this.jobDetail?.job_type === 'download'; }
   isAutofillJob(): boolean { return this.jobDetail?.job_type === 'autofill'; }
   isScoringJob(): boolean { return this.jobDetail?.job_type === 'scoring'; }
-  hasError(): boolean { return !!this.jobDetail?.error?.traceback; }
+  hasError(): boolean { return !!(this.jobDetail?.error?.traceback || this.jobDetail?.error?.message); }
 }

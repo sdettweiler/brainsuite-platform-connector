@@ -74,7 +74,7 @@
               <thead>
                 <tr>
                   <th>Status</th>
-                  <th>Org</th>
+                  <th>Organisation</th>
                   <th>Started</th>
                   <th>Duration</th>
                   <th>Progress</th>
@@ -97,7 +97,7 @@
                       {{ job.status }}
                     </span>
                   </td>
-                  <td><span class="org-id">{{ getOrgShort(job.org_id) }}</span></td>
+                  <td><span class="org-name">{{ job.org_name || getOrgShort(job.org_id) }}</span></td>
                   <td>{{ formatDate(job.started_at) }}</td>
                   <td>{{ getDuration(job) }}</td>
                   <td>
