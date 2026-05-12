@@ -139,6 +139,25 @@ interface CorrelationAsset {
           </mat-select>
         </mat-form-field>
 
+        <!-- Ad Account filter -->
+        <div class="filter-field account-filter-wrapper" *ngIf="adAccounts.length > 0">
+          <div class="account-filter-trigger" (click)="adAccountDropdownOpen = !adAccountDropdownOpen" [class.active]="selectedAdAccountIds.size > 0">
+            <span class="account-filter-label">{{adAccountFilterLabel}}</span>
+            <i class="bi bi-chevron-down"></i>
+          </div>
+          <div class="account-filter-dropdown" *ngIf="adAccountDropdownOpen">
+            <div class="account-option" (click)="selectedAdAccountIds.clear(); adAccountDropdownOpen = false; onFilterChange()">
+              <span class="account-check" [class.checked]="selectedAdAccountIds.size === 0">&#10003;</span>
+              All Accounts
+            </div>
+            <div class="account-option" *ngFor="let acc of adAccounts" (click)="toggleAdAccount(acc.ad_account_id)">
+              <span class="account-check" [class.checked]="selectedAdAccountIds.has(acc.ad_account_id)">&#10003;</span>
+              <span class="account-name">{{acc.ad_account_name}}</span>
+              <span class="account-platform-badge">{{acc.platform}}</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Sort -->
         <mat-form-field appearance="outline" class="filter-field">
           <mat-label>Sort by</mat-label>
@@ -478,6 +497,70 @@ interface CorrelationAsset {
     }
 
     .filter-field { width: 130px; }
+
+    .account-filter-wrapper {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      width: auto;
+    }
+    .account-filter-trigger {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text-primary, #fff);
+      background: transparent;
+      min-width: 130px;
+      white-space: nowrap;
+      user-select: none;
+      &:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
+      &.active { border-color: var(--accent, #6366f1); color: var(--accent, #6366f1); }
+      .bi-chevron-down { font-size: 11px; margin-left: auto; }
+    }
+    .account-filter-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 1000;
+      background: var(--surface-2, #1e1e2e);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      min-width: 220px;
+      max-height: 280px;
+      overflow-y: auto;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      padding: 4px 0;
+    }
+    .account-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-primary, #e0e0e0);
+      &:hover { background: rgba(255,255,255,0.06); }
+    }
+    .account-check {
+      width: 16px;
+      text-align: center;
+      color: transparent;
+      &.checked { color: var(--accent, #6366f1); }
+    }
+    .account-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .account-platform-badge {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.1);
+      color: var(--text-secondary, #aaa);
+      flex-shrink: 0;
+    }
 
     .platform-filters { display: flex; gap: 4px; }
     .platform-btn {
