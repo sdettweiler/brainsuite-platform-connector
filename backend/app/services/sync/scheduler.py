@@ -495,23 +495,28 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
             progress_current=0,
         )
 
-        # Phase 17: Process assets one at a time; increment progress after each (D-05, D-15)
+        # Phase 17: Process assets one at a time; increment progress after each success (D-05, D-15)
         downloaded = []
         failed = []
         cookie_expired_count = 0
-        for idx, (asset_id, asset_info) in enumerate(asset_queue.items(), start=1):
+        for asset_id, asset_info in asset_queue.items():
             single_queue = {asset_id: asset_info}
             try:
                 async with get_session_factory()() as db:
-                    await google_ads_sync.download_assets_post_commit(db, connection, single_queue)
-                downloaded.append({"asset_id": str(asset_id), "url": ""})
+                    result = await google_ads_sync.download_assets_post_commit(db, connection, single_queue)
+                video_url = (result or {}).get("video_url") or ""
+                if video_url or not (result or {}).get("video_failures"):
+                    downloaded.append({"asset_id": str(asset_id), "url": video_url})
+                else:
+                    fail_msg = next(iter((result or {}).get("video_failures", {}).values()), "silent failure")
+                    failed.append({"asset_id": str(asset_id), "error": fail_msg})
             except _CookiesExpiredError:
                 cookie_expired_count += 1
                 failed.append({"asset_id": str(asset_id), "error": "YouTube cookies expired"})
             except Exception as asset_err:
                 failed.append({"asset_id": str(asset_id), "error": str(asset_err)})
-            # Fresh session per increment (D-15)
-            await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
+            # Progress tracks confirmed successes only, not total attempts
+            await update_background_job(bg_job_id, status="RUNNING", progress_current=len(downloaded))
 
         # Only declare global cookie expiry when every single failure was a cookie error
         # and nothing succeeded. Mixed failures (some cookie, some non-cookie) mean the
@@ -608,17 +613,17 @@ async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None)
             progress_current=0,
         )
 
-        # Phase 17: Process ad_ids one at a time; increment progress after each (D-05, D-15)
+        # Phase 17: Process ad_ids one at a time; increment progress after each success (D-05, D-15)
         downloaded = []
         failed = []
-        for idx, ad_id in enumerate(ad_ids, start=1):
+        for ad_id in ad_ids:
             try:
                 await meta_sync.fetch_and_store_creatives_deferred(connection_id, [ad_id])
                 downloaded.append({"asset_id": str(ad_id), "url": ""})
             except Exception as asset_err:
                 failed.append({"asset_id": str(ad_id), "error": str(asset_err)})
-            # Fresh session per increment (D-15)
-            await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
+            # Progress tracks confirmed successes only, not total attempts
+            await update_background_job(bg_job_id, status="RUNNING", progress_current=len(downloaded))
 
         # Phase 17: Mark COMPLETE with D-11 output manifest
         output = {"downloaded": downloaded, "failed": failed}
@@ -672,17 +677,17 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=Non
             progress_current=0,
         )
 
-        # Phase 17: Process ad_ids one at a time; increment progress after each (D-05, D-15)
+        # Phase 17: Process ad_ids one at a time; increment progress after each success (D-05, D-15)
         downloaded = []
         failed = []
-        for idx, ad_id in enumerate(ad_ids, start=1):
+        for ad_id in ad_ids:
             try:
                 await tiktok_sync.enrich_creatives_deferred(connection_id, [ad_id])
                 downloaded.append({"asset_id": str(ad_id), "url": ""})
             except Exception as asset_err:
                 failed.append({"asset_id": str(ad_id), "error": str(asset_err)})
-            # Fresh session per increment (D-15)
-            await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
+            # Progress tracks confirmed successes only, not total attempts
+            await update_background_job(bg_job_id, status="RUNNING", progress_current=len(downloaded))
 
         # Phase 17: Mark COMPLETE with D-11 output manifest
         output = {"downloaded": downloaded, "failed": failed}
@@ -734,43 +739,41 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
             if not connection:
                 return
 
+        inner_queue = asset_queue.get("queue", {})
+        asset_count = len(inner_queue)
+
         # Phase 17: Create BackgroundJob before downloads begin (D-05)
         bg_job_id = await create_background_job(
             job_type="download",
             org_id=connection.organization_id,
             platform_connection_id=connection.id,
-            metadata={"platform": "dv360", "asset_count": len(asset_queue)},
+            metadata={"platform": "dv360", "asset_count": asset_count},
         )
         await update_background_job(
             bg_job_id,
             status="RUNNING",
-            progress_total=len(asset_queue),
+            progress_total=asset_count,
             progress_current=0,
         )
 
-        # Phase 17: Process assets one at a time; increment progress after each (D-05, D-15)
         downloaded = []
         failed = []
-        cookie_expired_count = 0
-        for idx, (asset_id, asset_info) in enumerate(asset_queue.items(), start=1):
-            single_queue = {asset_id: asset_info}
-            try:
-                async with get_session_factory()() as db:
-                    await dv360_sync.download_assets_post_commit(db, connection, single_queue)
-                downloaded.append({"asset_id": str(asset_id), "url": ""})
-            except _CookiesExpiredError:
-                cookie_expired_count += 1
-                failed.append({"asset_id": str(asset_id), "error": "YouTube cookies expired"})
-            except Exception as asset_err:
-                failed.append({"asset_id": str(asset_id), "error": str(asset_err)})
-            # Fresh session per increment (D-15)
-            await update_background_job(bg_job_id, status="RUNNING", progress_current=idx)
+        try:
+            async with get_session_factory()() as db:
+                result = await dv360_sync.download_assets_post_commit(db, connection, asset_queue, bg_job_id=str(bg_job_id))
+            downloaded = result.get("downloaded", []) if result else []
+            failed = result.get("failed", []) if result else []
+        except _CookiesExpiredError:
+            raise
+        except Exception as asset_err:
+            failed = [{"asset_id": ad_id, "error": str(asset_err)} for ad_id in inner_queue]
 
-        # Only declare global cookie expiry when every single failure was a cookie error
-        # and nothing succeeded. Mixed failures (some cookie, some non-cookie) mean the
-        # issue is per-video access restrictions, not expired credentials.
-        if cookie_expired_count > 0 and len(downloaded) == 0 and len(failed) == cookie_expired_count:
-            raise _CookiesExpiredError("All DV360 video downloads failed with cookie errors")
+        if len(downloaded) == 0 and len(failed) > 0:
+            raise Exception(
+                f"{len(failed)} DV360 asset download(s) failed: "
+                + "; ".join(f"{f['asset_id']}: {f['error']}" for f in failed[:3])
+                + ("..." if len(failed) > 3 else "")
+            )
 
         asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id))
 
@@ -779,7 +782,7 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
         await update_background_job(
             bg_job_id,
             status="COMPLETE",
-            progress_current=len(asset_queue),
+            progress_current=asset_count,
             output=output,
         )
 
@@ -1888,8 +1891,42 @@ async def purge_read_notifications() -> None:
 async def startup_scheduler(db_session=None) -> None:
     """Load all active connections and schedule their daily syncs.
     Also triggers initial sync for any connections that missed it."""
-    from sqlalchemy import select
+    from sqlalchemy import select, update as _sa_update
     from app.models.platform import PlatformConnection
+    from app.models.jobs import BackgroundJob
+    from datetime import datetime as _dt, timedelta as _td
+
+    # Reset jobs that were left RUNNING or stuck PENDING when the process was killed mid-flight.
+    # PENDING jobs older than 5 minutes never reached RUNNING (e.g. pool exhaustion killed the update).
+    stale_pending_cutoff = _dt.utcnow() - _td(minutes=5)
+    async with get_session_factory()() as db:
+        running_result = await db.execute(
+            _sa_update(BackgroundJob)
+            .where(BackgroundJob.status == "RUNNING")
+            .values(
+                status="FAILED",
+                error={"type": "ProcessRestart", "message": "Server restarted while job was running", "traceback": ""},
+                ended_at=_dt.utcnow(),
+            )
+            .returning(BackgroundJob.id)
+        )
+        pending_result = await db.execute(
+            _sa_update(BackgroundJob)
+            .where(BackgroundJob.status == "PENDING", BackgroundJob.created_at < stale_pending_cutoff)
+            .values(
+                status="FAILED",
+                error={"type": "ProcessRestart", "message": "Job never started — server restarted before execution began", "traceback": ""},
+                ended_at=_dt.utcnow(),
+            )
+            .returning(BackgroundJob.id)
+        )
+        running_ids = [row[0] for row in running_result.all()]
+        pending_ids = [row[0] for row in pending_result.all()]
+        await db.commit()
+        if running_ids:
+            logger.warning("Startup: reset %d orphaned RUNNING job(s) to FAILED", len(running_ids))
+        if pending_ids:
+            logger.warning("Startup: reset %d orphaned PENDING job(s) to FAILED", len(pending_ids))
 
     pending_initial = []
 

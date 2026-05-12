@@ -642,6 +642,8 @@ async def delete_connection(
     if purge:
         from app.services.connection_purge import purge_connection_data
         summary = await purge_connection_data(db, str(connection_id), str(conn.organization_id))
+        if summary.get("errors"):
+            raise HTTPException(status_code=500, detail=f"Purge incomplete: {summary['errors'][0]}")
         return {"detail": "Connection and all data permanently deleted", "summary": summary}
 
     conn.is_active = False

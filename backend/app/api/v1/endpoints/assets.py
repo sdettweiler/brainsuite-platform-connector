@@ -26,6 +26,7 @@ from app.schemas.creative import (
 from app.api.v1.deps import get_current_user, get_current_admin
 from app.services.export_service import export_service
 from app.services.ai_autofill import run_autofill_for_asset
+from app.services.sync.job_tracker import create_background_job, update_background_job
 
 router = APIRouter()
 
@@ -768,13 +769,30 @@ async def redownload_missing_assets(
                 await session.commit()
         await run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id)
 
+    bg_job_id = await create_background_job(
+        job_type="download",
+        org_id=conn.organization_id,
+        platform_connection_id=connection_id,
+        metadata={"asset_count": len(missing)},
+    )
+
     async def _download_all():
-        for asset in missing:
+        downloaded = []
+        await update_background_job(bg_job_id, status="RUNNING", progress_current=0, progress_total=len(missing))
+        for i, asset in enumerate(missing):
             try:
                 await _download_one(asset)
+                downloaded.append({"asset_id": str(asset.id), "asset_name": asset.ad_name, "asset_format": asset.asset_format})
             except _CookiesExpiredError:
                 logger.warning("redownload_missing_assets: YouTube cookies expired — aborting batch after first failure")
-                break
+                await update_background_job(bg_job_id, status="FAILED", progress_current=i,
+                    error={"type": "CookiesExpiredError", "message": "YouTube cookies expired", "traceback": ""})
+                return
+            except Exception as exc:
+                logger.warning("redownload_missing_assets: asset %s failed: %s", asset.id, exc)
+            await update_background_job(bg_job_id, progress_current=i + 1)
+        await update_background_job(bg_job_id, status="COMPLETE", progress_current=len(missing),
+            output={"downloaded": downloaded})
 
     asyncio.create_task(_download_all())
 
@@ -803,6 +821,14 @@ async def redownload_asset(
         raise HTTPException(status_code=422, detail="Asset already has a valid video URL")
     if asset.platform not in ("DV360", "GOOGLE_ADS"):
         raise HTTPException(status_code=422, detail=f"Re-download not supported for platform {asset.platform}")
+
+    bg_job_id = await create_background_job(
+        job_type="download",
+        org_id=asset.organization_id,
+        platform_connection_id=asset.platform_connection_id,
+        metadata={"asset_id": str(asset.id)},
+    )
+    await update_background_job(bg_job_id, status="RUNNING", progress_current=0, progress_total=1)
 
     from app.services.sync.thumbnail_utils import is_raw_cdn_url
     org_id_str = str(asset.organization_id)
@@ -881,12 +907,16 @@ async def redownload_asset(
             cfg.youtube_cookies_backup_runtime_expired = True
             db.add(cfg)
             await db.commit()
+        await update_background_job(bg_job_id, status="FAILED",
+            error={"type": "CookiesExpiredError", "message": "YouTube cookies have expired", "traceback": ""})
         raise HTTPException(
             status_code=503,
             detail="YouTube cookies have expired — update cookies in Admin settings",
         )
 
     if not served_url:
+        await update_background_job(bg_job_id, status="FAILED",
+            error={"type": "DownloadError", "message": "Failed to download video from YouTube", "traceback": ""})
         raise HTTPException(status_code=502, detail="Failed to download video from YouTube — check yt-dlp cookies")
 
     best_thumb = cdn_thumb or frame_thumb
@@ -919,6 +949,10 @@ async def redownload_asset(
                                set_={"ai_inference_status": "FAILED", "updated_at": _dt_af.utcnow()})
     )
     await db.commit()
+
+    await update_background_job(bg_job_id, status="COMPLETE", progress_current=1,
+        output={"downloaded": [{"asset_id": str(asset.id), "asset_name": asset.ad_name,
+                                "asset_format": asset.asset_format, "url": served_url}]})
 
     asyncio.create_task(run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id))
 

@@ -56,6 +56,7 @@ async def purge_connection_data(db: AsyncSession, connection_id: str, org_id: st
         delete_steps.append(("ai_inference_tracking", f"DELETE FROM ai_inference_tracking WHERE asset_id IN ({placeholders})"))
         delete_steps.append(("asset_metadata_values", f"DELETE FROM asset_metadata_values WHERE asset_id IN ({placeholders})"))
         delete_steps.append(("asset_project_mappings", f"DELETE FROM asset_project_mappings WHERE asset_id IN ({placeholders})"))
+        delete_steps.append(("creative_score_results", f"DELETE FROM creative_score_results WHERE creative_asset_id IN ({placeholders})"))
 
     delete_steps.append(("harmonized_performance", "DELETE FROM harmonized_performance WHERE platform_connection_id = :cid"))
 
@@ -64,6 +65,7 @@ async def purge_connection_data(db: AsyncSession, connection_id: str, org_id: st
 
     delete_steps.append(("creative_assets", "DELETE FROM creative_assets WHERE platform_connection_id = :cid"))
     delete_steps.append(("sync_jobs", "DELETE FROM sync_jobs WHERE platform_connection_id = :cid"))
+    delete_steps.append(("background_jobs", "DELETE FROM background_jobs WHERE platform_connection_id = :cid"))
     delete_steps.append(("platform_connections", "DELETE FROM platform_connections WHERE id = :cid"))
 
     for step_name, sql in delete_steps:

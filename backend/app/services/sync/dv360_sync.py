@@ -186,7 +186,8 @@ class DV360SyncService:
                 logger.warning("DV360: Conversion upsert failed (non-fatal): %s: %s", type(e).__name__, e, exc_info=True)
 
         return {
-            "fetched": len(perf_records) + len(conv_records),
+            "fetched": len(perf_records),
+            "conv_fetched": len(conv_records),
             "upserted": perf_upserted + conv_upserted,
             "_asset_queue": asset_queue,
         }
@@ -1711,12 +1712,13 @@ class DV360SyncService:
         db: AsyncSession,
         connection: PlatformConnection,
         asset_info: Dict[str, Any],
-    ) -> None:
+        bg_job_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         org_id = asset_info.get("org_id")
         queue = asset_info.get("queue", {})
 
         if not org_id or not queue:
-            return
+            return {"downloaded": [], "failed": []}
 
         db_cookies = await self._get_cookies_from_db()
         can_download_video = len(db_cookies) > 0
@@ -1772,11 +1774,23 @@ class DV360SyncService:
         if not can_download_video:
             logger.warning("  No valid cookies — attempting cookieless video downloads (may fail for restricted videos)")
 
+        # Pre-flight: abort immediately if cookies were already flagged expired by a concurrent job
+        try:
+            from app.models.system_config import SystemConfig as _SC_pre
+            _pre_cfg = (await db.execute(text("SELECT youtube_cookies_runtime_expired FROM system_config LIMIT 1"))).first()
+            if _pre_cfg and _pre_cfg[0]:
+                raise _CookiesExpiredError("YouTube cookies already flagged as expired — skipping video downloads")
+        except _CookiesExpiredError:
+            raise
+        except Exception:
+            pass
+
         cdn_thumb_ad_ids = set(thumb_results.keys())
         downloaded_videos = set()
         video_results = {}
         video_failures: dict = {}
         video_download_count = 0
+        consecutive_failures = 0
         for ad_id, info in queue.items():
             yt_vid = info.get("youtube_video_id", "")
             if not yt_vid:
@@ -1791,6 +1805,7 @@ class DV360SyncService:
                     )
                     video_download_count += 1
                     if vid_served:
+                        consecutive_failures = 0
                         video_results[ad_id] = {
                             "video_url": vid_served,
                             "asset_url": vid_served,
@@ -1798,6 +1813,16 @@ class DV360SyncService:
                             "frame_thumb": frame_thumb,
                         }
                         downloaded_videos.add(yt_vid)
+                        if bg_job_id:
+                            from app.services.sync.job_tracker import update_background_job as _ubj
+                            await _ubj(bg_job_id, progress_current=len(video_results))
+                    else:
+                        consecutive_failures += 1
+                        video_failures[ad_id] = "yt-dlp returned no URL (silent download failure)"
+                        logger.warning("Video download returned no URL for ad %s (consecutive failures: %d)", ad_id, consecutive_failures)
+                        if consecutive_failures >= 3:
+                            logger.warning("DV360 download: 3 consecutive failures — aborting batch early")
+                            break
                     if frame_thumb and ad_id not in thumb_results:
                         thumb_results[ad_id] = frame_thumb
                 except _CookiesExpiredError:
@@ -1805,8 +1830,23 @@ class DV360SyncService:
                     raise  # propagate so scheduler tracks it correctly, not as a generic failure
                 except Exception as e:
                     video_download_count += 1
+                    consecutive_failures += 1
                     video_failures[ad_id] = f"{type(e).__name__}: {e}"
                     logger.warning("Video download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
+                    if consecutive_failures >= 3:
+                        logger.warning("DV360 download: 3 consecutive failures — aborting batch early")
+                        break
+
+                # High failure-rate abort: if ≥10 attempts and >70% failed, something is systemically wrong
+                if video_download_count >= 10:
+                    total_failed = len(video_failures)
+                    fail_rate = total_failed / video_download_count
+                    if fail_rate > 0.70:
+                        logger.warning(
+                            "DV360 download: %d/%d attempts failed (%.0f%%) — aborting batch early",
+                            total_failed, video_download_count, fail_rate * 100,
+                        )
+                        break
 
         if video_results:
             for ad_id, r in video_results.items():
@@ -1901,6 +1941,13 @@ class DV360SyncService:
                 + "; ".join(f"{k}: {v}" for k, v in list(video_failures.items())[:3])
                 + ("..." if len(video_failures) > 3 else "")
             )
+
+        downloaded_list = (
+            [{"asset_id": ad_id, "url": r["asset_url"]} for ad_id, r in video_results.items() if r.get("asset_url")]
+            + [{"asset_id": ad_id, "url": url} for ad_id, url in thumb_results.items() if ad_id not in video_results]
+        )
+        failed_list = [{"asset_id": ad_id, "error": err} for ad_id, err in video_failures.items()]
+        return {"downloaded": downloaded_list, "failed": failed_list}
 
     async def _upsert_conversion_records(
         self,

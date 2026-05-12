@@ -562,12 +562,21 @@ class GoogleAdsSyncService:
         db: AsyncSession,
         connection: PlatformConnection,
         asset_queue: Dict[str, Dict[str, str]],
-    ) -> None:
+    ) -> Dict[str, Any]:
         """Download thumbnails + videos for queued ads and UPDATE rows. Called after sync commit."""
-        from sqlalchemy import update as sa_update
+        from sqlalchemy import update as sa_update, text as _text
+        # Pre-flight: skip all video downloads if cookies already flagged expired by a concurrent job
         cookies_expired = False
+        try:
+            _pre = (await db.execute(_text("SELECT youtube_cookies_runtime_expired FROM system_config LIMIT 1"))).first()
+            if _pre and _pre[0]:
+                cookies_expired = True
+                logger.warning("Google Ads: YouTube cookies already flagged as expired — skipping video downloads")
+        except Exception:
+            pass
         video_failures: Dict[str, str] = {}
         video_successes: int = 0
+        served_url: Optional[str] = None
         for ad_id, info in asset_queue.items():
             youtube_video_id = info.get("youtube_video_id")
             org_id = info.get("org_id")
@@ -591,6 +600,10 @@ class GoogleAdsSyncService:
                     _, video_url, frame_thumb = await self._download_video(youtube_video_id, org_id, ad_id)
                     if video_url:
                         video_successes += 1
+                        served_url = video_url
+                    else:
+                        video_failures[ad_id] = "yt-dlp returned no URL (silent download failure)"
+                        logger.warning("Video download returned no URL for ad %s", ad_id)
                 except _CookiesExpiredError:
                     cookies_expired = True
                     logger.warning("YouTube cookies expired — skipping video downloads for remaining ads in queue")
@@ -624,6 +637,7 @@ class GoogleAdsSyncService:
                 + "; ".join(f"{k}: {v}" for k, v in list(video_failures.items())[:3])
                 + ("..." if len(video_failures) > 3 else "")
             )
+        return {"video_url": served_url, "video_failures": video_failures}
 
 
 google_ads_sync = GoogleAdsSyncService()
