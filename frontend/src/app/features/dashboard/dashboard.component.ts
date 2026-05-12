@@ -553,7 +553,8 @@ interface CorrelationAsset {
       gap: 6px;
       padding: 6px 12px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
+      font-family: inherit;
       color: var(--text-primary);
       &:hover { background: var(--accent-light); }
     }
@@ -561,7 +562,7 @@ interface CorrelationAsset {
       width: 14px;
       text-align: center;
       color: transparent;
-      font-size: 12px;
+      font-size: 13px;
       flex-shrink: 0;
       &.checked { color: var(--accent); }
     }
