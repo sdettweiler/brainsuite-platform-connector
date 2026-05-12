@@ -698,12 +698,6 @@ async def redownload_missing_assets(
                     ).limit(1)
                 )).scalar_one_or_none()
             _dv360_yt_id = _dv360_yt_id or asset.ad_id
-            svc = DV360SyncService()
-            _, served_url, frame_thumb = await svc._download_video_asset(
-                youtube_video_id=_dv360_yt_id,
-                org_id=org_id_str,
-                ad_id=_dv360_yt_id,
-            )
         elif asset.platform == "GOOGLE_ADS":
             from app.models.performance import GoogleAdsRawPerformance
             from app.db.base import get_session_factory as _gsf_bulk
@@ -718,6 +712,25 @@ async def redownload_missing_assets(
             if not _ga_yt_id:
                 logger.warning("redownload_missing_assets: no YouTube video ID for asset %s (ad_id=%s)", asset.id, asset.ad_id)
                 return
+        # Download CDN thumbnail BEFORE the video so the official thumb occupies
+        # the MinIO slot and _download_video_asset skips first-frame extraction.
+        cdn_thumb = None
+        try:
+            if asset.platform == "DV360":
+                svc_pre = DV360SyncService()
+                _, cdn_thumb = await svc_pre._download_youtube_thumbnail(_dv360_yt_id, org_id_str, _dv360_yt_id)
+            elif asset.platform == "GOOGLE_ADS":
+                _, cdn_thumb = await google_ads_sync._download_thumbnail(_ga_yt_id, org_id_str, asset.ad_id)
+        except Exception as _te:
+            logger.warning("redownload_missing_assets: thumbnail fetch failed for %s: %s", asset.id, _te)
+        if asset.platform == "DV360":
+            svc = DV360SyncService()
+            _, served_url, frame_thumb = await svc._download_video_asset(
+                youtube_video_id=_dv360_yt_id,
+                org_id=org_id_str,
+                ad_id=_dv360_yt_id,
+            )
+        elif asset.platform == "GOOGLE_ADS":
             _, served_url, frame_thumb = await google_ads_sync._download_video(
                 youtube_video_id=_ga_yt_id,
                 org_id=org_id_str,
@@ -725,15 +738,6 @@ async def redownload_missing_assets(
             )
         if not served_url:
             return
-        cdn_thumb = None
-        try:
-            if asset.platform == "DV360":
-                svc2 = DV360SyncService()
-                _, cdn_thumb = await svc2._download_youtube_thumbnail(_dv360_yt_id, org_id_str, _dv360_yt_id)
-            elif asset.platform == "GOOGLE_ADS":
-                _, cdn_thumb = await google_ads_sync._download_thumbnail(_ga_yt_id, org_id_str, asset.ad_id)
-        except Exception as _te:
-            logger.warning("redownload_missing_assets: thumbnail fetch failed for %s: %s", asset.id, _te)
         best_thumb = cdn_thumb or frame_thumb
         SessionFactory = get_session_factory()
         async with SessionFactory() as session:
@@ -835,6 +839,22 @@ async def redownload_asset(
         if not _dv360_yt_id:
             _dv360_yt_id = asset.ad_id  # fallback: old-style assets store YouTube ID as ad_id
 
+    # Download CDN thumbnail BEFORE the video so that when _download_video_asset
+    # checks file_exists(thumb_path) it finds the real thumbnail and skips
+    # first-frame extraction. If CDN download is called after the video, the
+    # frame file already occupies the same MinIO path and gets returned as the
+    # "CDN thumbnail", making the first frame silently win over the official thumb.
+    cdn_thumb = None
+    try:
+        if asset.platform == "DV360":
+            from app.services.sync.dv360_sync import DV360SyncService as _DV3pre
+            _, cdn_thumb = await _DV3pre()._download_youtube_thumbnail(_dv360_yt_id, org_id_str, _dv360_yt_id)
+        elif asset.platform == "GOOGLE_ADS":
+            from app.services.sync.google_ads_sync import google_ads_sync as _ga_pre
+            _, cdn_thumb = await _ga_pre._download_thumbnail(_ga_yt_id, org_id_str, asset.ad_id)
+    except Exception as _te:
+        logger.warning("redownload_asset: pre-video thumbnail fetch failed for %s: %s", asset_id, _te)
+
     try:
         if asset.platform == "DV360":
             from app.services.sync.dv360_sync import DV360SyncService, _CookiesExpiredError
@@ -868,18 +888,6 @@ async def redownload_asset(
 
     if not served_url:
         raise HTTPException(status_code=502, detail="Failed to download video from YouTube — check yt-dlp cookies")
-
-    # Prefer CDN thumbnail (img.youtube.com); fall back to extracted video frame.
-    cdn_thumb = None
-    try:
-        if asset.platform == "DV360":
-            from app.services.sync.dv360_sync import DV360SyncService as _DV3
-            _, cdn_thumb = await _DV3()._download_youtube_thumbnail(_dv360_yt_id, org_id_str, _dv360_yt_id)
-        elif asset.platform == "GOOGLE_ADS":
-            from app.services.sync.google_ads_sync import google_ads_sync as _ga
-            _, cdn_thumb = await _ga._download_thumbnail(_ga_yt_id, org_id_str, asset.ad_id)
-    except Exception as _te:
-        logger.warning("redownload_asset: thumbnail fetch failed for %s: %s", asset_id, _te)
 
     best_thumb = cdn_thumb or frame_thumb
 
