@@ -208,7 +208,7 @@ Plans:
 **Plans:** 2/2 plans complete
 Plans:
 - [x] 19.3-01-PLAN.md — Wave 1: Write failing test stubs (upsert invariant + scoring_enabled gate)
-- [ ] 19.3-02-PLAN.md — Wave 2: Add scoring_enabled gate to all 4 download functions in scheduler.py
+- [x] 19.3-02-PLAN.md — Wave 2: Add scoring_enabled gate to all 4 download functions in scheduler.py
 
 ## Progress
 
@@ -235,4 +235,4 @@ Plans:
 | 19. SuperAdmin Monitoring UI | v1.3 | 6/6 | Complete   | 2026-05-11 |
 | 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
 | 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete    | 2026-05-13 |
-| 19.3. Close gap: Phase 15 | v1.3 | 2/2 | Complete   | 2026-05-13 |
+| 19.3. Close gap: Phase 15 | v1.3 | 2/2 | Complete    | 2026-05-13 |
