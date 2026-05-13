@@ -43,7 +43,7 @@ audited: 2026-05-13
 | 16-01-02 | 01 | 1 | JOBS-01 | — | Migration creates table with correct columns, indexes, FK constraints, autovacuum settings | integration | `pytest tests/migrations/test_phase16_migration.py::test_phase16_migration_file_exists -x` | ✅ | ✅ green |
 | 16-01-03 | 01 | 1 | JOBS-01 | — | Both composite indexes declared in __table_args__ | unit | `pytest tests/models/test_jobs.py::test_background_job_model_indexes -x` | ✅ | ✅ green |
 | 16-01-04 | 01 | 1 | JOBS-01 | — | FK non-nullable on org_id, nullable on platform_connection_id | unit | `pytest tests/models/test_jobs.py::test_background_job_model_fk_constraints -x` | ✅ | ✅ green |
-| 16-01-05 | 01 | 1 | JOBS-01 | — | JSONB columns use default=dict (not mutable default={}) | unit | `pytest tests/models/test_jobs.py::test_background_job_jsonb_defaults_use_dict -x` | ✅ | ✅ green |
+| 16-01-05 | 01 | 1 | JOBS-01 | — | JSONB columns use default=dict (not mutable default={}) | unit | `pytest tests/models/test_jobs.py::test_background_job_jsonb_defaults_use_dict -x` | ✅ | ✅ green (fixed 2026-05-13: `is dict` → `is_callable`) |
 | 16-03-01 | 03 | 2 | JOBS-02 | — | Cleanup deletes records older than 30 days; preserves recent records | unit | `pytest tests/services/test_maintenance.py::test_cleanup_old_background_jobs_deletes_old_records -x` | ✅ | ✅ green |
 | 16-03-02 | 03 | 2 | JOBS-02 | — | Cleanup rolls back and re-raises on DB error | unit | `pytest tests/services/test_maintenance.py::test_cleanup_old_background_jobs_rollback_on_error -x` | ✅ | ✅ green |
 | 16-03-03 | 03 | 2 | JOBS-02 | — | Cleanup job registered inside SCHEDULER_ENABLED guard in startup_scheduler | unit | `pytest tests/services/test_scheduler.py::test_cleanup_job_registration -x` | ✅ | ✅ green |
@@ -88,3 +88,14 @@ audited: 2026-05-13
 | Resolved | 1 |
 | Escalated | 0 |
 | Final test count | 4 (test_jobs.py) + 2 (test_maintenance.py) + 1 (test_scheduler.py) + 1 (test_phase16_migration.py) = 8 |
+
+## Validation Audit 2026-05-13 (re-verify)
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 1 |
+| Resolved | 1 |
+| Escalated | 0 |
+| Tests run | 8 (all green, 0.74s) |
+| Fix applied | `test_background_job_jsonb_defaults_use_dict`: replaced `col.default.arg is dict` with `col.default.is_callable` — SA 2.0 wraps callable defaults in a context-aware wrapper, making identity check fail; `is_callable` is the correct SA 2.0 API |
+| Result | CONFIRMED nyquist_compliant |
