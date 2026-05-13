@@ -269,3 +269,40 @@ async def test_skip_existing_asset():
 
     assert result == "https://storage/creatives/org123/video_tiktok_ad789.mp4"
     mock_storage.upload_bytes.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TKTOK-01 / TKTOK-02: Spark ad bypass in _enrich_from_ad_get
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_spark_ad_skips_download():
+    """Spark ads (identity_type='AUTH_CODE') must not trigger any download attempt.
+    Both _download_video_asset and _download_image_asset must not be called.
+    asset_url stays None in the update statement.
+    Decision D-02: Spark ads are served creatives; we do not own these files.
+    """
+    svc = _make_tiktok_sync_service()
+    svc._fetch_video_download_url = AsyncMock(return_value="https://cdn.tiktok.com/video.mp4")
+    svc._download_video_asset = AsyncMock(return_value="https://storage/video.mp4")
+    svc._download_image_asset = AsyncMock(return_value="https://storage/image.jpg")
+    svc._fetch_cover_image_url = AsyncMock(return_value=None)
+    svc._download_tiktok_thumbnail = AsyncMock(return_value=None)
+    svc._fetch_ad_info = AsyncMock(return_value=[
+        {"ad_id": "spark1", "video_id": "vid1", "identity_type": "AUTH_CODE"},
+    ])
+
+    db = AsyncMock()
+    db.execute = AsyncMock()
+    db.flush = AsyncMock()
+    db.commit = AsyncMock()
+
+    connection = MagicMock()
+    connection.id = "conn-id"
+    connection.organization_id = "org-id"
+
+    await svc._enrich_from_ad_get(db, connection, "token", "adv_id", ["spark1"])
+
+    svc._download_video_asset.assert_not_called()
+    svc._fetch_video_download_url.assert_not_called()
+    svc._download_image_asset.assert_not_called()

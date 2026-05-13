@@ -1,10 +1,11 @@
 ---
 phase: 15
 slug: tiktok-asset-download
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-05-08
+audited: 2026-05-13
 ---
 
 # Phase 15 — Validation Strategy
@@ -38,13 +39,14 @@ created: 2026-05-08
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 15-01-01 | 01 | 1 | TKTOK-01 | — | N/A | unit | `pytest backend/tests/test_tiktok_sync.py::test_download_video_asset -xvs` | ❌ W0 | ⬜ pending |
-| 15-01-02 | 01 | 1 | TKTOK-01 | — | N/A | unit | `pytest backend/tests/test_tiktok_sync.py::test_download_video_asset_success -xvs` | ❌ W0 | ⬜ pending |
-| 15-01-03 | 01 | 1 | TKTOK-02 | — | N/A | unit | `pytest backend/tests/test_tiktok_sync.py::test_download_image_asset -xvs` | ❌ W0 | ⬜ pending |
-| 15-01-04 | 01 | 1 | TKTOK-02 | — | N/A | unit | `pytest backend/tests/test_tiktok_sync.py::test_download_image_asset_success -xvs` | ❌ W0 | ⬜ pending |
-| 15-01-05 | 01 | 1 | TKTOK-01, TKTOK-02 | — | Download failure must not abort sync | unit | `pytest backend/tests/test_tiktok_sync.py::test_download_failure_resilience -xvs` | ❌ W0 | ⬜ pending |
-| 15-01-06 | 01 | 1 | TKTOK-01, TKTOK-02 | — | N/A | unit | `pytest backend/tests/test_tiktok_sync.py::test_skip_existing_asset -xvs` | ❌ W0 | ⬜ pending |
-| 15-02-01 | 02 | 2 | TKTOK-01, TKTOK-02 | — | scoring_enabled gate applies to all platforms | integration | `pytest backend/tests/test_scoring_gate.py::test_all_platforms_honor_scoring_enabled -xvs` | ❌ W0 | ⬜ pending |
+| 15-01-01 | 01 | 1 | TKTOK-01 | — | N/A | unit | `pytest backend/tests/test_tiktok_sync.py::test_download_video_asset_success -xvs` | ✅ | ✅ green |
+| 15-01-02 | 01 | 1 | TKTOK-01 | — | N/A | unit | `pytest backend/tests/test_tiktok_sync.py::test_fetch_video_download_url_success -xvs` | ✅ | ✅ green |
+| 15-01-03 | 01 | 1 | TKTOK-02 | — | N/A | unit | `pytest backend/tests/test_tiktok_sync.py::test_download_image_asset_success -xvs` | ✅ | ✅ green |
+| 15-01-04 | 01 | 1 | TKTOK-02 | — | N/A | unit | `pytest backend/tests/test_tiktok_sync.py::test_download_image_asset_too_small -xvs` | ✅ | ✅ green |
+| 15-01-05 | 01 | 1 | TKTOK-01, TKTOK-02 | — | Download failure must not abort sync | unit | `pytest backend/tests/test_tiktok_sync.py::test_download_failure_resilience -xvs` | ✅ | ✅ green |
+| 15-01-06 | 01 | 1 | TKTOK-01, TKTOK-02 | — | S3 idempotency — no re-download if exists | unit | `pytest backend/tests/test_tiktok_sync.py::test_skip_existing_asset -xvs` | ✅ | ✅ green |
+| 15-01-07 | 01 | 1 | TKTOK-01, TKTOK-02 | D-02 | Spark ads must not trigger any download | unit | `pytest backend/tests/test_tiktok_sync.py::test_spark_ad_skips_download -xvs` | ✅ | ✅ green |
+| 15-02-01 | 02 | 2 | TKTOK-01, TKTOK-02 | — | scoring_enabled gate applies to all platforms | integration | `pytest backend/tests/test_scoring_gate.py::test_all_platforms_honor_scoring_enabled -xvs` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -52,10 +54,10 @@ created: 2026-05-08
 
 ## Wave 0 Requirements
 
-- [ ] `backend/tests/test_tiktok_sync.py` — stubs for unit tests: `test_download_video_asset`, `test_download_image_asset`, `test_download_failure_resilience`, `test_skip_existing_asset`
-- [ ] `backend/tests/test_tiktok_sync.py` — integration coverage via `test_download_video_asset_success` and `test_download_image_asset_success` (harmonizer pipe verified in Plan 02 test_scoring_gate.py)
-- [ ] `backend/tests/test_scoring_gate.py` — cross-platform scoring gate test stub: `test_all_platforms_honor_scoring_enabled`
-- [ ] Mock httpx responses for TikTok `/file/video/ad/` and `/file/image/ad/` endpoints in test fixtures
+- [x] `backend/tests/test_tiktok_sync.py` — 12 tests covering all download behaviors (confirmed 2026-05-13)
+- [x] `backend/tests/test_tiktok_sync.py` — `test_download_video_asset_success`, `test_download_image_asset_success`, `test_spark_ad_skips_download` all present
+- [x] `backend/tests/test_scoring_gate.py` — 10 tests including `test_all_platforms_honor_scoring_enabled` (confirmed 2026-05-13)
+- [x] httpx responses mocked inline in each test function (no shared fixture needed)
 
 ---
 
@@ -72,11 +74,20 @@ created: 2026-05-08
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have automated verify commands
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 30s (pytest run ~30s in Docker)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** 2026-05-13 (gsd-validate-phase audit)
+
+## Validation Audit 2026-05-13
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 1 |
+| Resolved | 1 |
+| Escalated | 0 |
+| Final test count | 12 (test_tiktok_sync.py) + 10 (test_scoring_gate.py) = 22 |
