@@ -338,10 +338,19 @@ async def test_autofill_output_schema():
     mock_autofill = AsyncMock(return_value=d10_output)
     mock_set_status = AsyncMock()
 
+    # Mock the prefetch DB guard added in commit 00f5c99 — asset must exist with
+    # a non-empty asset_url or _run_autofill_for_asset_inner returns early.
+    mock_asset = MagicMock()
+    mock_asset.asset_url = "https://storage/creatives/org/asset.mp4"
+    mock_pre_db = AsyncMock()
+    mock_pre_db.get = AsyncMock(return_value=mock_asset)
+
     with patch("app.services.ai_autofill.create_background_job", mock_create), \
          patch("app.services.ai_autofill.update_background_job", mock_update), \
          patch("app.services.ai_autofill._autofill", mock_autofill), \
-         patch("app.services.ai_autofill._set_status", mock_set_status):
+         patch("app.services.ai_autofill._set_status", mock_set_status), \
+         patch("app.services.ai_autofill.get_session_factory",
+               _make_mock_session_factory(mock_pre_db)):
 
         await run_autofill_for_asset(asset_id=asset_id, org_id=org_id)
 
