@@ -85,7 +85,13 @@ interface CorrelationAsset {
   platform: string;
   thumbnail_url: string | null;
   total_score: number;
+  total_rating: string | null;
   roas: number | null;
+  ctr: number | null;
+  cvr: number | null;
+  vtr: number | null;
+  cpm: number | null;
+  cpa: number | null;
   spend: number | null;
 }
 
@@ -264,85 +270,126 @@ interface CorrelationAsset {
             (dblclick)="openAssetDetail(asset)"
             (contextmenu)="onRightClick($event, asset)"
           >
-            <!-- Thumbnail -->
-            <div class="tile-thumb" [class.video-no-thumb]="isVideoNoThumb(asset)">
-              <img
-                *ngIf="getTileThumbnail(asset) as thumb"
-                [src]="thumb"
-                [alt]="asset.ad_name"
-                (error)="onImgError($event)"
-              />
-              <!-- Fallback for video with no thumbnail (D-06) -->
-              <div *ngIf="isVideoNoThumb(asset)" class="video-fallback">
-                <img [src]="getPlatformOverlayIcon(asset.platform)" class="video-fallback-icon" alt="" />
-                <span class="video-tag">VIDEO</span>
-              </div>
-              <!-- Overlays -->
-              <span class="overlay-format">{{ asset.asset_format }}</span>
-              <span class="overlay-platform">
-                <img [src]="getPlatformOverlayIcon(asset.platform)" [alt]="asset.platform" class="overlay-platform-img" />
-              </span>
-              <!-- Score badge overlay -->
-              <ng-container [ngSwitch]="asset.scoring_status">
-                <ng-container *ngSwitchCase="'COMPLETE'">
-                  <div class="overlay-ace ace-score" [class]="getScoreBadgeClass(asset.total_rating)"
-                    [matTooltip]="getScoreTooltip(asset.total_rating)"
-                    [attr.aria-label]="'Score: ' + asset.total_score + ', ' + asset.total_rating">
-                    {{ asset.total_score | number:'1.0-0' }}
+            <div class="tile-flip-inner" [class.tile-flipped]="flippedTiles.has(asset.id)">
+              <!-- Front face -->
+              <div class="tile-face tile-front">
+                <!-- Thumbnail -->
+                <div class="tile-thumb" [class.video-no-thumb]="isVideoNoThumb(asset)">
+                  <img
+                    *ngIf="getTileThumbnail(asset) as thumb"
+                    [src]="thumb"
+                    [alt]="asset.ad_name"
+                    (error)="onImgError($event)"
+                  />
+                  <!-- Fallback for video with no thumbnail (D-06) -->
+                  <div *ngIf="isVideoNoThumb(asset)" class="video-fallback">
+                    <img [src]="getPlatformOverlayIcon(asset.platform)" class="video-fallback-icon" alt="" />
+                    <span class="video-tag">VIDEO</span>
                   </div>
-                </ng-container>
-                <ng-container *ngSwitchCase="'PENDING'">
-                  <div class="overlay-ace overlay-ace-pending" aria-label="Scoring in progress" [matTooltip]="'Scoring in progress'">
-                    <mat-spinner diameter="20"></mat-spinner>
-                    <span class="scoring-label">Scoring…</span>
+                  <!-- Overlays -->
+                  <span class="overlay-format">{{ asset.asset_format }}</span>
+                  <span class="overlay-platform">
+                    <img [src]="getPlatformOverlayIcon(asset.platform)" [alt]="asset.platform" class="overlay-platform-img" />
+                  </span>
+                  <!-- Score badge overlay -->
+                  <ng-container [ngSwitch]="asset.scoring_status">
+                    <ng-container *ngSwitchCase="'COMPLETE'">
+                      <div class="overlay-ace ace-score" [class]="getScoreBadgeClass(asset.total_rating)"
+                        matTooltip="Show score card"
+                        [attr.aria-label]="'Score: ' + asset.total_score + ', ' + asset.total_rating"
+                        (click)="onScoreCardClick($event, asset)">
+                        {{ asset.total_score | number:'1.0-0' }}
+                      </div>
+                    </ng-container>
+                    <ng-container *ngSwitchCase="'PENDING'">
+                      <div class="overlay-ace overlay-ace-pending" aria-label="Scoring in progress" [matTooltip]="'Scoring in progress'">
+                        <mat-spinner diameter="20"></mat-spinner>
+                        <span class="scoring-label">Scoring…</span>
+                      </div>
+                    </ng-container>
+                    <ng-container *ngSwitchCase="'PROCESSING'">
+                      <div class="overlay-ace overlay-ace-pending" aria-label="Scoring in progress" [matTooltip]="'Scoring in progress'">
+                        <mat-spinner diameter="20"></mat-spinner>
+                        <span class="scoring-label">Scoring…</span>
+                      </div>
+                    </ng-container>
+                    <ng-container *ngSwitchCase="'FAILED'">
+                      <div class="overlay-ace overlay-ace-dash" [matTooltip]="'Scoring failed'" aria-label="Scoring failed">
+                        <span class="score-dash">–</span>
+                      </div>
+                    </ng-container>
+                    <ng-container *ngSwitchCase="'UNSUPPORTED'">
+                      <div class="overlay-ace overlay-ace-dash" [matTooltip]="'Image scoring not supported for this platform'" aria-label="Image scoring not supported">
+                        <span class="score-dash">–</span>
+                      </div>
+                    </ng-container>
+                    <ng-container *ngSwitchDefault>
+                      <div class="overlay-ace overlay-ace-dash" aria-label="Not yet scored">
+                        <span class="score-dash">–</span>
+                      </div>
+                    </ng-container>
+                  </ng-container>
+                  <!-- Performer badge overlay (bottom-left) -->
+                  <div class="tile-tag" [class]="getTagClass(asset.performer_tag)"
+                       *ngIf="asset.performer_tag"
+                       [matTooltip]="getPerformerTooltip(asset.performer_tag)">
+                    {{ asset.performer_tag }}
                   </div>
-                </ng-container>
-                <ng-container *ngSwitchCase="'PROCESSING'">
-                  <div class="overlay-ace overlay-ace-pending" aria-label="Scoring in progress" [matTooltip]="'Scoring in progress'">
-                    <mat-spinner diameter="20"></mat-spinner>
-                    <span class="scoring-label">Scoring…</span>
-                  </div>
-                </ng-container>
-                <ng-container *ngSwitchCase="'FAILED'">
-                  <div class="overlay-ace overlay-ace-dash" [matTooltip]="'Scoring failed'" aria-label="Scoring failed">
-                    <span class="score-dash">–</span>
-                  </div>
-                </ng-container>
-                <ng-container *ngSwitchCase="'UNSUPPORTED'">
-                  <div class="overlay-ace overlay-ace-dash" [matTooltip]="'Image scoring not supported for this platform'" aria-label="Image scoring not supported">
-                    <span class="score-dash">–</span>
-                  </div>
-                </ng-container>
-                <ng-container *ngSwitchDefault>
-                  <div class="overlay-ace overlay-ace-dash" aria-label="Not yet scored">
-                    <span class="score-dash">–</span>
-                  </div>
-                </ng-container>
-              </ng-container>
-              <!-- Performer badge overlay (bottom-left) -->
-              <div class="tile-tag" [class]="getTagClass(asset.performer_tag)"
-                   *ngIf="asset.performer_tag"
-                   [matTooltip]="getPerformerTooltip(asset.performer_tag)">
-                {{ asset.performer_tag }}
-              </div>
-            </div>
+                </div>
 
-            <!-- Tile body -->
-            <div class="tile-body">
-              <div class="tile-objective">{{ asset.campaign_objective || 'No objective' }}</div>
-              <div class="tile-name">{{ asset.ad_name || 'Unnamed Ad' }}</div>
-              <div class="tile-metrics">
-                <span>
-                  <span class="metric-label">Spend</span>
-                  <span class="metric-value">{{ asset.performance?.spend | currency:orgCurrency:'symbol':'1.0-0' }}</span>
-                </span>
-                <span>
-                  <span class="metric-label">CTR</span>
-                  <span class="metric-value">{{ ((asset.performance?.ctr || 0) | number:'1.1-1') }}%</span>
-                </span>
+                <!-- Tile body -->
+                <div class="tile-body">
+                  <div class="tile-objective">{{ asset.campaign_objective || 'No objective' }}</div>
+                  <div class="tile-name">{{ asset.ad_name || 'Unnamed Ad' }}</div>
+                  <div class="tile-metrics">
+                    <span>
+                      <span class="metric-label">Spend</span>
+                      <span class="metric-value">{{ asset.performance?.spend | currency:orgCurrency:'symbol':'1.0-0' }}</span>
+                    </span>
+                    <span>
+                      <span class="metric-label">CTR</span>
+                      <span class="metric-value">{{ ((asset.performance?.ctr || 0) | number:'1.1-1') }}%</span>
+                    </span>
+                  </div>
+                  <div class="tile-roas" *ngIf="asset.performance?.roas">
+                    ROAS: <strong>{{ asset.performance?.roas | number:'1.1-2' }}x</strong>
+                  </div>
+                </div>
               </div>
-              <div class="tile-roas" *ngIf="asset.performance?.roas">
-                ROAS: <strong>{{ asset.performance?.roas | number:'1.1-2' }}x</strong>
+
+              <!-- Back face — Score card -->
+              <div class="tile-face tile-back" (click)="onFlipBack($event, asset)">
+                <div class="sc-loading" *ngIf="tileScoreLoading.has(asset.id)">
+                  <mat-spinner diameter="24"></mat-spinner>
+                </div>
+                <div class="sc-error" *ngIf="!tileScoreLoading.has(asset.id) && tileScoreError.has(asset.id)">
+                  Could not load scores.
+                </div>
+                <ng-container *ngIf="!tileScoreLoading.has(asset.id) && !tileScoreError.has(asset.id)">
+                  <div class="sc-header">
+                    <div class="sc-header-main">
+                      <div class="sc-label">BRAINSUITE SCORE</div>
+                      <div class="sc-total">
+                        <span class="sc-total-score" [style.borderColor]="getPillarColor(asset.total_rating)">{{ asset.total_score | number:'1.0-0' }}</span>
+                      </div>
+                    </div>
+                    <div class="sc-thumb">
+                      <img *ngIf="getTileThumbnail(asset) as thumb" [src]="thumb" [alt]="asset.ad_name" (error)="onImgError($event)" />
+                      <img *ngIf="!getTileThumbnail(asset)" [src]="getPlatformOverlayIcon(asset.platform)" class="sc-thumb-icon" [alt]="asset.platform" />
+                    </div>
+                  </div>
+                  <div class="sc-divider"></div>
+                  <div class="sc-pillars">
+                    <div class="sc-pillar-row" *ngFor="let pillar of tileScoreCache.get(asset.id) || []">
+                      <span class="sc-pillar-name">{{ pillar.name }}</span>
+                      <div class="sc-bar-track">
+                        <div class="sc-bar-fill" [style.width.%]="pillar.score ?? 0" [style.background]="getPillarColor(pillar.rating)"></div>
+                      </div>
+                      <span class="sc-pillar-score">{{ pillar.score != null ? (pillar.score | number:'1.0-0') : '–' }}</span>
+                    </div>
+                  </div>
+                  <div class="sc-back-hint"><i class="bi bi-arrow-counterclockwise"></i> tap to flip back</div>
+                </ng-container>
               </div>
             </div>
           </div>
@@ -404,9 +451,19 @@ interface CorrelationAsset {
       <div class="correlation-drawer" [class.correlation-drawer-open]="correlationDrawerOpen">
         <!-- Drawer header -->
         <div class="correlation-drawer-header">
-          <h4>Score vs. ROAS</h4>
+          <h4>Score vs. {{ currentMetricOption.label }}</h4>
           <button mat-icon-button (click)="closeCorrelationDrawer()" aria-label="Close correlation drawer">
             <i class="bi bi-x" style="font-size:20px"></i>
+          </button>
+        </div>
+
+        <!-- Metric selector -->
+        <div class="correlation-metric-row">
+          <button *ngFor="let opt of correlationMetricOptions"
+            class="metric-btn"
+            [class.metric-btn-active]="correlationMetric === opt.value"
+            (click)="onCorrelationMetricChange(opt.value)">
+            {{ opt.label }}
           </button>
         </div>
 
@@ -447,15 +504,14 @@ interface CorrelationAsset {
         <!-- Legend -->
         <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount > 0"
              class="correlation-legend">
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#FF7700"></span> Stars</span>
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#F39C12"></span> Workhorses</span>
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#4285F4"></span> Question Marks</span>
-          <span class="correlation-legend-item"><span class="legend-dot" style="background:#707070"></span> Laggards</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#2ECC71"></span> Positive ACE</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#F39C12"></span> Moderate ACE</span>
+          <span class="correlation-legend-item"><span class="legend-dot" style="background:#E74C3C"></span> Low ACE</span>
         </div>
 
         <!-- 99th pct annotation -->
         <div *ngIf="!correlationLoading && !correlationError && correlationEligibleCount > 0"
-             class="correlation-cap-note">ROAS capped at 99th pct.</div>
+             class="correlation-cap-note">{{ currentMetricOption.label }} capped at 99th pct.</div>
       </div>
     </div>
   `,
@@ -618,20 +674,21 @@ interface CorrelationAsset {
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--border-radius-lg);
-      overflow: hidden;
+      overflow: visible;
       cursor: pointer;
       transition: all var(--transition);
       user-select: none;
+      perspective: 800px;
 
       &:hover {
-        border-color: var(--accent);
         transform: translateY(-2px);
         box-shadow: var(--shadow-md);
+        outline: 1px solid var(--accent);
       }
 
       &.selected {
-        border-color: var(--accent);
-        box-shadow: 0 0 0 2px rgba(255,119,0,0.3);
+        outline: 2px solid rgba(255,119,0,0.6);
+        outline-offset: 1px;
       }
     }
 
@@ -689,6 +746,57 @@ interface CorrelationAsset {
       display: flex; align-items: center; justify-content: center;
       background: rgba(0,0,0,0.5);
     }
+
+    /* ─── Tile flip ─── */
+    .tile-flip-inner {
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+      &.tile-flipped { transform: rotateY(180deg); }
+    }
+    .tile-face {
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    .tile-front { border-radius: var(--border-radius-lg); overflow: hidden; }
+    .tile-back {
+      position: absolute; inset: 0;
+      transform: rotateY(180deg);
+      background: var(--bg-card);
+      border-radius: var(--border-radius-lg);
+      overflow: hidden;
+      padding: 14px;
+      display: flex; flex-direction: column;
+      cursor: pointer;
+    }
+    .sc-loading, .sc-error {
+      display: flex; align-items: center; justify-content: center;
+      flex: 1; font-size: 12px; color: var(--text-muted);
+    }
+    .sc-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .sc-header-main { flex: 1; }
+    .sc-thumb {
+      width: 76px; height: 76px; border-radius: 8px; overflow: hidden;
+      flex-shrink: 0; background: var(--bg-hover);
+      img { width: 100%; height: 100%; object-fit: cover; }
+      .sc-thumb-icon { padding: 12px; opacity: 0.5; object-fit: contain; }
+    }
+    .sc-label { font-size: 9px; font-weight: 700; letter-spacing: 1px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; }
+    .sc-total { display: flex; align-items: center; }
+    .sc-total-score {
+      font-size: 22px; font-weight: 800; line-height: 1;
+      width: 48px; height: 48px;
+      display: flex; align-items: center; justify-content: center;
+      border: 3px solid; border-radius: 50%;
+    }
+    .sc-divider { height: 1px; background: var(--border); margin: 6px 0; }
+    .sc-pillars { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .sc-pillar-row { display: grid; grid-template-columns: 80px 1fr 24px; align-items: center; gap: 5px; }
+    .sc-pillar-name { font-size: 10px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sc-bar-track { height: 5px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
+    .sc-bar-fill { height: 100%; border-radius: 3px; }
+    .sc-pillar-score { font-size: 10px; font-weight: 600; text-align: right; }
+    .sc-back-hint { font-size: 9px; color: var(--text-muted); text-align: center; margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 3px; }
 
     .context-divider {
       border: none;
@@ -955,6 +1063,30 @@ interface CorrelationAsset {
       font-weight: 600;
     }
 
+    .correlation-metric-row {
+      display: flex;
+      gap: 6px;
+      padding: 10px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .metric-btn {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      &:hover { border-color: var(--accent); color: var(--text-primary); }
+    }
+    .metric-btn-active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
     .correlation-spend-row {
       padding: 12px 24px 0;
     }
@@ -1092,6 +1224,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private assetDetailCache = new Map<string, DashboardAsset>();
 
+  flippedTiles = new Set<string>();
+  tileScoreCache = new Map<string, any[]>();
+  tileScoreLoading = new Set<string>();
+  tileScoreError = new Set<string>();
+
   platforms = [
     { key: 'META', label: 'Meta', icon: 'facebook', color: '#1877F2', iconUrl: '/assets/images/icon-meta.png' },
     { key: 'TIKTOK', label: 'TikTok', icon: 'music_video', color: '#FF0050', iconUrl: '/assets/images/icon-tiktok.png' },
@@ -1106,7 +1243,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   correlationLoading = false;
   correlationError = false;
   correlationAssets: CorrelationAsset[] = [];
-  correlationMinSpend = 10;
+  correlationMinSpend = 0;
   correlationMinSpendOptions: Options = {
     floor: 0,
     ceil: 1000,
@@ -1116,6 +1253,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
     hidePointerLabels: true,
   };
   scatterOptions: EChartsOption = {};
+
+  correlationMetric = 'roas';
+  readonly correlationMetricOptions = [
+    { value: 'roas', label: 'ROAS', yLabel: 'ROAS', format: (v: number) => `${v.toFixed(2)}x` },
+    { value: 'ctr', label: 'CTR', yLabel: 'CTR (%)', format: (v: number) => `${v.toFixed(2)}%` },
+    { value: 'cvr', label: 'CVR', yLabel: 'CVR (%)', format: (v: number) => `${v.toFixed(2)}%` },
+    { value: 'vtr', label: 'VTR', yLabel: 'VTR (%)', format: (v: number) => `${v.toFixed(2)}%` },
+    { value: 'cpm', label: 'CPM', yLabel: 'CPM ($)', format: (v: number) => `$${v.toFixed(2)}` },
+    { value: 'cpa', label: 'CPA', yLabel: 'CPA ($)', format: (v: number) => `$${v.toFixed(2)}` },
+  ];
+
+  get currentMetricOption() {
+    return this.correlationMetricOptions.find(o => o.value === this.correlationMetric)!;
+  }
 
   constructor(
     private api: ApiService,
@@ -1209,7 +1360,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   get correlationEligibleCount(): number {
     return this.correlationAssets.filter(
-      a => a.roas !== null && (a.spend ?? 0) >= this.correlationMinSpend
+      a => { const v = (a as any)[this.correlationMetric]; return v != null && (a.spend ?? 0) >= this.correlationMinSpend; }
     ).length;
   }
 
@@ -1254,8 +1405,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   buildScatterChart(): void {
+    const metricOpt = this.currentMetricOption;
     const eligible = this.correlationAssets.filter(
-      a => a.roas !== null && (a.spend ?? 0) >= this.correlationMinSpend
+      a => { const v = (a as any)[this.correlationMetric]; return v != null && (a.spend ?? 0) >= this.correlationMinSpend; }
     );
 
     if (eligible.length === 0) {
@@ -1263,10 +1415,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const roasValues = eligible.map(a => a.roas as number).sort((x, y) => x - y);
+    const metricValues = eligible.map(a => (a as any)[this.correlationMetric] as number).sort((x, y) => x - y);
     const scoreValues = eligible.map(a => a.total_score).sort((x, y) => x - y);
 
-    const roasCap = roasValues[Math.floor(roasValues.length * 0.99)] ?? roasValues[roasValues.length - 1] ?? 1;
+    const cap = metricValues[Math.floor(metricValues.length * 0.99)] ?? metricValues[metricValues.length - 1] ?? 1;
 
     const median = (arr: number[]): number => {
       const mid = Math.floor(arr.length / 2);
@@ -1274,31 +1426,45 @@ export class DashboardComponent implements OnInit, OnDestroy {
     };
 
     const medianScore = eligible.length === 1 ? eligible[0].total_score : median(scoreValues);
-    const medianRoas = eligible.length === 1 ? (eligible[0].roas as number) : median(roasValues);
+    const medianMetric = eligible.length === 1 ? metricValues[0] : median(metricValues);
 
     const scatterData = eligible.map(a => [
       a.total_score,
-      Math.min(a.roas as number, roasCap),
+      Math.min((a as any)[this.correlationMetric] as number, cap),
       a,
     ]);
 
+    const ratingColor = (rating: string | null): string => {
+      switch (rating) {
+        case 'positive': return '#2ECC71';
+        case 'medium': return '#F39C12';
+        case 'negative': return '#E74C3C';
+        default: return '#707070';
+      }
+    };
+
     this.scatterOptions = {
-      grid: { top: 40, right: 20, bottom: 50, left: 60 },
+      grid: { top: 40, right: 64, bottom: 50, left: 50 },
       xAxis: {
         name: 'ACE Score',
         min: 0,
         max: 100,
         nameLocation: 'center',
         nameGap: 30,
-        axisLine: { lineStyle: { color: '#404040' } },
-        splitLine: { lineStyle: { color: '#404040', opacity: 0.2 } },
+        nameTextStyle: { color: '#ccc', fontSize: 12 },
+        axisLine: { lineStyle: { color: '#777' } },
+        axisTick: { lineStyle: { color: '#777' } },
+        axisLabel: { color: '#ccc', fontSize: 12 },
+        splitLine: { lineStyle: { color: '#555', opacity: 0.5 } },
       },
       yAxis: {
-        name: 'ROAS',
+        name: metricOpt.yLabel,
         min: 0,
-        max: roasCap * 1.05,
-        axisLine: { lineStyle: { color: '#404040' } },
-        splitLine: { lineStyle: { color: '#404040', opacity: 0.2 } },
+        nameTextStyle: { color: '#ccc', fontSize: 12 },
+        axisLine: { lineStyle: { color: '#777' } },
+        axisTick: { lineStyle: { color: '#777' } },
+        axisLabel: { color: '#ccc', fontSize: 12 },
+        splitLine: { lineStyle: { color: '#555', opacity: 0.5 } },
       },
       tooltip: {
         trigger: 'item',
@@ -1309,22 +1475,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
         formatter: (params: any) => {
           const asset = params.data[2] as CorrelationAsset;
           const thumb = asset.thumbnail_url || '/assets/images/placeholder.svg';
+          const yFormatted = metricOpt.format(params.data[1] as number);
           return `<div style="display:flex;gap:10px;align-items:flex-start;max-width:280px">
             <img src="${thumb}" style="width:48px;height:48px;object-fit:cover;border-radius:4px" />
             <div>
               <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">${asset.ad_name || 'Untitled'}</div>
               <div style="font-size:14px;color:var(--text-secondary);margin-top:4px">
-                Score: ${params.data[0]} &middot; ROAS: ${(params.data[1] as number).toFixed(2)}x &middot; $${((asset.spend ?? 0) as number).toFixed(0)} &middot; ${asset.platform}
+                Score: ${params.data[0]} &middot; ${metricOpt.label}: ${yFormatted} &middot; $${((asset.spend ?? 0) as number).toFixed(0)} &middot; ${asset.platform}
               </div>
             </div>
           </div>`;
         },
       },
       graphic: [
-        { type: 'text', right: 30, top: 50, style: { text: 'Stars', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
-        { type: 'text', left: 70, top: 50, style: { text: 'Workhorses', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
-        { type: 'text', right: 30, bottom: 60, style: { text: 'Question Marks', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
-        { type: 'text', left: 70, bottom: 60, style: { text: 'Laggards', fill: '#707070', opacity: 0.6, fontSize: 11, fontWeight: '600' } },
+        { type: 'text', right: 30, top: 50, style: { text: 'Stars', fill: '#ffffff', fontSize: 12, fontWeight: '700' } },
+        { type: 'text', left: 70, top: 50, style: { text: 'Workhorses', fill: '#ffffff', fontSize: 12, fontWeight: '700' } },
+        { type: 'text', right: 30, bottom: 60, style: { text: 'Question Marks', fill: '#ffffff', fontSize: 12, fontWeight: '700' } },
+        { type: 'text', left: 70, bottom: 60, style: { text: 'Laggards', fill: '#ffffff', fontSize: 12, fontWeight: '700' } },
       ],
       series: [{
         type: 'scatter',
@@ -1333,21 +1500,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
         markLine: {
           silent: true,
           symbol: 'none',
-          lineStyle: { color: '#404040', type: 'dashed', width: 1 },
+          lineStyle: { color: '#666', type: 'dashed', width: 1 },
+          label: {
+            color: '#fff',
+            fontSize: 11,
+            fontWeight: 'bold',
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            padding: [2, 5],
+            borderRadius: 3,
+          },
           data: [
             { xAxis: medianScore },
-            { yAxis: medianRoas },
-            { yAxis: roasCap, lineStyle: { color: 'rgba(255,119,0,0.4)', type: 'dashed' } },
+            { yAxis: medianMetric },
+            { yAxis: cap, lineStyle: { color: 'rgba(255,119,0,0.5)', type: 'dashed' }, label: { color: '#FF7700' } },
           ],
         },
         itemStyle: {
-          color: (params: any) => {
-            const [score, roas] = params.data;
-            if (score >= medianScore && roas >= medianRoas) return '#FF7700';
-            if (score < medianScore && roas >= medianRoas) return '#F39C12';
-            if (score >= medianScore && roas < medianRoas) return '#4285F4';
-            return '#707070';
-          },
+          color: (params: any) => ratingColor((params.data[2] as CorrelationAsset).total_rating),
         },
         emphasis: { itemStyle: { shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.3)' }, scale: 1.5 },
       }],
@@ -1362,6 +1531,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   onCorrelationMinSpendChange(): void {
+    this.buildScatterChart();
+  }
+
+  onCorrelationMetricChange(metric: string): void {
+    this.correlationMetric = metric;
     this.buildScatterChart();
   }
 
@@ -1404,7 +1578,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
         }
         this.sliderDisabled = !this.hasAnyScored;
         this.sliderOptions = { ...this.sliderOptions, disabled: !this.hasAnyScored };
+        this.flippedTiles.clear();
+        this.tileScoreError.clear();
         this.preloadAssetDetails();
+        this.preloadScoreDetails();
         this.stopPolling$.next();
         this.pollingActive = false;
         this.startScoringPolling(this.assets);
@@ -1588,6 +1765,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
+  private preloadScoreDetails(): void {
+    const toFetch = this.assets.filter(
+      a => a.scoring_status === 'COMPLETE' && !this.tileScoreCache.has(a.id) && !this.tileScoreLoading.has(a.id)
+    );
+    for (const asset of toFetch) {
+      this.tileScoreLoading.add(asset.id);
+      this.api.getScoreDetail(asset.id).subscribe({
+        next: (detail: any) => {
+          const cats = detail?.score_dimensions?.legResults?.[0]?.executiveSummary?.categories ?? [];
+          this.tileScoreCache.set(asset.id, cats);
+          this.tileScoreLoading.delete(asset.id);
+        },
+        error: () => {
+          this.tileScoreLoading.delete(asset.id);
+        },
+      });
+    }
+  }
+
   async openAssetDetail(asset: DashboardAsset): Promise<void> {
     this.contextMenu.visible = false;
     const { AssetDetailDialogComponent } = await import('../dashboard/dialogs/asset-detail-dialog.component');
@@ -1736,6 +1932,53 @@ export class DashboardComponent implements OnInit, OnDestroy {
       case 'medium': return 'Moderate effectiveness';
       case 'negative': return 'Low effectiveness';
       default: return 'Scoring failed';
+    }
+  }
+
+  onScoreCardClick(event: MouseEvent, asset: DashboardAsset): void {
+    event.stopPropagation();
+    if (this.flippedTiles.has(asset.id)) {
+      this.flippedTiles.delete(asset.id);
+      return;
+    }
+    this.flippedTiles.add(asset.id);
+    if (!this.tileScoreCache.has(asset.id) && !this.tileScoreLoading.has(asset.id)) {
+      this.tileScoreLoading.add(asset.id);
+      this.tileScoreError.delete(asset.id);
+      this.api.getScoreDetail(asset.id).subscribe({
+        next: (detail: any) => {
+          const cats = detail?.score_dimensions?.legResults?.[0]?.executiveSummary?.categories ?? [];
+          this.tileScoreCache.set(asset.id, cats);
+          this.tileScoreLoading.delete(asset.id);
+        },
+        error: () => {
+          this.tileScoreLoading.delete(asset.id);
+          this.tileScoreError.add(asset.id);
+        },
+      });
+    }
+  }
+
+  onFlipBack(event: MouseEvent, asset: DashboardAsset): void {
+    event.stopPropagation();
+    this.flippedTiles.delete(asset.id);
+  }
+
+  getTileRatingLabel(rating: string | null): string {
+    switch (rating) {
+      case 'positive': return 'GREEN';
+      case 'medium': return 'AMBER';
+      case 'negative': return 'RED';
+      default: return '';
+    }
+  }
+
+  getPillarColor(rating: string | null): string {
+    switch (rating) {
+      case 'positive': return '#2ECC71';
+      case 'medium': return '#F39C12';
+      case 'negative': return '#E74C3C';
+      default: return 'var(--text-muted)';
     }
   }
 
