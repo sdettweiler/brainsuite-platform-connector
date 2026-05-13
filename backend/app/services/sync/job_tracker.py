@@ -12,6 +12,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy.orm.attributes import flag_modified
+
 from app.db.base import get_session_factory
 from app.models.jobs import BackgroundJob
 from app.core.redis import get_redis
@@ -113,6 +115,7 @@ async def update_background_job(
             job.error = error
         if metadata is not None:
             job.metadata_ = {**(job.metadata_ or {}), **metadata}
+            flag_modified(job, "metadata_")
 
         if status in ("COMPLETE", "FAILED"):
             job.ended_at = datetime.utcnow()
