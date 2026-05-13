@@ -19,6 +19,7 @@ build/
 node_modules/
 dist/
 .angular/
+frontend/out-tsc/
 
 # IDE
 .vscode/
