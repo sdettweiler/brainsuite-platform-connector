@@ -36,7 +36,7 @@ interface JobDetail {
 }
 
 const TRACEBACK_MAX_BYTES = 10240;
-const KNOWN_EXTERNAL_ID_KEYS = ['brainsuite_job_id', 'sync_job_id', 'platform_sync_run_id'];
+const KNOWN_EXTERNAL_ID_KEYS = ['brainsuite_job_id', 'sync_job_id'];
 
 @Component({
   standalone: true,
