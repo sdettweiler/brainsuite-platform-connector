@@ -6,6 +6,7 @@ Implements cursor-based pagination to retrieve all pages.
 """
 import asyncio
 import httpx
+import json
 import logging
 import uuid as uuid_mod
 from datetime import date, timedelta
@@ -71,7 +72,6 @@ INSIGHTS_FIELDS = [
     "cost_per_thruplay",
     "estimated_ad_recallers",
     "estimated_ad_recall_rate",
-    "estimated_ad_recall_lift",
     "cost_per_estimated_ad_recallers",
     "actions",
     "action_values",
@@ -87,6 +87,15 @@ AD_ENRICHMENT_FIELDS = [
     "effective_status",
     "creative{id,name,body,title,link_url,image_url,image_hash,video_id,call_to_action_type,object_story_spec,instagram_permalink_url,instagram_actor_id,object_type,branded_content}",
     "adset{bid_strategy,billing_event,destination_type,optimization_goal}",
+]
+
+
+BA_RECALL_FIELDS = [
+    "date_start",
+    "ad_id",
+    "publisher_platform",
+    "platform_position",
+    "estimated_ad_recall_lift",
 ]
 
 
@@ -147,6 +156,19 @@ class MetaSyncService:
             )
             total_fetched += len(records)
             total_upserted += upserted
+
+            if any(r.get("objective") == "BRAND_AWARENESS" for r in records):
+                logger.info(f"  Brand Awareness campaigns detected in chunk {chunk_start} → {chunk_end}; fetching recall lift")
+                try:
+                    ba_records = await self._fetch_ba_recall_lift(
+                        access_token, account_id, chunk_start, chunk_end
+                    )
+                    if ba_records:
+                        await self._update_recall_lift(db, connection, ba_records)
+                        logger.info(f"  Updated estimated_ad_recall_lift for {len(ba_records)} BA rows")
+                except Exception as e:
+                    logger.warning(f"  BA recall lift supplemental fetch failed (non-fatal): {e}")
+
             chunk_start = chunk_end + timedelta(days=1)
 
         if api_errors and total_fetched == 0:
@@ -581,6 +603,69 @@ class MetaSyncService:
         )
         await db.execute(stmt)
         return len(rows)
+
+    async def _fetch_ba_recall_lift(
+        self,
+        access_token: str,
+        account_id: str,
+        date_from: date,
+        date_to: date,
+    ) -> List[Dict[str, Any]]:
+        """Fetch estimated_ad_recall_lift for Brand Awareness campaigns only."""
+        records: List[Dict[str, Any]] = []
+        url = f"{META_GRAPH_URL}/{account_id}/insights"
+        params = {
+            "access_token": access_token,
+            "level": "ad",
+            "fields": ",".join(BA_RECALL_FIELDS),
+            "breakdowns": "publisher_platform,platform_position",
+            "filtering": json.dumps([{"field": "campaign.objective", "operator": "IN", "value": ["BRAND_AWARENESS"]}]),
+            "time_range": f'{{"since":"{date_from.isoformat()}","until":"{date_to.isoformat()}"}}',
+            "time_increment": 1,
+            "limit": 500,
+        }
+        async with httpx.AsyncClient(timeout=60) as client:
+            while url:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                if "error" in data:
+                    raise MetaAPIError(str(data["error"].get("message", data["error"])))
+                records.extend(data.get("data", []))
+                paging = data.get("paging", {})
+                cursors = paging.get("cursors", {})
+                next_cursor = cursors.get("after")
+                if "next" in paging and next_cursor:
+                    url = f"{META_GRAPH_URL}/{account_id}/insights"
+                    params = {"access_token": access_token, "after": next_cursor, "limit": 500}
+                else:
+                    url = None
+                    params = {}
+        return records
+
+    async def _update_recall_lift(
+        self,
+        db: AsyncSession,
+        connection: PlatformConnection,
+        ba_records: List[Dict[str, Any]],
+    ) -> None:
+        """Patch estimated_ad_recall_lift onto already-upserted rows for BA campaigns."""
+        for r in ba_records:
+            val = self._safe_float(r.get("estimated_ad_recall_lift"))
+            if val is None:
+                continue
+            await db.execute(
+                update(MetaRawPerformance)
+                .where(
+                    MetaRawPerformance.platform_connection_id == connection.id,
+                    MetaRawPerformance.report_date == date.fromisoformat(r["date_start"]),
+                    MetaRawPerformance.ad_id == r["ad_id"],
+                    MetaRawPerformance.ad_account_id == connection.ad_account_id,
+                    MetaRawPerformance.publisher_platform == r.get("publisher_platform"),
+                    MetaRawPerformance.platform_position == r.get("platform_position"),
+                )
+                .values(estimated_ad_recall_lift=val)
+            )
 
     async def _enrich_ad_dimensions(
         self,
