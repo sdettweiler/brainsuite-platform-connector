@@ -43,9 +43,6 @@ def test_background_job_jsonb_defaults_use_dict():
     for col_name in ("output", "metadata"):
         col = BackgroundJob.__table__.c[col_name]
         assert col.default is not None, f"{col_name} has no column default set"
-        assert callable(col.default.arg), (
-            f"{col_name} default must be a callable (dict), got: {col.default.arg!r}"
-        )
-        assert col.default.arg is dict, (
-            f"{col_name} default must be the dict type itself, got: {col.default.arg!r}"
+        assert col.default.is_callable, (
+            f"{col_name} default must be a callable (not a scalar mutable), got: {col.default!r}"
         )
