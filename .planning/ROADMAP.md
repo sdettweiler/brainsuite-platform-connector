@@ -51,7 +51,7 @@
 - [x] **Phase 18: SSE Transport** - FastAPI streaming endpoint with keepalive heartbeats and connection lifecycle management (complete 2026-05-11)
 - [x] **Phase 19: SuperAdmin Monitoring UI** - Angular job monitor at /configuration/jobs with real-time updates and drill-in detail panels (completed 2026-05-11)
 - [x] **Phase 19.1: Close gap: BLOCKER-02+03** — null token race + EventSource leak in job-monitor.service.ts (complete 2026-05-13)
-- [ ] **Phase 19.2: Close gap: INSTR-05/MON-07** — move brainsuite_job_id to metadata_ so References panel shows it; drop orphaned platform_sync_run_id key (INSERTED)
+- [x] **Phase 19.2: Close gap: INSTR-05/MON-07** — move brainsuite_job_id to metadata_ so References panel shows it; drop orphaned platform_sync_run_id key (INSERTED) (completed 2026-05-13)
 - [ ] **Phase 19.3: Close gap: Phase 15** — add asset_url/video_source_url to _upsert_records ON CONFLICT exclusion + scoring_enabled guard on download path (INSERTED)
 
 ## Phase Details
@@ -184,7 +184,7 @@ Plans:
 Plans:
 
 **Wave 1**
-- [ ] 19.2-01-PLAN.md — Add metadata merge to update_background_job + call with brainsuite_job_id after BrainSuite API returns; remove platform_sync_run_id from KNOWN_EXTERNAL_ID_KEYS; update test assertion (INSTR-05, MON-07)
+- [x] 19.2-01-PLAN.md — Add metadata merge to update_background_job + call with brainsuite_job_id after BrainSuite API returns; remove platform_sync_run_id from KNOWN_EXTERNAL_ID_KEYS; update test assertion (INSTR-05, MON-07)
 **Plans**: 1 plan
 Plans:
 - [ ] 19.2-01-PLAN.md — Add metadata_ brainsuite_job_id update to job_tracker + scoring_job; remove platform_sync_run_id from frontend constant; update test assertion
@@ -205,7 +205,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 19.3-02-PLAN.md — Add scoring_enabled gate to all 4 _run_*_asset_downloads functions in scheduler.py; run all 4 tests to GREEN — TKTOK-01, TKTOK-02
-**Plans:** 2 plans
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 19.3-01-PLAN.md — Wave 1: Write failing test stubs (upsert invariant + scoring_enabled gate)
 - [ ] 19.3-02-PLAN.md — Wave 2: Add scoring_enabled gate to all 4 download functions in scheduler.py
@@ -234,5 +234,5 @@ Plans:
 | 18. SSE Transport | v1.3 | 2/2 | Complete | 2026-05-11 |
 | 19. SuperAdmin Monitoring UI | v1.3 | 6/6 | Complete   | 2026-05-11 |
 | 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
-| 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 0/1 | Ready to execute | |
+| 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete   | 2026-05-13 |
 | 19.3. Close gap: Phase 15 | v1.3 | 0/2 | Ready to execute | |
