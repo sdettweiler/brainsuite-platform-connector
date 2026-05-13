@@ -150,8 +150,9 @@ async def test_downloads_proceed_when_scoring_enabled():
         # scoring_enabled=True — function must NOT return early before creating the job
         try:
             await _run_meta_creatives_deferred("00000000-0000-0000-0000-000000000001", [])
-        except Exception:
-            pass  # downstream failures OK; early return before job creation is NOT
+        except (KeyError, AttributeError, TypeError):
+            pass  # DB/connection attribute failures downstream of the gate are acceptable
+        # Do not catch Exception — unexpected crashes should surface
 
         assert mock_create_job.call_count >= 1, (
             "create_background_job was never called with scoring_enabled=True — "
