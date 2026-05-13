@@ -201,11 +201,11 @@ Plans:
 Plans:
 
 **Wave 1**
-- [ ] 19.3-01-PLAN.md — TDD stubs: 4 failing tests (upsert preservation × 2, download gate × 2) — TKTOK-01, TKTOK-02
+- [x] 19.3-01-PLAN.md — TDD stubs: 4 failing tests (upsert preservation × 2, download gate × 2) — TKTOK-01, TKTOK-02
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 19.3-02-PLAN.md — Add scoring_enabled gate to all 4 _run_*_asset_downloads functions in scheduler.py; run all 4 tests to GREEN — TKTOK-01, TKTOK-02
-**Plans:** 1/1 plans complete
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 19.3-01-PLAN.md — Wave 1: Write failing test stubs (upsert invariant + scoring_enabled gate)
 - [ ] 19.3-02-PLAN.md — Wave 2: Add scoring_enabled gate to all 4 download functions in scheduler.py
@@ -235,4 +235,4 @@ Plans:
 | 19. SuperAdmin Monitoring UI | v1.3 | 6/6 | Complete   | 2026-05-11 |
 | 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
 | 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete    | 2026-05-13 |
-| 19.3. Close gap: Phase 15 | v1.3 | 0/2 | Ready to execute | |
+| 19.3. Close gap: Phase 15 | v1.3 | 1/2 | In Progress|  |

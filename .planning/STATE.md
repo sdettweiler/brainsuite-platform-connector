@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: SuperAdmin Monitoring & TikTok Downloads
 status: executing
 stopped_at: context exhaustion at 76% (2026-05-13)
-last_updated: "2026-05-13T13:25:37.448Z"
-last_activity: 2026-05-13
+last_updated: "2026-05-13T13:32:16.433Z"
+last_activity: 2026-05-13 -- Phase 19.3 execution started
 progress:
   total_phases: 8
   completed_phases: 7
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-07 — v1.3 milestone started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 19.2 — close-gap-instr-05-mon-07-move-brainsuite-job-id-to-metadata
+**Current focus:** Phase 19.3 — close-gap-phase-15-asset-url-upsert-exclusion-scoring-enabled
 
 ## Current Position
 
-Phase: 19.3
-Plan: Not started
-Status: Executing Phase 19.2
-Last activity: 2026-05-13
+Phase: 19.3 (close-gap-phase-15-asset-url-upsert-exclusion-scoring-enabled) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 19.3
+Last activity: 2026-05-13 -- Phase 19.3 execution started
 
 ```
 v1.3 Progress: [████████░░] 6/8 phases complete
