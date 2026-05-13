@@ -182,6 +182,11 @@ Plans:
   3. Existing scoring job records are unaffected; only new records land brainsuite_job_id in metadata_
 **Plans**: 1 plan
 Plans:
+
+**Wave 1**
+- [ ] 19.2-01-PLAN.md — Add metadata merge to update_background_job + call with brainsuite_job_id after BrainSuite API returns; remove platform_sync_run_id from KNOWN_EXTERNAL_ID_KEYS; update test assertion (INSTR-05, MON-07)
+**Plans**: 1 plan
+Plans:
 - [ ] 19.2-01-PLAN.md — Add metadata_ brainsuite_job_id update to job_tracker + scoring_job; remove platform_sync_run_id from frontend constant; update test assertion
 
 ### Phase 19.3: Close gap: Phase 15 (INSERTED)
@@ -217,5 +222,5 @@ Plans:
 | 18. SSE Transport | v1.3 | 2/2 | Complete | 2026-05-11 |
 | 19. SuperAdmin Monitoring UI | v1.3 | 6/6 | Complete   | 2026-05-11 |
 | 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
-| 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 0/0 | Not planned | |
+| 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 0/1 | Ready to execute | |
 | 19.3. Close gap: Phase 15 | v1.3 | 0/0 | Not planned | |
