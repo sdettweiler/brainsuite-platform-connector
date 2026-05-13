@@ -197,6 +197,14 @@ Plans:
   1. A re-sync of an already-downloaded TikTok creative does not temporarily null asset_url or video_source_url in CreativeAsset
   2. When SystemConfig.scoring_enabled is false, no asset downloads are initiated for any platform (Meta, TikTok, Google Ads, DV360)
   3. The ON CONFLICT exclusion list in _upsert_records includes asset_url and video_source_url
+**Plans**: 2 plans
+Plans:
+
+**Wave 1**
+- [ ] 19.3-01-PLAN.md — TDD stubs: 4 failing tests (upsert preservation × 2, download gate × 2) — TKTOK-01, TKTOK-02
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 19.3-02-PLAN.md — Add scoring_enabled gate to all 4 _run_*_asset_downloads functions in scheduler.py; run all 4 tests to GREEN — TKTOK-01, TKTOK-02
 **Plans:** 2 plans
 Plans:
 - [ ] 19.3-01-PLAN.md — Wave 1: Write failing test stubs (upsert invariant + scoring_enabled gate)
