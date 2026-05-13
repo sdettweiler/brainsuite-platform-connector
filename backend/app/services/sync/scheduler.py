@@ -467,6 +467,14 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
     import uuid
     import traceback as _tb
 
+    # Auto-download gate — mirrors scoring gate in scoring_job.py:68
+    # download gate mirrors scoring gate: if scoring is disabled, skip asset downloads too
+    async with get_session_factory()() as _gate_db:
+        _system_cfg = (await _gate_db.execute(select(SystemConfig).limit(1))).scalar_one_or_none()
+        if _system_cfg is not None and not _system_cfg.scoring_enabled:
+            logger.info("Auto-download disabled (scoring_enabled=False); skipping Google Ads asset downloads")
+            return
+
     connection = None
     bg_job_id = None
 
@@ -585,8 +593,18 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
 
 async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None) -> None:
     from app.services.sync.meta_sync import meta_sync
+    from app.models.system_config import SystemConfig
+    from sqlalchemy import select
     import uuid
     import traceback as _tb
+
+    # Auto-download gate — mirrors scoring gate in scoring_job.py:68
+    # download gate mirrors scoring gate: if scoring is disabled, skip asset downloads too
+    async with get_session_factory()() as _gate_db:
+        _system_cfg = (await _gate_db.execute(select(SystemConfig).limit(1))).scalar_one_or_none()
+        if _system_cfg is not None and not _system_cfg.scoring_enabled:
+            logger.info("Auto-download disabled (scoring_enabled=False); skipping Meta asset downloads")
+            return
 
     bg_job_id = None
 
@@ -649,8 +667,18 @@ async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None)
 
 async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=None) -> None:
     from app.services.sync.tiktok_sync import tiktok_sync
+    from app.models.system_config import SystemConfig
+    from sqlalchemy import select
     import uuid
     import traceback as _tb
+
+    # Auto-download gate — mirrors scoring gate in scoring_job.py:68
+    # download gate mirrors scoring gate: if scoring is disabled, skip asset downloads too
+    async with get_session_factory()() as _gate_db:
+        _system_cfg = (await _gate_db.execute(select(SystemConfig).limit(1))).scalar_one_or_none()
+        if _system_cfg is not None and not _system_cfg.scoring_enabled:
+            logger.info("Auto-download disabled (scoring_enabled=False); skipping TikTok asset downloads")
+            return
 
     bg_job_id = None
 
@@ -719,6 +747,14 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
     from app.models.system_config import SystemConfig
     import uuid
     import traceback as _tb
+
+    # Auto-download gate — mirrors scoring gate in scoring_job.py:68
+    # download gate mirrors scoring gate: if scoring is disabled, skip asset downloads too
+    async with get_session_factory()() as _gate_db:
+        _system_cfg = (await _gate_db.execute(select(SystemConfig).limit(1))).scalar_one_or_none()
+        if _system_cfg is not None and not _system_cfg.scoring_enabled:
+            logger.info("Auto-download disabled (scoring_enabled=False); skipping DV360 asset downloads")
+            return
 
     connection = None
     bg_job_id = None
