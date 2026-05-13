@@ -94,8 +94,8 @@ async def test_sse_yields_job_update():
     burst_result = MagicMock()
     burst_result.scalars.return_value.all.return_value = []
     mock_db.execute = AsyncMock(return_value=burst_result)
-    # db.get returns the job
-    mock_db.get = AsyncMock(return_value=job)
+    # db.get: first call returns the job (BackgroundJob), second returns None (Organization → org_name=None)
+    mock_db.get = AsyncMock(side_effect=[job, None])
 
     mock_session_factory = MagicMock(return_value=mock_db)
 
@@ -174,7 +174,7 @@ async def test_sse_burst_24h_on_connect():
     mock_db.__aenter__ = AsyncMock(return_value=mock_db)
     mock_db.__aexit__ = AsyncMock(return_value=False)
     burst_result = MagicMock()
-    burst_result.scalars.return_value.all.return_value = [job_a, job_b]
+    burst_result.all.return_value = [(job_a, None), (job_b, None)]
     mock_db.execute = AsyncMock(return_value=burst_result)
     mock_db.get = AsyncMock(return_value=None)
 
