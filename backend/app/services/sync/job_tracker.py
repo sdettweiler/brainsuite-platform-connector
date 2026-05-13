@@ -74,6 +74,7 @@ async def update_background_job(
     progress_total: Optional[int] = None,
     output: Optional[dict] = None,
     error: Optional[dict] = None,
+    metadata: Optional[dict] = None,
 ) -> None:
     """Update an existing BackgroundJob row.
 
@@ -89,6 +90,10 @@ async def update_background_job(
                 Stored as JSONB; SQLAlchemy serialises the Python dict automatically.
         error: Error dict with keys "type", "message", "traceback" (D-13).
                Set only on FAILED status.
+        metadata: Optional dict to MERGE into the existing metadata_ JSONB.
+                  Uses dict spread so existing keys are preserved.
+                  Example: {"brainsuite_job_id": "<str>"} adds one key without
+                  touching asset_id or creative_score_result_id.
     """
     async with get_session_factory()() as db:
         job = await db.get(BackgroundJob, job_id)
@@ -106,6 +111,8 @@ async def update_background_job(
             job.output = output
         if error is not None:
             job.error = error
+        if metadata is not None:
+            job.metadata_ = {**(job.metadata_ or {}), **metadata}
 
         if status in ("COMPLETE", "FAILED"):
             job.ended_at = datetime.utcnow()

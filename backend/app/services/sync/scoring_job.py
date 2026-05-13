@@ -513,6 +513,15 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 score_row.updated_at = datetime.now(timezone.utc)
             await db.commit()
 
+        # Phase 19.2: Store brainsuite_job_id in BackgroundJob.metadata_ so the
+        # References panel in the job detail view can display it (INSTR-05, MON-07).
+        # brainsuite_job_id stays in output too (backward compat — D-08 unchanged).
+        if bg_job_id is not None:
+            await update_background_job(
+                bg_job_id,
+                metadata={"brainsuite_job_id": str(job_id)},
+            )
+
         logger.info("Scoring job submitted for asset %s, job_id=%s endpoint_type=%s", asset_id, job_id, endpoint_type)
 
         if endpoint_type == "VIDEO":
