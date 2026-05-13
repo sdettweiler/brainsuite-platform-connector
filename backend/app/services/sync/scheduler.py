@@ -260,9 +260,6 @@ async def run_daily_sync(connection_id: str) -> None:
             return
 
         if not is_dv360:
-            dv360_asset_queue = result.get("_asset_queue") if platform == "DV360" else None
-            conn_id_for_assets = connection.id if dv360_asset_queue else None
-
             try:
                 harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
 
@@ -1025,9 +1022,6 @@ async def run_full_resync(connection_id: str) -> None:
             return
 
         if not is_dv360 and _token_err is None:
-            dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
-            conn_id_for_assets = connection.id if dv360_asset_queue else None
-
             try:
                 harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.last_synced_at = datetime.utcnow()
@@ -1376,9 +1370,6 @@ async def run_initial_sync(connection_id: str) -> None:
             return
 
         if not is_dv360:
-            dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
-            conn_id_for_assets = connection.id if dv360_asset_queue else None
-
             try:
                 harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.initial_sync_completed = True
@@ -1701,9 +1692,6 @@ async def run_historical_sync(connection_id: str) -> None:
             return
 
         if not is_dv360:
-            dv360_asset_queue = sync_result.get("_asset_queue") if connection.platform == "DV360" else None
-            conn_id_for_assets = connection.id if dv360_asset_queue else None
-
             try:
                 harmonized, new_assets = await _harmonize_with_deadlock_retry(harmonizer, db, connection, date_from, date_to)
                 connection.historical_sync_completed = True
