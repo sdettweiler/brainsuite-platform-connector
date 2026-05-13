@@ -42,10 +42,10 @@ async def test_list_jobs_200():
     # GET /api/v1/jobs superadmin -> 200, list of BackgroundJob rows
     mock_db = AsyncMock()
     mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [_make_job()]
+    mock_result.all.return_value = [(_make_job(), "Test Org")]
     mock_db.execute = AsyncMock(return_value=mock_result)
     mock_user = _make_superuser()
-    result = await list_jobs(db=mock_db, current_user=mock_user)
+    result = await list_jobs(limit=50, offset=0, db=mock_db, current_user=mock_user)
     assert isinstance(result, list)
     assert len(result) == 1
 
@@ -56,10 +56,10 @@ async def test_list_jobs_filter_by_type():
     mock_db = AsyncMock()
     mock_result = MagicMock()
     filtered_job = _make_job(job_type="sync_daily")
-    mock_result.scalars.return_value.all.return_value = [filtered_job]
+    mock_result.all.return_value = [(filtered_job, "Test Org")]
     mock_db.execute = AsyncMock(return_value=mock_result)
     mock_user = _make_superuser()
-    result = await list_jobs(job_type="sync_daily", db=mock_db, current_user=mock_user)
+    result = await list_jobs(job_type="sync_daily", limit=50, offset=0, db=mock_db, current_user=mock_user)
     assert isinstance(result, list)
     assert len(result) == 1
     assert result[0].job_type == "sync_daily"
@@ -71,10 +71,10 @@ async def test_list_jobs_filter_by_status():
     mock_db = AsyncMock()
     mock_result = MagicMock()
     failed_job = _make_job(status="FAILED")
-    mock_result.scalars.return_value.all.return_value = [failed_job]
+    mock_result.all.return_value = [(failed_job, "Test Org")]
     mock_db.execute = AsyncMock(return_value=mock_result)
     mock_user = _make_superuser()
-    result = await list_jobs(status="FAILED", db=mock_db, current_user=mock_user)
+    result = await list_jobs(status="FAILED", limit=50, offset=0, db=mock_db, current_user=mock_user)
     assert isinstance(result, list)
     assert len(result) == 1
     assert result[0].status == "FAILED"
@@ -85,7 +85,7 @@ async def test_list_jobs_pagination():
     # GET /api/v1/jobs?limit=2&offset=0 -> verify limit/offset passed to query (execute called once)
     mock_db = AsyncMock()
     mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [_make_job(), _make_job()]
+    mock_result.all.return_value = [(_make_job(), "Org A"), (_make_job(), "Org B")]
     mock_db.execute = AsyncMock(return_value=mock_result)
     mock_user = _make_superuser()
     result = await list_jobs(limit=2, offset=0, db=mock_db, current_user=mock_user)
@@ -95,15 +95,20 @@ async def test_list_jobs_pagination():
 
 @pytest.mark.asyncio
 async def test_get_job_detail_200():
-    # GET /api/v1/jobs/{id} superadmin -> BackgroundJob with output and error attributes present
+    # GET /api/v1/jobs/{id} superadmin -> JobDetail schema with output and error fields
     job = _make_job()
+    job.platform_connection_id = None  # skip connection lookup
+    org_mock = MagicMock()
+    org_mock.name = "Test Org"
     mock_db = AsyncMock()
-    mock_db.get = AsyncMock(return_value=job)
+    mock_db.get = AsyncMock(side_effect=[job, org_mock])
     mock_user = _make_superuser()
+    from app.schemas.jobs import JobDetail
     result = await get_job(job_id=job.id, db=mock_db, current_user=mock_user)
-    assert result is job
-    assert hasattr(result, "output")
-    assert hasattr(result, "error")
+    assert isinstance(result, JobDetail)
+    assert result.job_type == job.job_type
+    assert result.output == job.output
+    assert result.error is None
 
 
 @pytest.mark.asyncio
