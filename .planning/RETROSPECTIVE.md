@@ -83,6 +83,50 @@
 
 ---
 
+---
+
+## Milestone: v1.3 — SuperAdmin Monitoring & TikTok Downloads
+
+**Shipped:** 2026-05-13
+**Phases:** 8 (Phases 15–19.3) | **Plans:** 23
+
+### What Was Built
+
+1. TikTok video and image asset download pipeline to MinIO/S3, closing the gap that blocked AI autofill and BrainSuite scoring for TikTok creatives (Phase 15)
+2. PostgreSQL `background_jobs` table with autovacuum tuning, composite indexes, and 30-day nightly cleanup via APScheduler (Phase 16)
+3. `job_tracker.py` helper module wiring all 4 job types (sync, download, autofill, scoring) to structured BackgroundJob records with real-time progress and JSONB output (Phase 17)
+4. SSE real-time transport: FastAPI streaming endpoint with Redis pub/sub, 30s keepalive heartbeat, SuperAdmin JWT guard, and clean client-disconnect lifecycle (Phase 18)
+5. SuperAdmin monitoring UI at /configuration/jobs: 4-tab OnPush job table, SSE-fed live progress bars, slide-in detail panels with type-specific drill-ins — Gemini output, download manifests, error tracebacks (10KB truncated), per-asset scores (Phase 19)
+6. Three audit-driven gap-closure phases (19.1, 19.2, 19.3): null-token SSE race fix + EventSource leak, brainsuite_job_id moved to metadata_ for References panel, asset_url/video_source_url protected in ON CONFLICT exclusion, scoring_enabled gate enforced on all 4 platform download functions
+
+### What Worked
+
+- **TDD red-green pattern throughout** — Wave 0 test stubs written before implementation in every phase; all 4 gap-closure tests were RED baseline before Wave 2 fixed them to GREEN. Zero regression surprises at verification.
+- **Decimal phase gap-closure pattern** — Inserting Phases 19.1, 19.2, 19.3 post-audit kept the main phase sequence intact, gave each gap its own plan/verify cycle, and produced clean commit history. The pattern is worth preserving for v1.4.
+- **Milestone audit as insertion trigger** — Running a formal audit before declaring complete surfaced 3 categories of gaps that would have shipped as silent defects. Audit-to-insertion workflow is now a validated pattern.
+- **Brownfield E2E flow tracing** — Documenting the full data path (scheduler.py line 169 → job_tracker → Redis PUBLISH → SSE generator → Angular NgZone) before executing prevented integration bugs at every phase boundary.
+
+### What Was Inefficient
+
+- **3 inserted gap-closure phases** — The milestone audit found gaps requiring 3 extra phases (19.1, 19.2, 19.3), each with its own plan/execute/verify cycle. Total overhead: ~6 additional plans over 1 day. Root cause: Phase 17 and 19 original plans did not cross-check the full References panel contract end-to-end before marking complete.
+- **REQUIREMENTS.md checkbox staleness** — All 16 v1.3 requirement checkboxes remained `[ ] Pending` throughout execution because the CLI traceability table was never wired to phase completion. Had to be explicitly noted in the audit as "stale — all implemented." Requires a workflow fix.
+- **sse-starlette version mismatch** — requirements.txt pinned 1.8.2 while the milestone spec stated 3.4.2; the discrepancy was only caught by the audit, not during Phase 18 execution. API compatibility happened to hold but it's a latent risk.
+
+### Patterns Established
+
+- **Audit-before-close as a milestone gate** — Running `gsd-audit-milestone` before declaring complete and treating findings as insertion candidates (not just notes) is the right pattern. Prevents silent tech debt at ship.
+- **Decimal phases for post-audit gap closure** — 19.1/19.2/19.3 proved cleaner than amending original phases. Each decimal phase is independently verifiable and revertable.
+- **Job tracker session-per-operation** — `create_background_job` and `update_background_job` open and close their own sessions; never share a session with the calling service. Consistent with the v1.2 pattern — no cross-concern session sharing.
+
+### Key Lessons
+
+1. Before marking a phase complete, verify the full end-to-end display path for any metadata field that is both written by backend and read by frontend. The brainsuite_job_id gap (output vs metadata_) would have been caught in Phase 17/19 if the References panel contract had been traced end-to-end.
+2. REQUIREMENTS.md traceability checkboxes need to be updated in the same plan that validates the requirement — not deferred to a later cleanup pass. Stale checkboxes erode audit confidence.
+3. Pin third-party packages to the exact version specified in the milestone spec (sse-starlette 3.4.2, not 1.8.2). Version drift is only caught by the audit, not by unit tests.
+4. The milestone audit pattern (audit → classify gaps → insert decimal phases) adds ~15–20% time overhead but prevents silent defects. The overhead is worth it.
+
+---
+
 ## Cross-Milestone Trends
 
 | Milestone | Phases | Plans | Days | Files | LOC Added |
@@ -90,3 +134,4 @@
 | v1.0 MVP | 4 | 19 | 34 | 276 | ~52,000 |
 | v1.1 Insights + Intelligence | 6 | 14 | 21 | 329 | ~23,842 |
 | v1.2 BrainSuite Configuration | 4 | 13 | 13 | 123 | ~21,240 |
+| v1.3 SuperAdmin Monitoring & TikTok | 8 | 23 | 6 | — | ~15,000 |

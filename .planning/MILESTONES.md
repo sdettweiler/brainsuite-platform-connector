@@ -1,5 +1,23 @@
 # Milestones
 
+## v1.3 — SuperAdmin Monitoring & TikTok Downloads
+**Shipped:** 2026-05-13
+**Phases:** 15–19.3 (8 phases, 23 plans)
+**Known deferred items at close:** 6 (see STATE.md Deferred Items)
+
+### Delivered
+
+- TikTok video and image asset download pipeline (MinIO/S3) — unblocks AI autofill + scoring for TikTok creatives
+- PostgreSQL `background_jobs` table with autovacuum tuning and 30-day cleanup job
+- Full service instrumentation across all 4 job types (sync, download, autofill, scoring) with Redis pub/sub
+- SSE real-time transport — FastAPI streaming endpoint with 30s keepalive heartbeat and connection lifecycle management
+- SuperAdmin monitoring UI at /configuration/jobs — 4-tab job table, real-time progress bars, drill-in detail panels (full Gemini output, download manifests, error tracebacks, per-asset scores)
+- Gap closures: null-token SSE race fix, brainsuite_job_id moved to metadata_ (References panel), asset_url upsert exclusion + scoring_enabled gate on all download functions
+
+**Archive:** [v1.3-ROADMAP.md](milestones/v1.3-ROADMAP.md) | [v1.3-REQUIREMENTS.md](milestones/v1.3-REQUIREMENTS.md) | [v1.3-MILESTONE-AUDIT.md](milestones/v1.3-MILESTONE-AUDIT.md)
+
+---
+
 ## v1.2 BrainSuite Configuration (Shipped: 2026-04-28)
 
 **Phases completed:** 4 phases, 13 plans

@@ -8,28 +8,23 @@ A production-ready multi-tenant SaaS platform that connects Meta, TikTok, Google
 
 A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
 
-## Current Milestone: v1.3 SuperAdmin Monitoring & TikTok Downloads
+## Current Milestone: v1.4 (planning)
 
-**Goal:** A SuperAdmin can see every background job running on the platform in real time — sync runs, asset downloads, AI autofills, scoring — with progress bars, drill-in detail views, and full error tracebacks; TikTok asset download gap is also closed.
-
-**Target features:**
-- TikTok asset download to MinIO/S3 during sync (gap closure — unblocks AI autofill + BrainSuite scoring for TikTok)
-- PostgreSQL job persistence layer (`background_jobs` table) — all job types instrumented: sync, download, autofill, scoring
-- SSE real-time transport — FastAPI streaming endpoint pushing job updates to browser
-- SuperAdmin monitoring UI at `/configuration/admin` — active/recent jobs grouped by type, per-sync-run progress bars, drill-in panel (full Gemini output, download manifests, error tracebacks, asset links)
+**Status:** v1.3 shipped 2026-05-13. Planning v1.4.
 
 ## Current State
 
-**Version:** v1.3 — in progress (started 2026-05-07)
+**Version:** v1.3 — shipped 2026-05-13
 
 **Stack:** Angular 17 + FastAPI + PostgreSQL + Redis + MinIO — fully containerized via Docker Compose
 **Deployment:** Any cloud host or local dev via `docker-compose up`
-**LOC:** ~52,000 (v1.0) + ~23,842 net (v1.1) + ~21,240 net additions across 123 files (v1.2)
+**LOC:** ~52,000 (v1.0) + ~23,842 net (v1.1) + ~21,240 net (v1.2) + ~15,000 net (v1.3)
 
 **What works:**
 - Multi-tenant organization with RBAC
 - OAuth connection + background sync for Meta, TikTok, Google Ads, DV360
 - Creative asset storage via S3-compatible storage (MinIO local / S3 production)
+- TikTok video and image asset download to MinIO/S3 — unblocks AI autofill + BrainSuite scoring for TikTok creatives
 - Automatic BrainSuite scoring pipeline (15-min scheduler) — video AND image creatives
 - Image scoring via BrainSuite Static API with `ScoringEndpointType` lookup; UNSUPPORTED badge for non-Meta platforms
 - Admin backfill endpoint to score all pre-v1.1 unscored assets
@@ -41,6 +36,10 @@ A user can connect all their ad accounts, see every creative's performance metri
 - BrainSuite Settings UI: masked secret, Test Connection live auth check, `system_app_name` accordion per app, re-score dialog on config change
 - Field mapping editor (slide panel): standard + custom API fields per app type, mandatory flag, D-06 auto-match, FMAP-07 pipeline guard
 - `SystemConfig` singleton table with Fernet-encrypted YouTube cookie slots; SuperAdmin role + JWT claim + `/configuration/admin` UI; `dv360_sync.py` reads cookies from DB (env var fallback); `COOKIE_FAILED` notification broadcast to SuperAdmins
+- PostgreSQL `background_jobs` persistence layer with autovacuum tuning and 30-day cleanup
+- Full service instrumentation: sync, download, autofill, scoring all write job records with real-time progress via Redis pub/sub
+- SSE real-time transport (`/api/v1/jobs/stream`) with 30s keepalive heartbeat and clean connection lifecycle management
+- SuperAdmin monitoring UI at /configuration/jobs — 4-tab job table, real-time SSE progress bars, drill-in detail panels (full Gemini output, download manifests, error tracebacks, per-asset scores)
 
 **Known tech debt:**
 - Performer badge minimum guard is 3 assets (requirement: 10) — minor threshold mismatch
@@ -80,10 +79,19 @@ A user can connect all their ad accounts, see every creative's performance metri
 - ✓ Credentials + app name settings UI — v1.2 (Phase 12)
 - ✓ Field mapping editor + mandatory field enforcement (FMAP-01–07, PIPE-02–03) — v1.2 (Phase 13)
 - ✓ YouTube/DV360 cookie DB storage + SuperAdmin UI + COOKIE_FAILED notifications — v1.2 (Phase 14)
+- ✓ TikTok video asset download to MinIO/S3 (TKTOK-01) — v1.3 (Phase 15)
+- ✓ TikTok image asset download to MinIO/S3 (TKTOK-02) — v1.3 (Phase 15)
+- ✓ PostgreSQL background_jobs persistence layer with autovacuum (JOBS-01, JOBS-02) — v1.3 (Phase 16)
+- ✓ Service instrumentation — all 4 job types instrumented with real-time progress (INSTR-01–05) — v1.3 (Phase 17)
+- ✓ SSE real-time transport with keepalive + connection lifecycle (SSE-01, SSE-02) — v1.3 (Phase 18)
+- ✓ SuperAdmin monitoring UI at /configuration/jobs — 4-tab job table, drill-in panels, error tracebacks (MON-01–07) — v1.3 (Phase 19)
 
-### Active
+### Active (v1.4 candidates)
 
-*(v1.3 requirements being defined — see REQUIREMENTS.md once generated)*
+- TikTok live-run UAT confirmation (TKTOK-01/02 — pending live sync)
+- SSE Redis pub/sub upgrade at 50+ concurrent SuperAdmins (SSE-03)
+- Account-level metadata defaults: connection_metadata_defaults table + account config UI + lookup fallback (META-01, META-02)
+- Alembic migration 4-head merge (cross-phase tech debt — fresh install ambiguity)
 
 ### Out of Scope
 
@@ -137,6 +145,11 @@ A user can connect all their ad accounts, see every creative's performance metri
 | Text (not String) for YouTube cookie columns | Cookies are multi-KB; String(1000) would overflow | ✓ Good |
 | _do_download_with_cookies accepts string not env var | Eliminates os.environ.get inside executor — no accidental cookie logging (T-14-10) | ✓ Good |
 | COOKIE_FAILED only when cookies list non-empty | Cookieless download is normal fallback, not an error state (D-12/D-13) | ✓ Good |
+| SyncJob preserved alongside BackgroundJob | Backward compatibility — existing sync state machine unchanged; only new job types write to BackgroundJob (v1.3) | ✓ Good |
+| SSE transport uses DB polling, not Redis pub/sub | Sufficient at v1.3 scale (1–3 concurrent SuperAdmins); defer Redis pub/sub to v1.4 at 50+ concurrent users (SSE-03) | ✓ Good |
+| brainsuite_job_id written to metadata_ (not output) | Ensures References panel displays it alongside sync_job_id; consistent KNOWN_EXTERNAL_ID_KEYS contract (v1.3 gap closure) | ✓ Good |
+| asset_url/video_source_url in ON CONFLICT exclusion | Prevents null window during TikTok re-sync — S3-stored URL preserved across upserts (v1.3 gap closure) | ✓ Good |
+| scoring_enabled gate on all 4 download functions | SystemConfig.scoring_enabled=false suppresses downloads on all platforms uniformly (v1.3 gap closure) | ✓ Good |
 
 ## Evolution
 
@@ -154,4 +167,4 @@ A user can connect all their ad accounts, see every creative's performance metri
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-13 — Phase 19.2 complete: brainsuite_job_id written to BackgroundJob.metadata_ so References panel displays it; platform_sync_run_id removed from KNOWN_EXTERNAL_ID_KEYS*
+*Last updated: 2026-05-13 — v1.3 milestone complete*
