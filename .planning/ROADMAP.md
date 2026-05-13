@@ -187,7 +187,7 @@ Plans:
 - [x] 19.2-01-PLAN.md — Add metadata merge to update_background_job + call with brainsuite_job_id after BrainSuite API returns; remove platform_sync_run_id from KNOWN_EXTERNAL_ID_KEYS; update test assertion (INSTR-05, MON-07)
 **Plans**: 1 plan
 Plans:
-- [ ] 19.2-01-PLAN.md — Add metadata_ brainsuite_job_id update to job_tracker + scoring_job; remove platform_sync_run_id from frontend constant; update test assertion
+- [x] 19.2-01-PLAN.md — Add metadata_ brainsuite_job_id update to job_tracker + scoring_job; remove platform_sync_run_id from frontend constant; update test assertion
 
 ### Phase 19.3: Close gap: Phase 15 (INSERTED)
 **Goal**: TikTok asset_url and video_source_url are protected from null during re-sync; asset download respects SystemConfig.scoring_enabled across all platforms
@@ -234,5 +234,5 @@ Plans:
 | 18. SSE Transport | v1.3 | 2/2 | Complete | 2026-05-11 |
 | 19. SuperAdmin Monitoring UI | v1.3 | 6/6 | Complete   | 2026-05-11 |
 | 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
-| 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete   | 2026-05-13 |
+| 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete    | 2026-05-13 |
 | 19.3. Close gap: Phase 15 | v1.3 | 0/2 | Ready to execute | |
