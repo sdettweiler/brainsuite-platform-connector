@@ -312,6 +312,9 @@ async def get_job(
     )
 
 
+_PROTECTED_STATUSES = {"RUNNING", "PENDING"}
+
+
 @router.delete("", status_code=204, response_class=Response)
 async def delete_jobs(
     job_type: str = Query(...),
@@ -320,6 +323,11 @@ async def delete_jobs(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     """Bulk delete background jobs by type + status (SuperAdmin only). Returns 204."""
+    if status in _PROTECTED_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot bulk-delete jobs with status '{status}'. Only COMPLETE and FAILED are permitted.",
+        )
     await db.execute(
         delete(BackgroundJob).where(
             BackgroundJob.job_type == job_type,

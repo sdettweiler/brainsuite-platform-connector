@@ -56,9 +56,13 @@ export class JobMonitorService implements OnDestroy {
 
     this.eventSource.addEventListener('job_update', (event: MessageEvent) => {
       this.ngZone.run(() => {
-        const job: JobSnapshot = JSON.parse(event.data);
-        this.jobMap.set(job.job_id, job);
-        this.jobsSubject.next(Array.from(this.jobMap.values()));
+        try {
+          const job: JobSnapshot = JSON.parse(event.data);
+          this.jobMap.set(job.job_id, job);
+          this.jobsSubject.next(Array.from(this.jobMap.values()));
+        } catch {
+          // Malformed SSE frame — discard silently; connection remains open.
+        }
       });
     });
 
@@ -85,8 +89,8 @@ export class JobMonitorService implements OnDestroy {
 
   getJobs(jobType?: string, status?: string, limit = 50, offset = 0): Observable<JobSnapshot[]> {
     let path = `/jobs?limit=${limit}&offset=${offset}`;
-    if (jobType) { path += `&job_type=${jobType}`; }
-    if (status) { path += `&status=${status}`; }
+    if (jobType) { path += `&job_type=${encodeURIComponent(jobType)}`; }
+    if (status) { path += `&status=${encodeURIComponent(status)}`; }
     return this.api.get<JobSnapshot[]>(path);
   }
 

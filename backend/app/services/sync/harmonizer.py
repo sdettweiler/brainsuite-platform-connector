@@ -371,7 +371,7 @@ class HarmonizationService:
                     ad_account_id=raw.ad_account_id,
                     asset_format=raw.ad_format,
                     thumbnail_url=raw.thumbnail_url,
-                    asset_url=raw.creative_url or raw.asset_url,
+                    asset_url=raw.asset_url or raw.creative_url,
                     first_seen_at=raw.report_date,
                     is_creator_content=raw.is_spark_ad if raw.is_spark_ad is not None else None,
                     content_source="SPARK" if raw.is_spark_ad else None,
