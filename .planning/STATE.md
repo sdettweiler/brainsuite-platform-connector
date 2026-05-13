@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: SuperAdmin Monitoring & TikTok Downloads
-status: completed
-stopped_at: context exhaustion at 76% (2026-05-12)
-last_updated: "2026-05-12T15:55:02.378Z"
-last_activity: 2026-05-12 -- Phase 19 UAT complete
+status: in_progress
+stopped_at: ~
+last_updated: "2026-05-13T13:00:00.000Z"
+last_activity: 2026-05-13 -- Phase 19.1 executed, human UAT pending
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 5
   total_plans: 19
   completed_plans: 19
-  percent: 100
+  percent: 83
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-07 — v1.3 milestone started)
 
 ## Current Position
 
-Phase: 19 (SuperAdmin Monitoring UI) — COMPLETE
-Status: All phases done; v1.3 milestone complete
-Last activity: 2026-05-12 -- Phase 19 UAT complete
+Phase: 19.1 (Close gap: BLOCKER-02+03) — COMPLETE
+Status: 1/1 plans done — human UAT pending (SSE browser smoke test)
+Last activity: 2026-05-13 -- Phase 19.1 executed and verified (static)
 
 ```
 v1.3 Progress: [██████████] 5/5 phases complete
@@ -40,6 +40,7 @@ v1.3 Progress: [██████████] 5/5 phases complete
 | 17 | Service Instrumentation | INSTR-01–05 | ✅ Complete (2026-05-11) |
 | 18 | SSE Transport | SSE-01, SSE-02 | ✅ Complete (2026-05-11) |
 | 19 | SuperAdmin Monitoring UI | MON-01–07 | ✅ Complete (2026-05-12) |
+| 19.1 | Close gap: BLOCKER-02+03 | SSE-01, SSE-02 | ✅ Complete (2026-05-13) |
 
 ## Accumulated Context
 
@@ -50,6 +51,10 @@ v1.3 Progress: [██████████] 5/5 phases complete
 - `SyncJob` model preserved for backward compatibility; new job types write only to `BackgroundJob`
 - SSE transport uses DB polling (no Redis pub/sub) — sufficient at v1.3 scale; defer Redis to v1.4 at 50+ SuperAdmins
 
+### Roadmap Evolution
+
+- Phase 19.1 (URGENT) inserted after Phase 19 on 2026-05-13 — milestone audit found 2 SSE blockers (null token race + EventSource leak) blocking SSE-01/SSE-02/MON-01/MON-02
+
 ### Blockers/Concerns
 
 - Injection points in `scoring_job.py` and `ai_autofill.py` confirmed by Phase 17 research; safe to execute
@@ -58,6 +63,6 @@ v1.3 Progress: [██████████] 5/5 phases complete
 
 ## Session Continuity
 
-Last session: 2026-05-12T15:55:02.368Z
-Stopped at: context exhaustion at 76% (2026-05-12)
+Last session: 2026-05-13T09:23:35.083Z
+Stopped at: context exhaustion at 75% (2026-05-13)
 Resume file: None

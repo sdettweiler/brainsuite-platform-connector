@@ -50,6 +50,7 @@
 - [x] **Phase 17: Service Instrumentation** - Wire all four job types (sync, download, autofill, scoring) to write job records with progress (complete 2026-05-11)
 - [x] **Phase 18: SSE Transport** - FastAPI streaming endpoint with keepalive heartbeats and connection lifecycle management (complete 2026-05-11)
 - [x] **Phase 19: SuperAdmin Monitoring UI** - Angular job monitor at /configuration/jobs with real-time updates and drill-in detail panels (completed 2026-05-11)
+- [x] **Phase 19.1: Close gap: BLOCKER-02+03** — null token race + EventSource leak in job-monitor.service.ts (complete 2026-05-13)
 
 ## Phase Details
 
@@ -160,6 +161,15 @@ Plans:
 **Wave 4** *(blocked on 19-05)*
 - [x] 19-06-PLAN.md — Job detail panel (slide-in, type-specific drill-ins, error traceback, copy buttons) — MON-03, MON-04, MON-05, MON-06, MON-07
 
+### Phase 19.1: Close gap: BLOCKER-02+03 (INSERTED)
+**Goal**: Fix null token race and EventSource leak in job-monitor.service.ts so that the SSE connection to /configuration/jobs reliably establishes on page load and does not leak server-side pubsub subscriptions
+**Depends on**: Phase 19
+**Requirements**: SSE-01, SSE-02
+**Success Criteria** (what must be TRUE):
+  1. Navigating to /configuration/jobs always shows "Live" SSE badge (no permanent "Disconnected" due to null token on first load)
+  2. The reconnectAttempts counter resets after a successful reconnect
+  3. No duplicate server-side pubsub subscriptions accumulate when connect() is called more than once per component lifecycle
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -183,3 +193,4 @@ Plans:
 | 17. Service Instrumentation | v1.3 | 6/6 | Complete | 2026-05-11 |
 | 18. SSE Transport | v1.3 | 2/2 | Complete | 2026-05-11 |
 | 19. SuperAdmin Monitoring UI | v1.3 | 6/6 | Complete   | 2026-05-11 |
+| 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
