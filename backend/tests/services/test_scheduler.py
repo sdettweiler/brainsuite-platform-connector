@@ -89,9 +89,13 @@ async def test_downloads_skipped_when_scoring_disabled():
     # scalar_one_or_none() is synchronous in SQLAlchemy — use MagicMock not AsyncMock
     mock_scalar.scalar_one_or_none = MagicMock(return_value=mock_cfg)
 
+    # Separate the session (yielded value) from the context manager wrapper to
+    # avoid self-referential mock anti-pattern (WR-02).
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_scalar)
+
     mock_db = AsyncMock()
-    mock_db.execute = AsyncMock(return_value=mock_scalar)
-    mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_db.__aenter__ = AsyncMock(return_value=mock_session)
     mock_db.__aexit__ = AsyncMock(return_value=False)
 
     # get_session_factory()() is the session context manager — mock_session_factory() returns mock_db
