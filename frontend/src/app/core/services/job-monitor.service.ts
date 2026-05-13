@@ -39,6 +39,7 @@ export class JobMonitorService implements OnDestroy {
     // BLOCKER-03: close any existing EventSource before opening a new one.
     // Must be FIRST so that a null-token early return still closes the old connection.
     this.eventSource?.close();
+    this.eventSource = null;
 
     // BLOCKER-02: guard against null token (token expiry, clearJobs reconnect, test bypass).
     const token = this.authService.getAccessToken();
