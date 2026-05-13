@@ -86,14 +86,16 @@ async def test_downloads_skipped_when_scoring_disabled():
     mock_cfg.scoring_enabled = False
 
     mock_scalar = MagicMock()
-    mock_scalar.scalar_one_or_none = AsyncMock(return_value=mock_cfg)
+    # scalar_one_or_none() is synchronous in SQLAlchemy — use MagicMock not AsyncMock
+    mock_scalar.scalar_one_or_none = MagicMock(return_value=mock_cfg)
 
     mock_db = AsyncMock()
     mock_db.execute = AsyncMock(return_value=mock_scalar)
     mock_db.__aenter__ = AsyncMock(return_value=mock_db)
     mock_db.__aexit__ = AsyncMock(return_value=False)
 
-    mock_session_factory = MagicMock(return_value=MagicMock(return_value=mock_db))
+    # get_session_factory()() is the session context manager — mock_session_factory() returns mock_db
+    mock_session_factory = MagicMock(return_value=mock_db)
 
     with patch("app.services.sync.scheduler.get_session_factory", return_value=mock_session_factory), \
          patch("app.services.sync.scheduler.create_background_job", new_callable=AsyncMock) as mock_create_job:
@@ -126,14 +128,16 @@ async def test_downloads_proceed_when_scoring_enabled():
     mock_cfg.scoring_enabled = True
 
     mock_scalar = MagicMock()
-    mock_scalar.scalar_one_or_none = AsyncMock(return_value=mock_cfg)
+    # scalar_one_or_none() is synchronous in SQLAlchemy — use MagicMock not AsyncMock
+    mock_scalar.scalar_one_or_none = MagicMock(return_value=mock_cfg)
 
     mock_db = AsyncMock()
     mock_db.execute = AsyncMock(return_value=mock_scalar)
     mock_db.__aenter__ = AsyncMock(return_value=mock_db)
     mock_db.__aexit__ = AsyncMock(return_value=False)
 
-    mock_session_factory = MagicMock(return_value=MagicMock(return_value=mock_db))
+    # get_session_factory()() is the session context manager — mock_session_factory() returns mock_db
+    mock_session_factory = MagicMock(return_value=mock_db)
 
     with patch("app.services.sync.scheduler.get_session_factory", return_value=mock_session_factory), \
          patch("app.services.sync.scheduler.create_background_job", new_callable=AsyncMock) as mock_create_job, \
