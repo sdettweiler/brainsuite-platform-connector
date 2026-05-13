@@ -60,3 +60,96 @@ async def test_cleanup_job_registration():
     fields = {f.name: str(f) for f in trigger.fields}
     assert fields.get("hour") == "3", f"Expected hour=3, got: {fields.get('hour')}"
     assert fields.get("minute") == "0", f"Expected minute=0, got: {fields.get('minute')}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 19.3 (TDD RED): scoring_enabled gate tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_downloads_skipped_when_scoring_disabled():
+    """All 4 platform download functions must return early when SystemConfig.scoring_enabled=False.
+
+    RED baseline: before Wave 2 adds the scoring_enabled gate, create_background_job IS called
+    for meta/tiktok deferred functions (which have no connection lookup before the job create).
+    This test therefore FAILS before Wave 2 — confirming the gate is absent.
+    """
+    from app.services.sync.scheduler import (
+        _run_google_ads_asset_downloads,
+        _run_dv360_asset_downloads,
+        _run_tiktok_creatives_deferred,
+        _run_meta_creatives_deferred,
+    )
+
+    # mock_cfg simulates SystemConfig(scoring_enabled=False)
+    mock_cfg = MagicMock()
+    mock_cfg.scoring_enabled = False
+
+    mock_scalar = MagicMock()
+    # scalar_one_or_none() is synchronous in SQLAlchemy — use MagicMock not AsyncMock
+    mock_scalar.scalar_one_or_none = MagicMock(return_value=mock_cfg)
+
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(return_value=mock_scalar)
+    mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_db.__aexit__ = AsyncMock(return_value=False)
+
+    # get_session_factory()() is the session context manager — mock_session_factory() returns mock_db
+    mock_session_factory = MagicMock(return_value=mock_db)
+
+    with patch("app.services.sync.scheduler.get_session_factory", return_value=mock_session_factory), \
+         patch("app.services.sync.scheduler.create_background_job", new_callable=AsyncMock) as mock_create_job:
+
+        await _run_google_ads_asset_downloads("00000000-0000-0000-0000-000000000001", {})
+        await _run_dv360_asset_downloads("00000000-0000-0000-0000-000000000001", {"queue": {}})
+        await _run_tiktok_creatives_deferred("00000000-0000-0000-0000-000000000001", [])
+        await _run_meta_creatives_deferred("00000000-0000-0000-0000-000000000001", [])
+
+        assert mock_create_job.call_count == 0, (
+            f"create_background_job was called {mock_create_job.call_count} time(s) "
+            "despite scoring_enabled=False — scoring_enabled gate is missing in download functions!"
+        )
+
+
+@pytest.mark.asyncio
+async def test_downloads_proceed_when_scoring_enabled():
+    """Download functions must NOT return early when SystemConfig.scoring_enabled=True.
+
+    This test verifies the normal path is not broken after Wave 2 adds the gate.
+    We use _run_meta_creatives_deferred (no connection lookup before job creation) so
+    the test is not sensitive to connection-lookup mocking complexity.
+
+    Pre-Wave 2: passes trivially (no gate → create_background_job always called with empty ad_ids=0).
+    Post-Wave 2 with scoring_enabled=True: gate allows through → still called.
+    """
+    from app.services.sync.scheduler import _run_meta_creatives_deferred
+
+    mock_cfg = MagicMock()
+    mock_cfg.scoring_enabled = True
+
+    mock_scalar = MagicMock()
+    # scalar_one_or_none() is synchronous in SQLAlchemy — use MagicMock not AsyncMock
+    mock_scalar.scalar_one_or_none = MagicMock(return_value=mock_cfg)
+
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(return_value=mock_scalar)
+    mock_db.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_db.__aexit__ = AsyncMock(return_value=False)
+
+    # get_session_factory()() is the session context manager — mock_session_factory() returns mock_db
+    mock_session_factory = MagicMock(return_value=mock_db)
+
+    with patch("app.services.sync.scheduler.get_session_factory", return_value=mock_session_factory), \
+         patch("app.services.sync.scheduler.create_background_job", new_callable=AsyncMock) as mock_create_job, \
+         patch("app.services.sync.scheduler.update_background_job", new_callable=AsyncMock):
+
+        # scoring_enabled=True — function must NOT return early before creating the job
+        try:
+            await _run_meta_creatives_deferred("00000000-0000-0000-0000-000000000001", [])
+        except Exception:
+            pass  # downstream failures OK; early return before job creation is NOT
+
+        assert mock_create_job.call_count >= 1, (
+            "create_background_job was never called with scoring_enabled=True — "
+            "gate incorrectly blocks when scoring is enabled!"
+        )

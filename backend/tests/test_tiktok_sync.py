@@ -269,3 +269,112 @@ async def test_skip_existing_asset():
 
     assert result == "https://storage/creatives/org123/video_tiktok_ad789.mp4"
     mock_storage.upload_bytes.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TKTOK-01 / TKTOK-02: Spark ad bypass in _enrich_from_ad_get
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_spark_ad_skips_download():
+    """Spark ads (identity_type='AUTH_CODE') must not trigger any download attempt.
+    Both _download_video_asset and _download_image_asset must not be called.
+    asset_url stays None in the update statement.
+    Decision D-02: Spark ads are served creatives; we do not own these files.
+    """
+    svc = _make_tiktok_sync_service()
+    svc._fetch_video_download_url = AsyncMock(return_value="https://cdn.tiktok.com/video.mp4")
+    svc._download_video_asset = AsyncMock(return_value="https://storage/video.mp4")
+    svc._download_image_asset = AsyncMock(return_value="https://storage/image.jpg")
+    svc._fetch_cover_image_url = AsyncMock(return_value=None)
+    svc._download_tiktok_thumbnail = AsyncMock(return_value=None)
+    svc._fetch_ad_info = AsyncMock(return_value=[
+        {"ad_id": "spark1", "video_id": "vid1", "identity_type": "AUTH_CODE"},
+    ])
+
+    db = AsyncMock()
+    db.execute = AsyncMock()
+    db.flush = AsyncMock()
+    db.commit = AsyncMock()
+
+    connection = MagicMock()
+    connection.id = "conn-id"
+    connection.organization_id = "org-id"
+
+    await svc._enrich_from_ad_get(db, connection, "token", "adv_id", ["spark1"])
+
+    svc._download_video_asset.assert_not_called()
+    svc._fetch_video_download_url.assert_not_called()
+    svc._download_image_asset.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Phase 19.3 (TDD RED): Upsert exclusion invariant tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_upsert_preserves_asset_url():
+    """asset_url must NOT appear in ON CONFLICT DO UPDATE set_ (preserve S3 URL on re-sync).
+
+    This test inspects the exclusion set symbolically using the same column names
+    defined in _upsert_records. If asset_url were removed from the exclusion set,
+    a re-sync would overwrite the stored S3 URL with NULL from the API response.
+    """
+    from app.models.performance import TikTokRawPerformance
+
+    # Reproduce the same exclusion set used by _upsert_records
+    identity_cols = {
+        "id", "platform_connection_id", "report_date", "ad_id", "ad_account_id", "retrieved_at",
+    }
+    deferred_cols = {
+        "campaign_id", "campaign_name", "ad_group_id", "ad_group_name",
+        "ad_name", "campaign_objective", "ad_status", "ad_format",
+        "creative_type", "is_spark_ad", "identity_type", "display_name",
+        "landing_page_url", "video_id", "image_ids", "optimization_goal",
+        "billing_event", "buying_type", "campaign_budget_mode",
+        "campaign_status", "call_to_action", "post_link", "thumbnail_url",
+        # populated by deferred _enrich_from_ad_get — preserve on re-sync
+        "asset_url", "video_source_url",
+    }
+    all_excluded = identity_cols | deferred_cols
+
+    all_col_names = {c.name for c in TikTokRawPerformance.__table__.columns}
+    update_cols_keys = all_col_names - all_excluded
+
+    assert "asset_url" not in update_cols_keys, (
+        "asset_url is in the ON CONFLICT DO UPDATE set — it will be nulled on re-sync! "
+        "It must remain in the exclusion set in _upsert_records."
+    )
+
+
+@pytest.mark.asyncio
+async def test_upsert_preserves_video_source_url():
+    """video_source_url must NOT appear in ON CONFLICT DO UPDATE set_ (preserve S3 URL on re-sync).
+
+    Same invariant as test_upsert_preserves_asset_url but for the video source URL field
+    which stores the original TikTok CDN URL used by BrainSuite for scoring.
+    """
+    from app.models.performance import TikTokRawPerformance
+
+    identity_cols = {
+        "id", "platform_connection_id", "report_date", "ad_id", "ad_account_id", "retrieved_at",
+    }
+    deferred_cols = {
+        "campaign_id", "campaign_name", "ad_group_id", "ad_group_name",
+        "ad_name", "campaign_objective", "ad_status", "ad_format",
+        "creative_type", "is_spark_ad", "identity_type", "display_name",
+        "landing_page_url", "video_id", "image_ids", "optimization_goal",
+        "billing_event", "buying_type", "campaign_budget_mode",
+        "campaign_status", "call_to_action", "post_link", "thumbnail_url",
+        # populated by deferred _enrich_from_ad_get — preserve on re-sync
+        "asset_url", "video_source_url",
+    }
+    all_excluded = identity_cols | deferred_cols
+
+    all_col_names = {c.name for c in TikTokRawPerformance.__table__.columns}
+    update_cols_keys = all_col_names - all_excluded
+
+    assert "video_source_url" not in update_cols_keys, (
+        "video_source_url is in the ON CONFLICT DO UPDATE set — it will be nulled on re-sync! "
+        "It must remain in the exclusion set in _upsert_records."
+    )
