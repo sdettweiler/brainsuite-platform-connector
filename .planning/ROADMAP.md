@@ -51,6 +51,8 @@
 - [x] **Phase 18: SSE Transport** - FastAPI streaming endpoint with keepalive heartbeats and connection lifecycle management (complete 2026-05-11)
 - [x] **Phase 19: SuperAdmin Monitoring UI** - Angular job monitor at /configuration/jobs with real-time updates and drill-in detail panels (completed 2026-05-11)
 - [x] **Phase 19.1: Close gap: BLOCKER-02+03** — null token race + EventSource leak in job-monitor.service.ts (complete 2026-05-13)
+- [ ] **Phase 19.2: Close gap: INSTR-05/MON-07** — move brainsuite_job_id to metadata_ so References panel shows it; drop orphaned platform_sync_run_id key (INSERTED)
+- [ ] **Phase 19.3: Close gap: Phase 15** — add asset_url/video_source_url to _upsert_records ON CONFLICT exclusion + scoring_enabled guard on download path (INSERTED)
 
 ## Phase Details
 
@@ -170,6 +172,27 @@ Plans:
   2. The reconnectAttempts counter resets after a successful reconnect
   3. No duplicate server-side pubsub subscriptions accumulate when connect() is called more than once per component lifecycle
 
+### Phase 19.2: Close gap: INSTR-05/MON-07 (INSERTED)
+**Goal**: brainsuite_job_id for scoring jobs moves from output JSONB to metadata_ so the References panel in the job detail view displays it; orphaned platform_sync_run_id removed from KNOWN_EXTERNAL_ID_KEYS
+**Depends on**: Phase 19.1
+**Requirements**: INSTR-05, MON-07
+**Success Criteria** (what must be TRUE):
+  1. After a scoring job completes, the job detail References panel shows brainsuite_job_id (not just in the per-asset scoring section)
+  2. KNOWN_EXTERNAL_ID_KEYS in the frontend no longer includes platform_sync_run_id
+  3. Existing scoring job records are unaffected; only new records land brainsuite_job_id in metadata_
+**Plans**: 1 plan
+Plans:
+- [ ] 19.2-01-PLAN.md — Add metadata_ brainsuite_job_id update to job_tracker + scoring_job; remove platform_sync_run_id from frontend constant; update test assertion
+
+### Phase 19.3: Close gap: Phase 15 (INSERTED)
+**Goal**: TikTok asset_url and video_source_url are protected from null during re-sync; asset download respects SystemConfig.scoring_enabled across all platforms
+**Depends on**: Phase 19.2
+**Requirements**: TKTOK-01, TKTOK-02
+**Success Criteria** (what must be TRUE):
+  1. A re-sync of an already-downloaded TikTok creative does not temporarily null asset_url or video_source_url in CreativeAsset
+  2. When SystemConfig.scoring_enabled is false, no asset downloads are initiated for any platform (Meta, TikTok, Google Ads, DV360)
+  3. The ON CONFLICT exclusion list in _upsert_records includes asset_url and video_source_url
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -194,3 +217,5 @@ Plans:
 | 18. SSE Transport | v1.3 | 2/2 | Complete | 2026-05-11 |
 | 19. SuperAdmin Monitoring UI | v1.3 | 6/6 | Complete   | 2026-05-11 |
 | 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
+| 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 0/0 | Not planned | |
+| 19.3. Close gap: Phase 15 | v1.3 | 0/0 | Not planned | |
