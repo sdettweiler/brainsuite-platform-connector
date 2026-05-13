@@ -1,5 +1,5 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Clicking DV360 in Configuration/Platform Connections does nothing. Backend logs show a user lookup then ROLLBACK — no OAuth flow opens."
 created: 2026-04-01T00:00:00Z
 updated: 2026-04-01T00:00:00Z

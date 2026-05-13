@@ -1,5 +1,5 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Meta IMAGE assets get picked up by scoring scheduler but reset back to UNSCORED (scoring_status reverts to 'UNSCORED', error_reason=None)"
 created: 2026-03-26T00:00:00Z
 updated: 2026-03-26T00:00:00Z

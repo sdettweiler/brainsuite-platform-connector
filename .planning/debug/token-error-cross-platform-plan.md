@@ -1,6 +1,12 @@
+---
+status: resolved
+created: 2026-04-10T00:00:00Z
+updated: 2026-05-13T00:00:00Z
+---
+
 # Plan: Unified Token Error Handling (All Platforms)
 
-**Status:** Blocked on Meta verification
+**Status:** Resolved
 **Created:** 2026-04-10
 
 ---
