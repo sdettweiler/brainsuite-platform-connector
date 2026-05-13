@@ -36,7 +36,20 @@ export class JobMonitorService implements OnDestroy {
   ) {}
 
   connect(): void {
+    // BLOCKER-03: close any existing EventSource before opening a new one.
+    // Must be FIRST so that a null-token early return still closes the old connection.
+    this.eventSource?.close();
+
+    // BLOCKER-02: guard against null token (token expiry, clearJobs reconnect, test bypass).
     const token = this.authService.getAccessToken();
+    if (!token) {
+      this.statusSubject.next('disconnected');
+      return;
+    }
+
+    // Reset error budget so a fresh connect() does not inherit a prior session's onerror count.
+    this.reconnectAttempts = 0;
+
     const url = `/api/v1/jobs/stream?token=${token}`;
     this.eventSource = new EventSource(url);
 
