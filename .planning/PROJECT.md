@@ -154,4 +154,4 @@ A user can connect all their ad accounts, see every creative's performance metri
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-07 — v1.3 milestone started (SuperAdmin Monitoring & TikTok Downloads)*
+*Last updated: 2026-05-13 — Phase 19.2 complete: brainsuite_job_id written to BackgroundJob.metadata_ so References panel displays it; platform_sync_run_id removed from KNOWN_EXTERNAL_ID_KEYS*
