@@ -239,3 +239,8 @@ Plans:
 | 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
 | 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete    | 2026-05-13 |
 | 19.3. Close gap: Phase 15 | v1.3 | 2/2 | Complete    | 2026-05-13 |
+
+## Backlog
+
+- **999.1** Dashboard metadata filter with autocomplete — built in Apr 2026 (commits 1d8edb6, aa9273f), lost in later session; recover from git history (conflicts with current dashboard.py/dashboard.component.ts)
+- **999.2** Dashboard ad account multi-select filter — verify still present (last seen in commits e403eaf–d05999e); if lost, recover from git history
