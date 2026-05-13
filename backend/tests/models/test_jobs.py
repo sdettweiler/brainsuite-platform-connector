@@ -34,3 +34,18 @@ def test_background_job_model_fk_constraints():
     assert "platform_connection_id" in fk_cols
     assert fk_cols["platform_connection_id"][0] == "platform_connections"
     assert fk_cols["platform_connection_id"][1] is True  # nullable
+
+
+def test_background_job_jsonb_defaults_use_dict():
+    """JSONB columns (output, metadata) use default=dict (callable) not default={} (mutable).
+    Using default={} would cause rows to share the same dict — silent data corruption.
+    """
+    for col_name in ("output", "metadata"):
+        col = BackgroundJob.__table__.c[col_name]
+        assert col.default is not None, f"{col_name} has no column default set"
+        assert callable(col.default.arg), (
+            f"{col_name} default must be a callable (dict), got: {col.default.arg!r}"
+        )
+        assert col.default.arg is dict, (
+            f"{col_name} default must be the dict type itself, got: {col.default.arg!r}"
+        )
