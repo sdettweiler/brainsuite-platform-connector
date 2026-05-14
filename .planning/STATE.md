@@ -1,75 +1,72 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: milestone
-status: Awaiting next milestone
-stopped_at: context exhaustion at 75% (2026-05-13)
-last_updated: "2026-05-13T15:02:23.161Z"
-last_activity: 2026-05-13 — Milestone v1.3 completed and archived
+milestone: v1.4
+milestone_name: YouTube Downloads & Dashboard Filters
+status: planning
+stopped_at: null
+last_updated: "2026-05-14T00:00:00.000Z"
+last_activity: 2026-05-14 — Milestone v1.4 started
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 21
-  completed_plans: 21
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-07 — v1.3 milestone started)
+See: .planning/PROJECT.md (updated 2026-05-14 — v1.4 milestone started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Planning v1.4
+**Current focus:** v1.4 — YouTube Downloads & Dashboard Filters
 
 ## Current Position
 
-Phase: Milestone v1.3 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-05-13 — Milestone v1.3 completed and archived
+Status: Defining requirements
+Last activity: 2026-05-14 — Milestone v1.4 started
 
 ## Accumulated Context
 
 ### Decisions
 
-- Phase 15 is sequenced first (independent gap closure) even though research recommends schema first; instructions override
-- Phase 16–19 form a strict dependency chain: schema → instrumentation → SSE → UI
-- `SyncJob` model preserved for backward compatibility; new job types write only to `BackgroundJob`
-- SSE transport uses DB polling (no Redis pub/sub) — sufficient at v1.3 scale; defer Redis to v1.4 at 50+ SuperAdmins
+- Residential proxy required because datacenter IPs (GCP/Cloud Run) are blocked at the network layer before cookies are evaluated
+- Three-layer stack (all required): residential proxy → cookies → bgutil PO token plugin
+- Provider: Webshare free tier (validation) → IPRoyal pay-as-you-go (production); sticky sessions per job not per request
+- Both DV360 and Google Ads use the same yt-dlp path — fix both in v1.4 together
+- Dashboard filter features were built in April 2026 (commits 1d8edb6/aa9273f for metadata, e403eaf–d05999e for ad account) but lost; recover from git history
 
 ### Roadmap Evolution
 
-- Phase 19.1 (URGENT) inserted after Phase 19 on 2026-05-13 — milestone audit found 2 SSE blockers (null token race + EventSource leak) blocking SSE-01/SSE-02/MON-01/MON-02
-- Phase 19.2 (INSERTED) inserted after Phase 19.1 on 2026-05-13 — milestone audit gap: brainsuite_job_id in output not metadata_; References panel blind to it (INSTR-05/MON-07 partial)
-- Phase 19.3 (INSERTED) inserted after Phase 19.2 on 2026-05-13 — milestone audit gap: asset_url not in upsert exclusion list (null window on re-sync) + download ignores scoring_enabled toggle (Phase 15 tech debt)
+(none yet for v1.4)
 
 ### Blockers/Concerns
 
-- Injection points in `scoring_job.py` and `ai_autofill.py` confirmed by Phase 17 research; safe to execute
-- At Phase 18 start: confirm actual SuperAdmin headcount for `--limit-concurrency` and `--workers` tuning
-- At Phase 15 start: verify yt-dlp `chrome-131` impersonation string against live TikTok URL (monthly drift risk)
+- Webshare free tier validation must happen before admin UI is built (validate proxy injection + PO token generation first)
+- Dashboard filter git recovery may conflict with current dashboard.py / dashboard.component.ts — audit conflicts before cherry-pick
 
 ## Deferred Items
 
-Items acknowledged at v1.3 close — carry forward to v1.4 or backlog triage:
+Items carried to v1.5 or backlog:
 
 | Type | ID / Slug | Status |
 |------|-----------|--------|
-| quick_task | 20260512-aaf-ad-account-filter-dashboard | missing (not completed) |
+| uat_gap | Phase 15 (v1.3) | deferred — live TikTok sync required |
+| verification_gap | Phase 15 (v1.3) | deferred — live TikTok sync required |
 | quick_task | 260331-l16-analyze-the-entire-folder-structure-for- | unknown (outcome unclear) |
-| quick_task | 260402-hf6-add-dynamic-metadata-filter-with-autocom | missing (not completed) |
-| quick_task | 260407-n3x-add-video-duration-range-filter-to-the-d | missing (not completed) |
-| uat_gap | Phase 15 | deferred — live TikTok sync required |
-| verification_gap | Phase 15 | deferred — live TikTok sync required |
 
 ## Session Continuity
 
-Last session: 2026-05-13T15:02:23.152Z
-Stopped at: context exhaustion at 75% (2026-05-13)
+Last session: 2026-05-14
+Stopped at: v1.4 requirements and roadmap definition in progress
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Complete REQUIREMENTS.md definition
+- Spawn roadmapper to create ROADMAP.md
+- Run /gsd-discuss-phase 20 to begin Phase 20

@@ -8,9 +8,16 @@ A production-ready multi-tenant SaaS platform that connects Meta, TikTok, Google
 
 A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
 
-## Current Milestone: v1.4 (planning)
+## Current Milestone: v1.4 — YouTube Downloads & Dashboard Filters
 
-**Status:** v1.3 shipped 2026-05-13. Planning v1.4.
+**Goal:** YouTube and Google Ads video creatives download reliably in production via residential proxy + PO token plugin; the dashboard has all three creative filters restored and working.
+
+**Target features:**
+- Residential proxy integration (DV360 + Google Ads) — three-layer stack: proxy IP → cookies → bgutil PO token plugin
+- SuperAdmin proxy config UI (enable toggle + encrypted URL storage)
+- Dashboard metadata filter with autocomplete (recover from git + verify)
+- Dashboard ad account multi-select filter (recover from git + verify)
+- Dashboard video duration range filter (new)
 
 ## Current State
 
@@ -86,7 +93,16 @@ A user can connect all their ad accounts, see every creative's performance metri
 - ✓ SSE real-time transport with keepalive + connection lifecycle (SSE-01, SSE-02) — v1.3 (Phase 18)
 - ✓ SuperAdmin monitoring UI at /configuration/jobs — 4-tab job table, drill-in panels, error tracebacks (MON-01–07) — v1.3 (Phase 19)
 
-### Active (v1.4 candidates)
+### Active (v1.4)
+
+- YouTube/DV360 residential proxy integration + PO token plugin — fixes IP-layer blocking on datacenter hosts (PROXY-01, PROXY-02, PROXY-03)
+- Google Ads residential proxy integration — same yt-dlp path as DV360 (PROXY-04)
+- SuperAdmin proxy config UI — enable toggle + encrypted URL storage (PROXY-05)
+- Dashboard metadata filter with autocomplete (DASH-01)
+- Dashboard ad account multi-select filter (DASH-02)
+- Dashboard video duration range filter (DASH-03)
+
+### Deferred (v1.5 candidates)
 
 - TikTok live-run UAT confirmation (TKTOK-01/02 — pending live sync)
 - SSE Redis pub/sub upgrade at 50+ concurrent SuperAdmins (SSE-03)
@@ -167,4 +183,4 @@ A user can connect all their ad accounts, see every creative's performance metri
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-13 — v1.3 milestone complete*
+*Last updated: 2026-05-14 — v1.4 milestone started*
