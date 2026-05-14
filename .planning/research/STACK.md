@@ -1,252 +1,322 @@
-# Technology Stack — v1.1 Additions
+# Stack Research — v1.4 Residential Proxy + Dashboard Filters
 
-**Project:** BrainSuite Platform Connector
-**Milestone:** v1.1 Insights + Intelligence
-**Researched:** 2026-03-25
-**Scope:** New library additions only. Existing stack (FastAPI 0.115, SQLAlchemy 2.0, httpx 0.25.2, tenacity, APScheduler 3.10.4, Redis, boto3, Angular 17, NgRx 17, ECharts 5.6 / ngx-echarts 17.2, Angular Material 17) is validated and NOT repeated here.
+**Project:** BrainSuite Platform Connector  
+**Researched:** 2026-05-14  
+**Scope:** New features only (residential proxy integration, PO token plugin, dashboard filters)
 
 ---
 
-## New Backend Dependencies
+## Executive Summary
 
-### 1. Anthropic Python SDK — AI Metadata Inference
+v1.4 adds three capability layers to the existing stack with minimal new dependencies:
 
-| Property | Value |
-|----------|-------|
-| Package | `anthropic` |
-| Version | `>=0.86.0` (latest as of 2026-03-25) |
-| Install | `pip install anthropic` |
-| Python requirement | 3.9+ |
+1. **Residential proxy for yt-dlp** — proxy URL injection (no new packages; yt-dlp built-in support)
+2. **YouTube POT token plugin** — `bgutil-ytdlp-pot-provider==1.3.1` (single Python package + Docker sidecar service)
+3. **Dashboard filters** — Angular Material components already installed; `@angular-slider/ngx-slider` already in use for duration range filter
 
-**Why:** The AI metadata auto-fill feature requires analyzing creative images and video frames to infer Language/Market, Brand Names, Project Name, Asset Name, Asset Stage, and Voice Over presence. The Claude vision API supports all of this in a single multimodal call — no separate object-detection library needed.
+**NEW packages added:** Only `bgutil-ytdlp-pot-provider==1.3.1` to backend requirements.  
+**NEW infrastructure:** Single Docker service (`bgutil-pot` sidecar on port 4416) for token generation.  
+**NO breaking changes** to existing stack.
 
-**Model to use:** `claude-haiku-4-5-20251001`
+---
 
-Rationale: Haiku 4.5 is the fastest current-generation model at $1/$5 per MTok input/output. Structured metadata extraction from ad creatives (not deep reasoning) fits Haiku's capability profile. Cost per creative inference stays low. If Haiku produces poor-quality output for a specific field, escalate to `claude-sonnet-4-6` ($3/$15) for that field only — test Haiku first.
+## New Packages Required
 
-**Image passing pattern — base64 preferred for MinIO assets:**
-```python
-import anthropic
-import base64
-import httpx
+### Backend (Python)
 
-client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+| Package | Version | Purpose | Installation | Notes |
+|---------|---------|---------|--------------|-------|
+| `bgutil-ytdlp-pot-provider` | `==1.3.1` | YouTube proof-of-origin (POT) token generation plugin for yt-dlp to bypass "Sign in to confirm you're not a bot" verification | `pip install bgutil-ytdlp-pot-provider==1.3.1` | **Requires yt-dlp >= 2025.05.22** (verify current version in requirements.txt). Supports HTTP server mode (recommended) where plugin retrieves tokens from sidecar on port 4416. No additional Python dependencies beyond what's already in requirements.txt. Recommended flavor: Deno-based Docker image (`brainicism/bgutil-ytdlp-pot-provider:1.3.1-deno`) — faster startup than Node.js. |
 
-# Fetch from MinIO presigned URL, encode to base64
-image_bytes = httpx.get(presigned_url).content
-image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+### Frontend (npm)
 
-response = await client.messages.create(
-    model="claude-haiku-4-5-20251001",
-    max_tokens=512,
-    messages=[
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/jpeg",  # or image/png, image/webp, image/gif
-                        "data": image_b64,
-                    },
-                },
-                {"type": "text", "text": "<structured extraction prompt>"},
-            ],
-        }
-    ],
-)
+**No new packages needed.** All required components already installed:
+
+| Package | Version | Already Installed? | Usage |
+|---------|---------|-------------------|-------|
+| `@angular/material` | `^17.3.0` | ✓ Yes | `MatAutocomplete` (metadata filter), `MatFormField`, `MatInput` |
+| `@angular/cdk` | `^17.3.0` | ✓ Yes | `MatAutocompleteTrigger`, `CdkConnectedOverlay` for positioning |
+| `@angular-slider/ngx-slider` | `^17.0.2` | ✓ Yes | Range slider for duration filter (already supports dual-handle range) |
+
+---
+
+## Docker Changes
+
+### Add bgutil-pot Sidecar Service
+
+**File:** `docker-compose.yml`  
+**Action:** Insert new service between `backend` and `frontend`.
+
+```yaml
+# ─── bgutil-pot (YouTube POT token provider) ────────────────────────────────
+bgutil-pot:
+  image: brainicism/bgutil-ytdlp-pot-provider:1.3.1-deno
+  container_name: brainsuite_bgutil_pot
+  restart: unless-stopped
+  ports:
+    - "4416:4416"
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:4416/health"]
+    interval: 15s
+    timeout: 5s
+    retries: 3
+  environment:
+    # Optional: customize token TTL (default 6 hours)
+    TOKEN_TTL: 6
 ```
 
-**Why base64 over presigned URL:** Presigned MinIO URLs are only valid inside the Docker network. Claude's API cannot reach a local MinIO instance. Fetch bytes server-side, encode to base64, pass inline.
+**Dependency in backend service:**
 
-**Multi-image (image + video frames) in a single call:** Pass multiple `image` content blocks before the text block. Haiku 4.5 has a 200k-token context window, which limits batch requests to 100 images per call. For ad creatives, 1 image or 2-3 video keyframes per inference call is typical — well within limits.
-
-**Image format constraints:**
-- Supported: JPEG, PNG, GIF, WebP
-- Max 5 MB per image
-- Resize to ≤1568 px on the long edge before encoding — reduces token count and latency
-- Approximate cost: ~1,600 tokens at 1 megapixel (1092×1092 px), ~$0.0016 per image at Haiku pricing
-
-**AsyncAnthropic client:** Use `anthropic.AsyncAnthropic()` for non-blocking calls inside FastAPI async handlers and APScheduler jobs. The sync `anthropic.Anthropic()` client blocks the event loop and must not be used in async contexts.
-
-**Confidence:** HIGH — verified against official Anthropic API docs and PyPI (2026-03-25).
-
----
-
-### 2. OpenAI Python SDK — Audio Transcription for Voice Over Detection
-
-| Property | Value |
-|----------|-------|
-| Package | `openai` |
-| Version | `>=2.29.0` (latest as of 2026-03-25) |
-| Install | `pip install openai` |
-| Python requirement | 3.9+ |
-
-**Why:** Claude does not process audio directly. Voice Over presence and Voice Over Language require audio transcription. The OpenAI Whisper API (`whisper-1` model) returns both the transcript text and the detected language ISO-639-1 code in a single API call — exactly the two data points needed (`has_voice_over`, `voice_over_language`).
-
-**Usage pattern:**
-```python
-from openai import AsyncOpenAI
-import io
-
-openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-
-# Fetch audio bytes from MinIO (extracted from video using imageio-ffmpeg, already in stack)
-audio_bytes = await fetch_audio_from_minio(asset_key)
-
-transcription = await openai_client.audio.transcriptions.create(
-    model="whisper-1",
-    file=("audio.mp3", io.BytesIO(audio_bytes), "audio/mpeg"),
-    response_format="verbose_json",  # returns .text + .language
-)
-
-has_voice_over = len(transcription.text.strip()) > 0
-voice_over_language = transcription.language  # ISO-639-1 code, e.g. "en", "de", "fr"
+```yaml
+backend:
+  # ... existing config ...
+  depends_on:
+    # ... existing dependencies ...
+    bgutil-pot:
+      condition: service_healthy
 ```
 
-**Why `whisper-1` via OpenAI API over local Whisper:**
-- No GPU dependency in Docker Compose — local Whisper large-v3 requires ~1.5 GB model download and significant CPU at startup
-- Language detection is built into the `verbose_json` response — no second call needed
-- Cost is negligible for ad creative durations: $0.006/minute, and a typical ad is under 60 seconds
-- `imageio-ffmpeg` is already in `requirements.txt` — use it to extract the audio track from video assets before sending to Whisper
+### Environment Variables
 
-**Audio format support:** mp3, mp4, mpeg, mpga, m4a, wav, webm — all common ad creative formats are covered.
+Add to `.env` (optional, for production proxy config):
 
-**Confidence:** HIGH — verified against OpenAI API reference (transcriptions.create endpoint) and PyPI (2026-03-25).
+```bash
+# Residential proxy settings
+RESIDENTIAL_PROXY_URL=http://proxy.provider.com:port  # Will be passed to yt-dlp if configured
+PROXY_USERNAME=optional_username
+PROXY_PASSWORD=optional_password
+```
 
----
-
-### 3. No New Libraries for BrainSuite Image Scoring or Historical Backfill
-
-- **BrainSuite Static endpoint (image scoring):** Uses existing `httpx` + `tenacity`. The difference from video scoring is endpoint URL, payload shape, and state-machine routing. No new library.
-- **APScheduler backfill job:** Uses existing `apscheduler==3.10.4`. No new library.
+**Note:** Proxy URL is intentionally NOT required at startup. It's stored in `SystemConfig` table (encrypted) and used on-demand during download jobs. Null proxy = cookieless fallback.
 
 ---
 
-## New Frontend Dependencies
+## Residential Proxy Integration (No New Infrastructure)
 
-### 4. No New Libraries for In-App Notifications
+### How yt-dlp Proxy Support Works
 
-**Use Angular Material `MatSnackBar` for toasts and a custom NgRx-backed notification center for the bell.**
+yt-dlp has built-in proxy support via the `--proxy` flag and `'proxy'` option in Python API:
 
-Angular Material 17 (`@angular/material: ^17.3.0`) is already in the stack. `MatSnackBar` ships with it and works with standalone components — inject `MatSnackBar` directly, no additional module imports beyond what is already configured.
-
-**Why not ngx-toastr:** `ngx-toastr` is valid but adds a dependency for functionality Angular Material already provides. The app uses Angular Material throughout — visual consistency is free with `MatSnackBar`. For rich toast layouts, use `MatSnackBar.openFromComponent()` with a custom standalone component.
-
-**Bell notification center — native pattern, no library:**
-```typescript
-// Notification interface for NgRx store
-interface Notification {
-  id: string;
-  type: 'sync_complete' | 'scoring_complete' | 'error';
-  message: string;
-  timestamp: Date;
-  read: boolean;
+```python
+ydl_opts = {
+    'proxy': 'http://username:password@proxy.com:port',
+    'socket_timeout': 30,
 }
-
-// Bell icon uses MatBadge (already in @angular/material) for unread count
-// Dropdown uses MatMenu or a positioned overlay panel
-// Store feeds notifications from polling or Server-Sent Events
+with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    ydl.download([url])
 ```
 
-`MatBadge` and `MatMenu` are both part of `@angular/material 17` — already available, zero additional installs.
+**Sticky sessions:** Residential proxy providers handle sticky IP assignment. Pass session ID as query param in proxy URL (provider-specific):
 
-**Confidence:** HIGH — Angular Material MatSnackBar, MatBadge, MatMenu verified as part of @angular/material 17.3.
+```python
+ydl_opts = {
+    'proxy': 'http://user:pass@gateway.provider.com:port?session_id=unique_job_id',
+}
+```
+
+**No sticky session module needed** — just URL string manipulation.
+
+### Integration Points
+
+1. **Backend:** Read proxy URL from `SystemConfig.residential_proxy_url` (existing Fernet-encrypted Text column, to be added to schema)
+2. **Download functions:** Pass proxy to `yt_dlp.YoutubeDL()` opts before calling `ydl.download([url])`
+3. **Fallback:** If `SystemConfig.residential_proxy_enabled = False` OR proxy URL is None, skip proxy (cookieless/network-native fallback already works)
+
+**Existing code pattern:** `dv360_sync.py` and `google_ads_sync.py` already have cookie fallback logic. Proxy is additive — it just changes the proxy config, not the download structure.
 
 ---
 
-### 5. No New Libraries for ECharts Charts
+## Dashboard Filters (Frontend Angular)
 
-The stack already includes `echarts: ^5.6.0` and `ngx-echarts: ^17.2.0`. Scatter plots and line charts are native ECharts 5 chart types — no additional packages needed.
+### 1. Metadata Filter with Autocomplete
 
-**Scatter plot (Score-to-ROAS correlation) — ECharts 5 option structure:**
+**Component:** `MatAutocomplete` (already in `@angular/material`)  
+**Implementation:**
+
 ```typescript
-// Register ScatterChart alongside existing chart registrations in app.config.ts
-import { ScatterChart } from 'echarts/charts';
-import { TooltipComponent, GridComponent } from 'echarts/components';
-echarts.use([ScatterChart, TooltipComponent, GridComponent, CanvasRenderer]);
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 
-// Component chartOption:
-const correlationChartOption: EChartsOption = {
-  tooltip: {
-    trigger: 'item',
-    formatter: (params: any) =>
-      `${params.data[2]}<br/>Score: ${params.data[0]}<br/>ROAS: ${params.data[1].toFixed(2)}x`,
-  },
-  xAxis: { name: 'BrainSuite Score', type: 'value', min: 0, max: 100 },
-  yAxis: { name: 'ROAS', type: 'value' },
-  series: [{
-    type: 'scatter',
-    // data format: [x, y, label] — label only used in tooltip formatter
-    data: assets.map(a => [a.score, a.roas, a.name]),
-    symbolSize: 10,
-  }],
-};
+// In component
+metadataForm = new FormControl('');
+filteredMetadata: Observable<string[]>;
+
+ngOnInit() {
+  this.filteredMetadata = this.metadataForm.valueChanges.pipe(
+    startWith(''),
+    debounceTime(300),
+    switchMap(value => this.apiService.getMetadataOptions(value, this.org_id))
+  );
+}
 ```
 
-**Line chart (Score trend over time) — ECharts 5 option structure:**
+**Template:**
+
+```html
+<mat-form-field>
+  <mat-label>Metadata</mat-label>
+  <input matInput [formControl]="metadataForm" [matAutocomplete]="auto" />
+  <mat-autocomplete #auto="matAutocomplete">
+    <mat-option *ngFor="let opt of filteredMetadata | async" [value]="opt">
+      {{ opt }}
+    </mat-option>
+  </mat-autocomplete>
+</mat-form-field>
+```
+
+**API endpoint:** Reuse existing `/api/v1/dashboard/metadata-options?org_id=X&search=Y` or create new.
+
+### 2. Ad Account Multi-Select Filter
+
+**Component:** Existing pattern in dashboard (ad account toggle menu)  
+**Current implementation:** MatMenu with checkboxes for ad_account_id  
+**Already in code:** `selectedAdAccountIds: string[]` with toggle/filter logic (lines 149–161 of dashboard.component.ts)  
+**Enhancement:** Convert to Material `MatSelect` with multiple option if desired (optional polish).
+
+**Current working code:** Dashboard already has ad account multi-select via MatMenu + checkbox pattern. Keep as-is or upgrade to `MatSelectModule` with `multiple` attribute.
+
+### 3. Video Duration Range Slider
+
+**Component:** `@angular-slider/ngx-slider` (already installed v17.0.2)  
+**Already supports range mode** via `highValue` property (dual handles for min/max).
+
+**Template:**
+
+```html
+<div class="duration-slider-wrapper">
+  <span class="slider-label">Duration (seconds)</span>
+  <ngx-slider
+    [(value)]="durationMin"
+    [(highValue)]="durationMax"
+    [options]="durationSliderOptions"
+    (userChangeEnd)="onDurationChange()"
+  ></ngx-slider>
+  <span class="slider-values">{{ durationMin }}s - {{ durationMax }}s</span>
+</div>
+```
+
+**Component TypeScript:**
+
 ```typescript
-// Register LineChart alongside existing chart registrations
-import { LineChart } from 'echarts/charts';
-echarts.use([LineChart]);
-
-const trendChartOption: EChartsOption = {
-  tooltip: { trigger: 'axis' },
-  xAxis: { type: 'time' },
-  yAxis: { name: 'Score', min: 0, max: 100 },
-  series: [{
-    type: 'line',
-    smooth: true,
-    data: scoreHistory.map(h => [h.scored_at, h.score]),  // [Date, number]
-  }],
+durationMin = 0;
+durationMax = 600; // 10 minutes default max
+durationSliderOptions: Options = {
+  floor: 0,
+  ceil: 3600, // 1 hour max
+  step: 15,
+  noSwitching: true,
+  preventEqualMinMax: false,
 };
+
+onDurationChange() {
+  this.onFilterChange(); // Trigger API call with ?duration_min=X&duration_max=Y
+}
 ```
 
-**Tree-shaking note:** The project already imports `echarts/core` with selective chart/component registration (the ngx-echarts pattern). Add `ScatterChart` and `LineChart` to the existing registration block. Do not switch to the full `import 'echarts'` bundle — that would bloat the Angular bundle by ~1 MB.
-
-**Confidence:** HIGH — ECharts 5 scatter and line are core chart types; ngx-echarts 17.2 is already in the stack and verified compatible with Angular 17.
+**API query param:** `?duration_min_sec=X&duration_max_sec=Y` (backend filters `video_duration` column).
 
 ---
 
-## Environment Variables to Add
+## No New Infrastructure Needed
 
-| Variable | Purpose | Required By |
-|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Claude API for metadata inference | AI metadata auto-fill |
-| `OPENAI_API_KEY` | Whisper API for audio transcription | Voice Over detection |
-
-Both are secrets. Add to `.env` (Docker Compose `env_file`) and to the `pydantic-settings` `Settings` model. Never commit values.
-
----
-
-## Summary: Net-New Additions for v1.1
-
-| Layer | Addition | Version | Purpose |
-|-------|----------|---------|---------|
-| Backend | `anthropic` | `>=0.86.0` | Claude vision API for AI metadata inference |
-| Backend | `openai` | `>=2.29.0` | Whisper API for audio transcription + VO language detection |
-| Frontend | none | — | All new UI features use existing Angular Material + ECharts |
-
-Everything else is handled by the existing stack. Do not add:
-- `ngx-toastr` — Angular Material MatSnackBar already covers toast needs
-- `faster-whisper` or `openai-whisper` (local) — OpenAI API avoids GPU/model-size constraints in Docker
-- Any additional charting library — ECharts 5 handles scatter and line natively
+✓ **Proxy URL storage:** Existing `SystemConfig` table with Fernet encryption (add `residential_proxy_url` nullable Text column via migration)  
+✓ **Proxy toggle:** Add `SystemConfig.residential_proxy_enabled` boolean flag (default False)  
+✓ **Token cache:** bgutil-pot sidecar handles internally (TTL via env var, defaults to 6h)  
+✓ **Sticky sessions:** Handled by proxy provider (session ID embedded in URL)  
+✓ **Dashboard API:** Existing `/api/v1/dashboard/assets` endpoint adds query params for filters  
 
 ---
 
-## Sources
+## What NOT to Add (Anti-Patterns)
 
-- [Anthropic Models Overview](https://platform.claude.com/docs/en/about-claude/models/overview) — verified 2026-03-25 (HIGH confidence)
-- [Anthropic Vision API Docs](https://platform.claude.com/docs/en/build-with-claude/vision) — verified 2026-03-25 (HIGH confidence)
-- [anthropic PyPI — v0.86.0](https://pypi.org/project/anthropic/) — version confirmed 2026-03-25 (HIGH confidence)
-- [OpenAI Transcriptions API Reference](https://platform.openai.com/docs/api-reference/audio/createTranscription) — method signature verified (HIGH confidence)
-- [openai-python GitHub transcriptions.py](https://github.com/openai/openai-python/blob/main/src/openai/resources/audio/transcriptions.py) — response_format and language field confirmed (HIGH confidence)
-- [openai PyPI — v2.29.0](https://pypi.org/project/openai/) — version confirmed 2026-03-25 (HIGH confidence)
-- [ngx-echarts npm — v17.2.0](https://www.npmjs.com/package/ngx-echarts) — already in stack, Angular 17 compatible (HIGH confidence)
-- [Apache ECharts scatter handbook](https://apache.github.io/echarts-handbook/en/how-to/chart-types/scatter/basic-scatter/) — data format [x, y] confirmed (HIGH confidence)
-- [Angular Material Snackbar API](https://material.angular.dev/components/snack-bar/api) — part of @angular/material 17, standalone compatible (HIGH confidence)
+| Anti-Pattern | Why Avoid | Alternative |
+|--------------|-----------|-------------|
+| Add `requests` library for proxy support | httpx already installed; urllib built into yt-dlp. `requests` is redundant. | Use yt-dlp's native proxy option (String) |
+| Create custom proxy manager service | yt-dlp handles proxy internally. Custom rotating wrapper adds complexity. | Pass static proxy URL (sticky session via query param) or let provider rotate IPs |
+| Implement Redis-based token cache | bgutil-pot HTTP server includes built-in memory cache with TTL. No need to duplicate. | Use HTTP server mode (port 4416) |
+| Add `ngx-mat-select-search` for autocomplete | `MatAutocomplete` is built-in and sufficient. Extra package = bloat. | Use MatAutocomplete with `async` pipe |
+| Create separate metadata options endpoint | Reuse existing asset sync endpoint or add cheap database lookup (no HTTP overhead). | Query `asset_metadata_value` table directly with `LIKE` filter |
+| Implement range slider from scratch | ngx-slider already supports dual-handle ranges. Don't reinvent. | Use existing ngx-slider `highValue` property |
+| Add request interceptor for proxy injection | Proxy is for yt-dlp subprocess only, not HTTP client calls. Misplaced. | Pass proxy URL directly to `yt_dlp.YoutubeDL()` opts |
 
 ---
 
-*v1.1 stack research completed 2026-03-25. Supersedes v1.0 STACK.md for new additions.*
+## Installation / Deployment Checklist
+
+### Backend
+
+```bash
+# Add to requirements.txt
+bgutil-ytdlp-pot-provider==1.3.1
+# Existing yt-dlp (verify >=2025.05.22)
+yt-dlp  # or pin to specific version if needed
+```
+
+### Docker Compose
+
+```bash
+# 1. Update docker-compose.yml with bgutil-pot service (see Docker Changes section)
+# 2. Add health check for port 4416
+# 3. Set backend depends_on: bgutil-pot
+# 4. Rebuild: docker-compose build
+```
+
+### Database Migration
+
+```bash
+# Alembic migration to add SystemConfig columns:
+# - residential_proxy_url: Text, nullable
+# - residential_proxy_enabled: Boolean, default False
+alembic revision --autogenerate -m "add residential proxy config"
+```
+
+### Frontend
+
+```bash
+# No npm install needed — all dependencies already present
+# Just update dashboard.component.ts to import MatAutocompleteModule
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
+```
+
+---
+
+## Version Compatibility Matrix
+
+| Component | Current Version | v1.4 Version | Compatible? |
+|-----------|-----------------|--------------|-------------|
+| Angular | 17.3.0 | 17.3.0 | ✓ Yes (no change) |
+| @angular/material | 17.3.0 | 17.3.0 | ✓ Yes (no change) |
+| @angular/cdk | 17.3.0 | 17.3.0 | ✓ Yes (no change) |
+| ngx-slider | 17.0.2 | 17.0.2 | ✓ Yes (no change) |
+| FastAPI | 0.115.0 | 0.115.0 | ✓ Yes (no change) |
+| yt-dlp | Latest | >=2025.05.22 | ✓ Verify requirement |
+| bgutil-ytdlp-pot-provider | — | 1.3.1 | ✓ New (add) |
+
+---
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|-----------|
+| Residential proxy provider downtime | Medium | Fallback to cookieless download (already implemented). Proxy is optional. |
+| bgutil-pot sidecar restart loop | Low | Docker health check on port 4416. Logs will show token generation errors. |
+| Token cache stale / conflicts | Low | HTTP server mode auto-refreshes tokens. Single instance per deployment. |
+| Proxy URL accidentally logged | High | **Already mitigated:** Pass proxy URL as function argument, never from os.environ (T-14-10 decision). Ensure Fernet encryption in DB. |
+| Dashboard filter API performance | Medium | Add database indexes on `asset_metadata_value.value`, `video_duration`. Cache frequent metadata options in Redis if queries >100ms. |
+
+---
+
+## References
+
+- **bgutil-ytdlp-pot-provider:** https://pypi.org/project/bgutil-ytdlp-pot-provider/
+- **bgutil-ytdlp-pot-provider GitHub:** https://github.com/Brainicism/bgutil-ytdlp-pot-provider
+- **bgutil-ytdlp-pot-provider Docker:** https://hub.docker.com/r/brainicism/bgutil-ytdlp-pot-provider
+- **yt-dlp proxy integration:** https://developers.oxylabs.io/video-data/high-bandwidth-proxies/youtube-downloader-yt_dlp-integration
+- **Angular Material Autocomplete:** https://material.angular.dev/components/autocomplete/overview
+- **ngx-slider documentation:** https://angular-slider.github.io/ngx-slider/
+- **yt-dlp networking:** https://deepwiki.com/yt-dlp/yt-dlp/5.5-browser-integration-and-cookie-system
+
+---
+
+*v1.4 stack research completed 2026-05-14. Additive to v1.3 STACK-v1.3.md.*

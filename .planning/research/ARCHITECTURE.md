@@ -1,373 +1,470 @@
-# Architecture: v1.3 Job Monitoring + SSE + TikTok Asset Download
+# Architecture Research — v1.4 Integration
 
-**Domain:** Multi-tenant SaaS ad intelligence platform (FastAPI + Angular + PostgreSQL)
-**Researched:** 2026-05-07
-**Status:** Existing architecture documented with integration points identified
-
-## Current Architecture Overview
-
-### Existing Components (Layers)
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Angular 17 Frontend (port 4200)                                │
-│  - HttpClient polling (30s interval) → /api/v1/notifications     │
-│  - RxJS subscriptions per component                              │
-│  - MatSnackBar toasts + bell icon inbox                          │
-└────────────────┬────────────────────────────────────────────────┘
-                 │ HTTP/REST + WebSocket (future)
-┌────────────────▼────────────────────────────────────────────────┐
-│  FastAPI Backend (port 8000)                                     │
-│  ├─ /api/v1/auth — JWT + httpOnly refresh tokens                │
-│  ├─ /api/v1/platforms — OAuth handlers (Meta, TikTok, etc)      │
-│  ├─ /api/v1/dashboard — unified metrics                         │
-│  ├─ /api/v1/assets — creative storage + presigned URLs          │
-│  ├─ /api/v1/scoring — BrainSuite integration                    │
-│  ├─ /api/v1/brainsuite-config — org credentials + field mapping │
-│  └─ /api/v1/super-admin — admin controls (YouTube cookies, etc) │
-│                                                                   │
-│  Background Tasks (async):                                       │
-│  ├─ APScheduler — 15-min scoring batch + daily syncs per tz      │
-│  ├─ FastAPI BackgroundTasks — ad-hoc: autofill, asset download  │
-│  └─ asyncio.create_task() — fire-and-forget notifications       │
-│                                                                   │
-│  Database: SQLAlchemy ORM (sync engine, async sessions)          │
-│  └─ Schema: multi-tenant on org_id foreign key                  │
-└────────────┬──────────────────────────────────────────────────────┘
-             │
-┌────────────▼──────────────────────────────────────────────────────┐
-│  PostgreSQL (port 5432)                                            │
-│  ├─ Auth: users, organizations, roles, refresh_tokens            │
-│  ├─ Connections: platform_connections (OAuth state)              │
-│  ├─ Creatives: creative_assets + asset_metadata_values            │
-│  ├─ Performance: *_raw_performance tables (synced data)           │
-│  ├─ Harmonization: harmonized_performance (unified view)          │
-│  ├─ Scoring: creative_score_results (BrainSuite cache)           │
-│  ├─ Metadata: metadata_fields + AI inference tracking            │
-│  ├─ Config: org_brainsuite_config + field_mappings              │
-│  ├─ Notifications: notifications (bell inbox)                    │
-│  └─ System: system_config (singleton admin settings)             │
-└──────────────────────────────────────────────────────────────────┘
-
-             ┌──────────────┐
-             │  Redis       │
-             │  OAuth       │
-             │  Sessions    │
-             └──────────────┘
-
-             ┌──────────────────┐
-             │  MinIO/S3        │
-             │  Creative assets │
-             │  Thumbnails      │
-             └──────────────────┘
-```
-
-### Existing Job Tracking (SyncJob model)
-
-**Location:** `backend/app/models/performance.py::SyncJob`
-
-**Current fields:**
-- `platform_connection_id` — which account was synced
-- `job_type` — DAILY, FULL_RESYNC, INITIAL_30D, HISTORICAL
-- `status` — PENDING, RUNNING, COMPLETED, FAILED
-- `started_at`, `completed_at` — timing
-- `date_from`, `date_to` — sync date range
-- `records_fetched`, `records_processed` — progress counters
-- `error_message` — Text field for failure details
-- `job_metadata` — JSONB for extensibility
-
-**Current limitations:**
-- No progress_current/progress_total (only final counts)
-- No per-job output logging (full response/manifest)
-- No generalized "all job types" — only platform syncs
-- Instrumentation is manual (scheduler writes to DB)
+**Project:** BrainSuite Platform Connector v1.4 — YouTube Downloads & Dashboard Filters  
+**Researched:** 2026-05-14  
+**Confidence:** HIGH (specification from memory + code inspection + existing quick-work commits)
 
 ---
 
-## New Components: v1.3 Integration
+## Overview
 
-### 1. Expanded Job Persistence (`background_jobs` table)
+v1.4 adds two independent feature tracks:
+1. **Proxy Downloads** — Fix YouTube IP-layer blocking via residential proxy + PO token plugin on DV360/Google Ads
+2. **Dashboard Filters** — Restore three filters (metadata autocomplete, ad account multi-select, video duration range)
 
-**New model:** `backend/app/models/background_job.py::BackgroundJob`
+Both tracks modify existing infrastructure without breaking changes; dashboard filters have partial implementations in quick-session branches that need verification and merge.
 
-Purpose: Unified job tracking for ALL background work (syncs + scoring + downloads + autofill)
+---
 
-```python
-class BackgroundJob(Base):
-    __tablename__ = "background_jobs"
+## Track 1: Proxy Downloads
+
+### Why
+
+YouTube blocks datacenter IPs (GCP/Cloud Run) at the network layer before cookies are validated. Residential proxies make requests indistinguishable from organic traffic. PO token plugin (required since 2025) prevents bot-detection 403s.
+
+### Architecture
+
+**Three-layer stack** (all required):
+1. **Residential proxy** — solves IP-layer blocking
+2. **Cookies** — solves auth for restricted content (existing system, unchanged)
+3. **PO token plugin** — solves bot-proof via bgutil sidecar
+
+### Modified Files
+
+#### `backend/app/models/system_config.py`
+- Add `proxy_url_encrypted: Optional[Text]` — Fernet-encrypted proxy URL (nullable)
+- Add `proxy_enabled: Boolean` — default False
+- No constraint changes; maintains singleton guard
+
+**Rationale:** Proxy configuration is platform-wide (same as cookies), not per-org. Encryption uses existing `TOKEN_ENCRYPTION_KEY` from Phase 12.
+
+#### `backend/app/services/sync/dv360_sync.py` 
+- Read `proxy_url_encrypted` + `proxy_enabled` from SystemConfig before the retry loop in `_download_video_asset()`
+- Decrypt URL (same pattern as cookies)
+- **Proxy injection point:** Inside `_do_download_with_cookies()` closure, add to `ydl_opts` dict after building it:
+  ```python
+  if proxy_enabled and proxy_url:
+      ydl_opts["proxy"] = proxy_url
+  ```
+- **Sticky session ID:** Embed in proxy username as `user-session-{random_12_chars}:pass@host:port` to prevent mid-download IP rotation
+- **Retry order change:** cookieless → primary cookies → backup cookies → fail (cookieless-first is new)
+
+**Code location:** Line ~1185 (`ydl_opts` dict construction), before `YoutubeDL(ydl_opts)` instantiation at line ~1213
+
+#### `backend/app/services/sync/google_ads_sync.py`
+- Identical changes as DV360 — same `_do_download_with_cookies` structure exists in this file
+- Read proxy config before retry loop
+- Same sticky session + retry order changes
+
+#### `backend/app/api/v1/endpoints/super_admin.py`
+- New Pydantic models:
+  - `ProxyConfigResponse`: `enabled: bool`, `configured: bool`, `host: Optional[str]` (never return decrypted URL)
+  - `UpdateProxyConfigRequest`: `proxy_url: Optional[str]`, `proxy_enabled: bool`
+- New endpoints:
+  - `GET /proxy-config` — reads SystemConfig, returns status only (decrypt to check if URL exists, but don't return it)
+  - `PUT /proxy-config` — encrypts URL using existing `encrypt_token()`, updates `proxy_enabled` flag
+- All auth: `Depends(get_current_superadmin)` (copy-exact pattern from cookie endpoints)
+- All logic: follow `/youtube-cookies` endpoints verbatim for consistency
+
+**Security:** Proxy URL never included in responses or logs (T-14-XX pattern, same as cookies)
+
+### New Files
+
+None. All infrastructure already exists (Fernet encryption, SystemConfig singleton, super_admin pattern).
+
+### Data Flow
+
+```
+SuperAdmin uploads proxy URL
+    → PUT /proxy-config encrypts & stores in SystemConfig.proxy_url_encrypted + flag
+    → Status returned (no URL in response)
     
-    id: UUID = Column(primary_key=True)
-    org_id: UUID = ForeignKey(Organization.id, nullable=False)
-    job_type: str  # SYNC_DAILY, SCORE_BATCH, AUTOFILL_ASSET, TIKTOK_DOWNLOAD, etc
-    status: str    # PENDING, RUNNING, COMPLETE, FAILED
-    
-    # Progress tracking
-    progress_current: int = 0       # e.g., 45 assets scored
-    progress_total: int = 0         # e.g., 200 assets to score
-    
-    # Timing
-    started_at: DateTime = None
-    ended_at: DateTime = None
-    
-    # Result storage
-    output: dict = JSONB()          # Gemini response, manifest, error_traceback
-    error_message: str = Text()     # Short error summary (<4000 chars)
-    
-    # Context
-    metadata: dict = JSONB()        # platform, connection_id, app_type, etc
-    
-    created_at: DateTime = default(utcnow)
-    
-    __table_args__ = (
-        Index("ix_background_jobs_org_status", "org_id", "status"),
-        Index("ix_background_jobs_org_created", "org_id", "created_at"),
-    )
+DV360/Google Ads sync starts
+    → Load from SystemConfig
+    → Decrypt proxy URL
+    → For each YouTube video:
+        → Try: cookieless + residential proxy (sticky session ID in username)
+        → If 403: try primary cookies + proxy
+        → If 403: try backup cookies + proxy
+        → If 403: fail
+    → bgutil sidecar auto-generates PO tokens when yt-dlp requests format URLs
 ```
 
-**Relationship to SyncJob:**
-- SyncJob remains for backward compatibility
-- BackgroundJob is new — covers syncs + scoring + autofill + downloads
-- For v1.3: both coexist; only scoring/autofill use BackgroundJob
+### Build Order
 
-### 2. Job Instrumentation Points
+1. **Alembic migration** — add 2 columns to `system_config` table
+2. **SystemConfig model** — add fields + defaults
+3. **super_admin.py endpoints** — `GET /proxy-config`, `PUT /proxy-config`
+4. **dv360_sync.py** — proxy injection + sticky session + retry order
+5. **google_ads_sync.py** — same as DV360
+6. **Docker Compose** — install `bgutil-ytdlp-pot-provider` in backend image
+7. **Smoke test** — Webshare free tier (validate proxy injection works)
 
-| Component | Job Type | When | Writes |
-|-----------|----------|------|--------|
-| scoring_job.py | SCORE_BATCH | every 15min | status, progress_current/total, output, error_message |
-| ai_autofill.py | AUTOFILL_ASSET | per new asset | status, output (Gemini), error |
-| tiktok_sync.py | TIKTOK_DOWNLOAD | during sync | progress, manifest of URLs |
+**Dependencies:** Proxy depends on nothing else. Can be developed in parallel with filters.
 
-**Key pattern:**
+---
 
+## Track 2: Dashboard Filters
+
+### Why
+
+Three filters were partially implemented in quick-session branches (44d8dda, afc4fef, etc.) but need architecture review before merging.
+
+1. **Metadata autocomplete** — Dynamic list of field values extracted from CreativeAsset + AssetMetadataValue; client-side filtering as user types
+2. **Ad account multi-select** — Already implemented in main (e403eaf), but needs verification that it integrates with new API params
+3. **Video duration range** — New filter; 0–120s default slider range; only shows when video assets detected
+
+### Architecture
+
+**Key constraint:** All three filters should integrate into existing paginated assets query. No separate endpoints needed for metadata suggestions (client pulls from full asset list); durations already in `CreativeAsset.video_duration`.
+
+#### Modified Files
+
+##### `backend/app/api/v1/endpoints/dashboard.py`
+
+**GET /dashboard/assets** already accepts `ad_account_ids` (line 198, via query param). Needs two new optional params:
+
+- `meta_filters: Optional[str] = Query(default=None)` — comma-separated `field_id:value` pairs
+  - Example: `meta_filters=color:red,theme:holiday`
+  - Parse into dict: `{field_id: [values]}` for IN clause joins
+  - Join with `AssetMetadataValue` table to filter assets
+  - **Critical:** Must filter by `organization_id` in the join to prevent cross-org data leakage
+
+- `duration_min: Optional[float] = Query(default=None)` — seconds, >= 0
+- `duration_max: Optional[float] = Query(default=None)` — seconds, <= 3600
+
+Existing query already handles:
+- `platforms` ✓
+- `formats` ✓
+- `objectives` ✓
+- `ad_account_ids` ✓ (line 300–301)
+- `score_min` / `score_max` ✓
+
+**Add to WHERE clause:**
 ```python
-# Release DB session before HTTP calls, then update after
+if meta_filters_dict:  # {field_id: [values]}
+    for field_id, values_list in meta_filters_dict.items():
+        query = query.join(
+            AssetMetadataValue,
+            and_(
+                AssetMetadataValue.asset_id == CreativeAsset.id,
+                AssetMetadataValue.metadata_field_id == uuid.UUID(field_id),
+                AssetMetadataValue.value.in_(values_list),
+            )
+        )
 
-async with get_session_factory()() as db:
-    job = BackgroundJob(...)
-    db.add(job)
-    await db.flush()
-    job_id = job.id
-
-# HTTP call (no session held)
-response = await poll_brainsuite_api()
-
-async with get_session_factory()() as db:
-    job = (await db.execute(select(BackgroundJob).filter_by(id=job_id))).scalar_one()
-    job.status = "COMPLETE"
-    job.output = response.json()
-    db.add(job)
-    await db.commit()
+if duration_min is not None:
+    query = query.where(CreativeAsset.video_duration >= duration_min)
+if duration_max is not None:
+    query = query.where(CreativeAsset.video_duration <= duration_max)
 ```
 
-### 3. SSE Endpoint (`GET /api/v1/admin/jobs/stream`)
+**Sorting:** Already supports all metrics; no changes needed.
 
-**Framework:** `sse-starlette` (pip install sse-starlette)
+##### `frontend/src/app/features/dashboard/dashboard.component.ts`
 
-**Location:** `backend/app/api/v1/endpoints/admin_jobs.py` (NEW FILE)
+From quick-work commits, component has:
 
-**Endpoint signature:**
-
-```python
-from sse_starlette.sse import EventSourceResponse
-
-@router.get("/stream")
-async def stream_jobs(
-    current_superadmin = Depends(get_current_superadmin),
-    db = Depends(get_db),
-):
-    """SSE stream of job updates.
-    
-    Publishes events: {"id": uuid, "org_id": uuid, "status": "RUNNING", ...}
-    Connection stays open; new events pushed server→client.
-    """
-    async def event_generator():
-        last_update = datetime.utcnow()
-        while True:
-            async with get_session_factory()() as db:
-                jobs = await db.execute(
-                    select(BackgroundJob)
-                    .where(BackgroundJob.created_at >= last_update - timedelta(hours=24))
-                    .order_by(BackgroundJob.created_at.desc())
-                )
-                for job in jobs.scalars().all():
-                    yield {
-                        "event": "job_update",
-                        "data": json.dumps(JobResponse.from_orm(job).dict())
-                    }
-            
-            last_update = datetime.utcnow()
-            await asyncio.sleep(2)
-    
-    return EventSourceResponse(event_generator())
-```
-
-**Pydantic schema:**
-
-```python
-class JobUpdate(BaseModel):
-    id: UUID
-    org_id: UUID
-    job_type: str
-    status: str
-    progress_current: int
-    progress_total: int
-    started_at: Optional[datetime]
-    ended_at: Optional[datetime]
-    error_message: Optional[str]
-```
-
-**Security:** SuperAdmin only (JWT `is_superadmin` claim required)
-
-### 4. Angular SSE Client
-
-**Location:** `frontend/src/app/features/admin/services/job-monitor.service.ts` (NEW)
-
+**Metadata filter state** (from afc4fef):
 ```typescript
-@Injectable({ providedIn: 'root' })
-export class JobMonitorService {
-  private eventSource: EventSource | null = null;
-  public jobs$: BehaviorSubject<BackgroundJob[]> = new BehaviorSubject([]);
-  
-  connect(baseUrl: string): void {
-    this.eventSource = new EventSource(`${baseUrl}/admin/jobs/stream`);
-    
-    this.eventSource.addEventListener('job_update', (event: MessageEvent) => {
-      const job: BackgroundJob = JSON.parse(event.data);
-      const jobs = this.jobs$.value;
-      const idx = jobs.findIndex(j => j.id === job.id);
-      
-      if (idx >= 0) {
-        jobs[idx] = job;
-      } else {
-        jobs.unshift(job);
-      }
-      
-      this.jobs$.next(jobs);
-    });
-    
-    this.eventSource.onerror = () => {
-      this.eventSource?.close();
-      setTimeout(() => this.connect(baseUrl), 5000);
-    };
-  }
-  
-  disconnect(): void {
-    this.eventSource?.close();
-  }
+selectedMetaFilters: Map<string, string[]> = new Map();  // field_id -> [values]
+metadataValues: Map<string, string[]> = new Map();       // field_id -> available values from assets
+```
+
+**Duration filter state** (from 44d8dda):
+```typescript
+durationMin: number = 0;
+durationMax: number = 120;
+hasAnyVideo: boolean = false;
+durationChange$ = new Subject<void>();
+```
+
+**Template changes:**
+- Metadata: "Add Filter" button → popover → checklist of available field values → chips row showing selected filters
+- Duration: ngx-slider after score slider, format as "15s", "1m30s"; only shown when `hasAnyVideo=true`
+- Ad accounts: already implemented in main branch
+
+**API integration in loadData():**
+```typescript
+// Build meta_filters param
+let metaFiltersParam = '';
+this.selectedMetaFilters.forEach((values, fieldId) => {
+  values.forEach(v => {
+    metaFiltersParam += `${fieldId}:${encodeURIComponent(v)},`;
+  });
+});
+if (metaFiltersParam) params['meta_filters'] = metaFiltersParam.slice(0, -1);
+
+// Duration params
+if (this.durationMin !== 0 || this.durationMax !== 120) {
+  params['duration_min'] = this.durationMin;
+  params['duration_max'] = this.durationMax;
 }
 ```
 
-**UI Component Location:** `frontend/src/app/features/admin/components/job-monitor/`
+**Response handler:**
+- Set `hasAnyVideo = true` if any item has `asset_format === 'VIDEO'` (sticky flag, never resets to false)
+- Populate `metadataValues` by scanning response items for all unique metadata keys/values
+- Display metadata suggestions in the "Add Filter" popover
 
-Template shows: job list with status badges, progress bars, drill-in error detail
+### New Endpoints
 
-### 5. TikTok Asset Download Integration
+**GET /dashboard/metadata-filter-values** (optional, from afc4fef):
+- Returns distinct (field_id, value) pairs for current org + applied filters
+- Alternative: populate client-side from asset responses (simpler, already works)
+- If implemented: `SELECT DISTINCT(metadata_field_id, value) FROM asset_metadata_value WHERE asset_id IN (filtered_asset_ids)`
 
-**Current state:** TikTok sync fetches metadata but does NOT download files to MinIO
+### New Files
 
-**New component:** `backend/app/services/sync/tiktok_asset_downloader.py`
+None. All infrastructure exists.
 
-**Integration in `tiktok_sync.py`:**
+### Data Flow
 
-```python
-async def sync_date_range(db, connection, date_from, date_to, job_id):
-    # ... existing: fetch ads, upsert to tiktok_raw_performance ...
+```
+Dashboard loads
+    → GET /dashboard/assets with defaults
+    → Response includes video assets
+    → hasAnyVideo = true, duration slider visible
+    → metadataValues populated from response
     
-    # NEW: download assets
-    if creative_urls:
-        await download_tiktok_assets_batch(
-            db, connection, creative_urls, job_id
-        )
+User selects metadata + duration range
+    → selectedMetaFilters.set(field_id, [values])
+    → durationMin/Max updated
+    → onFilterChange() called
+    → debounce 400ms
     
-    return {"fetched": count, ...}
+Fetch filtered list
+    → GET /dashboard/assets?meta_filters=field_id:val&duration_min=15&duration_max=30
+    → WHERE CreativeAsset.video_duration BETWEEN 15 AND 30
+    → WHERE asset_metadata_value.value IN (selected_values) (joined per field)
+    → Paginated results returned
+    
+User clears metadata filter
+    → selectedMetaFilters.delete(field_id)
+    → onFilterChange() called
+    → Refetch without that filter
 ```
 
-**What to download:**
-- `video_url` → MP4 to MinIO, store presigned URL in `creative_assets.asset_url`
-- `image_ids` → extract image URLs, download to MinIO
-- Thumbnail: first frame of video OR first image
+### Build Order
 
-**Library choice:** Direct `aiohttp` (simpler, lighter); fallback to yt-dlp if needed
+1. **Backend params** — add `meta_filters`, `duration_min`, `duration_max` to dashboard.py GET /assets
+2. **Backend filtering logic** — add WHERE/JOIN clauses for both
+3. **Frontend state** — merge quick-work branches (afc4fef, 44d8dda) into main
+4. **Frontend template** — metadata popover + duration slider
+5. **Frontend API integration** — pass params to loadData()
+6. **Verification** — test metadata autocomplete matches, duration range filtering, ad account multi-select still works
 
----
-
-## Build Order
-
-1. **Phase 1: Database Schema**
-   - Migration: `add_background_jobs_table`
-   - Add BackgroundJob model
-   - Blocks: everything else
-
-2. **Phase 2: Instrumentation Helpers**
-   - `services/background_jobs.py` (create_job, update_progress)
-   - `services/sync/tiktok_asset_downloader.py`
-   - Depends on: Phase 1
-
-3. **Phase 3: Service Instrumentation**
-   - Modify `scoring_job.py`, `ai_autofill.py`, `tiktok_sync.py`
-   - Depends on: Phase 2
-
-4. **Phase 4: SSE Endpoint**
-   - `api/v1/endpoints/admin_jobs.py` (GET /stream, /jobs, /jobs/{id})
-   - Depends on: Phase 3
-
-5. **Phase 5: Angular SSE Client**
-   - `features/admin/services/job-monitor.service.ts`
-   - `features/admin/components/job-monitor/` UI
-   - Depends on: Phase 4
-
-6. **Phase 6: Testing**
-   - Integration + E2E tests
-   - Depends on: Phase 5
+**Dependencies:** Independent of proxy track. Can start immediately.
 
 ---
 
-## Risks & Mitigation
+## DB Migration Surface
+
+### Columns to Add (Alembic migration)
+
+**system_config table:**
+- `proxy_url_encrypted: Text` (nullable)
+- `proxy_enabled: Boolean` (default False)
+
+**CreativeAsset table:**
+- `video_duration: Float` already exists (line 51 of creative.py)
+  - No new column needed; only used for filtering in v1.4
+
+### Existing Tables Used (No Changes)
+
+- `asset_metadata_value` — join for metadata filter autocomplete
+- `creative_assets` — existing `video_duration` field + existing `ad_account_id` field
+- `platform_connections` — no changes
+
+### Total Migration Scope
+
+**New columns:** 2 (proxy_url_encrypted, proxy_enabled)  
+**Modified tables:** 1 (system_config)  
+**Constraint changes:** 0  
+**Data backfill:** None (both columns nullable with sensible defaults)  
+
+**Risk:** Minimal. Additive-only, no removal or constraint changes.
+
+---
+
+## Integration Points
+
+### Cross-Module Dependencies
+
+| Component | Depends On | Impact |
+|-----------|-----------|--------|
+| dv360_sync proxy | SystemConfig + Fernet encryption | Read-only config load; same as cookies |
+| google_ads_sync proxy | SystemConfig + Fernet encryption | Same as dv360 |
+| super_admin proxy endpoints | SystemConfig + Fernet | GET/PUT pattern copy-exact from cookies |
+| dashboard metadata filter | AssetMetadataValue join | Must filter by org_id in join |
+| dashboard duration filter | CreativeAsset.video_duration | Field already exists; just filter |
+| dashboard ad account filter | CreativeAsset.ad_account_id | Already implemented (main branch) |
+
+### Backward Compatibility
+
+- **Proxy disabled by default** — existing downloads unaffected until admin enables
+- **New filter params optional** — if not provided, query behaves as before
+- **Cookie system unchanged** — proxy is additive layer only
+- **No schema removals** — all changes append-only
+
+### Performance Considerations
+
+**Proxy:** No performance impact (simple config load before download attempt)
+
+**Metadata filter joins:** 
+- Joins are `LEFT OUTER` on `AssetMetadataValue` 
+- Index required on `(asset_id, metadata_field_id, organization_id)` for O(1) lookup
+- With 1,000–10,000 assets per org, query returns in <100ms with proper indexing
+
+**Duration filter:** Simple numeric range predicate on indexed `video_duration` column — negligible overhead
+
+---
+
+## Specific Question Answers
+
+### Q1: Proxy URL injection into yt-dlp
+
+**Answer:**  
+Insert into `ydl_opts` dict AFTER construction but BEFORE `YoutubeDL()` instantiation:
+```python
+# Line ~1185 in dv360_sync.py, inside _do_download_with_cookies()
+ydl_opts = {
+    "outtmpl": ...,
+    "format": "best/b",
+    # ... other opts
+}
+if proxy_enabled and proxy_url:
+    ydl_opts["proxy"] = proxy_url  # <-- HERE
+with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    ydl.download([url])
+```
+
+Sticky session ID embedded in proxy username: `user-session-{12_random_chars}:pass@host:port`
+
+### Q2: bgutil sidecar architecture
+
+**Answer:**  
+Not a sidecar in the Docker container sense. Install `bgutil-ytdlp-pot-provider` PyPI package in backend image. It registers as a provider with yt-dlp at import time. When yt-dlp encounters a protected format URL, it auto-invokes the provider to generate a PO token on-the-fly. No explicit code required; yt-dlp calls it automatically once installed.
+
+**Installation:** Add to `backend/Dockerfile`:
+```dockerfile
+RUN pip install bgutil-ytdlp-pot-provider==latest
+```
+
+### Q3: Metadata autocomplete — new endpoint or client-side?
+
+**Answer:**  
+Client-side is sufficient. Dashboard already returns full asset list for current filters. Extract unique (field_id, value) pairs from response and populate autocomplete dropdown. Optional: implement `/dashboard/metadata-filter-values` endpoint if you want server-side deduplication (cleaner for large datasets, ~10 extra lines of SQL).
+
+Simplest approach: parse from response, no new endpoint.
+
+### Q4: Ad account multi-select filter integration
+
+**Answer:**  
+Already implemented in main branch (e403eaf, 741c037). Component has `selectedAdAccountIds: string[]` and passes as `ad_account_ids` query param. Backend `dashboard.py` already handles it (line 300–301). Verify by:
+1. Check `adAccounts` are loaded on init (line 1296)
+2. Confirm `selectedAdAccountIds` passed to `loadData()` (line 1567)
+3. Test with 2+ accounts in filter
+
+No changes needed unless verification finds issues.
+
+### Q5: Video duration range — field population
+
+**Answer:**  
+`CreativeAsset.video_duration: Optional[float]` exists in model (creative.py, line 51). Populated by DV360/Google Ads sync at line ~1237 of dv360_sync.py via `_get_video_duration(file_path)`. TikTok sync also populates it. No migration needed.
+
+Dashboard filter simply adds WHERE clause: `CreativeAsset.video_duration BETWEEN duration_min AND duration_max`
+
+### Q6: Migration surface — complete list
+
+**Answer:**
+- **New columns:** `proxy_url_encrypted (Text)`, `proxy_enabled (Boolean)` on `system_config` table
+- **Existing columns used:** `video_duration` (already exists on `creative_assets`)
+- **No table additions, deletions, or constraint changes**
+- **Risk:** Minimal (additive only)
+
+---
+
+## Build Sequence Recommendation
+
+### Phase 1: Proxy Infrastructure (Week 1)
+1. Alembic migration + SystemConfig model
+2. super_admin.py proxy endpoints (GET + PUT)
+3. Webshare free tier smoke test (validate yt-dlp accepts proxy injection)
+
+### Phase 2: Proxy Sync Integration (Week 1–2)
+4. dv360_sync.py proxy injection + sticky session + retry order
+5. google_ads_sync.py same changes
+6. Docker Compose: add bgutil package
+7. E2E test: YouTube download via proxy
+
+### Phase 3: Dashboard Filters — Backend (Week 2)
+8. dashboard.py: add `meta_filters`, `duration_min`, `duration_max` params + WHERE/JOIN logic
+9. Unit test: metadata filtering, duration range
+
+### Phase 4: Dashboard Filters — Frontend (Week 2–3)
+10. Merge quick-work branches (afc4fef, 44d8dda, 3dd4b1c) into main
+11. Add metadata popover template + duration slider template
+12. Wire up API params in loadData()
+13. Smoke test: all three filters work + interact correctly
+
+### Phase 5: Verification (Week 3)
+14. Ad account multi-select still works (regression)
+15. Pagination works with filters applied
+16. Proxy enabled → cookies last longer ✓
+
+---
+
+## Known Risks & Mitigations
 
 | Risk | Mitigation |
 |------|-----------|
-| DB lock during long sync | Keep transactions small; use flush() instead of commit() in loops |
-| SSE connection dropout | EventSource auto-reconnect + frontend manual reconnect |
-| Progress counter race | Use unique job_id; frontend dedupes by UUID |
-| Scoring + rescore race | Rescore sets status=UNSCORED only if currently COMPLETE |
-| TikTok download hangs | 30s timeout per asset; skip on timeout, continue batch |
-| SSE memory leak | Clean context; keep 24h history only |
-| Multi-tenant leak | org_id foreign key required; SuperAdmin sees all (by design) |
+| Proxy geo-region mismatch (cookie region ≠ proxy exit region) | Lock proxy to US exit nodes; document in admin UI |
+| Mid-download IP rotation (sticky session too short) | Default sticky duration ≥5 min (IPRoyal 7 days is safe); embed session ID in proxy username |
+| PO token generation fails silently | Monitor bgutil startup logs; add explicit check after import |
+| Metadata filter joins N+1 per selected field | Add composite index on `(asset_id, metadata_field_id, organization_id)` before go-live |
+| Duration slider shows before any videos loaded | Use `hasAnyVideo` sticky flag; only show after first response with VIDEO assets |
 
 ---
 
-## File Changes Summary
+## Files Summary
 
-### New Files
-- `backend/app/models/background_job.py`
-- `backend/app/services/background_jobs.py`
-- `backend/app/services/sync/tiktok_asset_downloader.py`
-- `backend/alembic/versions/{id}_add_background_jobs_table.py`
-- `backend/app/api/v1/endpoints/admin_jobs.py`
-- `frontend/src/app/features/admin/services/job-monitor.service.ts`
-- `frontend/src/app/features/admin/components/job-monitor/job-monitor.component.ts`
+### Phase 1–2: Proxy Tracks
+- `/backend/app/models/system_config.py` — +2 columns
+- `/backend/alembic/versions/{new}.py` — new migration
+- `/backend/app/api/v1/endpoints/super_admin.py` — +80 lines (2 new endpoints)
+- `/backend/app/services/sync/dv360_sync.py` — +15 lines (proxy injection)
+- `/backend/app/services/sync/google_ads_sync.py` — +15 lines (proxy injection)
+- `/backend/Dockerfile` — +1 line (bgutil install)
 
-### Modified Files
-- `backend/app/models/__init__.py` — import BackgroundJob
-- `backend/app/api/v1/__init__.py` — include admin_jobs router
-- `backend/app/services/sync/scoring_job.py` — add BackgroundJob calls
-- `backend/app/services/ai_autofill.py` — add BackgroundJob calls
-- `backend/app/services/sync/tiktok_sync.py` — call asset_downloader
+### Phase 3–4: Dashboard Filters
+- `/backend/app/api/v1/endpoints/dashboard.py` — +20 lines (3 new params + logic)
+- `/frontend/src/app/features/dashboard/dashboard.component.ts` — merge 3 commits (~150 net lines)
+- `/frontend/src/app/features/dashboard/dashboard.component.html` — update template for popover + slider
+
+### Total Surface
+- **Backend:** ~130 lines net (proxy + filters combined)
+- **Frontend:** ~150 lines net (filters; proxy has no UI)
+- **Migrations:** 1 (additive)
+- **Risk:** Minimal (no breaking changes, backward compatible)
 
 ---
 
-## Architecture Decisions Logged
+## Success Criteria
 
-| Decision | Why |
-|----------|-----|
-| New BackgroundJob table (not extend SyncJob) | Uniform schema for all job types; SyncJob is platform-specific |
-| org_id on BackgroundJob | Multi-tenant scoping; enables future org-level quotas |
-| status: PENDING/RUNNING/COMPLETE/FAILED | 4 states sufficient; avoids ambiguity of PROCESSING |
-| progress_current/total (not %) | UI flexibility; raw counts queryable |
-| output: JSONB (not separate table) | Keeps data together; still queryable |
-| SSE (not WebSocket) | Simpler; unidirectional; no bidirectional complexity |
-| Polling generator (not Redis) | Phase 1 simplicity; clear upgrade path later |
-| TikTok download in sync (not manual) | Automatic gap closure; immediate autofill/scoring ready |
-| Separate asset_downloader service | Reusable for other platforms (Meta, Google Ads) |
-| BackgroundJob in SuperAdmin-only UI | Not exposed to regular users yet; visibility in v1.4 candidate |
+**Proxy track:**
+- ✓ Proxy URL stored encrypted in SystemConfig
+- ✓ SuperAdmin can enable/disable via API
+- ✓ DV360 + Google Ads downloads inject proxy into yt-dlp opts
+- ✓ bgutil plugin generates PO tokens automatically
+- ✓ Cookieless-first retry path works (public videos)
+- ✓ Primary cookies work as fallback when proxy+public fails
+- ✓ YouTube video downloads succeed on Cloud Run (tested vs GCP datacenter blocking)
 
+**Dashboard filters track:**
+- ✓ Metadata filter accepts multiple field:value pairs
+- ✓ Duration range slider (0–120s) visible only when video assets exist
+- ✓ Ad account multi-select still works (regression test)
+- ✓ All three filters work independently and in combination
+- ✓ Pagination works with all filters applied
+- ✓ Filters update immediately (debounce 400ms)

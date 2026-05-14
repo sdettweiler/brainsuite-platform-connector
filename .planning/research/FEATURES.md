@@ -1,494 +1,198 @@
 # Feature Landscape
 
 **Domain:** Creative analytics dashboard for ad agencies (performance marketing)  
-**Researched:** 2026-05-07 (v1.3 Monitoring + TikTok Download update; v1.1 and v1.0 research preserved below)  
-**Confidence:** HIGH (v1.3 monitoring patterns) + MEDIUM–HIGH (v1.1–v1.0 legacy research)
+**Researched:** 2026-05-14 (v1.4 YouTube/DV360 proxy + dashboard filters added)  
+**Confidence:** HIGH (v1.3 monitoring patterns) + MEDIUM–HIGH (v1.4 proxy workflow + filter UX patterns)
 
 ---
 
-## v1.3 Feature Research — SuperAdmin Monitoring & TikTok Asset Download
+## v1.4 Feature Research — YouTube/DV360 Residential Proxy + Dashboard Filters
 
-This section covers the real-time job monitoring dashboard for SuperAdmins and the closure of the TikTok asset download gap (unblocking AI autofill and BrainSuite scoring for TikTok creatives).
+This section covers two feature tracks: (1) residential proxy integration for YouTube/Google Ads/DV360 video downloads on cloud infrastructure, and (2) three dashboard filters (metadata autocomplete, ad account multi-select, video duration range).
 
 ---
 
-### Table Stakes (SuperAdmin Users Expect These in v1.3)
+### Proxy Download Track: Table Stakes
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **Real-time job list view** | SuperAdmins need to see what's running across all orgs right now; platform observability is critical for SaaS health | Medium | SSE streaming, Angular Material table, filtering by type/status |
-| **Per-job type grouping** | Sync/download/autofill/scoring are fundamentally different operations; need visual separation for quick scanning | Low | Card layout or table sections (sync, download, autofill, scoring) |
-| **Job status indicators** | "Is this running? Failed? Done?" Essential to gauge platform health without hitting backend directly | Low | Badge/chip component with colors (PENDING→yellow, PROCESSING→blue, COMPLETE→green, FAILED→red) |
-| **Per-sync-run progress bar** | "Downloaded 7 of 10 assets" — SuperAdmins need granular progress visibility, not just start/end times | Medium | Material progress bar + counter label (e.g., "7/10 assets downloaded") |
-| **Error visibility & tracebacks** | When jobs fail, SuperAdmins need to understand root cause without SSH'ing into container logs | Medium | Expandable error reason + stack trace in detail panel |
-| **Job drill-in detail panel** | Click a job → see full context (Gemini output, downloaded files, error logs) — essential for debugging issues | Medium–High | Side panel with collapsible sections, JSON viewer for AI output, file manifest table |
-| **TikTok asset download during sync** | TikTok video/image creatives must be downloaded to storage during sync (currently only metadata is synced); unblocks AI autofill + BrainSuite scoring for TikTok | Low–Medium | Already has infrastructure: `_download_tiktok_thumbnail()` exists, just needs wiring to main sync pipeline and job progress tracking |
+Features users expect for video creative downloads to work reliably in production cloud environments (GCP, AWS, etc.).
 
-### Differentiators (Premium Monitoring Capabilities)
+| Feature | Why Expected | Complexity | Implementation Notes |
+|---------|--------------|------------|----------------------|
+| **Residential proxy URL injection into yt-dlp options** | YouTube blocks datacenter IPs (GCP Cloud Run, etc.) — residential proxies are the only solution that works at scale. Without this, all video downloads fail on production hosts. | Med | Proxy URL passed to yt-dlp as `--proxy "http://user:password@host:port"`. Existing cookie auth layer remains; proxy is an additional layer. Provider: Webshare (validation), IPRoyal (production). |
+| **Sticky session per download job** | Multiple concurrent downloads need isolation — each job gets a unique session ID embedded in proxy username (e.g., `user-job123456@host:port`) so exit IP stays consistent for that download across all internal requests (metadata fetch, format parsing, chunks). | Med | Session ID generated per BackgroundJob, not per HTTP request. Proxy provider uses session ID to assign + stick exit IP for job duration. Prevents mid-download IP rotation that breaks YouTube's internal consistency checks. |
+| **PO token generation via bgutil plugin** | YouTube's BotGuard attestation layer now requires PO tokens for video metadata and segment requests on most clients. Without PO token integration, yt-dlp fails with 403 on format list or streaming. | High | bgutil HTTP server (port 4416, always-running) or script mode (slower, not recommended). Token is video-ID-bound (new token per video). Token lifetime ~12 hours to several months (varies by YouTube). PO token injected into yt-dlp options. |
+| **Three-layer stack working end-to-end** | Proxy layer (IP unblocking) → Cookie layer (auth state) → PO token layer (bot attestation). All three are necessary; each failure mode is a different root cause. | High | Stacked architecture: (1) yt-dlp connects via residential proxy IP, (2) uses stored YouTube cookie if available, (3) requests PO token from bgutil, (4) executes download. Each layer independently testable but all three required for production reliability. |
+| **Admin toggle to enable/disable proxy + token generation** | SuperAdmins must control when residential proxy costs accrue (per-download billing). Fallback: download without proxy (fails on GCP, succeeds on residential networks). Admin UI provides binary on/off. | Low | SystemConfig singleton row: `residential_proxy_enabled` (boolean). When false, skip proxy URL injection and token generation. Cookie layer always available as fallback. |
+| **Encrypted proxy URL storage in SuperAdmin panel** | URL contains auth credentials (username:password). Cannot be logged, exposed in error messages, or stored in plaintext. Same Fernet encryption used for YouTube cookies. | Low | SystemConfig.residential_proxy_url (String(1000), Fernet-encrypted). Backend decrypts at download time, passes to yt-dlp. Frontend UI masks input (password type). |
+
+### Proxy Download Track: Differentiators (Nice to Have)
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| **Per-entity progress tracking** | Show "7 of 10 assets from TikTok ad account X" breakdown within a multi-tenant sync | Medium–High | Requires job metadata to track per-organization + per-platform granularity; nice-to-have for v1.3 MVP |
-| **Live job count summary cards** | "3 syncing, 2 downloads running, 1 scoring" at a glance without opening table | Low | Summary metrics above job list; auto-update via SSE; high UX value |
-| **Export job history/logs** | Download CSV of recent job runs with duration, status, error summary | Medium | Defer to Phase 2; compliance feature, not blocking |
-| **Job retry controls** | SuperAdmin can retry failed jobs directly from dashboard | Medium–High | Depends on job state serialization; defer to Phase 2 |
-| **Streaming AI inference output preview** | Watch Gemini Vision/Whisper results populate in real time as inference runs | Medium–High | Requires capturing streaming JSON chunks; focus on displaying final result for v1.3 |
+| **Per-provider cost tracking dashboard** | Display cumulative residential proxy bytes/sessions consumed (for budget planning). Different providers have different pricing models. | High | Requires provider API integration for usage stats. Deferred to v1.5 if needed for cost forecasting. |
+| **Automatic provider failover** | If primary provider (IPRoyal) is unreachable, fallback to secondary (Webshare). Graceful degradation under provider outage. | High | Requires health checks + failover logic. Complex state machine. Deferred to v1.5. |
+| **Per-platform proxy configuration** | Different proxy providers for DV360 vs Google Ads vs YouTube native. Provider A works better for certain geo-restrictions. | Med | Requires separate URL fields per platform. Nice-to-have for global agencies, but v1.4 uses single unified proxy. |
+| **Download retry with exponential backoff + circuit breaker** | Transient failures (timeout, IP block) trigger automatic retry. After N failures, circuit breaker opens to prevent resource exhaustion. | Med | Retry loop with jitter; circuit breaker state persisted to DB. Standard reliability pattern. Consider if backlog of stuck jobs accumulates. |
+| **Proxy request logging (non-credential)** | Log session ID, provider, exit IP (if available via API), timestamp for debugging. Helps correlate failures to specific proxy behavior. | Low | Structured logging to stderr/JSON. Session ID is the primary debug key. Non-sensitive and valuable for support. |
 
-### Anti-Features (Do Not Build in v1.3)
+### Proxy Download Track: Anti-Features (Don't Build)
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| **Job re-triggering/pause/cancel from UI** | Requires job state serialization + async queue replay; risky without transaction safety | Defer to Phase 2; SuperAdmins use direct API calls for critical operations |
-| **Per-org job filtering in detail** | Adds cognitive load to detail panel; platform-wide view is more useful for SuperAdmins | Show global listing first; org context visible in job metadata row |
-| **Multi-select bulk operations** | Requires transaction safety + coordinated state management | Defer to Phase 2; single-job operations only in v1.3 MVP |
-| **Downloadable job logs as files** | Storage/cleanup overhead; logs are already in database | Use text endpoint `/api/v1/admin/jobs/{id}/logs`; let browser save if needed |
-| **WebSocket instead of SSE** | WebSocket adds bidirectional overhead; SSE sufficient for unidirectional updates (jobs → dashboard) | SSE + polling fallback is table stakes; no bidirectional control needed in v1.3 |
-
-### Feature Dependencies
-
-```
-PostgreSQL background_jobs table (new schema)
-├── Stores all job metadata: type, status, progress counts, error, result
-├── Indexed by org_id, type, status, created_at for dashboard queries
-└── Pre-requisite for all monitoring UI features
-
-Job instrumentation across all services
-├── Sync services (Meta, TikTok, Google Ads, DV360) write progress
-├── Download services write file count
-├── AI autofill writes inference results JSON
-├── BrainSuite scoring writes score status
-└── All write to background_jobs table via shared helper
-
-SSE real-time transport
-├── FastAPI streaming endpoint `/api/v1/admin/jobs/stream`
-├── Pushes job updates to Angular in real time
-├── Fallback to polling if SSE connection drops
-└── Pre-requisite for "live" dashboard feel
-
-Angular Material monitoring UI
-├── Real-time job list (table + grouped card sections)
-├── Detail panel with tabs (metadata, output, files, errors)
-├── Summary cards with live counts
-└── Status badges + progress bars
-
-TikTok asset download
-├── Triggered during TikTok sync (existing `_download_tiktok_thumbnail`)
-├── Writes file URLs to CreativeAsset.video_url / image_url
-├── Tracked in background_jobs.progress_count
-└── Enables AI autofill + BrainSuite scoring for TikTok
-
-Detail panel components
-├── JSON viewer for Gemini output (collapsible tree)
-├── Error traceback display (truncated, copyable)
-├── File manifest table (assets + presigned URLs)
-└── All depend on populated background_jobs table
-```
-
-### MVP Recommendation for v1.3
-
-**Prioritize (Critical Path):**
-1. **PostgreSQL background_jobs table** — instrumentation foundation
-   - Fields: id, org_id, job_type, status, progress_count, total_count, error_reason, metadata JSON, created_at, updated_at
-   - Indexes: (org_id, type, status), (status, created_at)
-
-2. **SSE streaming endpoint** — FastAPI `/api/v1/admin/jobs/stream`
-   - Real-time updates; fallback to polling if needed
-   - Batch updates (max 1/500ms) to prevent UI thrashing
-
-3. **SuperAdmin job monitoring UI** — `/configuration/admin/jobs`
-   - Real-time job list (Material table)
-   - Per-type grouping (sync, download, autofill, scoring cards)
-   - Summary cards with live counts
-   - Status badges + progress bars
-   - Drill-in detail panel (metadata, errors, files)
-
-4. **TikTok asset download wiring** — Hook `_download_tiktok_thumbnail()` into sync
-   - Track download count in job progress
-   - Update CreativeAsset.video_url / image_url with S3 URLs
-   - Log errors but don't fail sync if downloads fail
-
-**Defer to Phase 2 (v1.3+):**
-- Per-entity progress tracking (org/account breakdown)
-- Job retry/pause controls
-- Export history + CSV
-- Bulk operations
-
-### Complexity Breakdown by Feature
-
-#### Low Complexity (1–2 days)
-- Job status indicator badges (Material chips)
-- Summary cards displaying live counts
-- Basic Material table layout + sorting/filtering
-- Download manifest table display
-- TikTok thumbnail download wiring (already exists, just needs integration)
-
-#### Medium Complexity (3–5 days)
-- SSE endpoint (FastAPI streaming)
-- Real-time table refresh via RxJS observable
-- Side panel with tabs
-- Job progress bar with numerator/denominator
-- Per-sync-run grouping in table
-- Error traceback display (truncate + monospace font)
-
-#### Medium–High Complexity (5–8 days)
-- background_jobs table schema + indexing
-- Instrumentation across sync/download/autofill/scoring services
-- Progress tracking middleware (wrap existing services)
-- Collapsible JSON viewer for Gemini output (custom ngx component or renderjson library)
-- Change detection tuning for SSE updates
-
-#### High Complexity (Defer)
-- Per-entity progress tracking (breakdown by org/account)
-- Job retry logic + state serialization
-- Multi-select bulk operations + transaction safety
-
-### Dependency on Existing Infrastructure
-
-**Already Available:**
-- SuperAdmin role + JWT claim (Phase 14)
-- Notification service for job alerts
-- Object storage (MinIO/S3) for presigned URLs
-- Angular Material (table, sidenav, progress bar, badge, chip, tab)
-- RxJS for SSE subscriptions
-- TikTok thumbnail download function (`_download_tiktok_thumbnail`)
-- AI autofill Gemini JSON output (stored in CreativeAsset.ai_metadata as JSONB)
-
-**Needs to Be Built:**
-- background_jobs table + migration
-- SSE streaming endpoint + client subscription
-- Job instrumentation in all services
-- Job monitoring UI component (Material table + detail panel)
-- JSON viewer component for AI output
-- File manifest display table
-
-### Risk Mitigations
-
-| Risk | Mitigation |
-|------|-----------|
-| High SSE update frequency causes UI lag | Batch updates (max 1 per 500ms); use ngZone.runOutsideAngular for subscriptions |
-| Long Gemini JSON objects (>50KB) cause lag | Lazy-load detail panel; show summary count of keys; expand on demand |
-| Traceback truncation breaks debugging | Limit error_reason to 2000 chars in DB; show "... (truncated)" + copyable full text in modal |
-| High concurrent jobs overload dashboard | Pagination: show last 100 jobs; filter by type/status to reduce data |
-| SSE connection drops, users don't notice | Fallback to 30s polling; show connection status badge in header |
-
-### Technology Decisions for v1.3
-
-| Decision | Why | Outcome |
-|----------|-----|---------|
-| SSE vs WebSocket | SSE simpler (unidirectional), sufficient for job status (no bidirectional control needed) | Use SSE; polling fallback available |
-| Collapsible JSON display | Renderjson library (no external deps, lazy-loads objects) vs custom component | Custom ngx component or use existing ngx-json-viewer if available |
-| Detail panel as sidenav vs modal | Sidenav allows side-by-side view of list + details; less disruptive | Use mat-sidenav; open on row selection |
-| Progress bar format | Determinate (numerator/denominator) vs indeterminate spinner | Determinate ("7/10 assets") — users want progress visibility |
-| Job grouping | Separate tables per type vs single table with type column | Card layout with sections per type (better visual hierarchy) |
-| TikTok download storage | Store in MinIO/S3 vs store URL reference only | Download files during sync (unblock AI inference); store S3 URLs in CreativeAsset |
-
-### UI Layout Wireframe
-
-```
-┌─ /configuration/admin/jobs (SuperAdmin only) ──────────────────────────┐
-│ [Status: Connected via SSE] [Last update: 2s ago]                      │
-│                                                                         │
-│ Summary Cards:  [Syncing: 3] [Downloading: 2] [Autofill: 1] [Score: 0]│
-│                                                                         │
-│ ┌─ Sync Runs ──────────────────────────────────────────────────────┐  │
-│ │ Org          Type    Status      Progress         Duration      │  │
-│ │ ──────────────────────────────────────────────────────────────  │  │
-│ │ Agency A     Meta    PROCESSING  [████░░░] 7/10 assets      2m  │  │
-│ │ Brand Co     TikTok  COMPLETE    [█████████] 42/42 assets   5m  │  │
-│ │ ...                                                              │  │
-│ └──────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-│ ┌─ Downloads ───────────────────────────────────────────────────────┐  │
-│ │ Org          Type    Status      Progress    Files               │  │
-│ │ ──────────────────────────────────────────────────────────────  │  │
-│ │ Agency A     Meta    PROCESSING  [███░░░░░░] 18/50 videos      │  │
-│ │ ...                                                              │  │
-│ └──────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-│ [Sidenav Detail Panel — when row selected]                             │
-│ ┌──────────────────────────────────────┐                              │
-│ │ Job Details                           │                              │
-│ │ ────────────────────────────────────  │                              │
-│ │ [Metadata] [Output] [Files] [Errors]  │                              │
-│ │                                       │                              │
-│ │ Status: PROCESSING                    │                              │
-│ │ Org: Agency A | Type: TikTok Sync     │                              │
-│ │ Progress: 7/10 assets | Duration: 2m  │                              │
-│ │                                       │                              │
-│ │ [Errors Tab Content] ▼                │                              │
-│ │ • 2 failed downloads (timeout)        │                              │
-│ │   Error: Connection reset by peer     │                              │
-│ │   [View full traceback]               │                              │
-│ │                                       │                              │
-│ │ [Files Tab Content]                   │                              │
-│ │ • meta_video_123.mp4 (45 MB)          │                              │
-│ │ • meta_image_456.jpg (2.1 MB)         │                              │
-│ │ [Download manifest CSV]               │                              │
-│ │                                       │                              │
-│ └──────────────────────────────────────┘                              │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+| **Per-request session rotation** | Tempting to rotate exit IP on every HTTP request within a single download (metadata, chunks, etc.). This breaks YouTube's internal consistency checks—segments must come from same IP. | Stick session ID to entire download job. Single exit IP per job. YouTube's architecture assumes continuity. |
+| **Unencrypted proxy URL in .env** | Environment variables are version-controlled, visible in logs, shared across environments. Credentials should never be in code. | Always use SystemConfig singleton with Fernet encryption (existing pattern). Backend reads at runtime. |
+| **Manual token extraction + caching** | PO tokens are video-ID-bound and short-lived. Manual extraction of a token and reusing across videos fails. Tempting to reduce API calls but impossible at scale. | Use bgutil HTTP server — it handles generation + caching per-video. Let it manage token lifecycle. |
+| **Proxy + Cookie fallback chain** | "Try proxy+cookie first, then proxy-only, then cookie-only, then no auth." Each attempt is a time cost. Too many fallback layers introduce latency and confusion. | Three-layer stack is final: proxy (always) → cookie (if available) → token (if available). Fail fast if any layer has config issues. |
+| **Rotating proxy per metadata request** | Similar to per-request rotation within a single download. Different metadata endpoints need same IP context. | Sticky session for entire job including metadata fetch phase. |
+| **Proxy URL in response bodies or error messages** | Security smell. Even partial URLs (masked username) can leak provider infrastructure. | Sanitize all error messages. Never return proxy config to frontend. Log session ID only, not credentials. |
 
 ---
 
-## v1.1 Feature Research — Insights + Intelligence Milestone
+### Dashboard Filters Track: Table Stakes
 
-This section covers the seven new capabilities being added: image scoring, AI metadata inference, score-to-ROAS correlation, top/bottom performer highlights, score trend over time, in-app notifications, and historical backfill scoring.
+Features users expect to narrow the creative grid effectively. Missing any of these = dashboard feels incomplete without filtering capability.
 
----
+| Feature | Why Expected | Complexity | Implementation Notes |
+|---------|--------------|------------|----------------------|
+| **Metadata autocomplete filter** | User types partial text (e.g., "en_" in language field) and sees matching metadata values (en_US, en_GB, etc.). Essential for dashboards with 100+ unique metadata values per field — scrolling a 100-item dropdown is unusable. Debounce prevents API hammering. | Med | Input with `(input)` event → debounce(300ms) → query backend for matches → show dropdown. Min 2 characters typed before search fires. Loading spinner during fetch. Works on brand, language, creator, category, etc. Powered by existing harmonized metadata columns. |
+| **Ad account multi-select filter** | User selects 1+ ad accounts (Meta, TikTok, DV360, Google Ads) to narrow creative grid. Expected because users have 5–20 connected accounts and want to filter to single account or subset. | Low–Med | Dropdown with checkboxes OR Material chips (after selection). Existing `account_id` column indexed. Query applies `WHERE account_id IN (...)`. Visual indicator (badge) shows number of selected accounts. Checkboxes faster (6s vs 9s for chips), so checkboxes if >5 accounts; chips if <5 (visual polish). |
+| **Video duration range slider** | User sets min/max duration in seconds (e.g., "15–60s") to filter creatives. Essential because video length is a core creative attribute affecting performance, CTR, completion rate. | Med | Dual-handle range slider (ngx-slider 17.0.2 already installed). Floor = 0s, ceiling = 3600s (1 hour). Step = 5 or 15 seconds. Display selected range in text below slider (e.g., "15–60 seconds"). Reset button clears filter. Applies `WHERE duration_seconds >= min AND duration_seconds <= max`. |
+| **Filter persistence across pagination/sorting** | User applies filters, sorts by score, paginates; filters stay active. | Low | Store filter state in component TS (not URL params initially — can add URL params in v1.5 for bookmarkability). Reapply filters to every query. |
+| **Clear filters button** | Reset all active filters to default state (show all creatives). | Low | Single button or "Clear all" link. Sets component filter arrays to empty, re-queries dashboard grid. |
 
-## Table Stakes (Users Expect These in v1.1)
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| BrainSuite image scoring | Images are a primary ad format on every platform. Video-only scoring is a conspicuous gap; agencies immediately ask "why isn't my image scored?" | Medium | Different BrainSuite endpoint/payload from video — requires API discovery at phase start. Core parity requirement. |
-| Top/bottom performer highlights | Every creative analytics tool (Triple Whale, Motion, Superads, Segwise) highlights best/worst creatives visually. Users scan grids, not tables. | Low | Badge or ribbon overlay on the creative card. Top-N by score or ROAS. Define N (e.g., top 10% or top 3 in current view). |
-| Score-to-ROAS correlation view | Agencies need to validate that BrainSuite score actually predicts performance. Without this view the score is a black box and buy-in is fragile. | Medium | Scatter plot is the correct chart type (see deep dive). Requires min N creatives with both score and ROAS populated. |
-| In-app notifications for sync/scoring | Agency users run batches and come back later. Knowing when sync completes or scoring finishes is expected in any async-workflow tool. | Low–Medium | Toast + bell icon inbox is the standard SPA pattern. In-app only for v1.1. |
-| Historical backfill scoring | Assets synced before Phase 3 have no scores. Without backfill, the correlation and trend views are underpowered and users are confused by the missing data. | Medium | Idempotent batch job, rate-limited against BrainSuite API. One-time trigger (admin endpoint or UI). |
-
-## Differentiators (Analytical Value Beyond Competitors)
+### Dashboard Filters Track: Differentiators (Nice to Have)
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| AI metadata auto-fill | Eliminates manual metadata entry before scoring. Agencies manage hundreds of creatives; filling 7 BrainSuite fields per asset is a real friction point that reduces scoring adoption. | High | Multi-modal: requires vision (image/video frame) + audio transcription (VO detection). See AI inference breakdown below. |
-| Score trend over time | Shows whether creative effectiveness degrades as the creative fatigues in market. Lets agencies time creative retirement. VidMob and Segwise offer this; most simpler tools do not. | Medium | Requires multiple scoring runs per asset. The existing 15-min scheduler already creates data points on each run. |
+| **Autocomplete filter with "all values" preset** | Show `(All)` option at top of dropdown so user can quickly select all + deselect as needed. Useful for "I want everything except brand X" scenarios. | Low | Add `{label: '(All)', value: null}` to dropdown options. Selecting it clears the filter. |
+| **Saved filter presets** | User saves "Video only, Meta accounts, 15–60s duration" as a preset and re-applies it with one click. | High | Requires new table: `dashboard_filter_presets` with org_id, name, filter_json, created_at. Complex state management. Deferred to v1.5. |
+| **Metadata filter "other" grouping** | Collapse rare values (e.g., languages with <5 creatives) under "Other" to shorten dropdown. | Med | Calculate cardinality; threshold to "Other" group. Nice for very large metadata domains. |
+| **Duration range presets** | Quick buttons: "0–15s", "15–30s", "30–60s", "60s+" instead of manual slider drag. | Low | Buttons above slider that set min/max to preset values. Standard UX pattern. |
+| **Autocomplete filters show asset count** | In dropdown: "en_US (47 creatives)" so user knows filter impact before applying. | Low | Requires count subquery per option. Marginal UX gain; deferred if performance is a concern. |
+| **Filter tag chips with remove buttons** | After filtering, show "Meta [x]", "en_US [x]", "15–60s [x]" chips at top of grid. User can remove individual filter by clicking X. | Low | Show active filters as Material chips with matChipRemove directive. Visually clear what's applied. Standard pattern. |
 
-## Anti-Features (Do Not Build in v1.1)
+### Dashboard Filters Track: Anti-Features (Don't Build)
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| Real-time WebSocket score updates | Scoring is batch (15-min scheduler). WebSockets add infrastructure complexity for zero user-visible benefit. | Polling (30s interval) for notification status is sufficient. |
-| AI metadata fully replacing human input | LLM hallucination in production metadata is worse than blank fields. An incorrect Brand Name or Language silently corrupts the BrainSuite submission. | Surface inference as pre-populated suggestions with confidence indicators. Always allow override. Never auto-submit without user review. |
-| Email/Slack notifications | Out of scope for v1.1 per PROJECT.md. Adds auth complexity and deliverability concerns. | In-app bell + toast only. Design the notification data model to allow external channels in v1.2 without a schema migration. |
-| Per-platform correlation breakdown | Not enough data per-platform in early tenants to show meaningful separation. Cross-platform correlation is more useful at this stage. | One unified scatter plot. Platform filter as a secondary control. |
-| Automated creative retirement based on score | Too prescriptive. Agencies have non-score reasons to keep assets running (brand campaigns, contracted placements). | Surface the data; let the user act. |
+| **Autocomplete with <2 character minimum** | Every keystroke triggers query. At 1 character, metadata dropdowns return 50–100 values (e.g., all metadata starting with "a"). API load spikes unnecessarily. | Enforce min 2 characters before firing search. User types a phrase to narrow down. |
+| **Slider with step < 5 seconds** | Users cannot meaningfully adjust duration in 1-second increments for creative filtering. Too granular. Causes slider handle to be janky. | Use step = 5 or 15 seconds. User-friendly ranges. |
+| **Multi-select checkboxes for 50+ options** | Dropdown becomes a 50-item scrollable list of checkboxes. Unusable. Cognitive overload. UX breaks. | Use autocomplete (filtered search) for large option sets. Checkboxes work for <10 options (single account filter, simple categories). |
+| **Autocomplete that searches on every keystroke without debounce** | Network waterfall. Backend API gets hammered. Latency >500ms per keystroke = janky UX. Aggravates infrastructure costs. | Always debounce: wait 300ms after user stops typing, then fire single request. |
+| **Filter state in URL query params (v1.4)** | URL-first filtering adds complexity: serialization, deserialization, browser history collisions, bookmark issues. Not worth the complexity for internal filtering at v1.4 scale. | Keep filter state in component TS for v1.4. Filters apply to current session only. Add URL params in v1.5 if bookmarkability is a user request. |
+| **Numeric text input fields for duration instead of slider** | "Min seconds: [__]  Max seconds: [__]" requires typing. Slider is faster (drag to adjust) and more intuitive for ranges. | Use dual-handle range slider. Text inputs optional below slider for manual entry (accessibility), but slider is primary. |
+| **Combining all three filters with AND logic only** | "Account = Meta AND Duration 15–60s AND Language = en_US" becomes restrictive. No option for OR (e.g., "Meta OR TikTok"). | v1.4 uses AND logic (simple intersection). OR logic is a v1.5 differentiator if users need "any of these accounts" scenarios. |
 
 ---
 
-## Feature Deep Dives
-
-### 1. AI Metadata Inference — Inferable vs Requires Human Input
-
-**Context:** BrainSuite requires metadata fields alongside every asset submission. The 7 fields are: Language/Market, Brand Names, Project Name, Asset Name, Asset Stage, Voice Over (yes/no), Voice Over Language. This research assesses what Claude Vision + audio transcription can realistically infer.
-
-#### Fields with Reliable AI Inference (HIGH confidence, surface as pre-filled)
-
-| Field | How Inferred | Accuracy Expectation | Confidence |
-|-------|--------------|----------------------|------------|
-| Voice Over (yes/no) | Audio transcription of video detects speech vs music/silence. For images: always No — no inference needed. | ~95%. Binary detection is robust with modern audio models. | HIGH |
-| Voice Over Language | Whisper-class audio model detects spoken language from audio waveform + transcript content. | ~90% on major languages (English, Spanish, French, German, Mandarin). Drops on regional dialects or heavily accented speech. Flag uncertain results. | MEDIUM–HIGH |
-| Language/Market | Visible text in the creative (headline, CTA, overlay copy) — Claude Vision extracts text, language model classifies language and region. | ~90% when legible text is present. Unreliable for image-only creatives without text, or for market inferences beyond language (e.g., "US English" vs "UK English"). | MEDIUM |
-| Asset Name | Derived from the filename or URL slug from the ad platform sync. Not true inference — normalization of existing structured data. Strip file extensions, replace underscores with spaces, title-case. | ~85% useful. Depends on agency naming conventions. | MEDIUM |
-
-#### Fields Requiring AI Suggestion + Human Validation (MEDIUM confidence, surface as suggestions with review required)
-
-| Field | What AI Can Suggest | Why Human Review Is Mandatory |
-|-------|---------------------|-------------------------------|
-| Brand Names | Claude Vision identifies logo text and prominent brand marks. Works well for major recognized brands. | Niche brands, sub-brands, and partnership creatives (two brand logos) are ambiguous or missed. Hallucination risk is high when the model is uncertain. Must be reviewable. |
-| Asset Stage | Visual cues correlate loosely with funnel stage (product-only = awareness, price shown = conversion, testimonial = consideration). | Stage classification varies by agency convention. One agency's "awareness" is another's "retargeting." AI suggestion + dropdown correction is the right pattern. |
-
-#### Fields That Cannot Be Reliably Inferred (require manual entry)
-
-| Field | Why Not Inferable |
-|-------|------------------|
-| Project Name | A project is an organizational construct inside the agency — it does not appear in creative content. Can sometimes be parsed from ad account campaign names if those are well-structured, but this is too fragile to rely on. Best pattern: inherit from a campaign-level default or require manual entry once per project. |
-
-#### UX Implementation Pattern
-
-Use a two-phase interaction: (1) inference runs async when user selects a creative for scoring (trigger on modal open); (2) pre-populated form is shown with per-field confidence indicators; (3) user reviews, corrects if needed, and explicitly submits. Never auto-submit AI-filled fields to BrainSuite without user confirmation.
-
-**Confidence indicator design:** A subtle visual state on each field — solid fill/green border for high confidence (VO detection), muted/amber for medium (language, brand), empty/dashed border for uninferable (Project Name). This communicates reliability without creating anxiety.
-
-**Latency budget:** Claude Sonnet-class inference on a ~1MB image takes 2–5 seconds. For video, add audio extraction: ~1–3 seconds for a 30-second clip processed by a transcription model. Total expected latency: 5–10 seconds per asset. This is acceptable if triggered async on modal open, not on page load.
-
-**Cost note (Claude Vision):** A 1-megapixel image uses ~1,334 tokens at $3/million input tokens = ~$0.004 per image. At 1,000 creatives, inference costs ~$4.00 in API fees. Acceptable for this use case. Video adds audio transcription overhead (Whisper API ~$0.006/minute of audio).
-
-**Critical edge case:** If the creative has no legible text (all visual, no copy), Language/Market inference returns no signal. The field should remain blank, not hallucinated. The confidence indicator must show "empty/manual required" in this case.
-
----
-
-### 2. Score-to-ROAS Correlation — Chart Type and Data Requirements
-
-**Recommended chart type: Scatter plot with quadrant reference lines.** One dot per creative. X-axis = BrainSuite effectiveness score (0–100). Y-axis = ROAS. Reference lines at median score and median ROAS create four quadrants:
-
-- **Stars** (high score, high ROAS): Scale budget here.
-- **Question Marks** (high score, low ROAS): Score predicts quality — investigate audience/targeting or wait for data maturity.
-- **Workhorses** (low score, high ROAS): Distribution is carrying this creative — may not sustain.
-- **Laggards** (low score, low ROAS): Kill or iterate.
-
-This quadrant framing is the most actionable output of the correlation view. It answers "what do I do?" rather than just "what is the relationship?". Segwise, VidMob, and Madgicx all use this type of two-variable creative intelligence view.
-
-**Data requirements:**
-
-| Requirement | Minimum Threshold | Notes |
-|-------------|-------------------|-------|
-| Creatives with both score AND ROAS | 10+ for a visible pattern; 30+ for meaningful statistical signal | Below 10 points: show an empty-state with "Score more creatives to see correlation" + CTA to run backfill |
-| ROAS data | Already synced in v1.0 normalized metrics | No new backend work needed |
-| Score data | BrainSuite scoring pipeline (v1.0) + image scoring (v1.1) + historical backfill | Backfill is a dependency for a useful chart on day one |
-| Currency normalization | Already handled in v1.0 | No new work |
-
-**Edge cases to handle:**
-
-| Edge Case | Handling |
-|-----------|---------|
-| Creatives with spend = 0 / ROAS = 0 | Exclude from scatter plot. Show count of excluded creatives ("12 creatives excluded — no spend data"). |
-| ROAS outliers (viral one-off, extremely high ROAS) | Cap Y-axis at 99th percentile by default. Provide a log-scale toggle or "show all" option. Clipping prevents one outlier from flattening the rest of the chart. |
-| Image vs. video in the same chart | Color-code dots by creative type (image = one color, video = another). Legend toggle to isolate by type. |
-| Same creative on multiple platforms with different ROAS | In v1.1: use average ROAS across all placements for the dot. Surface per-platform breakdown in the hover tooltip. |
-| Creatives with score but no ROAS | Show dot on X-axis with a distinct style (hollow or striped). Label axis region "No performance data yet." |
-
-**Hover tooltip:** Thumbnail, asset name, score, ROAS, platform(s), total spend. This replaces the need for a click-to-detail flow from the scatter plot.
-
-**Empty state trigger:** If fewer than 10 data points exist (both score + ROAS populated), show the chart skeleton with message and a "Run historical backfill" CTA — links the two features together in the UI.
-
----
-
-### 3. In-App Notifications — Delivery Mechanism
-
-**Standard pattern for ad tech dashboards: Toast (ephemeral) + bell icon inbox (persistent history).**
-
-Toasts serve current-session events (user is looking at the app). The bell inbox serves users who were away — they return and see what happened while they were gone. These two components serve different needs; both are required.
-
-**Events to surface:**
-
-| Event | Toast | Bell Inbox | Severity |
-|-------|-------|------------|----------|
-| Sync completed (platform X, N creatives synced) | Yes (auto-dismiss 5s) | Yes | Normal |
-| Sync failed (platform X, error reason) | Yes (persistent — dismiss required) | Yes | High |
-| Scoring batch completed (N assets scored) | Yes (auto-dismiss 5s) | Yes | Normal |
-| Token expiry imminent (72h warning) | Yes (on login) | Yes | High |
-| Token expired / connection lost | Yes (every session until reconnected) | Yes | High |
-
-**Transport recommendation: HTTP polling at 30-second intervals.** Do not build SSE or WebSockets for v1.1.
-
-Rationale: SSE (Server-Sent Events) on FastAPI is possible via `sse-starlette` but adds a persistent connection per user that competes with the existing background scheduler on a single-process deployment. The notification events in scope (sync complete, scoring complete, token expiry) happen at minute-to-hour granularity — 30-second polling latency is invisible to users. Polling survives proxy timeouts, load balancer idle disconnects, and Docker network resets without reconnect logic.
-
-Migrate to SSE in v1.2 if real-time notification latency becomes a user complaint. The notification data model designed here supports both polling and SSE without schema changes.
-
-**Backend data model:** Add a `notifications` table: `(id, org_id, user_id nullable, event_type, title, body, severity, created_at, read_at nullable)`. `user_id` is nullable to support org-wide notifications (e.g., token expiry affects all org users). Polling endpoint: `GET /api/notifications?unread=true`. Mark-read: `PATCH /api/notifications/{id}/read`. Bulk-read: `PATCH /api/notifications/read-all`.
-
-**Bell badge:** Show count of unread high-severity notifications as a red badge. Cap display at 99+. Normal-severity unread notifications use a dot indicator, not a number. Clear the count when the inbox panel is opened, not on individual item read (this is the Gmail/Slack pattern).
-
-**Toast library recommendation:** `ngx-toastr` (well-maintained, Angular 17 compatible, customizable) or Angular Material Snackbar (already in the Material bundle if the project uses Angular Material). Use `aria-live="polite"` on the toast container for screen reader accessibility. High-severity toasts (sync failed, token expired) should require explicit dismiss, not auto-dismiss.
-
-**Notification hook points in the codebase:** The scoring scheduler and sync jobs in FastAPI need to write notification records on completion/failure. Add a `NotificationService` helper that writes to the notifications table — call it at the end of each job's success and error paths.
-
----
-
-### 4. Score Trend Over Time — Time Window and Data Density
-
-**What constitutes a data point:** Each time the 15-minute scheduler runs BrainSuite scoring for an asset and receives a score, that is one data point in the trend series. The trend line is a per-asset time series of consecutive BrainSuite scoring results stored with timestamps.
-
-**The data density problem:** BrainSuite scoring is scheduler-triggered — not triggered by real-world creative changes. In early deployment, a creative may have only one or two score records (initial scoring + one re-run). The trend view is only useful once an asset has 3+ data points spread across multiple days.
-
-**Recommended time window: 30 days rolling.** Industry standard for creative fatigue analysis — Triple Whale, Supermetrics, and Madgicx all use 7-day and 30-day windows as the primary analytical frames. Display individual data points as dots on the line (do not smooth/interpolate). Users need to see actual score values, not a smoothed curve that hides score variance.
-
-**Expected data density by deployment scenario:**
-
-| Scenario | Data Points in 30 Days | Chart Usefulness |
-|----------|------------------------|-----------------|
-| Scheduler scores active assets on every run | Multiple per week | High — trend and fatigue signals visible |
-| Assets scored once per day (manual or less active scheduler) | ~30 data points | Good — clean trend line |
-| Assets scored once per week | ~4 data points | Minimal but visible trend |
-| Asset scored once (initial only, scheduler not re-triggering) | 1 point | Do not render as a line chart — show single score value with note |
-
-**Empty state rule:** A single data point must not render as a line chart. Show the score as a standalone metric with copy: "Score history requires multiple scoring runs. Rescore this creative to begin tracking trend."
-
-**Minimum useful chart: 2 data points.** Even with 2 points a direction (improving/declining) is visible. Use a single connected line with two dots, no smoothing.
-
-**Chart placement:** Render in the asset detail panel/dialog, as a tab alongside the existing CE dimension breakdown. Label the tab "Score History." The score badge in the grid always shows the most recent score — the trend is a drill-down.
-
-**Y-axis: always fixed at 0–100.** Never auto-scale. A score moving from 62 to 65 on an auto-scaled axis looks dramatic; on a fixed axis it is correctly read as a small improvement. Absolute score magnitude matters as much as direction.
-
-**Creative fatigue signal:** If the most recent 7-day average score is more than 10 points below the 30-day peak score, surface a "Possible fatigue" indicator (icon + label) on the trend chart. This is a simple threshold rule, not a ML model. Agencies recognize this pattern from tools like Supermetrics.
-
-**Time-axis granularity:** Label X-axis with dates, not run numbers. If multiple scoring runs happen in the same day, show all data points — do not collapse to daily average. The exact timestamp in the tooltip helps users correlate score changes with creative edits or campaign changes.
-
----
-
-## Feature Dependencies
+### v1.4 Feature Dependencies
 
 ```
-BrainSuite image scoring
-    ──enables──> AI metadata inference (images need the scoring flow to be triggered)
-    ──enables──> Score-to-ROAS correlation (more assets with scores)
-    ──enables──> Score trend over time (more assets with history)
+Dashboard Metadata Autocomplete Filter
+  ├── Existing: harmonized metadata columns populated at sync time
+  └── Dependency: backend endpoint GET /dashboard/metadata/values?field=language&search=en (NEW)
 
-AI metadata inference
-    ──requires──> BrainSuite image scoring flow (metadata submitted alongside scoring request)
-    ──requires──> Claude API key configured (ANTHROPIC_API_KEY in env)
+Dashboard Ad Account Multi-Select Filter
+  ├── Existing: account_id column indexed on CreativeAsset
+  └── No new backend required (filter applied client-side or via existing filter endpoint)
 
-Historical backfill scoring
-    ──populates──> Score-to-ROAS correlation (correlation needs data to be useful)
-    ──populates──> Score trend over time (trend needs multiple data points)
-    ──requires──> BrainSuite video scoring (already exists in v1.0)
-    ──requires──> BrainSuite image scoring (v1.1 — backfill should cover both types)
+Dashboard Video Duration Range Slider
+  ├── Existing: duration_seconds column on CreativeAsset (from TikTok/YouTube metadata)
+  ├── Existing: ngx-slider 17.0.2 already installed
+  └── No new backend required (filter applied via existing filter endpoint)
 
-Score-to-ROAS correlation
-    ──requires──> Score data (v1.0 scoring pipeline + image scoring + backfill)
-    ──requires──> ROAS data (already in v1.0 harmonized metrics)
+Residential Proxy for YouTube Downloads
+  ├── Existing: yt-dlp integration (TikTok downloads v1.3)
+  ├── Existing: YouTube cookie auth via SystemConfig (v1.2)
+  ├── Existing: background_jobs instrumentation (v1.3)
+  └── Dependencies:
+       ├── bgutil HTTP server running (external service, not in-repo)
+       ├── NEW: SystemConfig.residential_proxy_enabled (boolean)
+       ├── NEW: SystemConfig.residential_proxy_url (encrypted string)
+       └── NEW: yt-dlp proxy URL injection at download time
 
-Score trend over time
-    ──requires──> Multiple scoring runs per asset (scheduler already runs; backfill accelerates)
-    ──enhances with──> Historical backfill (more historical data points)
-
-Top/bottom performer highlights
-    ──requires──> Score data (already in v1.0 for video; image scoring extends coverage)
-    ──requires──> ROAS data (already in v1.0)
-    ──no new dependencies beyond existing v1.0 data
-
-In-app notifications
-    ──requires──> Notification table + API endpoints (new)
-    ──hooks into──> Sync jobs (already exist — add notification write on complete/fail)
-    ──hooks into──> Scoring scheduler (already exists — add notification write on batch complete)
-    ──no dependency on other v1.1 features
+SuperAdmin Proxy Config UI
+  ├── Existing: /configuration/admin panel and SuperAdmin role
+  ├── Existing: Fernet encryption for SystemConfig fields (YouTube cookies)
+  └── NEW: UI controls for proxy enable/disable toggle + URL input
 ```
 
-**Critical path for correlation view being useful on day one:**
+### v1.4 MVP Recommendation
 
-1. Historical backfill must run (or be triggered immediately after deployment)
-2. Image scoring must be wired up (significantly expands the scored asset pool)
-3. Then the scatter plot has enough data to show a pattern
+**Phase Structure (Suggested Ordering):**
+
+**Phase 1: Residential Proxy Infrastructure (Est. 1 day)**
+- Add SystemConfig.residential_proxy_enabled, SystemConfig.residential_proxy_url (with Fernet encryption)
+- Create Alembic migration
+- SuperAdmin UI: toggle + encrypted URL input
+- Rationale: Unblocks YouTube downloads; prerequisite for PO token integration
+
+**Phase 2: bgutil PO Token Integration (Est. 4 days)**
+- Deploy bgutil HTTP server (port 4416) in docker-compose.yml
+- Update yt-dlp invocations in `download_youtube.py` to pass `--po-msos-token` (request from bgutil)
+- Add retry logic for token generation failures
+- Rationale: Completes three-layer stack; makes downloads reliable
+
+**Phase 3: Dashboard Filters (Est. 4.5 days)**
+- **Metadata Autocomplete:** backend endpoint + Angular debounced input + dropdown (2 days)
+- **Ad Account Multi-Select:** checkboxes or Material chips (1 day)
+- **Video Duration Range Slider:** ngx-slider with dual handles (1.5 days)
+- Rationale: Restores filtering UX; unifies disparate features under single phase
+
+**Total Estimated Effort: ~10 days**
+
+### Defer to v1.5
+
+- **Saved filter presets** — requires new table, complex state machine
+- **Per-provider cost tracking** — requires provider API integration
+- **Filter persistence in URL params** — bookmarkability feature, not MVP
+- **Autocomplete count subquery** — marginal UX, potential perf cost
+
+### Why This Order
+
+1. **Proxy + PO token before filters:** Video downloads must work before users filter creatives
+2. **SuperAdmin UI before internal complexity:** Ops team can test proxy + token without frontend filter churn
+3. **All three filters in same phase:** Dashboard usability is a package deal; splitting filters across phases delays user benefit
 
 ---
 
-## MVP Sequencing for v1.1
-
-**Wave 1 — prerequisites and data foundation (build first):**
-1. BrainSuite image scoring — parity feature, also unlocks image data for all insight features
-2. Historical backfill scoring — populates data for correlation and trend views; run as soon as deployed
-3. In-app notifications — standalone deliverable, lower complexity, high perceived value
-
-**Wave 2 — insight features (build after Wave 1 data foundation):**
-4. AI metadata auto-fill — depends on image scoring being wired up
-5. Score-to-ROAS correlation — scatter plot; best with backfill data
-6. Top/bottom performer highlights — simple overlay on existing grid
-7. Score trend over time — per-asset; only meaningful with multiple scoring runs
-
-**Rationale for this order:** The insight features (correlation, trend, performer highlights) are only compelling if they have enough data. Shipping them before backfill runs results in empty states and weak first impressions. Backfill + image scoring first means the insight features arrive with data already in them.
-
----
-
-## Confidence Assessment
+## Confidence Assessment for v1.4
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| v1.3 job monitoring UI patterns | HIGH | Real-world admin dashboard patterns confirmed across Celery, BullMQ, Taskforce; SSE vs polling rationale tested in prod SaaS stacks |
-| v1.3 progress bar design (determinate) | HIGH | Industry consensus on determinate vs indeterminate timing rules; Material components directly applicable |
-| TikTok asset download complexity | LOW–MEDIUM | Existing `_download_tiktok_thumbnail()` is already implemented; integration is straightforward, but needs testing |
-| AI metadata inference field-by-field breakdown | MEDIUM | Claude Vision capabilities verified via official Anthropic docs. Field-specific accuracy estimates are based on known VLM capabilities, not BrainSuite-specific testing. Actual accuracy will depend on creative quality and ad platform conventions. |
-| Scatter plot as correct chart for correlation | HIGH | Industry consensus: Segwise, VidMob, Madgicx, and Improvado all use scatter/two-variable correlation for creative analytics. |
-| Polling over SSE for notifications | HIGH | Architecture rationale is sound for the existing FastAPI + Docker Compose stack. SSE is technically viable but the complexity/benefit ratio is poor for this notification frequency. |
-| 30-day trend window | HIGH | Industry consensus from Supermetrics, Triple Whale, Madgicx — 7/30-day windows are universal. |
-| Backfill as dependency for insight feature usefulness | HIGH | Logical dependency, not a research claim requiring validation. |
-| AI inference latency (5–10s) | MEDIUM | Estimated from Claude API performance benchmarks for vision tasks. Actual latency depends on asset dimensions, API load, and audio extraction approach. |
-| Top/bottom performer highlight complexity (Low) | HIGH | This is purely a frontend concern — the data already exists. Badge/ribbon overlay on existing creative cards. |
+| Residential proxy workflow with yt-dlp | HIGH | Verified with yt-dlp documentation, multiple proxy provider guides (Webshare, IPRoyal, Oxylabs), and Medium/blog posts on production deployment |
+| PO token lifecycle + bgutil integration | MEDIUM–HIGH | yt-dlp wiki and bgutil GitHub docs confirm token generation, HTTP server mode, and per-video token binding. Implementation details defer to phase-specific research. |
+| Sticky session strategy (session ID in username) | HIGH | Standard practice in high-concurrency proxy rotation; confirmed in yt-dlp proxy guides and proxy provider documentation |
+| Metadata autocomplete UX patterns | HIGH | Debouncing, min-character threshold, loading states confirmed via Algolia autocomplete guide, Metabase dashboard filters, SaaS filter design patterns |
+| Ad account multi-select (checkboxes vs chips) | HIGH | Material Design 3 + e-commerce UX research confirm checkboxes (6s) vs chips (9s) performance and appropriate use cases; Angular Material implementation well-established |
+| Video duration range slider | HIGH | ngx-slider 17.0.2 documented, Material Design range slider patterns, SaaS dashboard examples all confirm dual-handle slider as standard for range filtering |
+| Three-layer proxy stack necessity | HIGH | YouTube's technical requirements (IP blocking, BotGuard, cookie auth) confirmed across multiple authoritative sources; stacking is industry-standard practice |
 
 ---
 
 ## Sources
+
+### v1.4 Residential Proxy & yt-dlp
+- [Scaling YouTube Video Scraping for AI with yt-dlp and Proxies](https://medium.com/@datajournal/how-to-use-yt-dlp-to-scrape-youtube-videos-with-proxies-38255a65c20d)
+- [How to use Proxies for yt-dlp (HTTP, SOCKS5 & Tor)](https://www.huntapi.com/blog/yt-dlp-proxy-guide)
+- [How to Use yt-dlp to Scrape YouTube Videos with Proxies](https://www.glorycloud.com/blog/yt-dlp-scarpe-videos-proxy/)
+- [YouTube Downloader (yt_dlp) integration | Oxylabs Documentation](https://developers.oxylabs.io/video-data/high-bandwidth-proxies/youtube-downloader-yt_dlp-integration)
+
+### v1.4 PO Token & bgutil
+- [YouTube PO Token Guide - yt-dlp/yt-dlp Wiki](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide)
+- [GitHub - Brainicism/bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)
+- [bgutil-ytdlp-pot-provider · PyPI](https://pypi.org/project/bgutil-ytdlp-pot-provider/0.3.0/)
+
+### v1.4 Dashboard Filters & UX Patterns
+- [Debounce sources - Algolia](https://www.algolia.com/doc/ui-libraries/autocomplete/guides/debouncing-sources)
+- [Mastering E-Commerce UX: Chips vs Checkboxes for Better Filters](https://valeria-pakhneva.medium.com/mastering-e-commerce-ux-chips-vs-checkboxes-for-better-filters-fae3e71d6cc1)
+- [Chips – Material Design 3](https://m3.material.io/components/chips/guidelines)
+- [Create a multi select chips component with Angular Material](https://zoaibkhan.com/blog/create-a-multi-select-chips-component-with-angular-material/)
+- [Angular Material - Chips](https://material.angular.dev/components/chips)
+- [Angular Range Slider Component | Syncfusion](https://www.syncfusion.com/angular-components/angular-slider)
+- [19+ Filter UI Examples for SaaS: Design Patterns & Best Practices](https://www.eleken.co/blog-posts/filter-ux-and-ui-for-saas)
+- [Dashboard filters | Metabase Documentation](https://www.metabase.com/docs/latest/dashboards/filters)
+- [Should I use chip components instead of checkboxes?](https://cieden.com/book/atoms/checkbox/chip-components-or-checkboxes)
 
 **v1.3 Job Monitoring & Admin Dashboards:**
 - [Real-Time Dashboards — Jaspersoft](https://www.jaspersoft.com/articles/what-is-a-real-time-dashboard)

@@ -1,170 +1,113 @@
-# Project Research Summary
+# Research Summary — v1.4 YouTube Downloads & Dashboard Filters
 
 **Project:** BrainSuite Platform Connector
-**Domain:** Multi-tenant SaaS ad intelligence platform — SuperAdmin observability + TikTok asset pipeline
-**Milestone:** v1.3 — SuperAdmin Monitoring & TikTok Downloads
-**Researched:** 2026-05-07
+**Domain:** Multi-tenant SaaS ad intelligence platform — residential proxy layer + dashboard UX
+**Milestone:** v1.4 — YouTube/DV360 Proxy Downloads & Dashboard Filters
+**Researched:** 2026-05-14
 **Confidence:** HIGH
 
-## Executive Summary
+---
 
-v1.3 adds two capabilities to an existing, validated FastAPI + Angular + PostgreSQL stack: a real-time job monitoring dashboard visible to SuperAdmins, and closure of the TikTok asset download gap that currently blocks AI autofill and BrainSuite scoring for TikTok creatives. The technical approach is well-established and low-risk: a new `background_jobs` PostgreSQL table serves as the single instrumentation foundation, one new backend package (`sse-starlette==3.4.2`) powers the SSE streaming endpoint, and the TikTok download path is largely already written via the existing `_download_tiktok_thumbnail()` helper — it needs wiring into the main sync pipeline and progress tracking. Zero new npm packages are required on the frontend; Angular Material, RxJS, and the existing ECharts install cover all UI needs.
+## Stack Additions
 
-The recommended build order is strict and dependency-driven: schema must land first because every other component reads or writes to it. Helper services come second, then service instrumentation, then the SSE endpoint, then the Angular client, and finally TikTok wiring. Skipping this order — for example, building the UI before the SSE endpoint is instrumented — will require rework. The architecture is deliberately simple for phase 1: a polling-based SSE generator against PostgreSQL (no Redis pub/sub required) with a DB-side cleanup job to prevent table bloat.
-
-The single highest-risk concern is SSE connection lifecycle management. Unreleased EventSource connections in Angular will exhaust Uvicorn worker slots under production load, causing cascading failures that look like system instability rather than a connection leak. Prevention (explicit `ngOnDestroy` cleanup + server-side `timeout-keep-alive`) must be implemented in the same phase as the SSE endpoint — not deferred. Table bloat cleanup via an APScheduler job must similarly be added in the same phase as table creation.
-
-## Key Findings
-
-### Recommended Stack
-
-The existing v1.1/v1.0 stack (FastAPI 0.115, SQLAlchemy 2.0, APScheduler 3.10.4, Angular 17, NgRx 17, Angular Material 17, ECharts 5.6) requires exactly one new addition for v1.3.
-
-**Core technologies for v1.3:**
-- `sse-starlette==3.4.2`: SSE streaming for FastAPI — the only new backend package; wraps streaming response with `EventSourceResponse`
-- `yt-dlp`: TikTok asset download — already in `requirements.txt`; needs exponential retry wrapper and size/timeout limits added
-- `JSONB` (PostgreSQL via SQLAlchemy): already in stack; used for `output` and `metadata` columns on the new `background_jobs` table
-- `EventSource` (browser-native Web API): SSE client in Angular — zero npm installs; built into all modern browsers
-- `Angular Material` (already installed): `mat-table`, `mat-progress-bar`, `mat-chip`, `mat-sidenav`, `mat-tab-group` cover the entire monitoring UI
-
-Nothing is added to package.json. The frontend stack is complete as-is.
-
-### Expected Features
-
-**Must have (table stakes):**
-- Real-time job list with status indicators (PENDING/RUNNING/COMPLETE/FAILED badges) — SuperAdmins expect live visibility without SSHing into containers
-- Per-job-type grouping (sync, download, autofill, scoring) — operational context differs enough that visual separation is required
-- Per-sync-run progress bar with numerator/denominator ("7/10 assets") — determinate progress is expected; spinners are insufficient
-- Error visibility with traceback display — root-cause debugging without container access
-- Job drill-in detail panel with tabs (metadata, output, files, errors)
-- TikTok asset download during sync — closes the gap blocking AI autofill and BrainSuite scoring for TikTok creatives
-
-**Should have (competitive for v1.3 MVP):**
-- Live summary cards ("Syncing: 3 | Downloading: 2 | Autofill: 1") — high UX value, low complexity
-- SSE connection status badge in header — users need to know if the live view is actually live
-- JSONB collapsible viewer for AI autofill output in detail panel
-- File manifest table with presigned download URLs
-
-**Defer to v1.4+:**
-- Job retry / pause / cancel controls — requires job state serialization and transaction safety
-- Per-entity progress breakdown (org/account granularity within a multi-tenant sync)
-- Export job history as CSV
-- Bulk operations
-- Per-org job visibility for non-SuperAdmin users
-
-### Architecture Approach
-
-A new `background_jobs` table (UUID PK, org_id FK, job_type, status, progress_current/total ints, output JSONB, error_message text, metadata JSONB, timestamps) is the single source of truth for all background work. Two composite indexes (`org_id + status`, `org_id + created_at`) keep SSE polling queries fast. The SSE endpoint polls this table every 2 seconds inside an async generator and emits `job_update` events; the Angular `JobMonitorService` holds a `BehaviorSubject<BackgroundJob[]>` and deduplicates incoming events by UUID. The existing `SyncJob` model is preserved for backward compatibility.
-
-**Major components:**
-1. `backend/app/models/background_job.py` — SQLAlchemy model + Alembic migration
-2. `backend/app/services/background_jobs.py` — `create_job()` / `update_progress()` helpers used by all instrumented services
-3. `backend/app/services/sync/tiktok_asset_downloader.py` — isolated download service with retry logic; designed for reuse across other platforms
-4. `backend/app/api/v1/endpoints/admin_jobs.py` — SSE endpoint (`GET /stream`), job list, job detail; SuperAdmin-gated via JWT `is_superadmin` claim
-5. `frontend/.../services/job-monitor.service.ts` — EventSource client with exponential backoff reconnect and `BehaviorSubject` state
-6. `frontend/.../components/job-monitor/` — Angular Material table + sidenav detail panel + summary cards
-
-### Critical Pitfalls
-
-1. **SSE connection leaks exhausting Uvicorn worker pool** — Every open EventSource holds one worker slot. With 50+ concurrent SuperAdmins the pool fills and all requests queue indefinitely. Prevention: explicit `ngOnDestroy` EventSource close, server-side `--timeout-keep-alive 30`, 30s server heartbeat, exponential backoff on reconnect. All prevention steps must ship in the same phase as the SSE endpoint.
-
-2. **`background_jobs` table bloat from high-frequency status writes** — A 1000-asset sync produces 5000+ writes. Without a cleanup job, the table reaches millions of rows within months; autovacuum cannot keep up; SSE query latency spikes from 50ms to 2s+. Prevention: APScheduler cleanup job (delete COMPLETE rows older than 30 days, nightly at 02:00) and autovacuum tuning added in the same migration as table creation — not deferred.
-
-3. **SQLAlchemy session violations in APScheduler job tasks** — Passing a single Session across async yield points causes silent write failures and jobs stuck in PROCESSING. Prevention: strict session-per-operation pattern (separate `with Session()` blocks for fetch, progress write, and result write) with try/except that guarantees a FAILED status write on exception.
-
-4. **Browser EventSource reconnect storm after server restart** — 50 clients reconnecting at the default 3s retry generates 50 simultaneous requests/second on the newly-started process. Prevention: exponential backoff on the client (`min(1000 * 2^attempt, 30000)ms`) in the initial implementation.
-
-5. **TikTok download failures blocking entire sync** — yt-dlp fails silently when TikTok updates anti-bot headers (monthly cadence). Prevention: per-asset exponential retry (max 3 attempts, 2^attempt backoff), 30-second per-asset timeout, 500MB size abort, `DOWNLOAD_FAILED` status written per asset with `continue` to keep sync running.
-
-## Implications for Roadmap
-
-Based on combined research, the build order is fixed by hard dependencies. Phases cannot be reordered.
-
-### Phase 1: Database Schema Foundation
-**Rationale:** Every other component reads or writes `background_jobs`. This is the hard blocker — nothing can be built or tested before it exists.
-**Delivers:** Alembic migration, `BackgroundJob` SQLAlchemy model, two composite indexes, autovacuum tuning, APScheduler cleanup job (all in same phase)
-**Addresses:** Data layer for real-time job list, progress tracking, error visibility
-**Avoids:** Table bloat (cleanup and autovacuum tuning are part of this phase, not deferred)
-
-### Phase 2: Instrumentation Helpers
-**Rationale:** Services cannot write job status without shared helper functions. Centralizing `create_job()` and `update_progress()` prevents each service from implementing inconsistent patterns.
-**Delivers:** `services/background_jobs.py` helper module; `services/sync/tiktok_asset_downloader.py` with exponential retry and size limits; `sse-starlette==3.4.2` added to requirements.txt
-**Avoids:** Session violations (session-per-operation pattern enforced in helper function signatures)
-
-### Phase 3: Service Instrumentation
-**Rationale:** Wire helpers into existing services before building the SSE consumer. Instrumenting after the endpoint is built means SSE shows empty data during development and masks integration bugs.
-**Delivers:** `scoring_job.py`, `ai_autofill.py`, and `tiktok_sync.py` modified to write `BackgroundJob` rows with progress updates throughout execution
-**Addresses:** Scoring instrumentation, AI autofill output capture, TikTok download progress tracking
-
-### Phase 4: SSE Streaming Endpoint
-**Rationale:** Backend API must exist before the Angular client can be built or tested. Polling generator against PostgreSQL (no Redis) is sufficient for phase 1 and keeps the implementation simple.
-**Delivers:** `GET /api/v1/admin/jobs/stream` (EventSourceResponse), `GET /api/v1/admin/jobs` (list), `GET /api/v1/admin/jobs/{id}` (detail); all SuperAdmin-gated
-**Avoids:** SSE connection leaks — `timeout-keep-alive`, 30s heartbeat, and Uvicorn concurrency limits configured here in the same PR
-
-### Phase 5: Angular Monitoring UI
-**Rationale:** UI built last because it depends on a working, instrumented backend. Building UI before Phase 3-4 means mocking data that may not match the real schema or SSE event shape.
-**Delivers:** `JobMonitorService` with exponential backoff reconnect; job list with Angular Material table, grouped card sections per job type, status chips, progress bars; sidenav detail panel with metadata/output/files/errors tabs; live summary cards
-**Avoids:** EventSource memory leaks (`ngOnDestroy` cleanup required); reconnect storm (exponential backoff required — both are prerequisites, not polish)
-
-### Phase 6: TikTok Asset Download Wiring
-**Rationale:** Separated from Phase 3 service instrumentation to allow independent verification that `_download_tiktok_thumbnail()` integrates cleanly with `BackgroundJob` tracking and that download failures genuinely do not block sync completion.
-**Delivers:** TikTok creatives downloaded to MinIO/S3 during sync; `CreativeAsset.video_url` and `image_url` populated; per-asset `DOWNLOAD_FAILED` on failure without blocking sync; AI autofill and BrainSuite scoring unblocked for TikTok
-**Avoids:** TikTok download blocking sync (isolated per-asset retry with `continue` on failure); yt-dlp header drift (smoke test against live URL at phase start)
-
-### Phase Ordering Rationale
-
-- Phases 1 through 5 form a strict dependency chain (schema → helpers → instrumentation → API → UI). No phase can move earlier in the sequence.
-- Phase 6 (TikTok download) can run in parallel with Phase 5 if team bandwidth allows, but sequencing it after Phase 5 ensures the monitoring UI is ready to observe the first real TikTok download runs — valuable for verifying the instrumentation works end-to-end.
-- The cleanup job (table bloat prevention) is placed in Phase 1 by design. This is the single most important sequencing decision in the entire milestone: deferred cleanup is a documented production failure pattern.
-- `sse-starlette` is added to requirements.txt in Phase 2 (not Phase 4) so the environment is consistent when Phase 3 services are tested.
-
-### Research Flags
-
-Phases with well-documented patterns (no additional research needed during planning):
-- **Phase 1:** SQLAlchemy model + Alembic migration is an established pattern in this codebase; schema fields are fully specified in ARCHITECTURE.md
-- **Phase 2:** Helper module design is straightforward; session-per-operation pattern already exists in this codebase
-- **Phase 4:** `sse-starlette` EventSourceResponse pattern is documented with code samples in ARCHITECTURE.md and PITFALLS.md
-- **Phase 5:** Angular Material table, sidenav, and RxJS BehaviorSubject patterns are all established in the existing frontend
-
-Phases that need targeted review at planning time:
-- **Phase 3:** Scoring job (`scoring_job.py`) and autofill service (`ai_autofill.py`) internals need a codebase read before instrumentation to confirm exact injection points; no external research needed
-- **Phase 6:** yt-dlp impersonation header string should be verified against current TikTok behavior at phase start — run smoke test before writing the downloader
-
-## Confidence Assessment
-
-| Area | Confidence | Notes |
-|------|------------|-------|
-| Stack | HIGH | sse-starlette is the only net-new package; yt-dlp already in requirements.txt; zero new npm packages; all confirmed |
-| Features | HIGH | Job monitoring UI patterns verified against Celery/Flower, BullMQ/Taskforce, AWS Batch; TikTok download complexity confirmed LOW because infrastructure already exists |
-| Architecture | HIGH | Build order derived from hard dependency chain with no ambiguity; session-per-operation confirmed correct for this SQLAlchemy + APScheduler combination |
-| Pitfalls | HIGH | SSE connection leaks, table bloat, and session violations are verified failure modes with cited production incidents and official documentation |
-
-**Overall confidence:** HIGH
-
-### Gaps to Address
-
-- **yt-dlp impersonation string currency:** The `chrome-131` profile is current as of early 2026 but TikTok updates anti-bot detection monthly. At Phase 6 start, run `yt-dlp --impersonate chrome-131 [sample_url]` and update the profile string if needed. Document the tested profile in code comments.
-- **SSE connection count in production:** The 50-concurrent-SuperAdmins estimate is a worst-case assumption. Confirm actual SuperAdmin headcount with the team at Phase 4 to set `--limit-concurrency` and `--workers` correctly for the deployment environment.
-- **SyncJob backward compatibility decision:** ARCHITECTURE.md notes that `SyncJob` and `BackgroundJob` coexist but does not specify whether sync services should write to both. Recommended: write only to `BackgroundJob` for new job types (scoring, autofill, TikTok download); leave existing `SyncJob` writes in place unchanged. Confirm at Phase 3 start.
-
-## Sources
-
-### Primary (HIGH confidence)
-- `.planning/research/ARCHITECTURE.md` (2026-05-07) — build order, component boundaries, BackgroundJob schema, SSE endpoint signature, Angular service pattern
-- `.planning/research/PITFALLS.md` (2026-05-07) — SSE connection leaks, table bloat, session violations, TikTok download failure patterns with production evidence
-- `.planning/research/FEATURES.md` (2026-05-07) — table stakes, differentiators, anti-features, MVP recommendation, feature dependency graph
-- [Uvicorn Documentation](https://www.uvicorn.org/) — `--limit-concurrency`, `--timeout-keep-alive` flags confirmed
-- [SQLAlchemy Async I/O Docs](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html) — session-per-operation in async contexts
-
-### Secondary (MEDIUM confidence)
-- [Monitoring Celery — Cronitor](https://cronitor.io/guides/monitoring-celery) — job monitoring UI patterns
-- [Taskforce.sh BullMQ Dashboard](https://taskforce.sh/) — grouped card layout reference
-- [Every TikTok Downloader Quirk — dev.to](https://dev.to/john_jewskiz/every-tiktok-downloader-quirk-i-hit-building-dltkkto-and-how-i-fixed-them-909) — yt-dlp impersonation and retry patterns
-- [How to Reduce Bloat in Large PostgreSQL Tables — TigerData](https://www.tigerdata.com/learn/how-to-reduce-bloat-in-large-postgresql-tables) — autovacuum tuning guidance
-
-### Tertiary (LOW confidence — validate at implementation time)
-- yt-dlp `chrome-131` impersonation string: valid as of early 2026; verify against live TikTok URL before Phase 6
+- **`bgutil-ytdlp-pot-provider==1.3.1`** (Python, backend only) — YouTube proof-of-origin (PO) token plugin. YouTube's BotGuard attestation layer requires a PO token on every format URL request; without it yt-dlp returns 403 regardless of proxy or cookie state. Install in backend image; plugin auto-registers with yt-dlp at import time. Requires yt-dlp >= 2025.05.22 — verify pin in requirements.txt.
+- **bgutil HTTP server Docker service** — Run `brainicism/bgutil-ytdlp-pot-provider:1.3.1-deno` as a persistent sidecar on port 4416 (HTTP mode, not script mode). HTTP mode pools tokens across requests; script mode spawns a subprocess per token request, causing cold-start latency and orphan processes on container crash. Backend `depends_on: bgutil-pot` with `service_healthy` condition.
+- **No new npm packages** — All dashboard filter components (`MatAutocomplete`, `ngx-slider` dual-handle range, MatMenu with checkboxes) are already installed in `@angular/material 17.3.0` and `@angular-slider/ngx-slider 17.0.2`.
+- **Two new `system_config` columns** (Alembic migration, no new table) — `proxy_url_encrypted: Text` (nullable, Fernet-encrypted) and `proxy_enabled: Boolean` (default False). No other schema changes.
 
 ---
-*Research completed: 2026-05-07*
+
+## Feature Table Stakes
+
+**Proxy download track — done means:**
+- Proxy URL stored encrypted (Fernet, same key as YouTube cookies) in `SystemConfig`; never appears in logs, error messages, or API responses
+- SuperAdmin can toggle proxy on/off and configure URL via existing `/configuration/admin` panel — no code deploy required to change proxy config
+- DV360 and Google Ads sync inject the proxy URL into `yt_dlp.YoutubeDL()` opts; both platforms patched simultaneously (never one without the other per project rule)
+- Sticky session ID embedded in proxy username per download job (`user-session-{12_random_chars}:pass@host:port`) — exit IP stable for entire job; no mid-download IP rotation
+- bgutil plugin auto-generates PO tokens when yt-dlp encounters a format URL — no explicit per-video token code needed
+- Cookieless-first retry path preserved; proxy is an additive layer, not a replacement
+- YouTube video downloads verified to succeed against GCP Cloud Run environment
+
+**Dashboard filters track — done means:**
+- Metadata autocomplete: user types partial value (min 2 chars, 300ms debounce), dropdown shows matching values from harmonized metadata; `switchMap` + `takeUntil(destroy$)` prevents request spam and memory leaks
+- Ad account multi-select: existing implementation (commit e403eaf) verified working with all new filter API params; regression test passes
+- Video duration range slider: dual-handle ngx-slider visible only when `hasAnyVideo = true` (sticky flag set on first response with VIDEO assets); applies `WHERE video_duration BETWEEN min AND max` via new `duration_min` / `duration_max` query params
+- All three filters compose with AND logic and work simultaneously; pagination preserves active filters
+- "Clear filters" resets all filter state and re-queries
+- Backend `GET /dashboard/assets` extended with `meta_filters` (comma-separated `field_id:value` pairs), `duration_min`, `duration_max` — all optional, fully backward compatible
+
+---
+
+## Architecture Changes
+
+**New files:** None
+
+**Modified files:**
+- `backend/app/models/system_config.py` — add `proxy_url_encrypted` (Text, nullable) and `proxy_enabled` (Boolean, default False)
+- `backend/alembic/versions/{hash}.py` — additive migration; 2 columns, 0 constraint changes, no data backfill
+- `backend/app/api/v1/endpoints/super_admin.py` — add `GET /proxy-config` (status only, never decrypted URL) and `PUT /proxy-config` (encrypts URL via existing `encrypt_token()`, sets flag); copy-exact auth pattern from `/youtube-cookies` endpoints (~80 lines)
+- `backend/app/services/sync/dv360_sync.py` — proxy injection into `ydl_opts` dict inside `_do_download_with_cookies()` after dict construction; sticky session ID generation; retry order updated to cookieless-first (~15 lines)
+- `backend/app/services/sync/google_ads_sync.py` — identical changes to DV360; same `_do_download_with_cookies` structure (~15 lines)
+- `backend/Dockerfile` — `RUN pip install bgutil-ytdlp-pot-provider==1.3.1` (+1 line)
+- `docker-compose.yml` — new `bgutil-pot` service (Deno image, port 4416, health check); `backend` gains `depends_on: bgutil-pot`
+- `backend/app/api/v1/endpoints/dashboard.py` — add `meta_filters`, `duration_min`, `duration_max` optional query params; JOIN on `AssetMetadataValue` filtered by `organization_id`; numeric WHERE clauses (~20 lines)
+- `frontend/src/app/features/dashboard/dashboard.component.ts` — merge quick-work commits (afc4fef, 44d8dda, 3dd4b1c); add `selectedMetaFilters`, `durationMin/Max`, `hasAnyVideo`, `durationChange$`, API param serialization in `loadData()` (~150 lines net)
+- `frontend/src/app/features/dashboard/dashboard.component.html` — metadata popover + chip row; duration slider after score slider
+
+**DB indexes to add with migration:**
+- Composite index on `asset_metadata_value (asset_id, metadata_field_id, organization_id)` — required for metadata filter JOIN to stay under 100ms at 10k assets/org
+
+**Total surface:** ~130 lines net backend, ~150 lines net frontend, 1 additive migration. No breaking changes.
+
+---
+
+## Watch Out For
+
+1. **Proxy credentials leaking into yt-dlp error messages** — yt-dlp error strings include the full proxy URL (`Failed to connect to proxy://user:pass@...`). Add a `redact_credentials(msg)` utility (regex strip `proxy://[^@]+@[^/]+`) before any `logger.warning/error` call that touches yt-dlp output. This is a security requirement, not polish. Verify with `grep -r "proxy://" logs/` after first production run.
+
+2. **bgutil running in script mode instead of HTTP mode** — Script mode spawns a subprocess per PO token request (500ms–2s overhead each) and leaves orphan processes on container crash. Always use HTTP mode via the Deno Docker service on port 4416. Confirm port 4416 is reachable from the backend container (`curl http://bgutil-pot:4416/health`) before any download test runs.
+
+3. **Cherry-picking old filter commits instead of surgical recovery** — Quick-work commits afc4fef and 44d8dda predate v1.3 architecture changes and will produce merge conflicts in 5–10 files. Do not cherry-pick. Read both versions side-by-side, re-implement filters using the current v1.3 component patterns, and add integration tests for debounce timing and filter state before merging. Recover one filter type at a time (metadata → accounts → duration), commit, test, then next.
+
+4. **Video duration `NULL` for legacy assets making the duration filter appear broken** — Assets synced before v1.3 have `video_duration = NULL`. A duration range filter returning zero results confuses users. Two required mitigations: (a) async background backfill job (batches of 50, 1s sleep, graceful `FileNotFoundError` skip if video missing from MinIO); (b) UI callout noting "Duration filter applies to assets synced after [date]. X of Y assets have duration data." Both must ship in v1.4, not deferred.
+
+5. **Metadata filter JOIN missing `organization_id` guard** — The `AssetMetadataValue` join in `dashboard.py` must include `organization_id == current_org_id` in every join condition. Omitting this exposes metadata values from other organizations. This is a security bug. Test with a two-org fixture (org A's metadata should never appear in org B's autocomplete results) before merging.
+
+---
+
+## Build Order Recommendation
+
+1. **Alembic migration + SystemConfig model** — Add `proxy_url_encrypted`, `proxy_enabled` to `system_config`; add composite index on `asset_metadata_value`. Additive only, zero risk. Unblocks both tracks in parallel.
+
+2. **SuperAdmin proxy config endpoints** — `GET /proxy-config` and `PUT /proxy-config` in `super_admin.py`, mirroring `/youtube-cookies` pattern exactly. Verify proxy URL never appears in any API response. Lets ops configure the proxy URL before sync code lands.
+
+3. **bgutil Docker setup + backend install** — Add `bgutil-pot` service to `docker-compose.yml` (Deno image, health check on port 4416). Add package to `requirements.txt` and `Dockerfile`. Confirm container-to-container connectivity. Unblocks all download work.
+
+4. **DV360 proxy injection + sticky session + credential redaction** — Modify `dv360_sync.py`: read + decrypt proxy config, generate sticky session ID, inject into `ydl_opts`, implement `redact_credentials()` utility. Smoke test with Webshare free tier against a public YouTube URL on a GCP host.
+
+5. **Google Ads proxy injection** — Identical changes to `google_ads_sync.py`. Must be done in the same step as DV360 per the project rule of patching all platforms simultaneously.
+
+6. **Dashboard backend filter params** — Extend `GET /dashboard/assets` with `meta_filters`, `duration_min`, `duration_max`. Add JOINs and WHERE clauses with `organization_id` guard. Unit test: each filter alone, all three combined, cross-org isolation.
+
+7. **Dashboard frontend filters** — Merge/re-implement quick-work branches using current architecture. Add metadata popover + chip row + duration slider. Wire params into `loadData()`. Implement correct RxJS pipeline for autocomplete (`filter` + `debounceTime(300)` + `distinctUntilChanged` + `switchMap` + `takeUntil(destroy$)`). Set `hasAnyVideo` sticky flag. Smoke test all three filters independently and in combination with pagination.
+
+8. **Duration backfill job + UI callout** — Async background job to populate `video_duration` for legacy assets via ffprobe from MinIO, batched with sleep and graceful skip on missing files. Add UI note about filter coverage. Can run in parallel with step 7 but must ship in this milestone.
+
+---
+
+## Open Questions
+
+- **Proxy provider for production** — STACK.md names Webshare (validation) and IPRoyal (production). Which has been trialed/purchased? The sticky session ID format in the proxy username is provider-specific. Confirm before step 4.
+
+- **Proxy session pin duration** — PITFALLS-v1.4.md recommends 86400s (1 day) for Cloud Run cold start resilience. Confirm whether the chosen provider's plan supports daily session pinning or caps at a shorter TTL (e.g., 300s on some Webshare tiers).
+
+- **Metadata autocomplete: client-side vs server-side endpoint** — ARCHITECTURE.md recommends client-side (parse from asset response, no new endpoint). Acceptable for most orgs. If any org has >500 unique metadata values, upgrade to `GET /dashboard/metadata-filter-values` server-side endpoint before that org reports slow load times. Decide threshold before shipping.
+
+- **Ad account multi-select already working?** — ARCHITECTURE.md states it is already in main (e403eaf). Verify manually before building new filters on top of it. If broken, fix first.
+
+- **Cloud Run `--min-instances` cost trade-off** — PITFALLS-v1.4.md recommends `--min-instances=1` to prevent bgutil cold-start latency on the first download of the day. Confirm whether scale-to-zero is required or if always-on is acceptable given production usage patterns.
+
+---
+
+*Research completed: 2026-05-14*
 *Ready for roadmap: yes*
