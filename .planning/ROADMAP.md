@@ -6,6 +6,7 @@
 - ✅ **v1.1 Insights + Intelligence** — Phases 5–10 (shipped 2026-04-15) — [archive](milestones/v1.1-ROADMAP.md)
 - ✅ **v1.2 BrainSuite Configuration** — Phases 11–14 (shipped 2026-04-28) — [archive](milestones/v1.2-ROADMAP.md)
 - ✅ **v1.3 SuperAdmin Monitoring & TikTok Downloads** — Phases 15–19.3 (shipped 2026-05-13) — [archive](milestones/v1.3-ROADMAP.md)
+- 🔄 **v1.4 YouTube Downloads & Dashboard Filters** — Phases 20–23 (started 2026-05-14)
 
 ## Phases
 
@@ -56,6 +57,15 @@
 - [x] **Phase 19.3: Close gap: Phase 15** — add asset_url/video_source_url to _upsert_records ON CONFLICT exclusion + scoring_enabled guard on download path (INSERTED) (completed 2026-05-13)
 
 </details>
+
+### v1.4 YouTube Downloads & Dashboard Filters
+
+**Milestone Goal:** YouTube and Google Ads video creatives download reliably in production via residential proxy + PO token plugin; the dashboard has all three creative filters working.
+
+- [ ] **Phase 20: Proxy Download Infrastructure** — DV360 + Google Ads download via residential proxy with bgutil PO token plugin; cookieless-first retry order; credential redaction
+- [ ] **Phase 21: Proxy Admin UI** — SuperAdmin can configure and toggle residential proxy from /configuration/admin
+- [ ] **Phase 22: Dashboard Metadata + Account Filters** — Metadata autocomplete filter and ad account multi-select filter (full stack)
+- [ ] **Phase 23: Dashboard Duration Filter + Backfill** — Video duration range slider with legacy asset backfill job (full stack)
 
 ## Phase Details
 
@@ -213,6 +223,58 @@ Plans:
 - [x] 19.3-01-PLAN.md — Wave 1: Write failing test stubs (upsert invariant + scoring_enabled gate)
 - [x] 19.3-02-PLAN.md — Wave 2: Add scoring_enabled gate to all 4 download functions in scheduler.py
 
+---
+
+### Phase 20: Proxy Download Infrastructure
+**Goal**: DV360 and Google Ads video creatives download successfully on production hosts via residential proxy and bgutil PO token plugin, with credentials never written to logs
+**Depends on**: Phase 19.3 (existing sync pipeline)
+**Requirements**: PROXY-01, PROXY-02, PROXY-03, PROXY-04, PROXY-06
+**Success Criteria** (what must be TRUE):
+  1. A DV360 sync on a GCP Cloud Run host successfully downloads a video creative using the residential proxy — asset_url is populated in CreativeAsset
+  2. A Google Ads sync on a GCP Cloud Run host successfully downloads a video creative using the same residential proxy path — asset_url is populated in CreativeAsset
+  3. yt-dlp invokes the bgutil PO token plugin automatically for format URL requests without any per-video token code in the sync services
+  4. The download retry sequence is: cookieless-with-proxy → primary-cookies-with-proxy → backup-cookies-with-proxy → fail; existing cookie slots are preserved and still function when proxy is disabled
+  5. A grep across application logs after a proxy-enabled download run finds no occurrences of the proxy URL's embedded username or password
+**Plans**: TBD
+
+### Phase 21: Proxy Admin UI
+**Goal**: A SuperAdmin can enable or disable the residential proxy and configure the proxy URL from the /configuration/admin page without a code deploy
+**Depends on**: Phase 20
+**Requirements**: PROXY-05
+**Success Criteria** (what must be TRUE):
+  1. A SuperAdmin sees a "Residential Proxy" card in the /configuration/admin page with an enable/disable toggle and a proxy URL input field
+  2. Saving a proxy URL encrypts and persists it in SystemConfig; the URL is never returned in any API response (only a masked indicator is shown)
+  3. Toggling the proxy off immediately causes subsequent download attempts to skip proxy injection (no restart required)
+  4. The proxy card is not visible to non-SuperAdmin users
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 22: Dashboard Metadata + Account Filters
+**Goal**: Users can filter the creative grid by metadata field value using searchable autocomplete, and by one or more ad accounts using a multi-select filter
+**Depends on**: Phase 20 (relies on composite index migration from Phase 20's schema work)
+**Requirements**: DASH-01, DASH-02
+**Success Criteria** (what must be TRUE):
+  1. A user types at least 2 characters into the metadata filter and sees matching metadata values from their own organization only — no values from other organizations appear
+  2. Selecting a metadata filter value narrows the creative grid to only assets that have that metadata value; clearing the filter restores the full grid
+  3. A user can select multiple ad accounts from the filter menu and the creative grid shows creatives from all selected accounts simultaneously
+  4. All active filters compose with AND logic and persist correctly across pagination clicks
+  5. A "Clear filters" control resets all filter state and re-queries the grid
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 23: Dashboard Duration Filter + Backfill
+**Goal**: Users can filter the creative grid by video duration range using a dual-handle slider; legacy assets with NULL duration are backfilled asynchronously so the filter becomes progressively more useful
+**Depends on**: Phase 22
+**Requirements**: DASH-03
+**Success Criteria** (what must be TRUE):
+  1. A dual-handle duration range slider is visible in the dashboard filter row when at least one VIDEO asset exists in the grid
+  2. Adjusting the slider range narrows the creative grid to assets whose video_duration falls within the selected range; assets with NULL duration are excluded from the filtered result set
+  3. A callout note shows how many assets lack duration data (e.g. "X assets have no duration data and are excluded from this filter")
+  4. An async background backfill job populates video_duration for legacy NULL-duration assets in batches without blocking sync or scoring pipelines
+  5. The duration filter composes correctly with the metadata and account filters from Phase 22 (all three active simultaneously returns correct results)
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -239,8 +301,12 @@ Plans:
 | 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
 | 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete    | 2026-05-13 |
 | 19.3. Close gap: Phase 15 | v1.3 | 2/2 | Complete    | 2026-05-13 |
+| 20. Proxy Download Infrastructure | v1.4 | 0/TBD | Not started | - |
+| 21. Proxy Admin UI | v1.4 | 0/TBD | Not started | - |
+| 22. Dashboard Metadata + Account Filters | v1.4 | 0/TBD | Not started | - |
+| 23. Dashboard Duration Filter + Backfill | v1.4 | 0/TBD | Not started | - |
 
 ## Backlog
 
-- **999.1** Dashboard metadata filter with autocomplete — built in Apr 2026 (commits 1d8edb6, aa9273f), lost in later session; recover from git history (conflicts with current dashboard.py/dashboard.component.ts)
-- **999.2** Dashboard ad account multi-select filter — verify still present (last seen in commits e403eaf–d05999e); if lost, recover from git history
+- **999.1** Dashboard metadata filter with autocomplete — built in Apr 2026 (commits 1d8edb6, aa9273f), lost in later session; recover from git history (conflicts with current dashboard.py/dashboard.component.ts) — **addressed in Phase 22**
+- **999.2** Dashboard ad account multi-select filter — verify still present (last seen in commits e403eaf–d05999e); if lost, recover from git history — **addressed in Phase 22**

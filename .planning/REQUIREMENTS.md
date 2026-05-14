@@ -50,21 +50,21 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROXY-01 | TBD | Pending |
-| PROXY-02 | TBD | Pending |
-| PROXY-03 | TBD | Pending |
-| PROXY-04 | TBD | Pending |
-| PROXY-05 | TBD | Pending |
-| PROXY-06 | TBD | Pending |
-| DASH-01 | TBD | Pending |
-| DASH-02 | TBD | Pending |
-| DASH-03 | TBD | Pending |
+| PROXY-01 | Phase 20 | Pending |
+| PROXY-02 | Phase 20 | Pending |
+| PROXY-03 | Phase 20 | Pending |
+| PROXY-04 | Phase 20 | Pending |
+| PROXY-06 | Phase 20 | Pending |
+| PROXY-05 | Phase 21 | Pending |
+| DASH-01 | Phase 22 | Pending |
+| DASH-02 | Phase 22 | Pending |
+| DASH-03 | Phase 23 | Pending |
 
 **Coverage:**
 - v1 requirements: 9 total
-- Mapped to phases: 0 (pending roadmap creation)
-- Unmapped: 9 ⚠️
+- Mapped to phases: 9 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-14*
-*Last updated: 2026-05-14 after initial definition*
+*Last updated: 2026-05-14 — traceability filled after roadmap creation*

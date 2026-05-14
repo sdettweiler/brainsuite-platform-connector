@@ -5,9 +5,9 @@ milestone_name: YouTube Downloads & Dashboard Filters
 status: planning
 stopped_at: null
 last_updated: "2026-05-14T00:00:00.000Z"
-last_activity: 2026-05-14 — Milestone v1.4 started
+last_activity: 2026-05-14 — Roadmap created (Phases 20–23)
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -25,10 +25,17 @@ See: .planning/PROJECT.md (updated 2026-05-14 — v1.4 milestone started)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 20 (not yet started — roadmap approved, ready for planning)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-05-14 — Milestone v1.4 started
+Status: Roadmap created; ready for /gsd-plan-phase 20
+Last activity: 2026-05-14 — Roadmap v1.4 written (Phases 20–23, 9/9 requirements mapped)
+
+## Progress Bar
+
+```
+v1.4: [ ] Phase 20  [ ] Phase 21  [ ] Phase 22  [ ] Phase 23
+      0 / 4 phases complete
+```
 
 ## Accumulated Context
 
@@ -37,17 +44,24 @@ Last activity: 2026-05-14 — Milestone v1.4 started
 - Residential proxy required because datacenter IPs (GCP/Cloud Run) are blocked at the network layer before cookies are evaluated
 - Three-layer stack (all required): residential proxy → cookies → bgutil PO token plugin
 - Provider: Webshare free tier (validation) → IPRoyal pay-as-you-go (production); sticky sessions per job not per request
-- Both DV360 and Google Ads use the same yt-dlp path — fix both in v1.4 together
-- Dashboard filter features were built in April 2026 (commits 1d8edb6/aa9273f for metadata, e403eaf–d05999e for ad account) but lost; recover from git history
+- Both DV360 and Google Ads use the same yt-dlp path — fix both in v1.4 together per project rule (fix all platforms simultaneously)
+- bgutil sidecar MUST run in HTTP server mode (port 4416) — Script mode spawns subprocess per token request, causing cold-start latency + orphan processes on Cloud Run
+- Dashboard filter features were built in April 2026 (commits 1d8edb6/aa9273f for metadata, e403eaf–d05999e for ad account) but lost; Phase 22 re-implements from scratch using v1.3 architecture — do NOT cherry-pick (conflict risk)
+- PROXY-06 credential redaction ships in the same phase as proxy injection (Phase 20) — never deferred
+- Metadata filter JOIN must include org_id guard in every WHERE clause — omitting exposes cross-org data (security requirement)
+- Dashboard filter state URL persistence deferred to v1.5 (see REQUIREMENTS.md Out of Scope)
+- Phase 20 includes: Alembic migration (2 new SystemConfig columns + composite index on asset_metadata_value) + bgutil Docker sidecar + proxy injection in both dv360_sync.py and google_ads_sync.py + redact_credentials() utility
+- Phase 22 can start in parallel with Phase 21 — depends on Phase 20's migration (composite index), not Phase 21's UI
 
 ### Roadmap Evolution
 
-(none yet for v1.4)
+- 2026-05-14: Initial v1.4 roadmap — 4 phases (20–23), 9 requirements mapped
 
 ### Blockers/Concerns
 
-- Webshare free tier validation must happen before admin UI is built (validate proxy injection + PO token generation first)
-- Dashboard filter git recovery may conflict with current dashboard.py / dashboard.component.ts — audit conflicts before cherry-pick
+- Webshare free tier proxy validation must succeed before Phase 20 is closed — validate against a public YouTube URL from a GCP host
+- Confirm bgutil port 4416 reachability from backend container before any download test (curl http://bgutil-pot:4416/health)
+- Ad account multi-select (DASH-02) may already be present in main (commit e403eaf) — verify before building Phase 22 on top of it
 
 ## Deferred Items
 
@@ -57,16 +71,19 @@ Items carried to v1.5 or backlog:
 |------|-----------|--------|
 | uat_gap | Phase 15 (v1.3) | deferred — live TikTok sync required |
 | verification_gap | Phase 15 (v1.3) | deferred — live TikTok sync required |
-| quick_task | 260331-l16-analyze-the-entire-folder-structure-for- | unknown (outcome unclear) |
+| v2_req | SSE-03 | SSE Redis pub/sub at 50+ concurrent SuperAdmins |
+| v2_req | META-01, META-02 | Account-level metadata defaults |
+| v2_req | DEBT-01 | Alembic 4-head merge |
+| out_of_scope | Filter state URL persistence | v1.5 candidate |
 
 ## Session Continuity
 
 Last session: 2026-05-14
-Stopped at: v1.4 requirements and roadmap definition in progress
+Stopped at: Roadmap created — Phase 20 ready for planning
 Resume file: None
 
 ## Operator Next Steps
 
-- Complete REQUIREMENTS.md definition
-- Spawn roadmapper to create ROADMAP.md
-- Run /gsd-discuss-phase 20 to begin Phase 20
+- Run `/gsd-plan-phase 20` to begin Phase 20 planning
+- Confirm proxy provider (Webshare vs IPRoyal) and sticky session pin duration before Phase 20 implementation
+- Verify ad account multi-select (commit e403eaf) still present in main before Phase 22 planning
