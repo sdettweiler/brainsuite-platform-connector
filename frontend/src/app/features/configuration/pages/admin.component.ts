@@ -50,6 +50,17 @@ interface ScoringConfigResponse {
   organizations: OrgScoringItem[];
 }
 
+interface ProxyConfigResponse {
+  proxy_enabled: boolean;
+  proxy_url_masked: string | null;
+}
+
+interface ProxyTestResult {
+  success: boolean;
+  latency_ms: number | null;
+  error: string | null;
+}
+
 @Component({
   standalone: true,
   selector: 'app-admin',
@@ -516,16 +527,82 @@ export class AdminComponent implements OnInit {
   loadingScoring = true;
   togglingScoring = false;
 
+  proxyConfig: ProxyConfigResponse | null = null;
+  loadingProxy = true;
+  togglingProxy = false;
+  editingProxyUrl = false;
+  newProxyUrl = '';
+  savingProxyUrl = false;
+  testingProxy = false;
+  testResult: ProxyTestResult | null = null;
+
   constructor(
     private api: ApiService,
     private snackBar: MatSnackBar,
   ) {}
 
   ngOnInit(): void {
+    this.loadProxyConfig();
     this.loadCookieHealth();
     this.loadSuperAdmins();
     this.loadOrganizations();
     this.loadScoringConfig();
+  }
+
+  loadProxyConfig(): void {
+    this.loadingProxy = true;
+    this.api.get<ProxyConfigResponse>('/super-admin/proxy-config').subscribe({
+      next: (data) => { this.proxyConfig = data; this.loadingProxy = false; },
+      error: () => { this.loadingProxy = false; this.snackBar.open('Could not load proxy config. Refresh to retry.', 'Close'); },
+    });
+  }
+
+  onProxyToggle(enabled: boolean): void {
+    this.togglingProxy = true;
+    this.api.put<ProxyConfigResponse>('/super-admin/proxy-config', { proxy_enabled: enabled }).subscribe({
+      next: (data) => {
+        this.proxyConfig = data;
+        this.togglingProxy = false;
+        if (!enabled) { this.testResult = null; }
+        this.snackBar.open(`Proxy ${enabled ? 'enabled' : 'disabled'}.`, 'Close', { duration: 3000 });
+      },
+      error: () => {
+        this.togglingProxy = false;
+        this.snackBar.open('Failed to update proxy toggle.', 'Close');
+      },
+    });
+  }
+
+  saveProxyUrl(): void {
+    if (!this.newProxyUrl.trim()) return;
+    this.savingProxyUrl = true;
+    this.api.put<ProxyConfigResponse>('/super-admin/proxy-config', { proxy_url: this.newProxyUrl.trim() }).subscribe({
+      next: (data) => {
+        this.proxyConfig = data;
+        this.savingProxyUrl = false;
+        this.editingProxyUrl = false;
+        this.newProxyUrl = '';
+        this.snackBar.open('Proxy URL saved.', 'Close', { duration: 3000 });
+      },
+      error: () => {
+        this.savingProxyUrl = false;
+        this.snackBar.open('Failed to save proxy URL. Check your connection and try again.', 'Close');
+      },
+    });
+  }
+
+  discardProxyUrlEdit(): void {
+    this.editingProxyUrl = false;
+    this.newProxyUrl = '';
+  }
+
+  testProxyConnection(): void {
+    this.testingProxy = true;
+    this.testResult = null;
+    this.api.post<ProxyTestResult>('/super-admin/proxy-config/test', {}).subscribe({
+      next: (data) => { this.testResult = data; this.testingProxy = false; },
+      error: () => { this.testResult = { success: false, error: 'Test request failed.', latency_ms: null }; this.testingProxy = false; },
+    });
   }
 
   loadCookieHealth(): void {
