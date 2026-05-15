@@ -26,6 +26,7 @@ async def create_background_job(
     org_id: uuid.UUID,
     platform_connection_id: Optional[uuid.UUID] = None,
     metadata: Optional[dict] = None,
+    params: Optional[dict] = None,
 ) -> uuid.UUID:
     """Insert a new BackgroundJob row with status=PENDING and return its UUID.
 
@@ -53,6 +54,7 @@ async def create_background_job(
             status="PENDING",
             started_at=datetime.utcnow(),
             metadata_=metadata or {},
+            params=params,
         )
         db.add(job)
         await db.flush()
@@ -117,7 +119,7 @@ async def update_background_job(
             job.metadata_ = {**(job.metadata_ or {}), **metadata}
             flag_modified(job, "metadata_")
 
-        if status in ("COMPLETE", "FAILED"):
+        if status in ("COMPLETE", "FAILED", "INTERRUPTED", "PARTIAL"):
             job.ended_at = datetime.utcnow()
 
         db.add(job)

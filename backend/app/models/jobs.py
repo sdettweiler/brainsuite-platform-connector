@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import String, Integer, DateTime, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -19,6 +20,7 @@ class BackgroundJob(Base):
     output: Mapped[dict] = mapped_column(JSONB, default=dict)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     error: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    params: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
