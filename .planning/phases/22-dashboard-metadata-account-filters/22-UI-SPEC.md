@@ -113,7 +113,7 @@ Source: `frontend/src/styles.scss` `:root` + `.dark-theme` / `.light-theme` bloc
 **Step 2 — Value Autocomplete (inline, replaces Step 1 panel):**
 - Element: autocomplete input appears inside the same `tbd-panel` div, replacing the field list after a field is selected
 - Back arrow: `<button class="tbd-back">` with `bi-arrow-left` (13px) + field label text — lets user return to step 1 without closing
-- Input: `<input [(ngModel)]="metadataValueInput" placeholder="Type to search…">` styled to fill panel width; `background: var(--bg-hover); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; color: var(--text-primary)`
+- Input: `<input [(ngModel)]="metadataValueInput" placeholder="Type to search…">` styled to fill panel width; `background: var(--bg-hover); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 13px; color: var(--text-primary)`
 - Suggestion list: rendered below input inside same panel; each suggestion is a `<div class="tbd-option">` — prefix match highlighted with `<mark>` (accent color, transparent bg)
 - Empty suggestions: show single `tbd-option` "No values found" in `var(--text-muted)`
 - On suggestion click: closes panel, appends chip, calls `onFilterChange()`
@@ -124,7 +124,7 @@ Source: `frontend/src/styles.scss` `:root` + `.dark-theme` / `.light-theme` bloc
 - Chip: `<div class="metadata-chip">` — `display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 16px; background: var(--bg-card); border: 1px solid var(--border); font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap`
 - Chip label: `"<FieldLabel>: <value>"` — FieldLabel from `MetadataField.label`, value is exact string
 - Dismiss button: `<button class="chip-dismiss">` — `bi-x` icon at 13px; no border, transparent background; color `var(--text-secondary)`; on hover: color `var(--accent)`
-- "Clear all" button: shown only when ≥ 2 chips active; `<button class="chip-clear-all">` — plain text "Clear all" at 12px weight 500, `color: var(--text-muted)`; on hover: `color: var(--accent)`. Placed at end of chip row.
+- "Clear all" button: shown only when ≥ 2 chips active; `<button class="chip-clear-all">` — plain text "Clear all" at 13px weight 500, `color: var(--text-muted)`; on hover: `color: var(--accent)`. Placed at end of chip row.
 - The chip row is hidden (height 0, no layout space) when `activeMetadataFilters.length === 0`
 
 ### Modified: Ad Account Dropdown — Platform Grouping (DASH-02)
