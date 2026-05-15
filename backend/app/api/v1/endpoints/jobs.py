@@ -347,6 +347,10 @@ async def _dispatch_job_retry(
     db: AsyncSession,
 ) -> None:
     """Dispatch a retry job. Each service wires up its job_type in Wave 2."""
+    if job_type == "download":
+        from app.services.sync.scheduler import trigger_download_retry
+        await trigger_download_retry(params, new_job_id)
+        return
     logger.warning(
         "Retry dispatch not yet wired for job_type=%s. Job %s created but not started.",
         job_type,
