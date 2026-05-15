@@ -36,15 +36,15 @@ Declared values (multiples of 4). Source: existing `admin.component.ts` inline s
 |-------|-------|-------|
 | xs | 4px | Icon-to-label gaps, badge padding (2px 8px uses 8 on axis) |
 | sm | 8px | Between toggle label and hint text; cookie-edit-actions gap |
-| md | 12px | card internal padding (`.cookie-card` uses `padding: 12px`) |
 | lg | 16px | Section body padding exception, table cell padding |
 | xl | 24px | `.section-header` padding, `.section-body` padding, gap between proxy card and cookie section |
-| 2xl | 28px | `.page-container` top padding |
 | 3xl | 48px | Empty-state vertical padding |
 
 Exceptions:
 - Toggle row vertical padding: 12px top, 20px bottom (matches existing `.scoring-toggle-row` — non-standard; preserve for visual consistency)
 - Test result inline feedback: 0px dedicated spacing — rendered as normal text node below the Test Connection button, separated by `margin-top: 8px`
+- 12px: inherited from existing `.cookie-card` padding — must match for visual consistency with YouTube Cookies section
+- 28px: inherited from existing `.page-container` top padding — must match for visual consistency with rest of admin page
 
 ---
 
