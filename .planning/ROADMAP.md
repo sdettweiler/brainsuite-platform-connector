@@ -63,7 +63,7 @@
 **Milestone Goal:** YouTube and Google Ads video creatives download reliably in production via residential proxy + PO token plugin; the dashboard has all three creative filters working.
 
 - [ ] **Phase 20: Proxy Download Infrastructure** — DV360 + Google Ads download via residential proxy with bgutil PO token plugin; cookieless-first retry order; credential redaction
-- [ ] **Phase 21: Proxy Admin UI** — SuperAdmin can configure and toggle residential proxy from /configuration/admin
+- [x] **Phase 21: Proxy Admin UI** — SuperAdmin can configure and toggle residential proxy from /configuration/admin (complete 2026-05-15)
 - [ ] **Phase 22: Dashboard Metadata + Account Filters** — Metadata autocomplete filter and ad account multi-select filter (full stack)
 - [ ] **Phase 23: Dashboard Duration Filter + Backfill** — Video duration range slider with legacy asset backfill job (full stack)
 
@@ -263,7 +263,7 @@ Plans:
 - [x] 21-02-PLAN.md — Residential Proxy card inserted as Section 1 of admin.component.ts (interfaces, state, methods, template, CSS) (PROXY-05)
 
 **Wave 3** *(blocked on Waves 1 + 2)*
-- [ ] 21-03-PLAN.md — Visual UAT checkpoint: 7 acceptance criteria covering all 4 ROADMAP success criteria + D-04/D-05/D-07/D-08/D-09/D-10 (PROXY-05)
+- [x] 21-03-PLAN.md — Visual UAT checkpoint: 7 acceptance criteria covering all 4 ROADMAP success criteria + D-04/D-05/D-07/D-08/D-09/D-10 (PROXY-05)
 
 **UI hint**: yes
 
@@ -320,7 +320,7 @@ Plans:
 | 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete    | 2026-05-13 |
 | 19.3. Close gap: Phase 15 | v1.3 | 2/2 | Complete    | 2026-05-13 |
 | 20. Proxy Download Infrastructure | v1.4 | 0/2 | Planned | - |
-| 21. Proxy Admin UI | v1.4 | 2/3 | In Progress|  |
+| 21. Proxy Admin UI | v1.4 | 3/3 | Complete | 2026-05-15 |
 | 22. Dashboard Metadata + Account Filters | v1.4 | 0/TBD | Not started | - |
 | 23. Dashboard Duration Filter + Backfill | v1.4 | 0/TBD | Not started | - |
 
