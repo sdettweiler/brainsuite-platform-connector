@@ -118,8 +118,10 @@ interface ProxyTestResult {
         <!-- Test Connection row (only when enabled AND URL configured) -->
         <div *ngIf="proxyConfig.proxy_enabled && proxyConfig.proxy_url_masked" class="test-section">
           <button mat-stroked-button (click)="testProxyConnection()" [disabled]="testingProxy">
-            <mat-spinner *ngIf="testingProxy" diameter="14"></mat-spinner>
-            {{ testingProxy ? 'Testing...' : 'Test Connection' }}
+            <span class="btn-inner">
+              <mat-spinner *ngIf="testingProxy" diameter="14"></mat-spinner>
+              {{ testingProxy ? 'Testing...' : 'Test Connection' }}
+            </span>
           </button>
           <div *ngIf="testResult" class="test-result" role="status" [class.success]="testResult.success" [class.error]="!testResult.success">
             <span *ngIf="testResult.success">Reachable ({{ testResult.latency_ms }}ms)</span>
@@ -606,6 +608,12 @@ interface ProxyTestResult {
       margin-top: 12px;
       padding-top: 12px;
       border-top: 1px solid var(--border);
+
+      .btn-inner {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
     }
 
     .test-result {
