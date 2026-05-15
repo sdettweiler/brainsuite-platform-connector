@@ -235,8 +235,9 @@ async def test_download_video_with_proxy():
 async def test_retry_order_cookieless_first():
     """PROXY-04: When proxy_enabled=True the first download attempt uses no cookies.
 
-    Retry order must be: empty string → primary cookie → backup cookie.
-    Fails until D-04 (cookieless-first retry order) is implemented in dv360_sync.py.
+    Retry order must be: cookieless → primary cookie → backup cookie.
+    Verified by capturing ydl_opts per YoutubeDL instantiation: the first call
+    must have no 'cookiefile' key (empty string sentinel → cookieless attempt).
     """
     from app.core.security import encrypt_token
 
@@ -252,13 +253,18 @@ async def test_retry_order_cookieless_first():
 
     svc = _make_sync_service()
 
+    # Capture "" when no cookiefile in ydl_opts (cookieless attempt),
+    # or the cookiefile path string when cookies are present.
     attempt_cookies = []
 
-    original_do_download = None
-
-    def _capture_attempts(cookie_data: str):
-        attempt_cookies.append(cookie_data)
-        raise Exception("stop after capture")
+    def _capturing_ydl(opts):
+        # Record "" for cookieless attempts, cookiefile path for cookie attempts.
+        attempt_cookies.append(opts.get("cookiefile", ""))
+        ctx = MagicMock()
+        ctx.__enter__ = MagicMock(return_value=ctx)
+        ctx.__exit__ = MagicMock(return_value=False)
+        ctx.download = MagicMock(side_effect=Exception("stop after capture"))
+        return ctx
 
     with patch("app.db.base.get_session_factory") as mock_sf:
         db_session = AsyncMock()
@@ -271,30 +277,19 @@ async def test_retry_order_cookieless_first():
 
         with patch("app.services.object_storage.get_object_storage") as mock_storage:
             mock_storage.return_value.file_exists.return_value = False
-            with patch.object(
-                type(svc),
-                "_download_video_asset",
-                wraps=svc._download_video_asset,
-            ):
-                with patch("yt_dlp.YoutubeDL") as mock_ydl_cls:
-                    mock_ydl_ctx = MagicMock()
-                    mock_ydl_ctx.__enter__ = MagicMock(return_value=mock_ydl_ctx)
-                    mock_ydl_ctx.__exit__ = MagicMock(return_value=False)
-                    mock_ydl_ctx.download = MagicMock(side_effect=_capture_attempts)
-                    mock_ydl_cls.return_value = mock_ydl_ctx
-
-                    try:
-                        await svc._download_video_asset(
-                            "test_video_id", str(uuid.uuid4()), "test_ad_id"
-                        )
-                    except Exception:
-                        pass
+            with patch("yt_dlp.YoutubeDL", side_effect=_capturing_ydl):
+                try:
+                    await svc._download_video_asset(
+                        "test_video_id", str(uuid.uuid4()), "test_ad_id"
+                    )
+                except Exception:
+                    pass
 
     # When proxy_enabled, first attempt must be cookieless (empty string)
     assert len(attempt_cookies) >= 1, "No download attempts captured"
     assert attempt_cookies[0] == "", (
-        f"First attempt must be cookieless (empty string) when proxy_enabled=True, "
-        f"got: {attempt_cookies[0]!r} — not yet implemented (Plan 02 D-04)"
+        f"First attempt must be cookieless (no cookiefile in ydl_opts) when proxy_enabled=True, "
+        f"got: {attempt_cookies[0]!r} — D-04 not implemented correctly"
     )
 
 
