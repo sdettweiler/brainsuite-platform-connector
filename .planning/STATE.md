@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: YouTube Downloads & Dashboard Filters
-status: executing
+status: verifying
 stopped_at: Phase 22 UI-SPEC approved
-last_updated: "2026-05-15T15:42:16.851Z"
-last_activity: 2026-05-15 -- Phase 22 planning complete
+last_updated: "2026-05-15T16:09:07.229Z"
+last_activity: 2026-05-15
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 30
-  completed_plans: 28
+  completed_plans: 29
   percent: 91
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-14 — v1.4 milestone started)
 
 ## Current Position
 
-Phase: 21 (proxy-admin-ui) — COMPLETE
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-05-15 -- Phase 22 planning complete
+Phase: 22 (dashboard-metadata-account-filters) — IN PROGRESS
+Plan: 1 of 2 — COMPLETE
+Status: Executing — Plan 01 complete, Plan 02 ready
+Last activity: 2026-05-15
 
 ## Progress Bar
 
@@ -52,6 +52,7 @@ v1.4: [P] Phase 20  [ ] Phase 21  [ ] Phase 22  [ ] Phase 23
 - Dashboard filter state URL persistence deferred to v1.5 (see REQUIREMENTS.md Out of Scope)
 - Phase 20 includes: Alembic migration (2 new SystemConfig columns + composite index on asset_metadata_value) + bgutil Docker sidecar + proxy injection in both dv360_sync.py and google_ads_sync.py + redact_credentials() utility
 - Phase 22 can start in parallel with Phase 21 — depends on Phase 20's migration (composite index), not Phase 21's UI
+- Phase 22 Plan 01: metadata filter backend (explicit 400 for malformed filter, not silent skip; two-layer org guard T-22-01; alembic upgrade e8f9a0b1c2d3 not upgrade head due to DEBT-01)
 
 ### Roadmap Evolution
 
@@ -78,9 +79,9 @@ Items carried to v1.5 or backlog:
 
 ## Session Continuity
 
-Last session: 2026-05-15T15:00:33.941Z
-Stopped at: Phase 22 UI-SPEC approved
-Resume file: .planning/phases/22-dashboard-metadata-account-filters/22-UI-SPEC.md
+Last session: 2026-05-15T18:09:00Z
+Stopped at: Completed 22-01-PLAN.md
+Resume file: .planning/phases/22-dashboard-metadata-account-filters/22-02-PLAN.md
 
 ## Operator Next Steps
 

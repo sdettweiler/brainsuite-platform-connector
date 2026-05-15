@@ -281,7 +281,7 @@ Plans:
 Plans:
 
 **Wave 1**
-- [ ] 22-01-PLAN.md — Backend: Alembic composite index migration + GET /dashboard/metadata-fields + GET /dashboard/metadata-fields/{id}/values + metadata_filter param on /dashboard/assets + 9 Wave-0 tests (DASH-01, DASH-02)
+- [x] 22-01-PLAN.md — Backend: Alembic composite index migration + GET /dashboard/metadata-fields + GET /dashboard/metadata-fields/{id}/values + metadata_filter param on /dashboard/assets + 9 Wave-0 tests (DASH-01, DASH-02)
 
 **Wave 2** *(blocked on Wave 1)*
 - [ ] 22-02-PLAN.md — Frontend: Metadata filter button + two-step dropdown + chip row + Ad Account platform grouping + Visual UAT checkpoint (DASH-01, DASH-02)
@@ -329,7 +329,7 @@ Plans:
 | 19.3. Close gap: Phase 15 | v1.3 | 2/2 | Complete    | 2026-05-13 |
 | 20. Proxy Download Infrastructure | v1.4 | 0/2 | Planned | - |
 | 21. Proxy Admin UI | v1.4 | 3/3 | Complete | 2026-05-15 |
-| 22. Dashboard Metadata + Account Filters | v1.4 | 0/2 | Planned | - |
+| 22. Dashboard Metadata + Account Filters | v1.4 | 1/2 | In Progress|  |
 | 23. Dashboard Duration Filter + Backfill | v1.4 | 0/TBD | Not started | - |
 
 ## Backlog
