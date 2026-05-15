@@ -277,7 +277,15 @@ Plans:
   3. A user can select multiple ad accounts from the filter menu and the creative grid shows creatives from all selected accounts simultaneously
   4. All active filters compose with AND logic and persist correctly across pagination clicks
   5. A "Clear filters" control resets all filter state and re-queries the grid
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+
+**Wave 1**
+- [ ] 22-01-PLAN.md — Backend: Alembic composite index migration + GET /dashboard/metadata-fields + GET /dashboard/metadata-fields/{id}/values + metadata_filter param on /dashboard/assets + 9 Wave-0 tests (DASH-01, DASH-02)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 22-02-PLAN.md — Frontend: Metadata filter button + two-step dropdown + chip row + Ad Account platform grouping + Visual UAT checkpoint (DASH-01, DASH-02)
+
 **UI hint**: yes
 
 ### Phase 23: Dashboard Duration Filter + Backfill
@@ -321,7 +329,7 @@ Plans:
 | 19.3. Close gap: Phase 15 | v1.3 | 2/2 | Complete    | 2026-05-13 |
 | 20. Proxy Download Infrastructure | v1.4 | 0/2 | Planned | - |
 | 21. Proxy Admin UI | v1.4 | 3/3 | Complete | 2026-05-15 |
-| 22. Dashboard Metadata + Account Filters | v1.4 | 0/TBD | Not started | - |
+| 22. Dashboard Metadata + Account Filters | v1.4 | 0/2 | Planned | - |
 | 23. Dashboard Duration Filter + Backfill | v1.4 | 0/TBD | Not started | - |
 
 ## Backlog
