@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: YouTube Downloads & Dashboard Filters
 status: executing
-stopped_at: context exhaustion at 75% (2026-05-15)
-last_updated: "2026-05-15T17:16:37.699Z"
+stopped_at: build-resume-retry COMPLETE — all waves done (2026-05-15)
+last_updated: "2026-05-15T19:37:00.000Z"
 last_activity: 2026-05-15
 progress:
   total_phases: 12
@@ -79,11 +79,11 @@ Items carried to v1.5 or backlog:
 
 ## Session Continuity
 
-Last session: 2026-05-15T17:16:37.691Z
-Stopped at: context exhaustion at 75% (2026-05-15)
+Last session: 2026-05-15T19:37:00.000Z
+Stopped at: build-resume-retry complete — all waves shipped; returning to Phase 22 Plan 02
 Resume file: None
 
 ## Operator Next Steps
 
-- Run `/gsd-execute-phase 20` to execute Phase 20 (2 plans ready)
-- Verify ad account multi-select (commit e403eaf) still present in main before Phase 22 planning
+- Execute Phase 22 Plan 02 (dashboard filter UI — Angular)
+- Phase 22 Plan 02 is the only incomplete plan blocking v1.4 milestone completion
