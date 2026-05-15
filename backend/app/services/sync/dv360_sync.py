@@ -1166,9 +1166,11 @@ class DV360SyncService:
             from sqlalchemy import select as _sel_proxy
             async with _gsf_proxy()() as _proxy_db:
                 _proxy_cfg = (await _proxy_db.execute(_sel_proxy(_SC_proxy).limit(1))).scalar_one_or_none()
-            if _proxy_cfg and _proxy_cfg.proxy_enabled and _proxy_cfg.proxy_url_encrypted:
+                _p_enabled = bool(_proxy_cfg and _proxy_cfg.proxy_enabled)
+                _p_url_enc = _proxy_cfg.proxy_url_encrypted if _proxy_cfg else None
+            if _p_enabled and _p_url_enc:
                 from app.core.security import decrypt_token as _dt_proxy
-                proxy_url = _dt_proxy(_proxy_cfg.proxy_url_encrypted)
+                proxy_url = _dt_proxy(_p_url_enc)
                 proxy_enabled = True
                 # Generate session ID ONCE per job before retry loop (D-07: sticky sessions)
                 _session_id = secrets.token_urlsafe(9)
