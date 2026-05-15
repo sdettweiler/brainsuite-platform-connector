@@ -132,3 +132,27 @@ def test_cookie_encryption_same_value_produces_different_ciphertext_each_time():
     assert enc1 != enc2, (
         "Fernet should produce different ciphertext on each call (random IV)"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 20 Wave 0 failing stub — proxy schema column verification
+# This test MUST FAIL until Task 2 adds the columns to the SystemConfig model.
+# ---------------------------------------------------------------------------
+
+def test_proxy_columns_exist():
+    """SystemConfig has proxy_url_encrypted (Text nullable) and proxy_enabled (Boolean default false) columns.
+
+    Fails until Task 2 adds proxy_url_encrypted and proxy_enabled to the SystemConfig ORM model.
+    """
+    from app.models.system_config import SystemConfig
+    from sqlalchemy import inspect as sa_inspect, Text, Boolean
+
+    mapper = sa_inspect(SystemConfig)
+
+    assert "proxy_url_encrypted" in mapper.columns, "proxy_url_encrypted column missing from SystemConfig"
+    proxy_url_col = mapper.columns["proxy_url_encrypted"]
+    assert proxy_url_col.nullable is True, "proxy_url_encrypted must be nullable"
+
+    assert "proxy_enabled" in mapper.columns, "proxy_enabled column missing from SystemConfig"
+    proxy_enabled_col = mapper.columns["proxy_enabled"]
+    assert proxy_enabled_col.nullable is False, "proxy_enabled must not be nullable"
