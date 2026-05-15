@@ -1172,9 +1172,10 @@ class DV360SyncService:
                 from app.core.security import decrypt_token as _dt_proxy
                 proxy_url = _dt_proxy(_p_url_enc)
                 proxy_enabled = True
-                # Generate session ID ONCE per job before retry loop (D-07: sticky sessions)
+                # Sticky session injection — IPRoyal only (user-session-ID format)
+                # Other providers (DataImpulse etc.) use plain user:pass and reject the suffix
                 _session_id = secrets.token_urlsafe(9)
-                if "@" in proxy_url:
+                if "@" in proxy_url and "iproyal.com" in proxy_url:
                     _user_part, _host_part = proxy_url.rsplit("@", 1)
                     if "://" in _user_part:
                         _scheme_end = _user_part.index("://") + 3
