@@ -176,3 +176,12 @@
   font-size: 13px;
   color: var(--text-secondary);
 }
+
+.btn-retry {
+  font-size: 12px;
+  padding: 0 10px;
+  height: 28px;
+  line-height: 28px;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}

@@ -102,6 +102,10 @@ export class JobMonitorService implements OnDestroy {
     return this.api.delete<void>(`/jobs?job_type=${encodeURIComponent(jobType)}&status=${encodeURIComponent(status)}`);
   }
 
+  retryJob(jobId: string): Observable<{ job_id: string; status: string }> {
+    return this.api.post<{ job_id: string; status: string }>(`/jobs/${jobId}/retry`, {});
+  }
+
   ngOnDestroy(): void {
     this.disconnect();
   }

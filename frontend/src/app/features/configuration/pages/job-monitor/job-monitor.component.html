@@ -41,6 +41,8 @@
               <mat-chip-option (click)="onStatusFilter(null)" [selected]="selectedStatus === null">All</mat-chip-option>
               <mat-chip-option (click)="onStatusFilter('RUNNING')" [selected]="selectedStatus === 'RUNNING'">Running</mat-chip-option>
               <mat-chip-option (click)="onStatusFilter('COMPLETE')" [selected]="selectedStatus === 'COMPLETE'">Completed</mat-chip-option>
+              <mat-chip-option (click)="onStatusFilter('PARTIAL')" [selected]="selectedStatus === 'PARTIAL'">Partial</mat-chip-option>
+              <mat-chip-option (click)="onStatusFilter('INTERRUPTED')" [selected]="selectedStatus === 'INTERRUPTED'">Interrupted</mat-chip-option>
               <mat-chip-option (click)="onStatusFilter('FAILED')" [selected]="selectedStatus === 'FAILED'">Failed</mat-chip-option>
             </mat-chip-listbox>
           </div>
@@ -78,6 +80,7 @@
                   <th>Started</th>
                   <th>Duration</th>
                   <th>Progress</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -89,11 +92,7 @@
                     (keydown.enter)="selectJob(job)"
                     (keydown.space)="selectJob(job)">
                   <td>
-                    <span class="badge"
-                          [class.badge-info]="job.status === 'RUNNING'"
-                          [class.badge-warning]="job.status === 'PENDING'"
-                          [class.badge-success]="job.status === 'COMPLETE'"
-                          [class.badge-error]="job.status === 'FAILED'">
+                    <span class="badge" [ngClass]="getStatusBadgeClass(job.status)">
                       {{ job.status }}
                     </span>
                   </td>
@@ -111,6 +110,15 @@
                         {{ job.progress_current }} / {{ job.progress_total }}
                       </div>
                     </ng-container>
+                  </td>
+                  <td>
+                    <button *ngIf="canRetry(job)"
+                            mat-stroked-button
+                            class="btn-retry"
+                            [disabled]="retryingJobIds.has(job.job_id)"
+                            (click)="retryJob(job, $event)">
+                      {{ retryingJobIds.has(job.job_id) ? '…' : 'Retry' }}
+                    </button>
                   </td>
                 </tr>
               </tbody>

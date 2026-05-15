@@ -43,6 +43,8 @@ export class JobMonitorComponent implements OnInit, OnDestroy {
   readonly PAGE_SIZE = 50;
   // Detail panel
   selectedJobId: string | null = null;
+  // Retry loading state — tracks which job IDs are awaiting retry response
+  retryingJobIds = new Set<string>();
 
   // Tab type groups
   readonly TAB_TYPES = [
@@ -191,5 +193,39 @@ export class JobMonitorComponent implements OnInit, OnDestroy {
 
   showProgressBar(job: JobSnapshot): boolean {
     return job.status === 'RUNNING' || job.status === 'PENDING';
+  }
+
+  canRetry(job: JobSnapshot): boolean {
+    return job.status === 'INTERRUPTED' || job.status === 'FAILED' || job.status === 'PARTIAL';
+  }
+
+  retryJob(job: JobSnapshot, event: Event): void {
+    event.stopPropagation();
+    if (this.retryingJobIds.has(job.job_id)) return;
+    this.retryingJobIds.add(job.job_id);
+    this.jobMonitorService.retryJob(job.job_id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.retryingJobIds.delete(job.job_id);
+          this.snackBar.open('Job queued for retry.', 'Close', { duration: 3000 });
+        },
+        error: () => {
+          this.retryingJobIds.delete(job.job_id);
+          this.snackBar.open('Retry failed — job may have no stored params.', 'Close', { duration: 4000 });
+        },
+      });
+  }
+
+  getStatusBadgeClass(status: string): string {
+    switch (status) {
+      case 'RUNNING':     return 'badge-info';
+      case 'PENDING':     return 'badge-warning';
+      case 'COMPLETE':    return 'badge-success';
+      case 'FAILED':      return 'badge-error';
+      case 'PARTIAL':     return 'badge-warning';
+      case 'INTERRUPTED': return 'badge-neutral';
+      default:            return 'badge-neutral';
+    }
   }
 }
