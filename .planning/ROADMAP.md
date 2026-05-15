@@ -238,7 +238,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 20-01-PLAN.md — Wave 0 test stubs + bgutil dep + SystemConfig proxy columns + Alembic migration (complete 2026-05-15)
-- [ ] 20-02-PLAN.md — Proxy injection into DV360 + Google Ads sync services
+- [x] 20-02-PLAN.md — Proxy injection into DV360 + Google Ads sync services (complete 2026-05-15)
 
 **Wave Structure:**
 - Wave 1: 20-01-PLAN.md (test stubs, schema, deps)
