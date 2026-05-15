@@ -380,7 +380,6 @@ class GoogleAdsSyncService:
                 # a custom logger, blocking "no longer valid" detection via warning().
                 "socket_timeout": 30,
                 "ignore_no_formats_error": True,
-                "remote_components": {"ejs:github": True},
                 "logger": _YDLLogger(),
             }
             # Inject proxy into ydl_opts BEFORE YoutubeDL instantiation (D-02)
@@ -417,7 +416,7 @@ class GoogleAdsSyncService:
         attempts = cookies if cookies else [""]
         if proxy_enabled and proxy_url:
             attempts = ["", *attempts]
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         winning_slot: int | None = None
         try:
             for i, cookie in enumerate(attempts):
