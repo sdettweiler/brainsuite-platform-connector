@@ -235,7 +235,14 @@ Plans:
   3. yt-dlp invokes the bgutil PO token plugin automatically for format URL requests without any per-video token code in the sync services
   4. The download retry sequence is: cookieless-with-proxy → primary-cookies-with-proxy → backup-cookies-with-proxy → fail; existing cookie slots are preserved and still function when proxy is disabled
   5. A grep across application logs after a proxy-enabled download run finds no occurrences of the proxy URL's embedded username or password
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 20-01-PLAN.md — Wave 0 test stubs + bgutil dep + SystemConfig proxy columns + Alembic migration
+- [ ] 20-02-PLAN.md — Proxy injection into DV360 + Google Ads sync services
+
+**Wave Structure:**
+- Wave 1: 20-01-PLAN.md (test stubs, schema, deps)
+- Wave 2: 20-02-PLAN.md (sync service modifications — blocked on Wave 1)
 
 ### Phase 21: Proxy Admin UI
 **Goal**: A SuperAdmin can enable or disable the residential proxy and configure the proxy URL from the /configuration/admin page without a code deploy
@@ -301,7 +308,7 @@ Plans:
 | 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
 | 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete    | 2026-05-13 |
 | 19.3. Close gap: Phase 15 | v1.3 | 2/2 | Complete    | 2026-05-13 |
-| 20. Proxy Download Infrastructure | v1.4 | 0/TBD | Not started | - |
+| 20. Proxy Download Infrastructure | v1.4 | 0/2 | Not started | - |
 | 21. Proxy Admin UI | v1.4 | 0/TBD | Not started | - |
 | 22. Dashboard Metadata + Account Filters | v1.4 | 0/TBD | Not started | - |
 | 23. Dashboard Duration Filter + Backfill | v1.4 | 0/TBD | Not started | - |
