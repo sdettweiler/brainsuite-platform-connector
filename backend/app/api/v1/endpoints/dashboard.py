@@ -54,6 +54,10 @@ async def get_dashboard_stats(
     date_from: date = Query(default=None),
     date_to: date = Query(default=None),
     platforms: Optional[str] = Query(default=None),
+    formats: Optional[str] = Query(default=None),
+    ad_account_ids: Optional[str] = Query(default=None),
+    score_min: Optional[float] = Query(default=None, ge=0, le=100),
+    score_max: Optional[float] = Query(default=None, ge=0, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -68,6 +72,9 @@ async def get_dashboard_stats(
     prev_to = date_from - timedelta(days=1)
 
     platform_list = [p.strip().upper() for p in platforms.split(",")] if platforms else None
+    format_list = [f.strip().upper() for f in formats.split(",")] if formats else None
+    account_id_list = [a.strip() for a in ad_account_ids.split(",")] if ad_account_ids else None
+    use_score_filter = score_min is not None or score_max is not None
 
     async def get_stats(df: date, dt: date):
         base = select(
@@ -86,6 +93,16 @@ async def get_dashboard_stats(
         )
         if platform_list:
             base = base.where(HarmonizedPerformance.platform.in_(platform_list))
+        if format_list:
+            base = base.where(CreativeAsset.asset_format.in_(format_list))
+        if account_id_list:
+            base = base.where(CreativeAsset.ad_account_id.in_(account_id_list))
+        if use_score_filter:
+            base = base.join(CreativeScoreResult, CreativeScoreResult.creative_asset_id == CreativeAsset.id)
+            if score_min is not None:
+                base = base.where(CreativeScoreResult.total_score >= score_min)
+            if score_max is not None:
+                base = base.where(CreativeScoreResult.total_score <= score_max)
         return (await db.execute(base)).one()
 
     async def count_assets(df: date, dt: date):
@@ -96,6 +113,18 @@ async def get_dashboard_stats(
             HarmonizedPerformance.report_date >= df,
             HarmonizedPerformance.report_date <= dt,
         )
+        if platform_list:
+            q = q.where(HarmonizedPerformance.platform.in_(platform_list))
+        if format_list:
+            q = q.where(CreativeAsset.asset_format.in_(format_list))
+        if account_id_list:
+            q = q.where(CreativeAsset.ad_account_id.in_(account_id_list))
+        if use_score_filter:
+            q = q.join(CreativeScoreResult, CreativeScoreResult.creative_asset_id == CreativeAsset.id)
+            if score_min is not None:
+                q = q.where(CreativeScoreResult.total_score >= score_min)
+            if score_max is not None:
+                q = q.where(CreativeScoreResult.total_score <= score_max)
         return (await db.execute(q)).scalar() or 0
 
     curr = await get_stats(date_from, date_to)
@@ -109,6 +138,10 @@ async def get_dashboard_stats(
         CreativeAsset.first_seen_at >= date_from,
         CreativeAsset.first_seen_at <= date_to,
     )
+    if format_list:
+        new_q = new_q.where(CreativeAsset.asset_format.in_(format_list))
+    if account_id_list:
+        new_q = new_q.where(CreativeAsset.ad_account_id.in_(account_id_list))
     new_assets = (await db.execute(new_q)).scalar() or 0
 
     return DashboardStats(
