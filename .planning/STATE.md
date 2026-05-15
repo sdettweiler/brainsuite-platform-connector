@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: YouTube Downloads & Dashboard Filters
 status: executing
-stopped_at: Phase 21 context gathered
-last_updated: "2026-05-15T12:17:01.779Z"
-last_activity: "2026-05-15 — Phase 20 Wave 1 complete: 8 test stubs written, bgutil in requirements.txt, SystemConfig proxy columns added, Alembic migration created"
+stopped_at: Phase 21 UI-SPEC approved
+last_updated: "2026-05-15T14:06:31.523Z"
+last_activity: 2026-05-15 -- Phase 21 planning complete
 progress:
   total_phases: 10
   completed_phases: 9
-  total_plans: 25
+  total_plans: 28
   completed_plans: 25
-  percent: 90
+  percent: 89
 ---
 
 # Project State
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-05-14 — v1.4 milestone started)
 
 Phase: Phase 20 (executing — Wave 2 in progress)
 Plan: 20-02 (Wave 2) — 20-01 complete
-Status: Executing — Wave 1 done, running Wave 2
-Last activity: 2026-05-15 — Phase 20 Wave 1 complete: 8 test stubs written, bgutil in requirements.txt, SystemConfig proxy columns added, Alembic migration created
+Status: Ready to execute
+Last activity: 2026-05-15 -- Phase 21 planning complete
 
 ## Progress Bar
 
@@ -78,9 +78,9 @@ Items carried to v1.5 or backlog:
 
 ## Session Continuity
 
-Last session: 2026-05-15T12:17:01.752Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-proxy-admin-ui/21-CONTEXT.md
+Last session: 2026-05-15T13:21:33.020Z
+Stopped at: Phase 21 UI-SPEC approved
+Resume file: .planning/phases/21-proxy-admin-ui/21-UI-SPEC.md
 
 ## Operator Next Steps
 

@@ -777,22 +777,25 @@ saveProxyUrl(): void {
 **Claims needing user confirmation:**
 - A3, A4 — recommend visual UAT after implementation to verify no layout regressions and URL masking works for user's actual proxy URLs.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should proxy URL validation happen on PUT, or accept any string and validate only at test time?**
    - What we know: D-08 says test endpoint makes reachability check; no validation mentioned on PUT.
    - What's unclear: Should malformed URLs be rejected at PUT time (fast feedback) or accepted and only fail at test time?
    - Recommendation: Validate format on PUT using `urllib.parse.urlparse` and reject with 400 if not `scheme://[user:pass@]host:port`. This matches user expectation that a bad URL fails immediately, not during test.
+   - RESOLVED: No validation on PUT per locked decision D-08 (test endpoint provides reachability feedback); deferred to test time only.
 
 2. **Should test endpoint timeout be 5s globally, or configurable via .env?**
    - What we know: D-08 specifies 5-second timeout as literal.
    - What's unclear: Is 5s appropriate for all network conditions, or should ops tune it?
    - Recommendation: Keep 5s hard-coded per D-08. If ops need flexibility, defer to future release.
+   - RESOLVED: 5s hard-coded per locked decision D-08.
 
 3. **Should test result inline display timeout and auto-clear, or persist until next test?**
    - What we know: D-09 says "for the duration of the session."
    - What's unclear: Does "session" mean page lifetime, or should result clear after 10s to avoid stale UI?
    - Recommendation: Keep result visible until next test click (user may screenshot it for debugging). Page refresh clears automatically.
+   - RESOLVED: Persists for session duration (until next test click or component destroy) per locked decision D-09.
 
 ## Environment Availability
 
