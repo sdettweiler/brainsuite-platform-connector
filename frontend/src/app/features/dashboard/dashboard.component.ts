@@ -12,6 +12,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatChipsModule } from '@angular/material/chips';
 import { Subject, debounceTime, takeUntil, forkJoin, interval, switchMap, take, takeWhile } from 'rxjs';
 import { NgxSliderModule, Options } from '@angular-slider/ngx-slider';
 import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
@@ -105,6 +107,8 @@ interface CorrelationAsset {
     NgxSliderModule,
     NgxEchartsDirective,
     MatSidenavModule,
+    MatAutocompleteModule,
+    MatChipsModule,
   ],
   providers: [
     provideEchartsCore({ echarts }),
@@ -1175,6 +1179,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
   adAccounts: { ad_account_id: string; ad_account_name: string; platform: string }[] = [];
   selectedAdAccountIds: string[] = [];
   adAccountDropdownOpen = false;
+
+  // Metadata filter state (Phase 22 DASH-01)
+  metadataFields: Array<{id: string; name: string; label: string; field_type: string}> = [];
+  selectedMetadataFieldId: string | null = null;
+  selectedMetadataFieldName: string | null = null;
+  selectedMetadataFieldLabel: string | null = null;
+  metadataFieldValues: string[] = [];
+  metadataValueInput = '';
+  activeMetadataFilters: Array<{field: string; fieldLabel: string; value: string}> = [];
+  metadataValuesLoading = false;
+  metadataValuesError = false;
+
   formatDropdownOpen = false;
   sortDropdownOpen = false;
 
@@ -1197,6 +1213,42 @@ export class DashboardComponent implements OnInit, OnDestroy {
   get sortLabel(): string {
     return 'Sort: ' + (this.sortOptions.find(o => o.value === this.sortBy)?.label ?? this.sortBy);
   }
+
+  get filteredMetadataValues(): string[] {
+    const q = this.metadataValueInput.toLowerCase();
+    return this.metadataFieldValues.filter(v => v.toLowerCase().startsWith(q));
+  }
+
+  get groupedAdAccounts(): Array<{platform: string; accounts: Array<{ad_account_id: string; ad_account_name: string; platform: string}>}> {
+    const order = ['META', 'TIKTOK', 'GOOGLE_ADS', 'DV360'];
+    const map = new Map<string, Array<{ad_account_id: string; ad_account_name: string; platform: string}>>();
+    for (const acc of this.adAccounts) {
+      const key = acc.platform;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(acc);
+    }
+    const result: Array<{platform: string; accounts: Array<{ad_account_id: string; ad_account_name: string; platform: string}>}> = [];
+    for (const platform of order) {
+      if (map.has(platform)) {
+        result.push({platform, accounts: map.get(platform)!});
+      }
+    }
+    for (const [platform, accounts] of map) {
+      if (!order.includes(platform)) {
+        result.push({platform, accounts});
+      }
+    }
+    return result;
+  }
+
+  get showPlatformGrouping(): boolean {
+    return new Set(this.adAccounts.map(a => a.platform)).size > 1;
+  }
+
+  get metadataButtonLabel(): string {
+    return this.activeMetadataFilters.length === 0 ? 'Metadata' : `Metadata (${this.activeMetadataFilters.length})`;
+  }
+
   sortBy = 'spend';
   sortOrder = 'desc';
   page = 1;
@@ -1297,6 +1349,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           ad_account_name: c.ad_account_name || c.ad_account_id,
           platform: c.platform,
         }));
+        this.loadMetadataFields();
       },
     });
 
@@ -1565,6 +1618,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.scoreMin > 0) params['score_min'] = this.scoreMin;
     if (this.scoreMax < 100) params['score_max'] = this.scoreMax;
     if (this.selectedAdAccountIds.length > 0) params['ad_account_ids'] = this.selectedAdAccountIds.join(',');
+    if (this.activeMetadataFilters.length > 0) params['metadata_filter'] = this.activeMetadataFilters.map(f => `${f.field}:${f.value}`);
 
     this.api.get<DashboardAssetsResponse>('/dashboard/assets', params).subscribe({
       next: (d) => {
@@ -1692,6 +1746,81 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.selectedAdAccountIds.push(id);
     }
     this.onFilterChange();
+  }
+
+  loadMetadataFields(): void {
+    this.api.get<{fields: any[]}>('/dashboard/metadata-fields').subscribe({
+      next: (res) => {
+        this.metadataFields = res.fields ?? [];
+      },
+      error: () => { /* silent — empty list state is acceptable */ },
+    });
+  }
+
+  selectMetadataField(field: {id: string; name: string; label: string; field_type: string}): void {
+    this.selectedMetadataFieldId = field.id;
+    this.selectedMetadataFieldName = field.name;
+    this.selectedMetadataFieldLabel = field.label;
+    this.metadataValueInput = '';
+    this.metadataFieldValues = [];
+    this.metadataValuesError = false;
+    this.metadataValuesLoading = true;
+    this.api.get<{values: string[]}>(`/dashboard/metadata-fields/${field.id}/values`).subscribe({
+      next: (res) => {
+        this.metadataFieldValues = res.values ?? [];
+        this.metadataValuesLoading = false;
+      },
+      error: () => {
+        this.metadataValuesError = true;
+        this.metadataValuesLoading = false;
+      },
+    });
+  }
+
+  backToFieldList(): void {
+    this.selectedMetadataFieldId = null;
+    this.selectedMetadataFieldName = null;
+    this.selectedMetadataFieldLabel = null;
+    this.metadataValueInput = '';
+    this.metadataFieldValues = [];
+  }
+
+  selectMetadataValue(value: string): void {
+    this.activeMetadataFilters.push({field: this.selectedMetadataFieldName!, fieldLabel: this.selectedMetadataFieldLabel!, value});
+    this.backToFieldList();
+    this.onFilterChange();
+  }
+
+  removeMetadataFilter(index: number): void {
+    this.activeMetadataFilters.splice(index, 1);
+    this.onFilterChange();
+  }
+
+  clearAllMetadataFilters(): void {
+    this.activeMetadataFilters = [];
+    this.onFilterChange();
+  }
+
+  retryLoadMetadataValues(): void {
+    if (!this.selectedMetadataFieldId) return;
+    const fieldId = this.selectedMetadataFieldId;
+    this.metadataValuesError = false;
+    this.metadataValuesLoading = true;
+    this.api.get<{values: string[]}>(`/dashboard/metadata-fields/${fieldId}/values`).subscribe({
+      next: (res) => {
+        this.metadataFieldValues = res.values ?? [];
+        this.metadataValuesLoading = false;
+      },
+      error: () => {
+        this.metadataValuesError = true;
+        this.metadataValuesLoading = false;
+      },
+    });
+  }
+
+  getPlatformDisplayName(platform: string): string {
+    const names: Record<string, string> = {META: 'META', TIKTOK: 'TIKTOK', GOOGLE_ADS: 'GOOGLE ADS', DV360: 'DV360'};
+    return names[platform] ?? platform;
   }
 
   toggleSortOrder(): void {
