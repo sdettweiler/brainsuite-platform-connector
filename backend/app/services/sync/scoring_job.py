@@ -410,6 +410,7 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 "asset_id": str(asset_id),
                 "creative_score_result_id": str(score_id),
             },
+            params={"asset_id": str(asset_id), "score_id": str(score_id)},
         )
         await update_background_job(
             bg_job_id,

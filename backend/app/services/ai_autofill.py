@@ -143,6 +143,7 @@ async def _run_autofill_for_asset_inner(asset_id: uuid.UUID, org_id: uuid.UUID) 
         job_type="autofill",
         org_id=org_id,
         metadata={"asset_id": str(asset_id)},
+        params={"asset_id": str(asset_id), "org_id": str(org_id)},
     )
     await update_background_job(
         bg_job_id,

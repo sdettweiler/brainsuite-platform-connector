@@ -366,6 +366,23 @@ async def _dispatch_job_retry(
                 resume_query_id = None
         asyncio.create_task(trigger_dv360_sync_retry(params, new_job_id, resume_query_id))
         return
+    if job_type == "autofill":
+        asset_id_str = (params or {}).get("asset_id")
+        org_id_str = (params or {}).get("org_id")
+        if asset_id_str and org_id_str:
+            from app.services.ai_autofill import run_autofill_for_asset
+            asyncio.create_task(run_autofill_for_asset(uuid.UUID(asset_id_str), uuid.UUID(org_id_str)))
+        else:
+            logger.warning("autofill retry: missing asset_id or org_id in params for job %s", new_job_id)
+        return
+    if job_type == "scoring":
+        score_id_str = (params or {}).get("score_id")
+        if score_id_str:
+            from app.services.sync.scoring_job import score_asset_now
+            asyncio.create_task(score_asset_now(uuid.UUID(score_id_str)))
+        else:
+            logger.warning("scoring retry: missing score_id in params for job %s", new_job_id)
+        return
     logger.warning(
         "Retry dispatch not yet wired for job_type=%s. Job %s created but not started.",
         job_type,
