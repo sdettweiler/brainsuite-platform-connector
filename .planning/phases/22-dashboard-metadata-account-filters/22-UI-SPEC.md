@@ -30,14 +30,13 @@ Source: `frontend/src/styles.scss` — Angular Material dark theme + Bootstrap I
 
 ## Spacing Scale
 
-Declared values (multiples of 4):
+Declared values (multiples of 4, drawn from the allowed set {4, 8, 16, 24, 32, 48, 64}):
 
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Icon gaps, chip inner padding, badge padding |
-| sm | 8px | Toolbar group gaps, dropdown option vertical padding |
-| md | 12px | Toolbar outer gap, dropdown option horizontal padding, chip row gap |
-| lg | 16px | Toolbar margin-bottom, section padding, filter chip row margin-top |
+| sm | 8px | Toolbar group gaps, dropdown option vertical padding, toolbar outer gap, chip row gap, group-header horizontal padding |
+| lg | 16px | Toolbar margin-bottom, section padding, filter chip row margin-top, dropdown option horizontal padding |
 | xl | 24px | Page horizontal padding (inherited from page shell) |
 | 2xl | 32px | Major vertical breaks |
 | 3xl | 48px | Page-level vertical spacing |
@@ -45,7 +44,7 @@ Declared values (multiples of 4):
 Exceptions:
 - `tbd-trigger` height is 36px (not a spacing multiple) — matches existing filter buttons exactly; do not change.
 - `mat-chip` touch target must be minimum 32px tall — satisfies usability without deviation from existing scale.
-- `tbd-group-header` in account dropdown: 8px vertical padding top/bottom, 12px horizontal — matches `tbd-option` horizontal padding for visual alignment.
+- `tbd-group-header` in account dropdown: 4px vertical padding top/bottom, 8px horizontal — uses `xs` and `sm` from the standard scale for visual alignment with `tbd-option` horizontal padding (`lg = 16px`).
 
 Source: `dashboard.component.ts` styles (lines 525–632 extracted).
 
@@ -98,6 +97,16 @@ Source: `frontend/src/styles.scss` `:root` + `.dark-theme` / `.light-theme` bloc
 
 ---
 
+## Visual Focal Points
+
+Primary new visual element: the active-filter chip row (`metadata-chip-row`) — it is the most prominent new surface introduced in Phase 22, appearing directly below the toolbar when filters are applied.
+
+Secondary anchor: the accent-colored border on the Metadata button (`tbd-trigger`) when ≥ 1 filter is active (`border-color: var(--accent)`) — draws the eye to the filter's active state without competing with the chip row.
+
+All other additions (account dropdown platform grouping, step 2 autocomplete) are subordinate to these two anchors. Do not introduce any additional visual anchors.
+
+---
+
 ## Component Inventory
 
 ### New: Metadata Filter Button + Two-Step Dropdown (DASH-01)
@@ -113,7 +122,7 @@ Source: `frontend/src/styles.scss` `:root` + `.dark-theme` / `.light-theme` bloc
 **Step 2 — Value Autocomplete (inline, replaces Step 1 panel):**
 - Element: autocomplete input appears inside the same `tbd-panel` div, replacing the field list after a field is selected
 - Back arrow: `<button class="tbd-back">` with `bi-arrow-left` (13px) + field label text — lets user return to step 1 without closing
-- Input: `<input [(ngModel)]="metadataValueInput" placeholder="Type to search…">` styled to fill panel width; `background: var(--bg-hover); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 13px; color: var(--text-primary)`
+- Input: `<input [(ngModel)]="metadataValueInput" placeholder="Type to search…">` styled to fill panel width; `background: var(--bg-hover); border: 1px solid var(--border); border-radius: 6px; padding: 8px 16px; font-size: 13px; color: var(--text-primary)`
 - Suggestion list: rendered below input inside same panel; each suggestion is a `<div class="tbd-option">` — prefix match highlighted with `<mark>` (accent color, transparent bg)
 - Empty suggestions: show single `tbd-option` "No values found" in `var(--text-muted)`
 - On suggestion click: closes panel, appends chip, calls `onFilterChange()`
@@ -123,13 +132,13 @@ Source: `frontend/src/styles.scss` `:root` + `.dark-theme` / `.light-theme` bloc
 - Container: `<div class="metadata-chip-row">` — `display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 8px`
 - Chip: `<div class="metadata-chip">` — `display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 16px; background: var(--bg-card); border: 1px solid var(--border); font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap`
 - Chip label: `"<FieldLabel>: <value>"` — FieldLabel from `MetadataField.label`, value is exact string
-- Dismiss button: `<button class="chip-dismiss">` — `bi-x` icon at 13px; no border, transparent background; color `var(--text-secondary)`; on hover: color `var(--accent)`
-- "Clear all" button: shown only when ≥ 2 chips active; `<button class="chip-clear-all">` — plain text "Clear all" at 13px weight 500, `color: var(--text-muted)`; on hover: `color: var(--accent)`. Placed at end of chip row.
+- Dismiss button: `<button class="chip-dismiss">` — `bi-x` icon at 13px; no border, transparent background; color `var(--text-secondary)`; on hover: color `var(--accent)`; `aria-label="Remove <FieldLabel>: <value> filter"`; `title="Remove filter"` for tooltip on hover (browser-native tooltip is sufficient — no custom overlay required)
+- "Clear all filters" button: shown only when ≥ 2 chips active; `<button class="chip-clear-all">` — plain text "Clear all filters" at 13px weight 500, `color: var(--text-muted)`; on hover: `color: var(--accent)`. Placed at end of chip row.
 - The chip row is hidden (height 0, no layout space) when `activeMetadataFilters.length === 0`
 
 ### Modified: Ad Account Dropdown — Platform Grouping (DASH-02)
 
-- Platform section headers inside `mat-menu`: `<div class="tbd-group-header">META</div>` — not clickable; `padding: 4px 12px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); pointer-events: none`
+- Platform section headers inside `mat-menu`: `<div class="tbd-group-header">META</div>` — not clickable; `padding: 4px 8px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); pointer-events: none`
 - Platform order: META → TIKTOK → GOOGLE ADS → DV360
 - Flat list fallback: if only one platform is connected, no section headers rendered (conditional `*ngIf`)
 - "All Accounts" option stays at the top of the list, before any platform group headers
@@ -176,7 +185,7 @@ Source: `frontend/src/styles.scss` `:root` + `.dark-theme` / `.light-theme` bloc
 | Step 2 — no suggestions | `No values found` |
 | Step 2 — back button | `← <FieldLabel>` (e.g. `← Language`) |
 | Chip label format | `<FieldLabel>: <value>` (e.g. `Language: Indonesian`) |
-| Clear all button | `Clear all` |
+| Clear all button | `Clear all filters` |
 | Account dropdown — "All Accounts" option | `All Accounts` (unchanged from existing) |
 | Account dropdown — platform group header examples | `META`, `TIKTOK`, `GOOGLE ADS`, `DV360` |
 | Empty state (no results after filter) | `No creatives match your filters.` (existing empty state copy — no change) |
@@ -192,7 +201,7 @@ Destructive actions in Phase 22: none. The dismiss chip (×) is not destructive 
 - Step 1 panel: `role="listbox"`, `aria-label="Select metadata field"`
 - Step 2 input: `aria-label="Search <FieldLabel> values"`, `aria-autocomplete="list"`, `aria-controls="meta-value-listbox"`
 - Step 2 suggestion list: `role="listbox" id="meta-value-listbox"`; each suggestion: `role="option"`
-- Metadata chips: `role="listitem"`; dismiss button: `aria-label="Remove <FieldLabel>: <value> filter"`
+- Metadata chips: `role="listitem"`; dismiss button: `aria-label="Remove <FieldLabel>: <value> filter"` + `title="Remove filter"` (tooltip on hover)
 - Clear all button: `aria-label="Clear all metadata filters"`
 - Platform group headers in account dropdown: `role="separator"` or `aria-disabled="true"` — not focusable
 - Keyboard: Escape closes any open panel and returns focus to trigger button
