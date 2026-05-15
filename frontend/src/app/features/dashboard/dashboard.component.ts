@@ -1309,6 +1309,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   selectedPlatforms = new Set(['META', 'TIKTOK', 'GOOGLE_ADS', 'DV360']);
   selectedFormat = '';
   adAccounts: { ad_account_id: string; ad_account_name: string; platform: string }[] = [];
+  groupedAdAccounts: Array<{platform: string; accounts: Array<{ad_account_id: string; ad_account_name: string; platform: string}>}> = [];
+  showPlatformGrouping = false;
   selectedAdAccountIds: string[] = [];
   adAccountDropdownOpen = false;
 
@@ -1351,30 +1353,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return this.metadataFieldValues.filter(v => v.toLowerCase().startsWith(q));
   }
 
-  get groupedAdAccounts(): Array<{platform: string; accounts: Array<{ad_account_id: string; ad_account_name: string; platform: string}>}> {
+  private _buildGroupedAccounts(): void {
     const order = ['META', 'TIKTOK', 'GOOGLE_ADS', 'DV360'];
     const map = new Map<string, Array<{ad_account_id: string; ad_account_name: string; platform: string}>>();
     for (const acc of this.adAccounts) {
-      const key = acc.platform;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(acc);
+      if (!map.has(acc.platform)) map.set(acc.platform, []);
+      map.get(acc.platform)!.push(acc);
     }
     const result: Array<{platform: string; accounts: Array<{ad_account_id: string; ad_account_name: string; platform: string}>}> = [];
     for (const platform of order) {
-      if (map.has(platform)) {
-        result.push({platform, accounts: map.get(platform)!});
-      }
+      if (map.has(platform)) result.push({platform, accounts: map.get(platform)!});
     }
     for (const [platform, accounts] of map) {
-      if (!order.includes(platform)) {
-        result.push({platform, accounts});
-      }
+      if (!order.includes(platform)) result.push({platform, accounts});
     }
-    return result;
-  }
-
-  get showPlatformGrouping(): boolean {
-    return new Set(this.adAccounts.map(a => a.platform)).size > 1;
+    this.groupedAdAccounts = result;
+    this.showPlatformGrouping = map.size > 1;
   }
 
   get metadataButtonLabel(): string {
@@ -1481,6 +1475,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           ad_account_name: c.ad_account_name || c.ad_account_id,
           platform: c.platform,
         }));
+        this._buildGroupedAccounts();
         this.loadMetadataFields();
       },
     });
