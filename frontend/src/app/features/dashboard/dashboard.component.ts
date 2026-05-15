@@ -156,23 +156,15 @@ interface CorrelationAsset {
           </button>
           <mat-menu #accountMenu="matMenu" class="tbd-menu">
             <button mat-menu-item (click)="$event.stopPropagation(); selectedAdAccountIds = []; onFilterChange()"><span class="tbd-check" [class.checked]="selectedAdAccountIds.length === 0">&#10003;</span>All Accounts</button>
-            <ng-container *ngIf="showPlatformGrouping; else flatAccountList">
-              <ng-container *ngFor="let group of groupedAdAccounts; let last = last">
-                <div class="tbd-group-header" role="separator" aria-disabled="true">{{ getPlatformDisplayName(group.platform) }}</div>
-                <button mat-menu-item *ngFor="let acc of group.accounts" (click)="$event.stopPropagation(); toggleAdAccount(acc.ad_account_id)">
-                  <span class="tbd-check" [class.checked]="selectedAdAccountIds.includes(acc.ad_account_id)">&#10003;</span>
-                  <span class="tbd-name">{{acc.ad_account_name}}</span>
-                </button>
-                <div class="tbd-group-divider" role="separator" *ngIf="!last"></div>
-              </ng-container>
-            </ng-container>
-            <ng-template #flatAccountList>
-              <button mat-menu-item *ngFor="let acc of adAccounts" (click)="$event.stopPropagation(); toggleAdAccount(acc.ad_account_id)">
+            <ng-container *ngFor="let group of groupedAdAccounts; let last = last">
+              <button mat-menu-item disabled class="tbd-group-header-item" *ngIf="showPlatformGrouping" aria-disabled="true">{{ getPlatformDisplayName(group.platform) }}</button>
+              <button mat-menu-item *ngFor="let acc of group.accounts" (click)="$event.stopPropagation(); toggleAdAccount(acc.ad_account_id)">
                 <span class="tbd-check" [class.checked]="selectedAdAccountIds.includes(acc.ad_account_id)">&#10003;</span>
                 <span class="tbd-name">{{acc.ad_account_name}}</span>
-                <span class="tbd-badge">{{acc.platform}}</span>
+                <span class="tbd-badge" *ngIf="!showPlatformGrouping">{{acc.platform}}</span>
               </button>
-            </ng-template>
+              <div class="tbd-group-divider" role="separator" *ngIf="showPlatformGrouping && !last"></div>
+            </ng-container>
           </mat-menu>
         </ng-container>
 
@@ -748,6 +740,17 @@ interface CorrelationAsset {
       color: var(--text-muted);
       pointer-events: none;
       user-select: none;
+    }
+    .tbd-group-header-item.mat-mdc-menu-item[disabled] {
+      padding: 0 8px;
+      min-height: 24px;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted) !important;
+      opacity: 1 !important;
+      cursor: default;
     }
     .tbd-group-divider { height: 1px; background: var(--border); margin: 4px 0; }
 
