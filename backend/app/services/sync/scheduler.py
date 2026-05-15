@@ -549,9 +549,10 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
                 except Exception:
                     pass
             if _ts_still_valid:
-                logger.warning("Google Ads asset download: yt-dlp reported cookies invalid but timestamps are still valid — likely IP/rate-limiting, not true expiry")
-            await fresh_db.execute(_upd(SystemConfig).values(youtube_cookies_runtime_expired=True))
-            await fresh_db.commit()
+                logger.warning("Google Ads asset download: yt-dlp reported cookies invalid but timestamps are still valid — likely IP/rate-limiting, not true expiry. Skipping flag write.")
+            else:
+                await fresh_db.execute(_upd(SystemConfig).values(youtube_cookies_runtime_expired=True))
+                await fresh_db.commit()
         logger.warning("Google Ads asset download aborted: YouTube cookies expired — flag written to DB")
         if bg_job_id is not None:
             await update_background_job(
@@ -806,9 +807,10 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
                 except Exception:
                     pass
             if _ts_still_valid:
-                logger.warning("DV360 asset download: yt-dlp reported cookies invalid but timestamps are still valid — likely IP/rate-limiting, not true expiry")
-            await fresh_db.execute(_upd(SystemConfig).values(youtube_cookies_runtime_expired=True))
-            await fresh_db.commit()
+                logger.warning("DV360 asset download: yt-dlp reported cookies invalid but timestamps are still valid — likely IP/rate-limiting, not true expiry. Skipping flag write.")
+            else:
+                await fresh_db.execute(_upd(SystemConfig).values(youtube_cookies_runtime_expired=True))
+                await fresh_db.commit()
         logger.warning("DV360 asset download aborted: YouTube cookies expired — flag written to DB")
         if bg_job_id is not None:
             await update_background_job(

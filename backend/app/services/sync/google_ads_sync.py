@@ -98,7 +98,15 @@ class GoogleAdsSyncService:
                     if res_name and yt_id:
                         asset_map[res_name] = yt_id
             else:
-                logger.warning(f"Failed to fetch YouTube assets: {resp.status_code}")
+                err_text = resp.text
+                if "REQUESTED_METRICS_FOR_MANAGER" in err_text:
+                    logger.warning(
+                        "Google Ads: skipping asset map for customer %s — manager account "
+                        "(REQUESTED_METRICS_FOR_MANAGER). Configure a client account instead.",
+                        customer_id,
+                    )
+                else:
+                    logger.warning(f"Failed to fetch YouTube assets: {resp.status_code}")
 
         logger.info(f"Built YouTube asset map with {len(asset_map)} entries for {customer_id}")
         return asset_map
@@ -193,7 +201,15 @@ class GoogleAdsSyncService:
                 )
 
                 if resp.status_code != 200:
-                    logger.error(f"Google Ads API error {resp.status_code}: {resp.text[:500]}")
+                    err_text = resp.text
+                    if "REQUESTED_METRICS_FOR_MANAGER" in err_text:
+                        logger.warning(
+                            "Google Ads: skipping customer %s — manager account cannot return metrics "
+                            "(REQUESTED_METRICS_FOR_MANAGER). Configure a client account instead.",
+                            customer_id,
+                        )
+                        return []
+                    logger.error(f"Google Ads API error {resp.status_code}: {err_text[:500]}")
                     break
 
                 data = resp.json()
