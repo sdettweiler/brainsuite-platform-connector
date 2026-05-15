@@ -10,6 +10,9 @@ def test_bgutil_plugin_loaded():
     pip install bgutil-ytdlp-pot-provider
     """
     import importlib.util
-    spec = importlib.util.find_spec("yt_dlp_plugins")
+    try:
+        spec = importlib.util.find_spec("yt_dlp_plugins")
+    except ModuleNotFoundError:
+        spec = None
     if spec is None:
         pytest.skip("bgutil-ytdlp-pot-provider not installed in this environment")
