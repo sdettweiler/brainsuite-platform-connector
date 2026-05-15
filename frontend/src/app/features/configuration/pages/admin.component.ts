@@ -68,7 +68,69 @@ interface ProxyTestResult {
   template: `
 <div class="page-container">
 
-  <!-- Section 1: YouTube Cookies -->
+  <!-- Section 1: Residential Proxy -->
+  <section class="config-section">
+    <div class="section-header">
+      <div>
+        <h2>Residential Proxy</h2>
+        <p class="section-desc">Manage the system-wide residential proxy used for YouTube video creative downloads on production hosts.</p>
+      </div>
+      <div class="scoring-toggle-row">
+        <div>
+          <div class="proxy-toggle-label">Residential Proxy</div>
+          <div class="proxy-toggle-hint">Routes all YouTube downloads through the configured residential proxy.</div>
+        </div>
+        <mat-slide-toggle
+          aria-label="Residential proxy"
+          [checked]="proxyConfig?.proxy_enabled || false"
+          [disabled]="togglingProxy || loadingProxy"
+          (change)="onProxyToggle($event.checked)">
+          {{ proxyConfig?.proxy_enabled ? 'Enabled' : 'Disabled' }}
+        </mat-slide-toggle>
+      </div>
+    </div>
+    <div class="section-body">
+      <div *ngIf="loadingProxy" class="skeleton-block"></div>
+      <ng-container *ngIf="proxyConfig && !loadingProxy">
+        <div class="proxy-url-card" [class.disabled]="!proxyConfig.proxy_enabled">
+          <!-- State: No URL saved -->
+          <div *ngIf="!proxyConfig.proxy_url_masked && !editingProxyUrl" class="url-missing">
+            <span class="text-muted">No URL saved.</span>
+            <button mat-stroked-button (click)="editingProxyUrl = true" [disabled]="!proxyConfig.proxy_enabled">Add URL</button>
+          </div>
+          <!-- State: URL configured -->
+          <div *ngIf="proxyConfig.proxy_url_masked && !editingProxyUrl" class="url-display">
+            <span class="masked" aria-label="Proxy URL configured, masked">{{ proxyConfig.proxy_url_masked }}</span>
+            <button mat-stroked-button (click)="editingProxyUrl = true" [disabled]="!proxyConfig.proxy_enabled">Replace</button>
+          </div>
+          <!-- State: Edit mode -->
+          <div *ngIf="editingProxyUrl" class="url-edit">
+            <input type="text" [(ngModel)]="newProxyUrl" placeholder="http://user:pass@host:port" aria-label="Proxy URL">
+            <div class="url-edit-actions cookie-edit-actions">
+              <button mat-stroked-button (click)="discardProxyUrlEdit()" [disabled]="savingProxyUrl">Discard</button>
+              <button mat-flat-button class="save-btn" (click)="saveProxyUrl()" [disabled]="!newProxyUrl.trim() || savingProxyUrl">
+                <mat-spinner *ngIf="savingProxyUrl" diameter="14"></mat-spinner>
+                {{ savingProxyUrl ? 'Saving...' : 'Save URL' }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- Test Connection row (only when enabled AND URL configured) -->
+        <div *ngIf="proxyConfig.proxy_enabled && proxyConfig.proxy_url_masked" class="test-section">
+          <button mat-stroked-button (click)="testProxyConnection()" [disabled]="testingProxy">
+            <mat-spinner *ngIf="testingProxy" diameter="14"></mat-spinner>
+            {{ testingProxy ? 'Testing...' : 'Test Connection' }}
+          </button>
+          <div *ngIf="testResult" class="test-result" role="status" [class.success]="testResult.success" [class.error]="!testResult.success">
+            <span *ngIf="testResult.success">Reachable ({{ testResult.latency_ms }}ms)</span>
+            <span *ngIf="!testResult.success">Failed: {{ testResult.error }}</span>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+  </section>
+
+  <!-- Section 2: YouTube Cookies -->
   <section class="config-section">
     <div class="section-header">
       <div>
@@ -145,7 +207,7 @@ interface ProxyTestResult {
     </div>
   </section>
 
-  <!-- Section 2: SuperAdmin Management -->
+  <!-- Section 3: SuperAdmin Management -->
   <section class="config-section">
     <div class="section-header">
       <div>
@@ -183,7 +245,7 @@ interface ProxyTestResult {
     </div>
   </section>
 
-  <!-- Section 3: Organizations (read-only) -->
+  <!-- Section 4: Organizations (read-only) -->
   <section class="config-section">
     <div class="section-header">
       <div>
@@ -211,7 +273,7 @@ interface ProxyTestResult {
     </div>
   </section>
 
-  <!-- Section 4: Scoring Controls -->
+  <!-- Section 5: Scoring Controls -->
   <section class="config-section">
     <div class="section-header">
       <div>
@@ -501,6 +563,57 @@ interface ProxyTestResult {
       display: inline-flex;
       align-items: center;
       gap: 6px;
+    }
+
+    .proxy-toggle-label { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+    .proxy-toggle-hint { font-size: 13px; color: var(--text-secondary); max-width: 480px; }
+
+    .proxy-url-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 16px;
+      transition: opacity 0.2s;
+      &.disabled { opacity: 0.5; pointer-events: none; }
+    }
+
+    .url-missing, .url-display {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .url-edit {
+      input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-family: monospace;
+        font-size: 12px;
+        &:focus { outline: none; border-color: var(--accent); }
+      }
+    }
+
+    .test-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .test-result {
+      font-size: 13px;
+      padding: 8px;
+      border-radius: 4px;
+      &.success { background: rgba(46, 204, 113, 0.1); color: var(--success); }
+      &.error { background: rgba(231, 76, 60, 0.1); color: var(--error); }
     }
   `],
 })
