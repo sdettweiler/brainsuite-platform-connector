@@ -7,9 +7,9 @@ from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, text, case, nullslast, cast
+from sqlalchemy import select, func, and_, or_, text, case, nullslast, cast, distinct
 from sqlalchemy.types import Date
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, aliased
 import uuid
 
 from app.db.base import get_db
@@ -214,6 +214,78 @@ async def get_score_trend(
     }
 
 
+@router.get("/metadata-fields")
+async def get_metadata_fields(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all active metadata fields for the current organization.
+
+    Org guard: MetadataField.organization_id == current_user.organization_id (T-22-01).
+    Ordered by sort_order then label (D-02).
+
+    Response: {"fields": [{"id": str, "name": str, "label": str, "field_type": str}, ...]}
+    """
+    query = (
+        select(MetadataField)
+        .where(
+            MetadataField.organization_id == current_user.organization_id,
+            MetadataField.is_active.is_(True),
+        )
+        .order_by(MetadataField.sort_order, MetadataField.label)
+    )
+    result = await db.execute(query)
+    fields = result.scalars().all()
+    return {
+        "fields": [
+            {
+                "id": str(f.id),
+                "name": f.name,
+                "label": f.label,
+                "field_type": f.field_type,
+            }
+            for f in fields
+        ]
+    }
+
+
+@router.get("/metadata-fields/{field_id}/values")
+async def get_metadata_field_values(
+    field_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return DISTINCT non-null values for a metadata field scoped to the caller's organization.
+
+    Two-layer org guard (T-22-01, D-04):
+    1. db.get check: if field.organization_id != current_user.organization_id → 404
+    2. JOIN-level: MetadataField.organization_id AND CreativeAsset.organization_id guards in query
+
+    Response: {"values": [str, ...]} ordered ascending; 404 for cross-org or unknown field_id.
+    """
+    # Layer 1: verify field exists and belongs to caller's org
+    field = await db.get(MetadataField, field_id)
+    if not field or field.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Field not found")
+
+    # Layer 2: DISTINCT values via JOIN through CreativeAsset with org guard
+    query = (
+        select(distinct(AssetMetadataValue.value))
+        .join(MetadataField, MetadataField.id == AssetMetadataValue.field_id)
+        .join(CreativeAsset, CreativeAsset.id == AssetMetadataValue.asset_id)
+        .where(
+            MetadataField.organization_id == current_user.organization_id,
+            MetadataField.id == field_id,
+            AssetMetadataValue.value.isnot(None),
+            CreativeAsset.organization_id == current_user.organization_id,
+        )
+        .order_by(AssetMetadataValue.value)
+    )
+    result = await db.execute(query)
+    values = [row[0] for row in result.all()]
+    return {"values": values}
+
+
 @router.get("/assets", response_model=dict)
 async def get_dashboard_assets(
     date_from: date = Query(default=None),
@@ -229,6 +301,7 @@ async def get_dashboard_assets(
     score_min: Optional[float] = Query(default=None, ge=0, le=100),
     score_max: Optional[float] = Query(default=None, ge=0, le=100),
     ad_account_ids: Optional[str] = Query(default=None),
+    metadata_filter: Optional[List[str]] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -332,6 +405,36 @@ async def get_dashboard_assets(
 
     if account_id_list:
         query = query.where(CreativeAsset.ad_account_id.in_(account_id_list))
+
+    # Metadata filter: one aliased JOIN per filter entry → AND composition (D-07, D-08, D-10)
+    # Security: MetadataField.organization_id guard on every JOIN (T-22-01)
+    # Note: filter_value and field_name are never logged — may contain PII (T-22-05)
+    for i, meta_filter_str in enumerate(metadata_filter or []):
+        if ":" not in meta_filter_str:
+            # Malformed format: explicit 400 over silent skip
+            # Behavior documented in test_metadata_filter_malformed_value
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid metadata_filter format; expected field_name:value (got: {meta_filter_str})",
+            )
+        field_name, filter_value = meta_filter_str.split(":", 1)
+        amv = aliased(AssetMetadataValue, name=f"amv_{i}")
+        mf = aliased(MetadataField, name=f"mf_{i}")
+        query = query.join(
+            amv,
+            and_(
+                amv.asset_id == CreativeAsset.id,
+                amv.value == filter_value,
+            ),
+        ).join(
+            mf,
+            and_(
+                mf.id == amv.field_id,
+                mf.name == field_name,
+                mf.organization_id == current_user.organization_id,
+            ),
+        )
+
     if score_min is not None:
         query = query.where(CreativeScoreResult.total_score >= score_min)
     if score_max is not None:

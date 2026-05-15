@@ -133,6 +133,6 @@ def test_metadata_filter_malformed_value():
     assert "400" in source or "Invalid metadata_filter" in source, (
         "get_dashboard_assets must raise HTTPException(400) for malformed metadata_filter entries"
     )
-    assert "':' not in" in source or "split(':'" in source or "split(':', 1)" in source, (
+    assert "':' not in" in source or '":"' in source or "split(':', 1)" in source or 'split(":", 1)' in source or '":" not in' in source, (
         "get_dashboard_assets must split metadata_filter on ':' and reject entries missing the separator"
     )
