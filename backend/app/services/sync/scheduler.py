@@ -171,6 +171,7 @@ async def run_daily_sync(connection_id: str) -> None:
             org_id=connection.organization_id,
             platform_connection_id=connection.id,
             metadata={"sync_job_id": job_id, "platform": connection.platform},
+            params={"platform": "DV360", "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "daily"} if is_dv360 else None,
         )
         await update_background_job(
             bg_job_id,
@@ -326,6 +327,7 @@ async def run_daily_sync(connection_id: str) -> None:
                 dv360_info["access_token"], dv360_info["connection_id"],
                 dv360_info["refresh_token_encrypted"],
                 dv360_info["advertiser_id"], date_from, date_to,
+                bg_job_id=bg_job_id,
             )
         except Exception as e:
             logger.error(f"DV360 daily sync report fetch failed: {type(e).__name__}: {e}")
@@ -952,6 +954,7 @@ async def run_full_resync(connection_id: str) -> None:
             org_id=connection.organization_id,
             platform_connection_id=connection.id,
             metadata={"sync_job_id": job_id, "platform": connection.platform},
+            params={"platform": "DV360", "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "full"} if is_dv360 else None,
         )
         await update_background_job(
             bg_job_id,
@@ -1106,6 +1109,7 @@ async def run_full_resync(connection_id: str) -> None:
                 dv360_info["advertiser_id"],
                 dv360_info["date_from"], dv360_info["date_to"],
                 force_refetch_metadata=True,
+                bg_job_id=bg_job_id,
             )
         except Exception as e:
             logger.error(f"DV360 full resync report fetch failed: {type(e).__name__}: {e}")
@@ -1315,6 +1319,7 @@ async def run_initial_sync(connection_id: str) -> None:
             org_id=connection.organization_id,
             platform_connection_id=connection.id,
             metadata={"sync_job_id": job_id, "platform": connection.platform},
+            params={"platform": "DV360", "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "initial"} if is_dv360 else None,
         )
         await update_background_job(
             bg_job_id,
@@ -1447,6 +1452,7 @@ async def run_initial_sync(connection_id: str) -> None:
                 dv360_info["refresh_token_encrypted"],
                 dv360_info["advertiser_id"], date_from, date_to,
                 force_refetch_metadata=True,
+                bg_job_id=bg_job_id,
             )
         except Exception as e:
             logger.error(f"DV360 initial sync report fetch failed: {type(e).__name__}: {e}")
@@ -1635,6 +1641,7 @@ async def run_historical_sync(connection_id: str) -> None:
             org_id=connection.organization_id,
             platform_connection_id=connection.id,
             metadata={"sync_job_id": job_id, "platform": connection.platform},
+            params={"platform": "DV360", "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "historical"} if is_dv360 else None,
         )
         await update_background_job(
             bg_job_id,
@@ -1761,6 +1768,7 @@ async def run_historical_sync(connection_id: str) -> None:
                 dv360_info["advertiser_id"],
                 dv360_info["date_from"], dv360_info["date_to"],
                 force_refetch_metadata=True,
+                bg_job_id=bg_job_id,
             )
         except Exception as e:
             logger.error(f"DV360 historical sync report fetch failed: {type(e).__name__}: {e}")
@@ -2058,3 +2066,91 @@ async def trigger_download_retry(params: dict, job_id: str) -> None:
         asyncio.create_task(_run_dv360_asset_downloads(conn_uuid, {"queue": {aid: {} for aid in asset_ids}}))
     else:
         logger.warning("trigger_download_retry: unknown platform %s", platform)
+
+
+async def trigger_dv360_sync_retry(params: dict, new_job_id: str, resume_query_id: Optional[str]) -> None:
+    """Re-run a DV360 sync job, resuming the Bid Manager poll loop if resume_query_id is given."""
+    from sqlalchemy import select as _sel
+    from app.models.platform import PlatformConnection
+    from app.services.sync.dv360_sync import dv360_sync
+    from app.services.sync.harmonizer import harmonizer
+    from app.services.sync.job_tracker import update_background_job as _ubj
+    import uuid as _uuid
+
+    platform_connection_id = params.get("platform_connection_id")
+    date_from_str = params.get("date_from")
+    date_to_str = params.get("date_to")
+    sync_type = params.get("sync_type", "daily")
+
+    if not platform_connection_id or not date_from_str or not date_to_str:
+        logger.warning("trigger_dv360_sync_retry: missing params — %s", params)
+        return
+
+    conn_uuid = _uuid.UUID(str(platform_connection_id))
+    job_uuid = _uuid.UUID(str(new_job_id))
+    date_from = date.fromisoformat(date_from_str)
+    date_to = date.fromisoformat(date_to_str)
+
+    async with get_session_factory()() as db:
+        connection = (await db.execute(_sel(PlatformConnection).where(PlatformConnection.id == conn_uuid))).scalar_one_or_none()
+
+    if not connection:
+        logger.warning("trigger_dv360_sync_retry: connection %s not found", platform_connection_id)
+        return
+
+    await _ubj(job_uuid, status="RUNNING", progress_total=1, progress_current=0)
+
+    try:
+        async with get_session_factory()() as db:
+            access_token = await dv360_sync._get_valid_token(db, connection)
+
+        force_refetch = sync_type != "daily"
+        dv360_report_data = await dv360_sync.fetch_report_data(
+            access_token, connection.id,
+            connection.refresh_token_encrypted,
+            connection.ad_account_id, date_from, date_to,
+            force_refetch_metadata=force_refetch,
+            bg_job_id=job_uuid,
+            resume_query_id=resume_query_id,
+        )
+
+        async with get_session_factory()() as db:
+            from app.models.performance import SyncJob
+            job = SyncJob(
+                platform_connection_id=connection.id,
+                job_type="RETRY",
+                status="RUNNING",
+                started_at=datetime.utcnow(),
+                date_from=date_from,
+                date_to=date_to,
+            )
+            db.add(job)
+            await db.flush()
+            retry_job_id = str(job.id)
+
+            sync_result = await dv360_sync.store_report_data(db, connection, dv360_report_data, retry_job_id)
+            await db.commit()
+
+        asset_queue = sync_result.get("_asset_queue") if isinstance(sync_result, dict) else None
+
+        async with get_session_factory()() as db:
+            conn2 = (await db.execute(_sel(PlatformConnection).where(PlatformConnection.id == conn_uuid))).scalar_one_or_none()
+            if conn2:
+                try:
+                    from app.models.performance import SyncJob as SJ2
+                    from sqlalchemy import select as sel2
+                    sj2 = (await db.execute(sel2(SJ2).where(SJ2.id == _uuid.UUID(retry_job_id)))).scalar_one_or_none()
+                    await harmonizer.harmonize(db, conn2, sj2)
+                    await db.commit()
+                except Exception as _h_err:
+                    logger.warning("trigger_dv360_sync_retry: harmonizer failed (non-fatal): %s", _h_err)
+
+        await _ubj(job_uuid, status="COMPLETE", progress_current=1, output={"sync_type": sync_type, "resumed": resume_query_id is not None})
+
+        if asset_queue and conn_uuid:
+            asyncio.create_task(_run_dv360_asset_downloads(conn_uuid, asset_queue))
+
+    except Exception as _e:
+        import traceback as _tb
+        logger.error("trigger_dv360_sync_retry failed: %s: %s", type(_e).__name__, _e)
+        await _ubj(job_uuid, status="FAILED", error={"type": type(_e).__name__, "message": str(_e), "traceback": _tb.format_exc()[:10000]})

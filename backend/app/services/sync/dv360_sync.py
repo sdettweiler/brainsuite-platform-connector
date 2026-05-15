@@ -107,6 +107,8 @@ class DV360SyncService:
         date_from: date,
         date_to: date,
         force_refetch_metadata: bool = False,
+        bg_job_id=None,
+        resume_query_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         entity_maps = await self._fetch_entity_metadata(access_token, advertiser_id)
 
@@ -114,6 +116,8 @@ class DV360SyncService:
             access_token, advertiser_id, date_from, date_to,
             connection_id=connection_id,
             refresh_token_encrypted=refresh_token_encrypted,
+            bg_job_id=bg_job_id,
+            resume_query_id=resume_query_id,
         )
 
         csv_video_ids = set()
@@ -758,6 +762,8 @@ class DV360SyncService:
         label: str = "report",
         connection_id=None,
         refresh_token_encrypted: str = None,
+        bg_job_id=None,
+        resume_query_id: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         current_token = access_token
         headers = {
@@ -766,31 +772,45 @@ class DV360SyncService:
         }
 
         async with httpx.AsyncClient(timeout=120) as client:
-            create_resp = await client.post(
-                f"{BID_MANAGER_API_BASE}/queries",
-                headers=headers,
-                json=query_body,
-            )
-            if create_resp.status_code != 200:
-                logger.error(f"Bid Manager v2 [{label}]: Create query failed ({create_resp.status_code}): {create_resp.text[:500]}")
-                return None
+            if resume_query_id:
+                query_id = resume_query_id
+                logger.info(f"Bid Manager v2 [{label}]: Resuming existing query {query_id}")
+            else:
+                create_resp = await client.post(
+                    f"{BID_MANAGER_API_BASE}/queries",
+                    headers=headers,
+                    json=query_body,
+                )
+                if create_resp.status_code != 200:
+                    logger.error(f"Bid Manager v2 [{label}]: Create query failed ({create_resp.status_code}): {create_resp.text[:500]}")
+                    return None
 
-            query_data = create_resp.json()
-            query_id = query_data.get("queryId")
-            if not query_id:
-                logger.error(f"Bid Manager v2 [{label}]: No queryId returned: {query_data}")
-                return []
+                query_data = create_resp.json()
+                query_id = query_data.get("queryId")
+                if not query_id:
+                    logger.error(f"Bid Manager v2 [{label}]: No queryId returned: {query_data}")
+                    return []
 
-            run_resp = await client.post(
-                f"{BID_MANAGER_API_BASE}/queries/{query_id}:run",
-                headers=headers,
-                json={},
-            )
-            if run_resp.status_code != 200:
-                logger.error(f"Bid Manager v2 [{label}]: Run query failed ({run_resp.status_code}): {run_resp.text[:500]}")
-                return None
+                run_resp = await client.post(
+                    f"{BID_MANAGER_API_BASE}/queries/{query_id}:run",
+                    headers=headers,
+                    json={},
+                )
+                if run_resp.status_code != 200:
+                    logger.error(f"Bid Manager v2 [{label}]: Run query failed ({run_resp.status_code}): {run_resp.text[:500]}")
+                    return None
 
-            logger.info(f"Bid Manager v2 [{label}]: Query {query_id} created and running, polling for results (YouTube reports may take up to 2 hours)")
+            # Write checkpoint before entering poll loop so an INTERRUPTED job can resume
+            if bg_job_id is not None:
+                try:
+                    from app.services.sync.job_tracker import update_background_job as _ubj
+                    import uuid as _uuid
+                    _jid = bg_job_id if isinstance(bg_job_id, _uuid.UUID) else _uuid.UUID(str(bg_job_id))
+                    await _ubj(_jid, output={"dv360_query_id": query_id, "dv360_poll_started_at": datetime.utcnow().isoformat()})
+                except Exception as _ck_err:
+                    logger.warning("DV360: checkpoint write failed (non-fatal): %s", _ck_err)
+
+            logger.info(f"Bid Manager v2 [{label}]: Query {query_id} {'resumed' if resume_query_id else 'created and running'}, polling for results (YouTube reports may take up to 2 hours)")
 
             report_url = None
             poll_interval = 30
@@ -960,6 +980,8 @@ class DV360SyncService:
         date_to: date,
         connection_id=None,
         refresh_token_encrypted: str = None,
+        bg_job_id=None,
+        resume_query_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         query_body = self._build_query_body(
             advertiser_id, date_from, date_to,
@@ -969,6 +991,8 @@ class DV360SyncService:
             access_token, query_body, label="perf",
             connection_id=connection_id,
             refresh_token_encrypted=refresh_token_encrypted,
+            bg_job_id=bg_job_id,
+            resume_query_id=resume_query_id,
         )
         return result if result is not None else []
 

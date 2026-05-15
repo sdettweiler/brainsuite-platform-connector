@@ -345,11 +345,26 @@ async def _dispatch_job_retry(
     new_job_id: str,
     background_tasks: BackgroundTasks,
     db: AsyncSession,
+    old_output: Optional[dict] = None,
 ) -> None:
     """Dispatch a retry job. Each service wires up its job_type in Wave 2."""
     if job_type == "download":
         from app.services.sync.scheduler import trigger_download_retry
         await trigger_download_retry(params, new_job_id)
+        return
+    if job_type in ("sync_daily", "sync_full", "sync_initial", "sync_historical") and (params or {}).get("platform") == "DV360":
+        from app.services.sync.scheduler import trigger_dv360_sync_retry
+        from datetime import datetime as _dt
+        resume_query_id = (old_output or {}).get("dv360_query_id")
+        poll_started_at = (old_output or {}).get("dv360_poll_started_at")
+        if resume_query_id and poll_started_at:
+            try:
+                age_seconds = (_dt.utcnow() - _dt.fromisoformat(poll_started_at)).total_seconds()
+                if age_seconds > 48 * 3600:
+                    resume_query_id = None
+            except (ValueError, TypeError):
+                resume_query_id = None
+        asyncio.create_task(trigger_dv360_sync_retry(params, new_job_id, resume_query_id))
         return
     logger.warning(
         "Retry dispatch not yet wired for job_type=%s. Job %s created but not started.",
@@ -390,6 +405,6 @@ async def retry_job(
         params=job.params,
     )
 
-    await _dispatch_job_retry(job.job_type, job.params, str(new_job_id), background_tasks, db)
+    await _dispatch_job_retry(job.job_type, job.params, str(new_job_id), background_tasks, db, old_output=job.output)
 
     return {"job_id": str(new_job_id), "status": "queued"}
