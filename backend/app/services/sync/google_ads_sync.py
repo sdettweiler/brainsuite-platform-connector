@@ -8,6 +8,7 @@ import glob
 import httpx
 import logging
 import os
+import secrets
 import shutil
 import tempfile
 from datetime import date, timedelta
@@ -308,6 +309,34 @@ class GoogleAdsSyncService:
             if env_backup:
                 cookies.append(env_backup)
 
+        # Load proxy config from SystemConfig (D-08: IPRoyal HTTP proxy)
+        proxy_url = None
+        proxy_enabled = False
+        try:
+            from app.db.base import get_session_factory as _gsf_proxy
+            from app.models.system_config import SystemConfig as _SC_proxy
+            from sqlalchemy import select as _sel_proxy
+            async with _gsf_proxy()() as _proxy_db:
+                _proxy_cfg = (await _proxy_db.execute(_sel_proxy(_SC_proxy).limit(1))).scalar_one_or_none()
+            if _proxy_cfg and _proxy_cfg.proxy_enabled and _proxy_cfg.proxy_url_encrypted:
+                from app.core.security import decrypt_token as _dt_proxy
+                proxy_url = _dt_proxy(_proxy_cfg.proxy_url_encrypted)
+                proxy_enabled = True
+                _session_id = secrets.token_urlsafe(9)
+                if "@" in proxy_url:
+                    _user_part, _host_part = proxy_url.rsplit("@", 1)
+                    if "://" in _user_part:
+                        _scheme_end = _user_part.index("://") + 3
+                        _scheme = _user_part[:_scheme_end]
+                        _creds = _user_part[_scheme_end:]
+                        if ":" in _creds:
+                            _username, _password = _creds.split(":", 1)
+                            proxy_url = f"{_scheme}{_username}-session-{_session_id}:{_password}@{_host_part}"
+        except Exception as _proxy_load_err:
+            logger.warning("Failed to load proxy config: %s", _proxy_load_err)
+            proxy_url = None
+            proxy_enabled = False
+
         tmpdir = tempfile.mkdtemp()
         tmp_base = os.path.join(tmpdir, "video")
 
@@ -316,21 +345,30 @@ class GoogleAdsSyncService:
 
             _expired = [False]
 
+            def _redact(msg: str) -> str:
+                """Redact proxy credentials from log/exception message (D-05).
+                Pattern: "http://user:pass@geo.iproyal.com:12321" -> "[PROXY:geo.iproyal.com]"
+                """
+                if not proxy_url:
+                    return msg
+                import re as _re
+                return _re.sub(r'https?://[^@/]+@([^/:]+)[^"\s]*', r'[PROXY:\1]', msg)
+
             class _YDLLogger:
                 def debug(self, msg):
                     if msg.startswith("[debug] "):
-                        logger.debug("yt-dlp: %s", msg)
+                        logger.debug("yt-dlp: %s", _redact(msg))
                     else:
-                        logger.info("yt-dlp: %s", msg)
-                def info(self, msg): logger.info("yt-dlp: %s", msg)
+                        logger.info("yt-dlp: %s", _redact(msg))
+                def info(self, msg): logger.info("yt-dlp: %s", _redact(msg))
                 def warning(self, msg):
                     if "no longer valid" in msg:
                         _expired[0] = True
-                    logger.warning("yt-dlp: %s", msg)
+                    logger.warning("yt-dlp: %s", _redact(msg))
                 def error(self, msg):
                     if "no longer valid" in msg:
                         _expired[0] = True
-                    logger.warning("yt-dlp error: %s", msg)
+                    logger.error("yt-dlp: %s", _redact(msg))
 
             ydl_opts = {
                 "outtmpl": f"{tmp_base}.%(ext)s",
@@ -343,6 +381,10 @@ class GoogleAdsSyncService:
                 "remote_components": {"ejs:github": True},
                 "logger": _YDLLogger(),
             }
+            # Inject proxy into ydl_opts BEFORE YoutubeDL instantiation (D-02)
+            # Proxy applies to both info extraction and stream download phases.
+            if proxy_enabled and proxy_url:
+                ydl_opts["proxy"] = proxy_url
             cookie_file = None
             if cookie_data:
                 cleaned = "\n".join(
@@ -360,12 +402,19 @@ class GoogleAdsSyncService:
             except Exception as e:
                 if _expired[0]:
                     raise _CookiesExpiredError("YouTube cookies are no longer valid") from e
+                redacted_error = _redact(str(e))
+                logger.error("yt-dlp exception: %s", redacted_error)
                 raise
             finally:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
+        # Cookieless-first retry when proxy is enabled (D-04)
+        # proxy off: [primary, backup] or [""] if no cookies (existing behavior preserved)
+        # proxy on:  ["", primary, backup] — residential IP makes cookieless viable
         attempts = cookies if cookies else [""]
+        if proxy_enabled and proxy_url:
+            attempts = ["", *attempts]
         loop = asyncio.get_event_loop()
         winning_slot: int | None = None
         try:
