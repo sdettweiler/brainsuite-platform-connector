@@ -28,6 +28,9 @@ class SystemConfig(Base):
     youtube_cookies_runtime_expired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     youtube_cookies_backup_runtime_expired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     youtube_cookies_download_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # Proxy configuration (Phase 20) — per D-08: IPRoyal HTTP proxy support
+    proxy_url_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    proxy_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     youtube_cookies_refreshed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
