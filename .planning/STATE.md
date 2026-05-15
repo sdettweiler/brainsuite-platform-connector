@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: YouTube Downloads & Dashboard Filters
-status: planning
+status: ready_to_execute
 stopped_at: null
-last_updated: "2026-05-14T00:00:00.000Z"
-last_activity: 2026-05-14 — Roadmap created (Phases 20–23)
+last_updated: "2026-05-15T00:00:00.000Z"
+last_activity: 2026-05-15 — Phase 20 planned (2 plans, 2 waves)
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
   percent: 0
 ---
@@ -25,16 +25,16 @@ See: .planning/PROJECT.md (updated 2026-05-14 — v1.4 milestone started)
 
 ## Current Position
 
-Phase: Phase 20 (not yet started — roadmap approved, ready for planning)
-Plan: —
-Status: Roadmap created; ready for /gsd-plan-phase 20
-Last activity: 2026-05-14 — Roadmap v1.4 written (Phases 20–23, 9/9 requirements mapped)
+Phase: Phase 20 (planned — ready to execute)
+Plan: 20-01 (Wave 1), 20-02 (Wave 2)
+Status: Ready to execute — 2 plans created, verification passed
+Last activity: 2026-05-15 — Phase 20 planned (2 plans in 2 waves, PROXY-01/02/03/04/06 covered)
 
 ## Progress Bar
 
 ```
-v1.4: [ ] Phase 20  [ ] Phase 21  [ ] Phase 22  [ ] Phase 23
-      0 / 4 phases complete
+v1.4: [P] Phase 20  [ ] Phase 21  [ ] Phase 22  [ ] Phase 23
+      0 / 4 phases complete  (P = planned)
 ```
 
 ## Accumulated Context
@@ -84,6 +84,5 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 20` to begin Phase 20 planning
-- Confirm proxy provider (Webshare vs IPRoyal) and sticky session pin duration before Phase 20 implementation
+- Run `/gsd-execute-phase 20` to execute Phase 20 (2 plans ready)
 - Verify ad account multi-select (commit e403eaf) still present in main before Phase 22 planning

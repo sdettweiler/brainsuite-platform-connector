@@ -308,7 +308,7 @@ Plans:
 | 19.1. Close gap: BLOCKER-02+03 | v1.3 | 1/1 | Complete | 2026-05-13 |
 | 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete    | 2026-05-13 |
 | 19.3. Close gap: Phase 15 | v1.3 | 2/2 | Complete    | 2026-05-13 |
-| 20. Proxy Download Infrastructure | v1.4 | 0/2 | Not started | - |
+| 20. Proxy Download Infrastructure | v1.4 | 0/2 | Planned | - |
 | 21. Proxy Admin UI | v1.4 | 0/TBD | Not started | - |
 | 22. Dashboard Metadata + Account Filters | v1.4 | 0/TBD | Not started | - |
 | 23. Dashboard Duration Filter + Backfill | v1.4 | 0/TBD | Not started | - |
