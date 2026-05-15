@@ -260,7 +260,7 @@ Plans:
 - [x] 21-01-PLAN.md — 3 SuperAdmin proxy-config endpoints (GET/PUT + POST test) + `_mask_proxy_url` helper + 8 pytest cases (PROXY-05)
 
 **Wave 2** *(blocked on Wave 1)*
-- [ ] 21-02-PLAN.md — Residential Proxy card inserted as Section 1 of admin.component.ts (interfaces, state, methods, template, CSS) (PROXY-05)
+- [x] 21-02-PLAN.md — Residential Proxy card inserted as Section 1 of admin.component.ts (interfaces, state, methods, template, CSS) (PROXY-05)
 
 **Wave 3** *(blocked on Waves 1 + 2)*
 - [ ] 21-03-PLAN.md — Visual UAT checkpoint: 7 acceptance criteria covering all 4 ROADMAP success criteria + D-04/D-05/D-07/D-08/D-09/D-10 (PROXY-05)
@@ -320,7 +320,7 @@ Plans:
 | 19.2. Close gap: INSTR-05/MON-07 | v1.3 | 1/1 | Complete    | 2026-05-13 |
 | 19.3. Close gap: Phase 15 | v1.3 | 2/2 | Complete    | 2026-05-13 |
 | 20. Proxy Download Infrastructure | v1.4 | 0/2 | Planned | - |
-| 21. Proxy Admin UI | v1.4 | 1/3 | In Progress|  |
+| 21. Proxy Admin UI | v1.4 | 2/3 | In Progress|  |
 | 22. Dashboard Metadata + Account Filters | v1.4 | 0/TBD | Not started | - |
 | 23. Dashboard Duration Filter + Backfill | v1.4 | 0/TBD | Not started | - |
 
