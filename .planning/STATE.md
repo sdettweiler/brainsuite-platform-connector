@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: YouTube Downloads & Dashboard Filters
-status: ready_to_execute
+status: executing
 stopped_at: null
 last_updated: "2026-05-15T00:00:00.000Z"
-last_activity: 2026-05-15 — Phase 20 planned (2 plans, 2 waves)
+last_activity: 2026-05-15 — Phase 20 Wave 1 complete (20-01 done — test stubs + schema + bgutil dep)
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 2
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 25
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-14 — v1.4 milestone started)
 
 ## Current Position
 
-Phase: Phase 20 (planned — ready to execute)
-Plan: 20-01 (Wave 1), 20-02 (Wave 2)
-Status: Ready to execute — 2 plans created, verification passed
-Last activity: 2026-05-15 — Phase 20 planned (2 plans in 2 waves, PROXY-01/02/03/04/06 covered)
+Phase: Phase 20 (executing — Wave 2 in progress)
+Plan: 20-02 (Wave 2) — 20-01 complete
+Status: Executing — Wave 1 done, running Wave 2
+Last activity: 2026-05-15 — Phase 20 Wave 1 complete: 8 test stubs written, bgutil in requirements.txt, SystemConfig proxy columns added, Alembic migration created
 
 ## Progress Bar
 

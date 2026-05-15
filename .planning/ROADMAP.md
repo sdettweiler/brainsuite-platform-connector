@@ -237,7 +237,7 @@ Plans:
   5. A grep across application logs after a proxy-enabled download run finds no occurrences of the proxy URL's embedded username or password
 **Plans**: 2 plans
 Plans:
-- [ ] 20-01-PLAN.md — Wave 0 test stubs + bgutil dep + SystemConfig proxy columns + Alembic migration
+- [x] 20-01-PLAN.md — Wave 0 test stubs + bgutil dep + SystemConfig proxy columns + Alembic migration (complete 2026-05-15)
 - [ ] 20-02-PLAN.md — Proxy injection into DV360 + Google Ads sync services
 
 **Wave Structure:**
