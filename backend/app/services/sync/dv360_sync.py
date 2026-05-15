@@ -1276,7 +1276,12 @@ class DV360SyncService:
         loop = asyncio.get_event_loop()
         try:
             for i, cookie in enumerate(attempts):
-                label = "no cookies" if not cookie else ("primary" if i == 0 else "backup")
+                if not cookie:
+                    label = "no cookies"
+                elif cookies and cookie == cookies[0]:
+                    label = "primary"
+                else:
+                    label = "backup"
                 logger.info("  Attempting DV360 video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
                 try:
                     await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))

@@ -421,11 +421,19 @@ class GoogleAdsSyncService:
         winning_slot: int | None = None
         try:
             for i, cookie in enumerate(attempts):
-                label = "no cookies" if not cookie else ("primary" if i == 0 else "backup")
+                if not cookie:
+                    label = "no cookies"
+                elif cookies and cookie == cookies[0]:
+                    label = "primary"
+                else:
+                    label = "backup"
                 logger.info("  Attempting Google Ads video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
                 try:
                     await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))
-                    winning_slot = i
+                    if cookie and cookies and cookie in cookies:
+                        winning_slot = cookies.index(cookie)
+                    else:
+                        winning_slot = None  # cookieless attempt won
                     break
                 except _CookiesExpiredError:
                     if i < len(attempts) - 1:
