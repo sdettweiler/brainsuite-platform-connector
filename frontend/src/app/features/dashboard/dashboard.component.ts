@@ -154,17 +154,21 @@ interface CorrelationAsset {
           <button class="tbd-trigger" [matMenuTriggerFor]="accountMenu">
             {{selectedAdAccountIds.length === 0 ? 'All Accounts' : selectedAdAccountIds.length + ' Account' + (selectedAdAccountIds.length > 1 ? 's' : '')}}<i class="bi bi-chevron-down tbd-arrow"></i>
           </button>
-          <mat-menu #accountMenu="matMenu" class="tbd-menu">
-            <button mat-menu-item (click)="$event.stopPropagation(); selectedAdAccountIds = []; onFilterChange()"><span class="tbd-check" [class.checked]="selectedAdAccountIds.length === 0">&#10003;</span>All Accounts</button>
-            <ng-container *ngFor="let group of groupedAdAccounts; let last = last">
+          <mat-menu #accountMenu="matMenu" class="tbd-menu account-menu" (closed)="adAccountSearch = ''">
+            <div mat-menu-item class="account-search-row" (click)="$event.stopPropagation()">
+              <input [(ngModel)]="adAccountSearch" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()" placeholder="Search accounts…" aria-label="Search ad accounts" autocomplete="off" class="account-search-input" />
+            </div>
+            <button mat-menu-item (click)="$event.stopPropagation(); selectedAdAccountIds = []; onFilterChange()" *ngIf="!adAccountSearch"><span class="tbd-check" [class.checked]="selectedAdAccountIds.length === 0">&#10003;</span>All Accounts</button>
+            <ng-container *ngFor="let group of filteredGroupedAdAccounts; let last = last; trackBy: trackByPlatform">
               <button mat-menu-item disabled class="tbd-group-header-item" *ngIf="showPlatformGrouping" aria-disabled="true">{{ getPlatformDisplayName(group.platform) }}</button>
-              <button mat-menu-item *ngFor="let acc of group.accounts" (click)="$event.stopPropagation(); toggleAdAccount(acc.ad_account_id)">
+              <button mat-menu-item *ngFor="let acc of group.accounts; trackBy: trackByAccountId" (click)="$event.stopPropagation(); toggleAdAccount(acc.ad_account_id)">
                 <span class="tbd-check" [class.checked]="selectedAdAccountIds.includes(acc.ad_account_id)">&#10003;</span>
                 <span class="tbd-name">{{acc.ad_account_name}}</span>
                 <span class="tbd-badge" *ngIf="!showPlatformGrouping">{{acc.platform}}</span>
               </button>
               <div class="tbd-group-divider" role="separator" *ngIf="showPlatformGrouping && !last"></div>
             </ng-container>
+            <button mat-menu-item disabled *ngIf="adAccountSearch && filteredGroupedAdAccounts.length === 0"><span class="tbd-name muted">No accounts found</span></button>
           </mat-menu>
         </ng-container>
 
@@ -753,6 +757,10 @@ interface CorrelationAsset {
       cursor: default;
     }
     .tbd-group-divider { height: 1px; background: var(--border); margin: 4px 0; }
+    .account-menu { min-width: 220px; }
+    .account-search-row { padding: 4px 8px !important; }
+    .account-search-input { width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-hover); color: var(--text-primary); font-size: 13px; font-weight: 500; font-family: inherit; outline: none; }
+    .account-search-input:focus { border-color: var(--accent); }
 
     .platform-filters { display: flex; gap: 4px; }
     .platform-btn {
@@ -1311,8 +1319,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
   adAccounts: { ad_account_id: string; ad_account_name: string; platform: string }[] = [];
   groupedAdAccounts: Array<{platform: string; accounts: Array<{ad_account_id: string; ad_account_name: string; platform: string}>}> = [];
   showPlatformGrouping = false;
+  adAccountSearch = '';
   selectedAdAccountIds: string[] = [];
   adAccountDropdownOpen = false;
+
+  readonly trackByPlatform = (_: number, g: {platform: string}) => g.platform;
+  readonly trackByAccountId = (_: number, a: {ad_account_id: string}) => a.ad_account_id;
+
+  get filteredGroupedAdAccounts(): Array<{platform: string; accounts: Array<{ad_account_id: string; ad_account_name: string; platform: string}>}> {
+    const q = this.adAccountSearch.toLowerCase();
+    if (!q) return this.groupedAdAccounts;
+    return this.groupedAdAccounts
+      .map(g => ({...g, accounts: g.accounts.filter(a => a.ad_account_name.toLowerCase().includes(q))}))
+      .filter(g => g.accounts.length > 0);
+  }
 
   // Metadata filter state (Phase 22 DASH-01)
   metadataFields: Array<{id: string; name: string; label: string; field_type: string}> = [];
