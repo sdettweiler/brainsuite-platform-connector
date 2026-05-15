@@ -11,7 +11,7 @@
 - [ ] **PROXY-02**: Google Ads video creatives download successfully on GCP Cloud Run via residential proxy (same yt-dlp path as DV360)
 - [ ] **PROXY-03**: bgutil PO token plugin (`bgutil-ytdlp-pot-provider`) is installed in the backend Docker image and invoked automatically by yt-dlp for format URL requests — no manual token management required
 - [ ] **PROXY-04**: Download retry order is cookieless-first — residential IP (no cookies) → primary cookies → backup cookies → fail; existing cookie slots are preserved unchanged
-- [ ] **PROXY-05**: A SuperAdmin can configure the residential proxy URL (stored Fernet-encrypted in `SystemConfig`) and toggle the proxy on/off from the `/configuration/admin` UI
+- [x] **PROXY-05**: A SuperAdmin can configure the residential proxy URL (stored Fernet-encrypted in `SystemConfig`) and toggle the proxy on/off from the `/configuration/admin` UI
 - [ ] **PROXY-06**: Proxy credentials (URL including embedded username/password) are never written to application logs or included in error messages or job output
 
 ### Dashboard Filters
@@ -55,7 +55,7 @@
 | PROXY-03 | Phase 20 | Pending |
 | PROXY-04 | Phase 20 | Pending |
 | PROXY-06 | Phase 20 | Pending |
-| PROXY-05 | Phase 21 | Pending |
+| PROXY-05 | Phase 21 | Complete |
 | DASH-01 | Phase 22 | Pending |
 | DASH-02 | Phase 22 | Pending |
 | DASH-03 | Phase 23 | Pending |
