@@ -18,7 +18,9 @@ Security (T-14-05 through T-14-08):
 Scoring controls security:
 - Reset endpoint supports FAILED, COMPLETE, PROCESSING, PENDING statuses
 """
+import httpx
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Literal, Optional, List
@@ -57,6 +59,22 @@ class CookieHealthResponse(BaseModel):
 class UpdateCookiesRequest(BaseModel):
     primary: Optional[str] = None
     backup: Optional[str] = None
+
+
+class ProxyConfigResponse(BaseModel):
+    proxy_enabled: bool
+    proxy_url_masked: Optional[str] = None
+
+
+class UpdateProxyConfigRequest(BaseModel):
+    proxy_enabled: Optional[bool] = None
+    proxy_url: Optional[str] = None
+
+
+class ProxyTestResponse(BaseModel):
+    success: bool
+    latency_ms: Optional[int] = None
+    error: Optional[str] = None
 
 
 class SuperAdminUserResponse(BaseModel):
@@ -113,6 +131,26 @@ def _check_cookie_health(cookie_data: str) -> str:
     if not has_any_expiry:
         return "valid"
     return "valid" if has_valid else "expired"
+
+
+# ---------------------------------------------------------------------------
+# Proxy URL masking helper (T-21-01: credentials never returned in plaintext)
+# ---------------------------------------------------------------------------
+
+def _mask_proxy_url(url: str) -> str:
+    """Parse http(s)://user:pass@host:port and mask credentials: http://••••••@host:port.
+
+    Security (T-21-01): Only the host:port portion is returned. Credential
+    portion is always replaced with bullet characters.
+    """
+    try:
+        if "@" in url:
+            scheme_and_auth, host_port = url.rsplit("@", 1)
+            scheme = scheme_and_auth.split("://")[0] if "://" in scheme_and_auth else "http"
+            return f"{scheme}://••••••@{host_port}"
+        return url
+    except Exception:
+        return url
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +267,119 @@ async def update_youtube_cookies(
         primary=CookieSlotHealth(status=primary_status),
         backup=CookieSlotHealth(status=backup_status),
     )
+
+
+# ---------------------------------------------------------------------------
+# Proxy config endpoints (PROXY-05)
+# ---------------------------------------------------------------------------
+
+@router.get("/proxy-config", response_model=ProxyConfigResponse)
+async def get_proxy_config(
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return proxy config state (enabled flag + masked URL).
+
+    Security (T-21-01): Response model never includes plaintext proxy URL.
+    Only proxy_url_masked (bullet-obfuscated) is exposed.
+    """
+    result = await db.execute(select(SystemConfig).limit(1))
+    config = result.scalar_one_or_none()
+
+    proxy_enabled = False
+    masked_url = None
+
+    if config:
+        proxy_enabled = config.proxy_enabled
+        if config.proxy_url_encrypted:
+            try:
+                decrypted = decrypt_token(config.proxy_url_encrypted)
+                masked_url = _mask_proxy_url(decrypted)
+            except Exception:
+                masked_url = "[URL configured]"
+
+    return ProxyConfigResponse(proxy_enabled=proxy_enabled, proxy_url_masked=masked_url)
+
+
+@router.put("/proxy-config", response_model=ProxyConfigResponse)
+async def update_proxy_config(
+    payload: UpdateProxyConfigRequest,
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update proxy enabled flag and/or encrypted URL (partial update supported).
+
+    Security (T-21-02): proxy_url is encrypted before storage and NEVER logged.
+    """
+    result = await db.execute(select(SystemConfig).limit(1))
+    config = result.scalar_one_or_none()
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="System config not initialized",
+        )
+
+    if payload.proxy_enabled is not None:
+        config.proxy_enabled = payload.proxy_enabled
+        logger.info(f"SuperAdmin toggled proxy: {payload.proxy_enabled}")
+
+    if payload.proxy_url is not None:
+        config.proxy_url_encrypted = encrypt_token(payload.proxy_url)
+        logger.info("SuperAdmin updated proxy URL (credentials not logged)")
+
+    db.add(config)
+    await db.commit()
+    await db.refresh(config)
+
+    # Return fresh state
+    proxy_enabled = config.proxy_enabled
+    masked_url = None
+    if config.proxy_url_encrypted:
+        try:
+            decrypted = decrypt_token(config.proxy_url_encrypted)
+            masked_url = _mask_proxy_url(decrypted)
+        except Exception:
+            masked_url = "[URL configured]"
+
+    return ProxyConfigResponse(proxy_enabled=proxy_enabled, proxy_url_masked=masked_url)
+
+
+@router.post("/proxy-config/test", response_model=ProxyTestResponse)
+async def test_proxy_config(
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Test proxy reachability by fetching https://www.youtube.com/ through configured proxy.
+
+    Security (T-21-05): 5-second hard timeout prevents unbounded waits.
+    Security (T-21-06): Error messages never include the decrypted proxy URL.
+    """
+    result = await db.execute(select(SystemConfig).limit(1))
+    config = result.scalar_one_or_none()
+
+    if not config or not config.proxy_enabled or not config.proxy_url_encrypted:
+        raise HTTPException(status_code=400, detail="Proxy not configured or disabled")
+
+    try:
+        proxy_url = decrypt_token(config.proxy_url_encrypted)
+    except Exception:
+        return ProxyTestResponse(success=False, error="Failed to decrypt proxy URL")
+
+    try:
+        start = time.time()
+        async with httpx.AsyncClient(proxies={"https://": proxy_url}) as client:
+            response = await client.get("https://www.youtube.com/", timeout=5.0)
+        latency_ms = int((time.time() - start) * 1000)
+        success = response.status_code == 200
+        return ProxyTestResponse(
+            success=success,
+            latency_ms=latency_ms if success else None,
+            error=None if success else f"HTTP {response.status_code}",
+        )
+    except httpx.ConnectError:
+        return ProxyTestResponse(success=False, latency_ms=None, error="Connection timed out after 5s")
+    except Exception as e:
+        return ProxyTestResponse(success=False, latency_ms=None, error=str(e))
 
 
 @router.get("/users", response_model=List[SuperAdminUserResponse])
