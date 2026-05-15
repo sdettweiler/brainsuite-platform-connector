@@ -192,7 +192,7 @@ interface CorrelationAsset {
             </div>
             <button mat-menu-item disabled *ngIf="metadataValuesLoading"><span class="tbd-name muted"><i class="bi bi-arrow-clockwise spin"></i> Loading…</span></button>
             <button mat-menu-item *ngIf="metadataValuesError && !metadataValuesLoading" (click)="$event.stopPropagation(); retryLoadMetadataValues()"><span class="tbd-name muted">Couldn't load values. Try again.</span></button>
-            <button mat-menu-item *ngFor="let val of filteredMetadataValues" (click)="$event.stopPropagation(); selectMetadataValue(val)"><span class="tbd-name">{{ val }}</span></button>
+            <button mat-menu-item *ngFor="let val of filteredMetadataValues" (click)="$event.stopPropagation(); selectMetadataValue(val)"><span class="tbd-check" [class.checked]="isMetadataValueSelected(val)">&#10003;</span><span class="tbd-name">{{ val }}</span></button>
             <button mat-menu-item disabled *ngIf="!metadataValuesLoading && !metadataValuesError && filteredMetadataValues.length === 0"><span class="tbd-name muted">No values found</span></button>
           </ng-container>
         </mat-menu>
@@ -1932,9 +1932,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.metadataFieldValues = [];
   }
 
+  isMetadataValueSelected(value: string): boolean {
+    return this.activeMetadataFilters.some(f => f.field === this.selectedMetadataFieldName && f.value === value);
+  }
+
   selectMetadataValue(value: string): void {
-    this.activeMetadataFilters.push({field: this.selectedMetadataFieldName!, fieldLabel: this.selectedMetadataFieldLabel!, value});
-    this.backToFieldList();
+    const existingIndex = this.activeMetadataFilters.findIndex(f => f.field === this.selectedMetadataFieldName && f.value === value);
+    if (existingIndex >= 0) {
+      this.activeMetadataFilters.splice(existingIndex, 1);
+    } else {
+      this.activeMetadataFilters.push({field: this.selectedMetadataFieldName!, fieldLabel: this.selectedMetadataFieldLabel!, value});
+    }
     this.onFilterChange();
   }
 

@@ -406,25 +406,26 @@ async def get_dashboard_assets(
     if account_id_list:
         query = query.where(CreativeAsset.ad_account_id.in_(account_id_list))
 
-    # Metadata filter: one aliased JOIN per filter entry → AND composition (D-07, D-08, D-10)
+    # Metadata filter: group by field_name → OR within field (IN), AND across fields (separate JOINs)
     # Security: MetadataField.organization_id guard on every JOIN (T-22-01)
-    # Note: filter_value and field_name are never logged — may contain PII (T-22-05)
-    for i, meta_filter_str in enumerate(metadata_filter or []):
+    # Note: filter values are never logged — may contain PII (T-22-05)
+    filters_by_field: dict[str, list[str]] = {}
+    for meta_filter_str in (metadata_filter or []):
         if ":" not in meta_filter_str:
-            # Malformed format: explicit 400 over silent skip
-            # Behavior documented in test_metadata_filter_malformed_value
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid metadata_filter format; expected field_name:value (got: {meta_filter_str})",
             )
         field_name, filter_value = meta_filter_str.split(":", 1)
+        filters_by_field.setdefault(field_name, []).append(filter_value)
+    for i, (field_name, filter_values) in enumerate(filters_by_field.items()):
         amv = aliased(AssetMetadataValue, name=f"amv_{i}")
         mf = aliased(MetadataField, name=f"mf_{i}")
         query = query.join(
             amv,
             and_(
                 amv.asset_id == CreativeAsset.id,
-                amv.value == filter_value,
+                amv.value.in_(filter_values),
             ),
         ).join(
             mf,
