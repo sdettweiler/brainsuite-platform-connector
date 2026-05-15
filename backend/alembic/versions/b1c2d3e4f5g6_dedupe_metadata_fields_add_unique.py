@@ -65,11 +65,16 @@ def upgrade() -> None:
                 "DELETE FROM metadata_fields WHERE id = :del"
             ), {"del": del_id})
 
-    op.create_unique_constraint(
-        "uq_metadata_fields_org_name",
-        "metadata_fields",
-        ["organization_id", "name"],
-    )
+    # Guard: constraint may already exist if it was added outside of migrations
+    exists = conn.execute(sa.text(
+        "SELECT 1 FROM pg_constraint WHERE conname = 'uq_metadata_fields_org_name'"
+    )).fetchone()
+    if not exists:
+        op.create_unique_constraint(
+            "uq_metadata_fields_org_name",
+            "metadata_fields",
+            ["organization_id", "name"],
+        )
 
 
 def downgrade() -> None:
