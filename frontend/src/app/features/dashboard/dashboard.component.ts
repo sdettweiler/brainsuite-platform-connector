@@ -156,13 +156,50 @@ interface CorrelationAsset {
           </button>
           <mat-menu #accountMenu="matMenu" class="tbd-menu">
             <button mat-menu-item (click)="$event.stopPropagation(); selectedAdAccountIds = []; onFilterChange()"><span class="tbd-check" [class.checked]="selectedAdAccountIds.length === 0">&#10003;</span>All Accounts</button>
-            <button mat-menu-item *ngFor="let acc of adAccounts" (click)="$event.stopPropagation(); toggleAdAccount(acc.ad_account_id)">
-              <span class="tbd-check" [class.checked]="selectedAdAccountIds.includes(acc.ad_account_id)">&#10003;</span>
-              <span class="tbd-name">{{acc.ad_account_name}}</span>
-              <span class="tbd-badge">{{acc.platform}}</span>
-            </button>
+            <ng-container *ngIf="showPlatformGrouping; else flatAccountList">
+              <ng-container *ngFor="let group of groupedAdAccounts; let last = last">
+                <div class="tbd-group-header" role="separator" aria-disabled="true">{{ getPlatformDisplayName(group.platform) }}</div>
+                <button mat-menu-item *ngFor="let acc of group.accounts" (click)="$event.stopPropagation(); toggleAdAccount(acc.ad_account_id)">
+                  <span class="tbd-check" [class.checked]="selectedAdAccountIds.includes(acc.ad_account_id)">&#10003;</span>
+                  <span class="tbd-name">{{acc.ad_account_name}}</span>
+                </button>
+                <div class="tbd-group-divider" role="separator" *ngIf="!last"></div>
+              </ng-container>
+            </ng-container>
+            <ng-template #flatAccountList>
+              <button mat-menu-item *ngFor="let acc of adAccounts" (click)="$event.stopPropagation(); toggleAdAccount(acc.ad_account_id)">
+                <span class="tbd-check" [class.checked]="selectedAdAccountIds.includes(acc.ad_account_id)">&#10003;</span>
+                <span class="tbd-name">{{acc.ad_account_name}}</span>
+                <span class="tbd-badge">{{acc.platform}}</span>
+              </button>
+            </ng-template>
           </mat-menu>
         </ng-container>
+
+        <!-- Metadata filter -->
+        <button class="tbd-trigger" [class.has-active-filters]="activeMetadataFilters.length > 0" [matMenuTriggerFor]="metadataMenu" aria-label="Metadata filter" aria-haspopup="true">{{ metadataButtonLabel }}<i class="bi bi-chevron-down tbd-arrow"></i></button>
+        <mat-menu #metadataMenu="matMenu" class="tbd-menu metadata-menu">
+          <!-- Step 1: Field selector -->
+          <ng-container *ngIf="selectedMetadataFieldId === null">
+            <button mat-menu-item disabled *ngIf="metadataFields.length === 0"><span class="tbd-name muted">No metadata fields configured</span></button>
+            <button mat-menu-item *ngFor="let field of metadataFields" (click)="$event.stopPropagation(); selectMetadataField(field)">
+              <span class="tbd-name">{{ field.label }}</span>
+            </button>
+          </ng-container>
+          <!-- Step 2: Value autocomplete -->
+          <ng-container *ngIf="selectedMetadataFieldId !== null">
+            <button mat-menu-item (click)="$event.stopPropagation(); backToFieldList()" class="metadata-back-row">
+              <i class="bi bi-arrow-left"></i><span class="tbd-name">&#8592; {{ selectedMetadataFieldLabel }}</span>
+            </button>
+            <div mat-menu-item class="metadata-input-row" (click)="$event.stopPropagation()">
+              <input [(ngModel)]="metadataValueInput" (click)="$event.stopPropagation()" placeholder="Type to search…" [attr.aria-label]="'Search ' + selectedMetadataFieldLabel + ' values'" aria-autocomplete="list" autocomplete="off" class="metadata-input" />
+            </div>
+            <button mat-menu-item disabled *ngIf="metadataValuesLoading"><span class="tbd-name muted"><i class="bi bi-arrow-clockwise spin"></i> Loading…</span></button>
+            <button mat-menu-item *ngIf="metadataValuesError && !metadataValuesLoading" (click)="$event.stopPropagation(); retryLoadMetadataValues()"><span class="tbd-name muted">Couldn't load values. Try again.</span></button>
+            <button mat-menu-item *ngFor="let val of filteredMetadataValues" (click)="$event.stopPropagation(); selectMetadataValue(val)"><span class="tbd-name">{{ val }}</span></button>
+            <button mat-menu-item disabled *ngIf="!metadataValuesLoading && !metadataValuesError && filteredMetadataValues.length === 0"><span class="tbd-name muted">No values found</span></button>
+          </ng-container>
+        </mat-menu>
 
         <!-- Sort -->
         <button class="tbd-trigger" [matMenuTriggerFor]="sortMenu">
@@ -202,6 +239,15 @@ interface CorrelationAsset {
           <i class="bi bi-download"></i>
           Export
         </button>
+      </div>
+
+      <!-- Metadata filter chip row -->
+      <div class="metadata-chip-row" *ngIf="activeMetadataFilters.length > 0">
+        <div class="metadata-chip" *ngFor="let f of activeMetadataFilters; let i = index" role="listitem">
+          <span>{{ f.fieldLabel }}: {{ f.value }}</span>
+          <button class="chip-dismiss" type="button" (click)="removeMetadataFilter(i)" [attr.aria-label]="'Remove ' + f.fieldLabel + ': ' + f.value + ' filter'" title="Remove filter"><i class="bi bi-x"></i></button>
+        </div>
+        <button class="chip-clear-all" type="button" *ngIf="activeMetadataFilters.length >= 2" (click)="clearAllMetadataFilters()" aria-label="Clear all metadata filters">Clear all filters</button>
       </div>
 
       <!-- Aggregate Stats -->
@@ -621,6 +667,89 @@ interface CorrelationAsset {
       color: var(--text-secondary);
       flex-shrink: 0;
     }
+
+    // Phase 22 — Metadata filter + Ad Account platform grouping styles
+    .tbd-trigger.has-active-filters { border-color: var(--accent); background: var(--accent-light); }
+    .metadata-menu { min-width: 200px; }
+    .metadata-back-row .bi-arrow-left { margin-right: 8px; }
+    .metadata-input-row { padding: 4px 16px !important; }
+    .metadata-input {
+      width: 100%;
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      outline: none;
+    }
+    .metadata-input:focus { border-color: var(--accent); }
+    .tbd-name.muted { color: var(--text-muted); }
+    .spin { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .metadata-chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+      padding: 0;
+    }
+    .metadata-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .metadata-chip:hover { background: var(--accent-light); border-color: var(--accent); }
+    .metadata-chip:hover .chip-dismiss { color: var(--accent); }
+    .metadata-chip:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .chip-dismiss {
+      background: none;
+      border: none;
+      padding: 0;
+      margin-left: 2px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+    }
+    .chip-dismiss:hover { color: var(--accent); }
+    .chip-clear-all {
+      background: none;
+      border: none;
+      padding: 4px 8px;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .chip-clear-all:hover { color: var(--accent); }
+    .tbd-group-header {
+      padding: 4px 8px;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      pointer-events: none;
+      user-select: none;
+    }
+    .tbd-group-divider { height: 1px; background: var(--border); margin: 4px 0; }
 
     .platform-filters { display: flex; gap: 4px; }
     .platform-btn {
