@@ -13,6 +13,8 @@ from urllib.parse import unquote
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+from sqlalchemy import update
+
 from app.core.config import settings
 from app.api.v1 import api_router
 
@@ -93,9 +95,39 @@ async def _background_startup():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.db.base import get_session_factory
+    from app.models.jobs import BackgroundJob
+
+    # Mark any jobs left RUNNING from a previous instance as INTERRUPTED
+    try:
+        async with get_session_factory()() as db:
+            await db.execute(
+                update(BackgroundJob)
+                .where(BackgroundJob.status == "RUNNING")
+                .values(status="INTERRUPTED")
+            )
+            await db.commit()
+        logger.info("Startup: marked leftover RUNNING jobs as INTERRUPTED")
+    except Exception as exc:
+        logger.warning("Startup interrupted-job cleanup failed (non-fatal): %s", exc)
+
     task = asyncio.create_task(_background_startup())
     yield
     task.cancel()
+
+    # Mark any jobs still RUNNING as INTERRUPTED on graceful shutdown (SIGTERM)
+    try:
+        async with get_session_factory()() as db:
+            await db.execute(
+                update(BackgroundJob)
+                .where(BackgroundJob.status == "RUNNING")
+                .values(status="INTERRUPTED")
+            )
+            await db.commit()
+        logger.info("Shutdown: marked leftover RUNNING jobs as INTERRUPTED")
+    except Exception as exc:
+        logger.warning("Shutdown interrupted-job cleanup failed (non-fatal): %s", exc)
+
     try:
         from app.services.sync.scheduler import scheduler
         if scheduler.running:
