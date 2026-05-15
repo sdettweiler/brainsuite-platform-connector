@@ -15,12 +15,12 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
-from app.api.v1.deps import get_current_superadmin, get_current_superadmin_sse
+from app.api.v1.deps import get_current_superadmin, get_current_superadmin_sse, get_current_user
 from app.core.redis import get_redis
 from app.db.base import get_db, get_session_factory
 from app.models.creative import CreativeAsset
@@ -28,6 +28,7 @@ from app.models.jobs import BackgroundJob
 from app.models.platform import PlatformConnection
 from app.models.user import Organization, User
 from app.schemas.jobs import JobDetail, JobListItem
+from app.services.sync.job_tracker import create_background_job
 
 logger = logging.getLogger(__name__)
 
@@ -326,7 +327,7 @@ async def delete_jobs(
     if status in _PROTECTED_STATUSES:
         raise HTTPException(
             status_code=422,
-            detail=f"Cannot bulk-delete jobs with status '{status}'. Only COMPLETE and FAILED are permitted.",
+            detail=f"Cannot bulk-delete jobs with status '{status}'. Only COMPLETE, FAILED, INTERRUPTED, and PARTIAL are permitted.",
         )
     await db.execute(
         delete(BackgroundJob).where(
@@ -336,3 +337,55 @@ async def delete_jobs(
     )
     await db.commit()
     return Response(status_code=204)
+
+
+async def _dispatch_job_retry(
+    job_type: str,
+    params: dict,
+    new_job_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession,
+) -> None:
+    """Dispatch a retry job. Each service wires up its job_type in Wave 2."""
+    logger.warning(
+        "Retry dispatch not yet wired for job_type=%s. Job %s created but not started.",
+        job_type,
+        new_job_id,
+    )
+
+
+@router.post("/{job_id}/retry", status_code=202)
+async def retry_job(
+    job_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new job using the params from a previous INTERRUPTED/FAILED/PARTIAL job."""
+    result = await db.execute(
+        select(BackgroundJob).where(BackgroundJob.id == job_id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status not in ("INTERRUPTED", "FAILED", "PARTIAL"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only INTERRUPTED, FAILED, or PARTIAL jobs can be retried",
+        )
+    if not job.params:
+        raise HTTPException(
+            status_code=400,
+            detail="Job has no stored params — cannot retry",
+        )
+
+    new_job_id = await create_background_job(
+        org_id=job.org_id,
+        job_type=job.job_type,
+        platform_connection_id=job.platform_connection_id,
+        params=job.params,
+    )
+
+    await _dispatch_job_retry(job.job_type, job.params, str(new_job_id), background_tasks, db)
+
+    return {"job_id": str(new_job_id), "status": "queued"}
