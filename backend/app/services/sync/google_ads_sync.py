@@ -325,42 +325,70 @@ class GoogleAdsSyncService:
             if env_backup:
                 cookies.append(env_backup)
 
-        # Load proxy config from SystemConfig (D-08: IPRoyal HTTP proxy)
-        proxy_url = None
-        proxy_enabled = False
-        try:
-            from app.db.base import get_session_factory as _gsf_proxy
-            from app.models.system_config import SystemConfig as _SC_proxy
-            from sqlalchemy import select as _sel_proxy
-            async with _gsf_proxy()() as _proxy_db:
-                _proxy_cfg = (await _proxy_db.execute(_sel_proxy(_SC_proxy).limit(1))).scalar_one_or_none()
-                _p_enabled = bool(_proxy_cfg and _proxy_cfg.proxy_enabled)
-                _p_url_enc = _proxy_cfg.proxy_url_encrypted if _proxy_cfg else None
-            if _p_enabled and _p_url_enc:
-                from app.core.security import decrypt_token as _dt_proxy
-                proxy_url = _dt_proxy(_p_url_enc)
-                proxy_enabled = True
-                # Sticky session injection — IPRoyal only (user-session-ID format)
-                # Other providers (DataImpulse etc.) use plain user:pass and reject the suffix
-                _session_id = secrets.token_urlsafe(9)
-                if "@" in proxy_url and "iproyal.com" in proxy_url:
-                    _user_part, _host_part = proxy_url.rsplit("@", 1)
-                    if "://" in _user_part:
-                        _scheme_end = _user_part.index("://") + 3
-                        _scheme = _user_part[:_scheme_end]
-                        _creds = _user_part[_scheme_end:]
-                        if ":" in _creds:
-                            _username, _password = _creds.split(":", 1)
-                            proxy_url = f"{_scheme}{_username}-session-{_session_id}:{_password}@{_host_part}"
-        except Exception as _proxy_load_err:
-            logger.warning("Failed to load proxy config: %s", _proxy_load_err)
-            proxy_url = None
-            proxy_enabled = False
+        # Load proxy config from shared cache (PERF-04, D-07)
+        from app.services.sync.proxy_cache import get_proxy_config
+        proxy_enabled, proxy_url = await get_proxy_config()
+        if proxy_enabled and proxy_url:
+            # Sticky session injection — IPRoyal only (user-session-ID format)
+            # Other providers (DataImpulse etc.) use plain user:pass and reject the suffix
+            _session_id = secrets.token_urlsafe(9)
+            if "@" in proxy_url and "iproyal.com" in proxy_url:
+                _user_part, _host_part = proxy_url.rsplit("@", 1)
+                if "://" in _user_part:
+                    _scheme_end = _user_part.index("://") + 3
+                    _scheme = _user_part[:_scheme_end]
+                    _creds = _user_part[_scheme_end:]
+                    if ":" in _creds:
+                        _username, _password = _creds.split(":", 1)
+                        proxy_url = f"{_scheme}{_username}-session-{_session_id}:{_password}@{_host_part}"
 
         tmpdir = tempfile.mkdtemp()
         tmp_base = os.path.join(tmpdir, "video")
+        loop = asyncio.get_running_loop()
 
-        def _do_download_with_cookies(cookie_data: str):
+        async def _extract_info() -> Optional[dict]:
+            """Extract video metadata without proxy (PERF-01, D-01).
+
+            Runs direct (no proxy) — only bytes are routed through proxy.
+            If direct extraction fails, retries once with proxy as fallback
+            for geo-restricted content.
+            """
+            import yt_dlp
+
+            ydl_opts: dict = {
+                "outtmpl": f"{tmp_base}.%(ext)s",
+                "quiet": True,
+                "socket_timeout": 10,
+                "remote_components": "ejs:github",
+                "ignore_no_formats_error": True,
+            }
+
+            def extract_sync() -> Optional[dict]:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    return ydl.extract_info(url, download=False)
+
+            try:
+                return await loop.run_in_executor(None, extract_sync)
+            except Exception as _e1:
+                logger.warning("  Google Ads: direct extraction failed (%s), retrying with proxy", type(_e1).__name__)
+                if proxy_enabled and proxy_url:
+                    ydl_opts["proxy"] = proxy_url
+
+                    def extract_sync_proxy() -> Optional[dict]:
+                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            return ydl.extract_info(url, download=False)
+
+                    try:
+                        return await loop.run_in_executor(None, extract_sync_proxy)
+                    except Exception as _e2:
+                        logger.warning("  Google Ads: proxy extraction also failed (%s)", type(_e2).__name__)
+                return None
+
+        async def _do_download(info_dict: dict, proxy: Optional[str], cookie_data: str) -> bool:
+            """Download from pre-extracted info_dict (PERF-01, D-02).
+
+            Uses process_ie_result() so no re-extraction per attempt.
+            """
             import yt_dlp
 
             _expired = [False]
@@ -390,20 +418,19 @@ class GoogleAdsSyncService:
                         _expired[0] = True
                     logger.error("yt-dlp: %s", _redact(msg))
 
-            ydl_opts = {
+            ydl_opts: dict = {
                 "outtmpl": f"{tmp_base}.%(ext)s",
                 "format": "best/b",
                 "quiet": True,
                 # no_warnings intentionally omitted: suppresses report_warning() even with
                 # a custom logger, blocking "no longer valid" detection via warning().
-                "socket_timeout": 30,
+                "socket_timeout": 10,
                 "ignore_no_formats_error": True,
                 "logger": _YDLLogger(),
+                "remote_components": "ejs:github",
             }
-            # Inject proxy into ydl_opts BEFORE YoutubeDL instantiation (D-02)
-            # Proxy applies to both info extraction and stream download phases.
-            if proxy_enabled and proxy_url:
-                ydl_opts["proxy"] = proxy_url
+            if proxy:
+                ydl_opts["proxy"] = proxy
             cookie_file = None
             if cookie_data:
                 cleaned = "\n".join(
@@ -415,9 +442,22 @@ class GoogleAdsSyncService:
                 cookie_file.write(cleaned)
                 cookie_file.close()
                 ydl_opts["cookiefile"] = cookie_file.name
-            try:
+
+            # Make a deep copy of info_dict so each retry gets a clean copy
+            import copy
+            info_copy = copy.deepcopy(info_dict)
+
+            def download_sync() -> None:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
+                    ydl.process_ie_result(info_copy, download=True)
+
+            try:
+                await loop.run_in_executor(None, download_sync)
+                if _expired[0]:
+                    raise _CookiesExpiredError("YouTube cookies are no longer valid")
+                return True
+            except _CookiesExpiredError:
+                raise
             except Exception as e:
                 if _expired[0]:
                     raise _CookiesExpiredError("YouTube cookies are no longer valid") from e
@@ -428,15 +468,21 @@ class GoogleAdsSyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
-        # Cookieless-first retry when proxy is enabled (D-04)
-        # proxy off: [primary, backup] or [""] if no cookies (existing behavior preserved)
-        # proxy on:  ["", primary, backup] — residential IP makes cookieless viable
-        attempts = cookies if cookies else [""]
-        if proxy_enabled and proxy_url:
-            attempts = ["", *attempts]
-        loop = asyncio.get_running_loop()
         winning_slot: int | None = None
         try:
+            # Extract info once (no proxy) — reused across all download attempts (PERF-01)
+            info_dict = await _extract_info()
+            if not info_dict:
+                logger.warning("  Could not extract info for Google Ads video %s (ad=%s)", youtube_video_id, ad_id)
+                return None, None, None
+
+            # Build attempt list (D-04, PERF-03):
+            # proxy off: [primary, backup] or [""] if no cookies (existing behavior preserved)
+            # proxy on:  ["", primary, backup] — no-proxy/no-cookies first (PO-first)
+            attempts = cookies if cookies else [""]
+            if proxy_enabled and proxy_url:
+                attempts = ["", *attempts]
+
             for i, cookie in enumerate(attempts):
                 if not cookie:
                     label = "no cookies"
@@ -445,8 +491,16 @@ class GoogleAdsSyncService:
                 else:
                     label = "backup"
                 logger.info("  Attempting Google Ads video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
+
+                # D-04: first attempt when proxy enabled = no-proxy/no-cookies (PO auto via bgutil)
+                # subsequent attempts route through proxy
+                if proxy_enabled and proxy_url and i == 0 and not cookie:
+                    attempt_proxy: Optional[str] = None
+                else:
+                    attempt_proxy = proxy_url if (proxy_enabled and proxy_url) else None
+
                 try:
-                    await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))
+                    await _do_download(info_dict, proxy=attempt_proxy, cookie_data=cookie)
                     if cookie and cookies and cookie in cookies:
                         winning_slot = cookies.index(cookie)
                     else:
