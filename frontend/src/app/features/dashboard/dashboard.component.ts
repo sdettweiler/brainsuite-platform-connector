@@ -67,6 +67,7 @@ interface DashboardAssetsResponse {
   page: number;
   page_size: number;
   total_pages: number;
+  null_duration_count?: number;  // Phase 23: returned by /dashboard/assets when duration filter active (D-07)
 }
 
 interface StatsResponse {
@@ -1395,6 +1396,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return this.activeMetadataFilters.length === 0 ? 'Metadata' : `Metadata (${this.activeMetadataFilters.length})`;
   }
 
+  /** True when duration filter handles have been moved from full bounds (D-06). */
+  get isDurationFilterActive(): boolean {
+    const floor = this.durationSliderOptions.floor ?? 0;
+    const ceil = this.durationSliderOptions.ceil ?? 3600;
+    return this.durationMin > floor || this.durationMax < ceil;
+  }
+
   sortBy = 'spend';
   sortOrder = 'desc';
   page = 1;
@@ -1414,6 +1422,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
   sliderDisabled = true;
   private hasAnyScored = false;
   private scoreChange$ = new Subject<void>();
+
+  // Phase 23: duration filter state (D-01 D-05 D-07)
+  durationMin = 0;
+  durationMax = 3600;
+  hasVideoAssets = false;
+  nullDurationCount = 0;
+  loadingDurationBounds = false;
+  durationSliderOptions: Options = {
+    floor: 0,
+    ceil: 3600,
+    step: 1,
+    noSwitching: true,
+    disabled: false,
+    translate: (value: number) => this.formatDuration(value),
+  };
 
   selectedAssets: string[] = [];
   lastSelectedId: string | null = null;
@@ -1739,6 +1762,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.buildScatterChart();
   }
 
+  /** Format seconds as human-readable duration. Locked per Phase 23 CONTEXT.md §Specifics. */
+  formatDuration(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = Math.round(seconds % 60);
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }
+
   private pctChange(curr: number | null, prev: number | null): string | null {
     if (!prev || curr == null) return null;
     const pct = ((curr - prev) / prev * 100).toFixed(1);
@@ -1766,6 +1796,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.scoreMax < 100) params['score_max'] = this.scoreMax;
     if (this.selectedAdAccountIds.length > 0) params['ad_account_ids'] = this.selectedAdAccountIds.join(',');
     if (this.activeMetadataFilters.length > 0) params['metadata_filter'] = this.activeMetadataFilters.map(f => `${f.field}:${f.value}`);
+    if (this.isDurationFilterActive) {
+      params['duration_min'] = this.durationMin;
+      params['duration_max'] = this.durationMax;
+    }
 
     this.api.get<DashboardAssetsResponse>('/dashboard/assets', params).subscribe({
       next: (d) => {
@@ -1773,6 +1807,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.total = d.total;
         this.totalPages = d.total_pages;
         this.loading = false;
+        // Phase 23 (D-05, D-07): derive hasVideoAssets + nullDurationCount from response
+        this.hasVideoAssets = this.assets.some((a: any) => a.asset_format === 'VIDEO');
+        this.nullDurationCount = d.null_duration_count ?? 0;
+        if (this.hasVideoAssets) {
+          this.loadDurationBounds();
+        }
         // Only enable slider once we've seen scored assets — don't disable when filtered results are empty
         if (this.assets.some((a: any) => a.scoring_status === 'COMPLETE')) {
           this.hasAnyScored = true;
@@ -1802,6 +1842,49 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   onScoreChange(): void {
     this.scoreChange$.next();
+  }
+
+  /** Load filter-aware duration bounds (D-01, D-02). Triggered from loadData response handler — NOT from slider events (avoid circular refresh, Pitfall 3). */
+  loadDurationBounds(): void {
+    this.loadingDurationBounds = true;
+    const params: any = {
+      date_from: this.dateFrom,
+      date_to: this.dateTo,
+    };
+    if (this.selectedPlatforms?.size) {
+      params.platforms = [...this.selectedPlatforms].join(',');
+    }
+    if (this.selectedFormat) params.formats = this.selectedFormat;
+    if (this.selectedAdAccountIds.length > 0) params.ad_account_ids = this.selectedAdAccountIds.join(',');
+    if (this.activeMetadataFilters.length > 0) {
+      params.metadata_filter = this.activeMetadataFilters.map((f: any) => `${f.field}:${f.value}`);
+    }
+    // NOTE: do NOT pass duration_min / duration_max — that would be circular (D-02)
+
+    this.api.get<{ min_duration: number; max_duration: number }>('/dashboard/duration-bounds', params).subscribe({
+      next: (res) => {
+        this.durationSliderOptions = {
+          ...this.durationSliderOptions,
+          floor: res.min_duration,
+          ceil: res.max_duration,
+        };
+        // Reset handles to full range (avoids stuck state when bounds shift)
+        this.durationMin = res.min_duration;
+        this.durationMax = res.max_duration;
+        this.loadingDurationBounds = false;
+      },
+      error: () => {
+        this.durationSliderOptions = { ...this.durationSliderOptions, floor: 0, ceil: 3600 };
+        this.loadingDurationBounds = false;
+      },
+    });
+  }
+
+  /** Reset duration filter to full range; triggered by chip dismiss button. */
+  clearDurationFilter(): void {
+    this.durationMin = this.durationSliderOptions.floor ?? 0;
+    this.durationMax = this.durationSliderOptions.ceil ?? 3600;
+    this.onFilterChange();
   }
 
   onDateRangeChange(event: DateRangeChange): void {
