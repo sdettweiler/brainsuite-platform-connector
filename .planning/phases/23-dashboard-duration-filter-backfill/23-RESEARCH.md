@@ -905,27 +905,29 @@ async def get_duration_bounds(
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Backfill job execution model**
+All four open questions are resolved by Plan 01 (23-01-PLAN.md). Inline RESOLVED markers below cite the implementing task.
+
+1. **Backfill job execution model — RESOLVED**
    - What we know: job_tracker pattern (Phase 17–19) handles creation + status tracking
-   - What's unclear: How is a duration_backfill job actually invoked after creation? APScheduler periodic task? Separate worker? Fire-and-forget asyncio.create_task()?
-   - Recommendation: Research scheduler.py to verify if a job executor exists; if not, plan should implement one
+   - **RESOLVED:** Fire-and-forget `asyncio.create_task(run_duration_backfill(org_id))` at each sync completion site. Confirmed by inspection of `scheduler.py:293,297,299` which uses the same `asyncio.create_task(...)` pattern for `backfill_failed_autofill_for_connection`. No APScheduler executor or separate worker is needed; the sync scheduler is the trigger.
+   - Implemented by: Plan 01 Task 6 (8 trigger sites added to `scheduler.py`).
 
-2. **NULL count computation cost**
+2. **NULL count computation cost — RESOLVED**
    - What we know: null_duration_count requires a separate SELECT COUNT(*) query per request
-   - What's unclear: Is this query cached? Or re-executed on every /dashboard/assets call?
-   - Recommendation: Only compute when duration filter is active (reduces cost 95% of the time per D-06)
+   - **RESOLVED:** `null_duration_count` is computed only inside the guard `if duration_min is not None or duration_max is not None`; when the duration filter is inactive the COUNT query is skipped and `null_duration_count = 0` is returned. This matches D-06/D-07 and avoids the cost on the common (unfiltered) path.
+   - Implemented by: Plan 01 Task 5 (`get_dashboard_assets` null_duration_count compute block, guarded by the explicit condition).
 
-3. **Object storage file fetch strategy**
+3. **Object storage file fetch strategy — RESOLVED**
    - What we know: asset_url is a served URL (MinIO/S3 public URL)
-   - What's unclear: Can we download via HTTP GET to asset_url, or must we use object storage SDK?
-   - Recommendation: Check existing download helpers in object_storage.py; prefer SDK method for credential/auth handling
+   - **RESOLVED:** Use `get_object_storage().download_blob(s3_key)` via `asyncio.to_thread` (blocking SDK call moved off the event loop). The `s3_key` is derived from `asset.asset_url` using the same pattern as `scoring_job.py:429-431`: `s3_key = asset_url.lstrip("/"); if s3_key.startswith("objects/"): s3_key = s3_key[len("objects/"):]`. Authoritative SDK method handles credentials; no raw HTTP fetch.
+   - Implemented by: Plan 01 Task 4 (`run_duration_backfill` body).
 
-4. **Bounds query performance at scale**
+4. **Bounds query performance at scale — RESOLVED**
    - What we know: Duration bounds uses MIN/MAX aggregation
-   - What's unclear: Is there an index on CreativeAsset(organization_id, asset_type, video_duration) for this query?
-   - Recommendation: Add composite index or verify query plan is efficient before Phase 23 execution
+   - **RESOLVED:** Composite B-tree index `ix_creative_assets_org_format_duration` on `creative_assets(organization_id, asset_format, video_duration)` is added via Alembic migration `a9b0c1d2e3f4_add_duration_index` (`down_revision = "f8a2b3c4d5e6"`). The column order matches selectivity (org_id high cardinality first, asset_format constant `'VIDEO'`, video_duration as the range column) so it supports BOTH the MIN/MAX aggregation in `/dashboard/duration-bounds` AND the BETWEEN range filter in `/dashboard/assets`. Verified absent prior to Phase 23 (no existing index on this triple in any Alembic version or in the CreativeAsset model). Note: the actual filter column is `asset_format` (uppercase `'VIDEO'`), not `asset_type` as the original question phrased it.
+   - Implemented by: Plan 01 Task 2 (new Alembic migration).
 
 ---
 
