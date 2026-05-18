@@ -483,39 +483,43 @@ class GoogleAdsSyncService:
             if proxy_enabled and proxy_url:
                 attempts = ["", *attempts]
 
-            for i, cookie in enumerate(attempts):
-                if not cookie:
-                    label = "no cookies"
-                elif cookies and cookie == cookies[0]:
-                    label = "primary"
-                else:
-                    label = "backup"
-                logger.info("  Attempting Google Ads video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
-
-                # D-04: first attempt when proxy enabled = no-proxy/no-cookies (PO auto via bgutil)
-                # subsequent attempts route through proxy
-                if proxy_enabled and proxy_url and i == 0 and not cookie:
-                    attempt_proxy: Optional[str] = None
-                else:
-                    attempt_proxy = proxy_url if (proxy_enabled and proxy_url) else None
-
-                try:
-                    await _do_download(info_dict, proxy=attempt_proxy, cookie_data=cookie)
-                    if cookie and cookies and cookie in cookies:
-                        winning_slot = cookies.index(cookie)
+            # Phase 25 (PERF-02): one semaphore slot per asset, shared across DV360 + Google Ads via proxy_cache
+            from app.services.sync.proxy_cache import get_concurrency_semaphore
+            semaphore = await get_concurrency_semaphore()
+            async with semaphore:
+                for i, cookie in enumerate(attempts):
+                    if not cookie:
+                        label = "no cookies"
+                    elif cookies and cookie == cookies[0]:
+                        label = "primary"
                     else:
-                        winning_slot = None  # cookieless attempt won
-                    break
-                except _CookiesExpiredError:
-                    if i < len(attempts) - 1:
-                        logger.warning("  Google Ads: cookie attempt %d failed (expired), trying next", i + 1)
-                        continue
-                    raise
-                except Exception as _attempt_err:
-                    if i < len(attempts) - 1:
-                        logger.warning("  Google Ads: cookie attempt %d failed (%s), trying next", i + 1, type(_attempt_err).__name__)
-                        continue
-                    raise
+                        label = "backup"
+                    logger.info("  Attempting Google Ads video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
+
+                    # D-04: first attempt when proxy enabled = no-proxy/no-cookies (PO auto via bgutil)
+                    # subsequent attempts route through proxy
+                    if proxy_enabled and proxy_url and i == 0 and not cookie:
+                        attempt_proxy: Optional[str] = None
+                    else:
+                        attempt_proxy = proxy_url if (proxy_enabled and proxy_url) else None
+
+                    try:
+                        await _do_download(info_dict, proxy=attempt_proxy, cookie_data=cookie)
+                        if cookie and cookies and cookie in cookies:
+                            winning_slot = cookies.index(cookie)
+                        else:
+                            winning_slot = None  # cookieless attempt won
+                        break
+                    except _CookiesExpiredError:
+                        if i < len(attempts) - 1:
+                            logger.warning("  Google Ads: cookie attempt %d failed (expired), trying next", i + 1)
+                            continue
+                        raise
+                    except Exception as _attempt_err:
+                        if i < len(attempts) - 1:
+                            logger.warning("  Google Ads: cookie attempt %d failed (%s), trying next", i + 1, type(_attempt_err).__name__)
+                            continue
+                        raise
 
             matches = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0]
             actual_path = matches[0] if matches else None
