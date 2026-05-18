@@ -443,10 +443,16 @@ async def get_dashboard_assets(
     if score_max is not None:
         query = query.where(CreativeScoreResult.total_score <= score_max)
 
+    # Duration filter: only applied to VIDEO assets; non-video assets (IMAGE, CAROUSEL) have
+    # video_duration=NULL and must not be excluded — NULL >= X is always false in SQL (Bug 2 fix).
     if duration_min is not None:
-        query = query.where(CreativeAsset.video_duration >= duration_min)
+        query = query.where(
+            or_(CreativeAsset.asset_format != "VIDEO", CreativeAsset.video_duration >= duration_min)
+        )
     if duration_max is not None:
-        query = query.where(CreativeAsset.video_duration <= duration_max)
+        query = query.where(
+            or_(CreativeAsset.asset_format != "VIDEO", CreativeAsset.video_duration <= duration_max)
+        )
 
     # Only assets with performance in period
     query = query.where(perf_subq.c.total_spend.isnot(None))
