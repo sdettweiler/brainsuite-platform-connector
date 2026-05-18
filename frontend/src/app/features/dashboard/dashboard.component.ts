@@ -229,9 +229,9 @@ interface CorrelationAsset {
           <span class="slider-values">{{ scoreMin }} - {{ scoreMax }}</span>
         </div>
 
-        <!-- Phase 23 (DASH-03): Duration range filter — visible when VIDEO assets present AND real bounds exist (D-04, Bug 2 fix) -->
+        <!-- Phase 23 (DASH-03): Duration range filter — visible when VIDEO assets present (D-04) -->
         <div class="duration-slider-wrapper"
-             *ngIf="hasVideoAssets && hasDurationData"
+             *ngIf="hasVideoAssets"
              aria-label="Duration filter"
              [matTooltip]="loadingDurationBounds ? 'Loading duration data…' : ''">
           <span class="slider-label">Duration</span>
@@ -1505,7 +1505,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   hasVideoAssets = false;
   /** True once video assets were seen — never set back to false while filter is active (Bug 3 fix). */
   private hadVideoAssets = false;
-  /** True when duration-bounds returned real (non-synthetic) values — prevents showing slider with fake 0–3600 defaults (Bug 2 fix). */
+  /** True when the bounds endpoint has returned real duration data (non-null max). */
   hasDurationData = false;
   nullDurationCount = 0;
   loadingDurationBounds = false;
@@ -1956,25 +1956,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     this.api.get<{ min_duration: number; max_duration: number }>('/dashboard/duration-bounds', params).subscribe({
       next: (res) => {
-        // Bug 2 fix: track whether bounds are real data vs synthetic defaults.
-        // The backend returns 0/3600 when no assets have video_duration — don't show slider with fake range.
-        this.hasDurationData = res.max_duration > 0 && !(res.min_duration === 0 && res.max_duration === 3600);
-        this.durationSliderOptions = {
-          ...this.durationSliderOptions,
-          floor: res.min_duration,
-          ceil: res.max_duration,
-        };
-        // Bug 1 fix: only reset handles to full range when filter is NOT currently active.
-        // If filter is active, keep current handle positions — user explicitly set them.
-        if (!this.isDurationFilterActive) {
-          this.durationMin = res.min_duration;
-          this.durationMax = res.max_duration;
+        const hasRealBounds = res.min_duration != null && res.max_duration != null && res.max_duration > res.min_duration;
+        this.hasDurationData = hasRealBounds;
+        if (hasRealBounds) {
+          const newFloor = res.min_duration;
+          const newCeil = res.max_duration;
+          this.durationSliderOptions = { ...this.durationSliderOptions, floor: newFloor, ceil: newCeil };
+          // Only reset handles to full range when no filter is active — preserve user's current selection.
+          if (!this.isDurationFilterActive) {
+            this.durationMin = newFloor;
+            this.durationMax = newCeil;
+          }
         }
+        // If no real bounds yet (backfill hasn't run), keep the current slider options and handle positions.
         this.loadingDurationBounds = false;
       },
       error: () => {
         this.hasDurationData = false;
-        this.durationSliderOptions = { ...this.durationSliderOptions, floor: 0, ceil: 3600 };
         this.loadingDurationBounds = false;
       },
     });
