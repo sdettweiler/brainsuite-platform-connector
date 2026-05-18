@@ -144,12 +144,8 @@ async def _run_autofill_for_asset_inner(asset_id: uuid.UUID, org_id: uuid.UUID) 
         org_id=org_id,
         metadata={"asset_id": str(asset_id)},
         params={"asset_id": str(asset_id), "org_id": str(org_id)},
-    )
-    await update_background_job(
-        bg_job_id,
-        status="RUNNING",
-        progress_total=1,    # D-06: autofill is 1 unit of work
-        progress_current=0,
+        initial_status="RUNNING",
+        progress_total=1,
     )
 
     try:

@@ -27,11 +27,17 @@ async def create_background_job(
     platform_connection_id: Optional[uuid.UUID] = None,
     metadata: Optional[dict] = None,
     params: Optional[dict] = None,
+    initial_status: str = "PENDING",
+    progress_total: Optional[int] = None,
 ) -> uuid.UUID:
-    """Insert a new BackgroundJob row with status=PENDING and return its UUID.
+    """Insert a new BackgroundJob row and return its UUID.
 
     Commits before returning so the row is visible to any background task that
     uses the returned job_id (avoids the race described in RESEARCH.md Pitfall 1).
+
+    Pass initial_status="RUNNING" (and progress_total) for job types that start
+    executing immediately (e.g. autofill) to skip the PENDING window and avoid
+    orphaned PENDING records if the process dies between create and the first update.
 
     Args:
         job_type: One of "sync_daily", "sync_full", "sync_initial",
@@ -42,6 +48,8 @@ async def create_background_job(
                                  NULL for autofill jobs (D-06).
         metadata: Optional dict stored in the metadata JSONB column.
                   Used to cross-reference SyncJob.id (D-12) or CreativeScoreResult.id (D-09).
+        initial_status: Initial status string, defaults to "PENDING".
+        progress_total: Optional total units of work, set in the same write as status.
 
     Returns:
         UUID of the newly created BackgroundJob row.
@@ -51,10 +59,11 @@ async def create_background_job(
             job_type=job_type,
             org_id=org_id,
             platform_connection_id=platform_connection_id,
-            status="PENDING",
+            status=initial_status,
             started_at=datetime.utcnow(),
             metadata_=metadata or {},
             params=params,
+            progress_total=progress_total,
         )
         db.add(job)
         await db.flush()
