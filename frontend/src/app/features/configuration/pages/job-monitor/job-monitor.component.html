@@ -51,14 +51,13 @@
                     [disabled]="!hasJobsOfStatus(allJobs, 'COMPLETE')"
                     (click)="clearJobs('COMPLETE', allJobs)">Clear completed</button>
             <button mat-stroked-button class="btn-clear-interrupted"
-                    [disabled]="!hasJobsOfStatus(allJobs, 'INTERRUPTED')"
                     (click)="clearJobs('INTERRUPTED', allJobs)">Clear interrupted</button>
             <button mat-stroked-button class="btn-clear-failed"
                     [disabled]="!hasJobsOfStatus(allJobs, 'FAILED')"
                     (click)="clearJobs('FAILED', allJobs)">Clear failed</button>
             <button mat-stroked-button class="btn-kill-all"
-                    [disabled]="getActiveCount(allJobs, activeTab) === 0 || killingCategory"
-                    (click)="killCategory(allJobs)">
+                    [disabled]="killingCategory"
+                    (click)="killCategory()">
               {{ killingCategory ? '…' : 'Kill all' }}
             </button>
           </div>

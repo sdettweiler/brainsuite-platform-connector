@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -63,6 +63,7 @@ export class JobMonitorComponent implements OnInit, OnDestroy {
   constructor(
     private jobMonitorService: JobMonitorService,
     private snackBar: MatSnackBar,
+    private cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
@@ -228,33 +229,42 @@ export class JobMonitorComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     if (this.killingJobIds.has(job.job_id)) return;
     this.killingJobIds.add(job.job_id);
+    this.cdr.markForCheck();
     this.jobMonitorService.killJob(job.job_id)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
           this.killingJobIds.delete(job.job_id);
+          this.cdr.markForCheck();
           this.snackBar.open('Job killed.', 'Close', { duration: 3000 });
         },
         error: () => {
           this.killingJobIds.delete(job.job_id);
+          this.cdr.markForCheck();
           this.snackBar.open('Kill failed — job may have already finished.', 'Close', { duration: 4000 });
         },
       });
   }
 
-  killCategory(allJobs: JobSnapshot[]): void {
+  killCategory(): void {
     const category = this.TAB_TYPE_LABEL[this.activeTab];
-    const count = this.getActiveCount(allJobs, this.activeTab);
     this.killingCategory = true;
+    this.cdr.markForCheck();
     this.jobMonitorService.killCategory(category)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (res) => {
           this.killingCategory = false;
-          this.snackBar.open(`${res.killed} ${category} job${res.killed !== 1 ? 's' : ''} killed.`, 'Close', { duration: 3000 });
+          this.cdr.markForCheck();
+          if (res.killed === 0) {
+            this.snackBar.open(`No active ${category} jobs to kill.`, 'Close', { duration: 3000 });
+          } else {
+            this.snackBar.open(`${res.killed} ${category} job${res.killed !== 1 ? 's' : ''} killed.`, 'Close', { duration: 3000 });
+          }
         },
         error: () => {
           this.killingCategory = false;
+          this.cdr.markForCheck();
           this.snackBar.open('Kill all failed.', 'Close', { duration: 4000 });
         },
       });
