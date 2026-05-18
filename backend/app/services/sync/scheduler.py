@@ -1993,6 +1993,72 @@ async def purge_read_notifications() -> None:
             logger.info(f"Purged {deleted} read notifications older than 3 days")
 
 
+async def auto_resume_interrupted_jobs() -> None:
+    """Re-enqueue INTERRUPTED jobs that have stored params.
+
+    Runs at startup and every 60 s so jobs interrupted on a scaled-down
+    instance are picked up by any surviving instance within one interval.
+    """
+    try:
+        from sqlalchemy import select as _select, func as _func, not_ as _not_
+        from app.db.base import get_session_factory as _gsf
+        from app.models.jobs import BackgroundJob as _BJ
+        from app.services.sync.job_tracker import create_background_job as _cbj, update_background_job as _ubj
+
+        async with _gsf()() as db:
+            result = await db.execute(
+                _select(_BJ)
+                .where(
+                    _BJ.status == "INTERRUPTED",
+                    _BJ.params.isnot(None),
+                    _not_(_func.jsonb_exists(_BJ.metadata_, "superseded_by")),
+                )
+                .order_by(_BJ.started_at.desc())
+                .limit(50)
+            )
+            jobs = result.scalars().all()
+
+        if not jobs:
+            return
+        logger.info("Auto-resume: found %d unsuperseded INTERRUPTED jobs with params", len(jobs))
+
+        seen_slots: set = set()
+        for job in jobs:
+            conn_slot = (job.job_type, str(job.platform_connection_id) if job.platform_connection_id else None)
+            if job.platform_connection_id is not None:
+                if conn_slot in seen_slots:
+                    continue
+            else:
+                param_slot = (job.job_type, str(sorted((job.params or {}).items())))
+                if param_slot in seen_slots:
+                    continue
+                conn_slot = param_slot
+
+            seen_slots.add(conn_slot)
+
+            try:
+                error_reason = (job.error or {}).get("message", "interrupted")
+                new_id = await _cbj(
+                    job_type=job.job_type,
+                    org_id=job.org_id,
+                    platform_connection_id=job.platform_connection_id,
+                    params=job.params,
+                    metadata={
+                        **(job.metadata_ or {}),
+                        "resumed_from_job_id": str(job.id),
+                        "resume_reason": error_reason,
+                    },
+                )
+                await _ubj(job.id, metadata={"superseded_by": str(new_id)})
+                from app.api.v1.endpoints.jobs import _dispatch_job_retry
+                await _dispatch_job_retry(job.job_type, job.params, str(new_id), None, None, old_output=job.output)
+                logger.info("Auto-resume: dispatched %s -> new job %s (old: %s)", job.job_type, new_id, job.id)
+            except Exception as exc:
+                logger.warning("Auto-resume: failed to dispatch job %s (%s): %s", job.id, job.job_type, exc)
+    except Exception as exc:
+        logger.warning("Auto-resume periodic check failed (non-fatal): %s", exc)
+
+
 async def startup_scheduler(db_session=None) -> None:
     """Load all active connections and schedule their daily syncs.
     Also triggers initial sync for any connections that missed it."""
@@ -2058,6 +2124,15 @@ async def startup_scheduler(db_session=None) -> None:
 
     from app.core.config import settings as _settings
     from app.services.sync.scoring_job import run_scoring_batch
+
+    scheduler.add_job(
+        auto_resume_interrupted_jobs,
+        trigger=IntervalTrigger(seconds=60),
+        id="auto_resume_interrupted_jobs",
+        replace_existing=True,
+        max_instances=1,
+    )
+    logger.info("Registered auto_resume_interrupted_jobs (every 60s)")
 
     if _settings.SCHEDULER_ENABLED:
         scheduler.add_job(

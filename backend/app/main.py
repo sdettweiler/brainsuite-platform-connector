@@ -86,95 +86,13 @@ async def _background_startup():
     if startup_delay > 0:
         logger.info(f"Waiting {startup_delay}s for network readiness before starting scheduler...")
         await asyncio.sleep(startup_delay)
+    from app.services.sync.scheduler import startup_scheduler, auto_resume_interrupted_jobs
     try:
-        from app.services.sync.scheduler import startup_scheduler
         await startup_scheduler()
     except Exception as e:
         logger.warning(f"Scheduler startup failed (non-fatal): {e}")
 
-    await _auto_resume_interrupted_jobs()
-
-
-async def _auto_resume_interrupted_jobs():
-    """Re-enqueue INTERRUPTED jobs that have stored params so they resume automatically.
-
-    Only picks up jobs that have NOT yet been superseded (no superseded_by key in metadata).
-    Within a single startup run, also deduplicates by (job_type, platform_connection_id) so
-    that multiple INTERRUPTED jobs for the same connection never spawn multiple resumes.
-    """
-    logger = logging.getLogger(__name__)
-    try:
-        from sqlalchemy import select as _select, func as _func, not_ as _not_
-        from app.db.base import get_session_factory as _gsf
-        from app.models.jobs import BackgroundJob as _BJ
-        from app.services.sync.job_tracker import create_background_job as _cbj, update_background_job as _ubj
-
-        async with _gsf()() as db:
-            result = await db.execute(
-                _select(_BJ)
-                .where(
-                    _BJ.status == "INTERRUPTED",
-                    _BJ.params.isnot(None),
-                    # Only jobs that have never been superseded — i.e. the "leaf" in the chain.
-                    _not_(_func.jsonb_exists(_BJ.metadata_, "superseded_by")),
-                )
-                .order_by(_BJ.started_at.desc())
-                .limit(50)
-            )
-            jobs = result.scalars().all()
-
-        if not jobs:
-            return
-        logger.info("Auto-resume: found %d unsuperseded INTERRUPTED jobs with params", len(jobs))
-
-        # Dedup by (job_type, platform_connection_id): resume only the most-recent job
-        # per connection slot. The query is already ordered newest-first, so the first
-        # hit wins and subsequent ones for the same slot are skipped.
-        seen_slots: set = set()
-
-        for job in jobs:
-            conn_slot = (job.job_type, str(job.platform_connection_id) if job.platform_connection_id else None)
-            # For connection-based job types deduplicate strictly by slot.
-            # Autofill/scoring have NULL platform_connection_id but are keyed by
-            # asset_id / score_id in params, so they get their own slot per asset.
-            if job.platform_connection_id is not None:
-                if conn_slot in seen_slots:
-                    logger.info(
-                        "Auto-resume: skipping %s (%s conn=%s) — slot already queued this startup",
-                        job.id, job.job_type, job.platform_connection_id,
-                    )
-                    continue
-            else:
-                # For param-keyed jobs use the whole params dict as the slot key.
-                param_slot = (job.job_type, str(sorted((job.params or {}).items())))
-                if param_slot in seen_slots:
-                    logger.info("Auto-resume: skipping %s (%s) — duplicate param slot", job.id, job.job_type)
-                    continue
-                conn_slot = param_slot  # record as seen below
-
-            seen_slots.add(conn_slot)
-
-            try:
-                error_reason = (job.error or {}).get("message", "interrupted")
-                new_id = await _cbj(
-                    job_type=job.job_type,
-                    org_id=job.org_id,
-                    platform_connection_id=job.platform_connection_id,
-                    params=job.params,
-                    metadata={
-                        **(job.metadata_ or {}),
-                        "resumed_from_job_id": str(job.id),
-                        "resume_reason": error_reason,
-                    },
-                )
-                await _ubj(job.id, metadata={"superseded_by": str(new_id)})
-                from app.api.v1.endpoints.jobs import _dispatch_job_retry
-                await _dispatch_job_retry(job.job_type, job.params, str(new_id), None, None, old_output=job.output)
-                logger.info("Auto-resume: dispatched %s -> new job %s (old: %s)", job.job_type, new_id, job.id)
-            except Exception as exc:
-                logger.warning("Auto-resume: failed to dispatch job %s (%s): %s", job.id, job.job_type, exc)
-    except Exception as exc:
-        logger.warning("Auto-resume startup failed (non-fatal): %s", exc)
+    await auto_resume_interrupted_jobs()
 
 
 @asynccontextmanager
