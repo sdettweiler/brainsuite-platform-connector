@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
     unzip \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Deno — required by yt-dlp to solve YouTube's n-challenge (formats unavailable without it)
@@ -17,6 +18,11 @@ RUN ARCH=$(uname -m) && \
     curl -fsSL "https://github.com/denoland/deno/releases/latest/download/deno-${DENO_ARCH}-unknown-linux-gnu.zip" -o /tmp/deno.zip && \
     unzip /tmp/deno.zip -d /usr/local/bin/ && \
     rm /tmp/deno.zip
+
+# bgutil HTTP server — required for yt-dlp YouTube PO token solving.
+# The pip package (bgutil-ytdlp-pot-provider) is the yt-dlp plugin;
+# the actual HTTP server is a Deno/JS application from the same repo.
+RUN git clone --depth=1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider /bgutil && cd /bgutil/server && deno install --allow-scripts=npm:canvas --frozen
 
 # Python dependencies
 COPY requirements.txt .

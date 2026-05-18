@@ -75,6 +75,33 @@ def _sanitize_for_filename(val: str) -> str:
 BID_MANAGER_API_BASE = "https://doubleclickbidmanager.googleapis.com/v2"
 DV360_API_BASE = "https://displayvideo.googleapis.com/v4"
 
+# Limit concurrent DV360 entity-metadata calls to 5 slots globally.
+# DV360 quota is ~10 req/s per user per method; 5 concurrent keeps us well under
+# that even when several connections sync at the same time.
+_DV360_API_SEMAPHORE = asyncio.Semaphore(5)
+
+
+async def _dv360_get(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict,
+    params: Optional[dict] = None,
+) -> httpx.Response:
+    """Semaphore-gated GET with exponential backoff on 429 RESOURCE_EXHAUSTED."""
+    backoff = 5
+    for attempt in range(4):
+        async with _DV360_API_SEMAPHORE:
+            resp = await client.get(url, headers=headers, params=params or {})
+        if resp.status_code != 429:
+            return resp
+        logger.warning(
+            "DV360 API 429 on %s — backing off %ds (attempt %d/4)",
+            url.rsplit("/", 1)[-1], backoff, attempt + 1,
+        )
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, 60)
+    return resp  # return the final response so callers can log the failure
+
 
 _AD_TYPE_MAP = {
     "inStreamAd": "In-Stream",
@@ -370,10 +397,8 @@ class DV360SyncService:
             if page_token:
                 params["pageToken"] = page_token
 
-            resp = await client.get(
-                f"{DV360_API_BASE}/advertisers/{advertiser_id}/campaigns",
-                headers=headers,
-                params=params,
+            resp = await _dv360_get(
+                client, f"{DV360_API_BASE}/advertisers/{advertiser_id}/campaigns", headers, params,
             )
             if resp.status_code != 200:
                 logger.warning(f"DV360 v4: List campaigns failed ({resp.status_code}): {resp.text[:300]}")
@@ -410,10 +435,8 @@ class DV360SyncService:
             if page_token:
                 params["pageToken"] = page_token
 
-            resp = await client.get(
-                f"{DV360_API_BASE}/advertisers/{advertiser_id}/insertionOrders",
-                headers=headers,
-                params=params,
+            resp = await _dv360_get(
+                client, f"{DV360_API_BASE}/advertisers/{advertiser_id}/insertionOrders", headers, params,
             )
             if resp.status_code != 200:
                 logger.warning(f"DV360 v4: List IOs failed ({resp.status_code}): {resp.text[:300]}")
@@ -452,10 +475,8 @@ class DV360SyncService:
             if page_token:
                 params["pageToken"] = page_token
 
-            resp = await client.get(
-                f"{DV360_API_BASE}/advertisers/{advertiser_id}/lineItems",
-                headers=headers,
-                params=params,
+            resp = await _dv360_get(
+                client, f"{DV360_API_BASE}/advertisers/{advertiser_id}/lineItems", headers, params,
             )
             if resp.status_code != 200:
                 logger.warning(f"DV360 v4: List line items failed ({resp.status_code}): {resp.text[:300]}")
@@ -494,10 +515,8 @@ class DV360SyncService:
             if page_token:
                 params["pageToken"] = page_token
 
-            resp = await client.get(
-                f"{DV360_API_BASE}/advertisers/{advertiser_id}/creatives",
-                headers=headers,
-                params=params,
+            resp = await _dv360_get(
+                client, f"{DV360_API_BASE}/advertisers/{advertiser_id}/creatives", headers, params,
             )
             if resp.status_code != 200:
                 logger.warning(f"DV360 v4: List creatives failed ({resp.status_code}): {resp.text[:300]}")
@@ -567,10 +586,8 @@ class DV360SyncService:
             if page_token:
                 params["pageToken"] = page_token
 
-            resp = await client.get(
-                f"{DV360_API_BASE}/advertisers/{advertiser_id}/adGroups",
-                headers=headers,
-                params=params,
+            resp = await _dv360_get(
+                client, f"{DV360_API_BASE}/advertisers/{advertiser_id}/adGroups", headers, params,
             )
             if resp.status_code != 200:
                 logger.warning(f"DV360 v4: List ad groups failed ({resp.status_code}): {resp.text[:300]}")
@@ -607,10 +624,8 @@ class DV360SyncService:
             if page_token:
                 params["pageToken"] = page_token
 
-            resp = await client.get(
-                f"{DV360_API_BASE}/advertisers/{advertiser_id}/adGroupAds",
-                headers=headers,
-                params=params,
+            resp = await _dv360_get(
+                client, f"{DV360_API_BASE}/advertisers/{advertiser_id}/adGroupAds", headers, params,
             )
             if resp.status_code != 200:
                 logger.warning(f"DV360 v4: List ad group ads failed ({resp.status_code}): {resp.text[:300]}")
@@ -676,9 +691,8 @@ class DV360SyncService:
     ) -> str:
         """Fetch advertiser timezone from DV360 API v4."""
         try:
-            resp = await client.get(
-                f"{DV360_API_BASE}/advertisers/{advertiser_id}",
-                headers=headers,
+            resp = await _dv360_get(
+                client, f"{DV360_API_BASE}/advertisers/{advertiser_id}", headers,
             )
             if resp.status_code == 200:
                 data = resp.json()
