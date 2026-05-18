@@ -18,7 +18,7 @@
 
 - [x] **DASH-01**: A user can filter the creative grid by metadata field value using a searchable autocomplete input; suggestions are limited to values belonging to the user's organization (no cross-org leakage)
 - [x] **DASH-02**: A user can filter the creative grid by one or more ad accounts using a multi-select filter; selecting multiple accounts shows creatives from all selected accounts
-- [ ] **DASH-03**: A user can filter the creative grid by video duration range using a dual-handle slider; legacy assets with no duration data are excluded from the filtered view and a count callout is shown
+- [x] **DASH-03**: A user can filter the creative grid by video duration range using a dual-handle slider; legacy assets with no duration data are excluded from the filtered view and a count callout is shown
 
 ## v2 Requirements
 
@@ -58,7 +58,7 @@
 | PROXY-05 | Phase 21 | Complete |
 | DASH-01 | Phase 22 | Complete |
 | DASH-02 | Phase 22 | Complete |
-| DASH-03 | Phase 23 | Pending |
+| DASH-03 | Phase 23 | Complete |
 
 **Coverage:**
 - v1 requirements: 9 total

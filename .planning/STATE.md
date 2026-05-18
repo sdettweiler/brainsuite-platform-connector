@@ -4,13 +4,13 @@ milestone: v1.4
 milestone_name: YouTube Downloads & Dashboard Filters
 status: executing
 stopped_at: Phase 23 UI-SPEC approved
-last_updated: "2026-05-18T10:29:34.386Z"
-last_activity: 2026-05-18 -- Phase 23 planning complete
+last_updated: "2026-05-18T10:48:56.740Z"
+last_activity: 2026-05-18
 progress:
   total_phases: 13
   completed_phases: 11
   total_plans: 32
-  completed_plans: 32
+  completed_plans: 33
   percent: 85
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-14 — v1.4 milestone started)
 
 ## Current Position
 
-Phase: 23 (dashboard-duration-filter-backfill) — NOT STARTED
-Plan: 0 of TBD — not yet planned
+Phase: 23 (dashboard-duration-filter-backfill) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-05-18 -- Phase 23 planning complete
+Last activity: 2026-05-18
 
 ## Progress Bar
 
@@ -53,6 +53,7 @@ v1.4: [P] Phase 20  [ ] Phase 21  [ ] Phase 22  [ ] Phase 23
 - Phase 20 includes: Alembic migration (2 new SystemConfig columns + composite index on asset_metadata_value) + bgutil Docker sidecar + proxy injection in both dv360_sync.py and google_ads_sync.py + redact_credentials() utility
 - Phase 22 can start in parallel with Phase 21 — depends on Phase 20's migration (composite index), not Phase 21's UI
 - Phase 22 Plan 01: metadata filter backend (explicit 400 for malformed filter, not silent skip; two-layer org guard T-22-01; alembic upgrade e8f9a0b1c2d3 not upgrade head due to DEBT-01)
+- Phase 23 Plan 01: null_duration_count computed only when duration filter active (D-07) to avoid COUNT on every dashboard load; backfill gated by has_null_duration_assets > 0 at each sync site; ix_creative_assets_org_format_duration composite index chains onto f8a2b3c4d5e6
 
 ### Roadmap Evolution
 
@@ -79,11 +80,11 @@ Items carried to v1.5 or backlog:
 
 ## Session Continuity
 
-Last session: 2026-05-18T09:55:32.487Z
-Stopped at: Phase 23 UI-SPEC approved
-Resume file: .planning/phases/23-dashboard-duration-filter-backfill/23-UI-SPEC.md
+Last session: 2026-05-18T10:48:56.732Z
+Stopped at: Completed 23-01-PLAN.md (duration filter backend)
+Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 23 (dashboard duration filter + backfill) — last phase before v1.4 milestone completion
-- Phase 23 depends on Phase 22 (complete); depends on Phase 20 (proxy infra — check before planning)
+- Execute Plan 23-02 (duration filter frontend — Angular slider + bounds endpoint integration)
+- Phase 23 Plan 01 complete; Plan 02 is the final deliverable for v1.4 milestone

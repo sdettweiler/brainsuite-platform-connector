@@ -302,7 +302,7 @@ Plans:
 Plans:
 
 **Wave 1**
-- [ ] 23-01-PLAN.md — Backend: video_utils extraction + GET /dashboard/duration-bounds + duration_min/max params + null_duration_count + backfill_job + 8 scheduler.py post-sync triggers + Wave-0 tests (DASH-03)
+- [x] 23-01-PLAN.md — Backend: video_utils extraction + GET /dashboard/duration-bounds + duration_min/max params + null_duration_count + backfill_job + 8 scheduler.py post-sync triggers + Wave-0 tests (DASH-03)
 
 **Wave 2** *(blocked on Wave 1)*
 - [ ] 23-02-PLAN.md — Frontend: duration slider state + formatDuration helper + loadDurationBounds + slider template + chip + NULL callout + CSS + Visual UAT checkpoint (DASH-03)
@@ -338,7 +338,7 @@ Plans:
 | 20. Proxy Download Infrastructure | v1.4 | 0/2 | Planned | - |
 | 21. Proxy Admin UI | v1.4 | 3/3 | Complete | 2026-05-15 |
 | 22. Dashboard Metadata + Account Filters | v1.4 | 1/2 | In Progress|  |
-| 23. Dashboard Duration Filter + Backfill | v1.4 | 0/2 | Planned | - |
+| 23. Dashboard Duration Filter + Backfill | v1.4 | 1/2 | In Progress|  |
 
 ## Backlog
 
