@@ -352,6 +352,14 @@ async def _dispatch_job_retry(
         from app.services.sync.scheduler import trigger_download_retry
         await trigger_download_retry(params, new_job_id)
         return
+    if job_type in ("sync_daily", "sync_full", "sync_initial", "sync_historical") and (params or {}).get("platform") not in (None, "DV360"):
+        from app.services.sync.scheduler import run_daily_sync, run_full_resync, run_initial_sync, run_historical_sync
+        conn_id = (params or {}).get("platform_connection_id")
+        if conn_id:
+            fn = {"sync_daily": run_daily_sync, "sync_full": run_full_resync, "sync_initial": run_initial_sync, "sync_historical": run_historical_sync}.get(job_type)
+            if fn:
+                asyncio.create_task(fn(conn_id))
+        return
     if job_type in ("sync_daily", "sync_full", "sync_initial", "sync_historical") and (params or {}).get("platform") == "DV360":
         from app.services.sync.scheduler import trigger_dv360_sync_retry
         from datetime import datetime as _dt

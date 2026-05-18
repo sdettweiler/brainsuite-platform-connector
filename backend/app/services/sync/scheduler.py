@@ -171,7 +171,7 @@ async def run_daily_sync(connection_id: str) -> None:
             org_id=connection.organization_id,
             platform_connection_id=connection.id,
             metadata={"sync_job_id": job_id, "platform": connection.platform},
-            params={"platform": "DV360", "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "daily"} if is_dv360 else None,
+            params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "daily"},
         )
         await update_background_job(
             bg_job_id,
@@ -954,7 +954,7 @@ async def run_full_resync(connection_id: str) -> None:
             org_id=connection.organization_id,
             platform_connection_id=connection.id,
             metadata={"sync_job_id": job_id, "platform": connection.platform},
-            params={"platform": "DV360", "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "full"} if is_dv360 else None,
+            params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "full"},
         )
         await update_background_job(
             bg_job_id,
@@ -1319,7 +1319,7 @@ async def run_initial_sync(connection_id: str) -> None:
             org_id=connection.organization_id,
             platform_connection_id=connection.id,
             metadata={"sync_job_id": job_id, "platform": connection.platform},
-            params={"platform": "DV360", "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "initial"} if is_dv360 else None,
+            params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "initial"},
         )
         await update_background_job(
             bg_job_id,
@@ -1641,7 +1641,7 @@ async def run_historical_sync(connection_id: str) -> None:
             org_id=connection.organization_id,
             platform_connection_id=connection.id,
             metadata={"sync_job_id": job_id, "platform": connection.platform},
-            params={"platform": "DV360", "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "historical"} if is_dv360 else None,
+            params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "historical"},
         )
         await update_background_job(
             bg_job_id,
