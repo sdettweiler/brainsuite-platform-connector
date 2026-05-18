@@ -1943,7 +1943,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: (res) => {
         // has_video_assets is authoritative — backend counts VIDEOs with current filters regardless of backfill state.
         this.hasVideoAssets = res.has_video_assets;
-        const hasRealBounds = res.min_duration != null && res.max_duration != null && res.max_duration > res.min_duration;
+        const hasRealBounds = res.min_duration != null && res.max_duration != null && res.max_duration >= res.min_duration;
         this.hasDurationData = hasRealBounds;
         if (hasRealBounds) {
           const newFloor = res.min_duration!;
