@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, EventEmitter, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormBuilder, FormGroup, ReactiveFormsModule, FormsModule } from '@angular/forms';
@@ -239,6 +239,7 @@ interface CorrelationAsset {
             [(value)]="durationMin"
             [(highValue)]="durationMax"
             [options]="durationSliderOptions"
+            [manualRefresh]="durationSliderRefresh"
             (userChangeEnd)="onFilterChange()"
           ></ngx-slider>
           <span class="slider-values">{{ formatDuration(durationMin) }} – {{ formatDuration(durationMax) }}</span>
@@ -1503,10 +1504,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   durationMin = 0;
   durationMax = 3600;
   hasVideoAssets = false;
-  /** True once video assets were seen — never set back to false while filter is active (Bug 3 fix). */
-  private hadVideoAssets = false;
-  /** True when the bounds endpoint has returned real duration data (non-null max). */
+  /** True when the bounds endpoint has returned real (non-default) duration data. */
   hasDurationData = false;
+  readonly durationSliderRefresh = new EventEmitter<void>();
   nullDurationCount = 0;
   loadingDurationBounds = false;
   durationSliderOptions: Options = {
@@ -1887,25 +1887,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.total = d.total;
         this.totalPages = d.total_pages;
         this.loading = false;
-        // Phase 23 (D-05, D-07): derive hasVideoAssets + nullDurationCount from response
-        // Bug 3 fix: hasVideoAssets is sticky — never reset to false while filter is active,
-        // and tracks via hadVideoAssets so slider stays visible after a filter narrows results.
-        const freshHasVideo = this.assets.some((a: any) => a.asset_format === 'VIDEO');
-        if (freshHasVideo) {
-          this.hasVideoAssets = true;
-          this.hadVideoAssets = true;
-        } else if (!this.isDurationFilterActive) {
-          // Only clear the flag when there's genuinely no video in an unfiltered result
-          this.hasVideoAssets = this.hadVideoAssets;
-        }
-        // If had video before and filter is active, keep showing slider even if current page has no video
-        if (this.isDurationFilterActive && this.hadVideoAssets) {
-          this.hasVideoAssets = true;
-        }
+        // Phase 23 (D-05, D-07): always call loadDurationBounds after data loads;
+        // it is the authoritative source for hasVideoAssets (filter-aware, not page-scoped).
         this.nullDurationCount = d.null_duration_count ?? 0;
-        if (this.hasVideoAssets) {
-          this.loadDurationBounds();
-        }
+        this.loadDurationBounds();
         // Only enable slider once we've seen scored assets — don't disable when filtered results are empty
         if (this.assets.some((a: any) => a.scoring_status === 'COMPLETE')) {
           this.hasAnyScored = true;
@@ -1954,24 +1939,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
     // NOTE: do NOT pass duration_min / duration_max — that would be circular (D-02)
 
-    this.api.get<{ min_duration: number; max_duration: number }>('/dashboard/duration-bounds', params).subscribe({
+    this.api.get<{ min_duration: number | null; max_duration: number | null; has_video_assets: boolean }>('/dashboard/duration-bounds', params).subscribe({
       next: (res) => {
+        // has_video_assets is authoritative — backend counts VIDEOs with current filters regardless of backfill state.
+        this.hasVideoAssets = res.has_video_assets;
         const hasRealBounds = res.min_duration != null && res.max_duration != null && res.max_duration > res.min_duration;
         this.hasDurationData = hasRealBounds;
         if (hasRealBounds) {
-          const newFloor = res.min_duration;
-          const newCeil = res.max_duration;
+          const newFloor = res.min_duration!;
+          const newCeil = res.max_duration!;
           this.durationSliderOptions = { ...this.durationSliderOptions, floor: newFloor, ceil: newCeil };
-          // Only reset handles to full range when no filter is active — preserve user's current selection.
           if (!this.isDurationFilterActive) {
             this.durationMin = newFloor;
             this.durationMax = newCeil;
           }
+          this.durationSliderRefresh.emit();
         }
-        // If no real bounds yet (backfill hasn't run), keep the current slider options and handle positions.
         this.loadingDurationBounds = false;
       },
       error: () => {
+        this.hasVideoAssets = false;
         this.hasDurationData = false;
         this.loadingDurationBounds = false;
       },

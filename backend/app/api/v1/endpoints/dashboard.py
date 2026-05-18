@@ -676,9 +676,32 @@ async def get_duration_bounds(
         )
 
     result = (await db.execute(query)).one()
-    min_dur = float(result.min_duration) if result.min_duration is not None else 0.0
-    max_dur = float(result.max_duration) if result.max_duration is not None else 3600.0
-    return {"min_duration": min_dur, "max_duration": max_dur}
+    min_dur = float(result.min_duration) if result.min_duration is not None else None
+    max_dur = float(result.max_duration) if result.max_duration is not None else None
+
+    # Count VIDEO assets with current filters (no video_duration constraint) to determine
+    # whether the slider should be shown at all, independent of backfill state.
+    video_count_query = (
+        select(func.count(CreativeAsset.id))
+        .join(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
+        .where(
+            CreativeAsset.organization_id == current_user.organization_id,
+            CreativeAsset.asset_format == "VIDEO",
+        )
+    )
+    if platform_list:
+        video_count_query = video_count_query.where(CreativeAsset.platform.in_(platform_list))
+    if account_id_list:
+        video_count_query = video_count_query.where(CreativeAsset.ad_account_id.in_(account_id_list))
+    if objective_list:
+        video_count_query = video_count_query.where(CreativeAsset.campaign_objective.in_(objective_list))
+    video_count = (await db.execute(video_count_query)).scalar() or 0
+
+    return {
+        "min_duration": min_dur,
+        "max_duration": max_dur,
+        "has_video_assets": video_count > 0,
+    }
 
 
 @router.get("/assets/{asset_id}", response_model=dict)
