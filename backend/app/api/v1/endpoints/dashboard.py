@@ -302,6 +302,8 @@ async def get_dashboard_assets(
     score_max: Optional[float] = Query(default=None, ge=0, le=100),
     ad_account_ids: Optional[str] = Query(default=None),
     metadata_filter: Optional[List[str]] = Query(default=None),
+    duration_min: Optional[float] = Query(default=None, ge=0),
+    duration_max: Optional[float] = Query(default=None, ge=0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -441,6 +443,11 @@ async def get_dashboard_assets(
     if score_max is not None:
         query = query.where(CreativeScoreResult.total_score <= score_max)
 
+    if duration_min is not None:
+        query = query.where(CreativeAsset.video_duration >= duration_min)
+    if duration_max is not None:
+        query = query.where(CreativeAsset.video_duration <= duration_max)
+
     # Only assets with performance in period
     query = query.where(perf_subq.c.total_spend.isnot(None))
 
@@ -511,13 +518,161 @@ async def get_dashboard_assets(
             "performer_tag": performer_tag,
         })
 
+    # null_duration_count: only compute when duration filter is active (D-06, D-07, T-23-06)
+    null_duration_count = 0
+    if duration_min is not None or duration_max is not None:
+        null_q = (
+            select(func.count(CreativeAsset.id))
+            .outerjoin(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
+            .where(
+                CreativeAsset.organization_id == current_user.organization_id,
+                CreativeAsset.asset_format == "VIDEO",
+                CreativeAsset.video_duration.is_(None),
+                perf_subq.c.total_spend.isnot(None),
+            )
+        )
+        if platform_list:
+            null_q = null_q.where(CreativeAsset.platform.in_(platform_list))
+        if format_list:
+            null_q = null_q.where(CreativeAsset.asset_format.in_(format_list))
+        if objective_list:
+            null_q = null_q.where(CreativeAsset.campaign_objective.in_(objective_list))
+        if account_id_list:
+            null_q = null_q.where(CreativeAsset.ad_account_id.in_(account_id_list))
+        if project_id:
+            null_q = null_q.join(
+                AssetProjectMapping,
+                and_(
+                    AssetProjectMapping.asset_id == CreativeAsset.id,
+                    AssetProjectMapping.project_id == project_id,
+                )
+            )
+        # Re-apply metadata filter joins for the null count (same aliased pattern)
+        for i, (field_name, filter_values) in enumerate(filters_by_field.items()):
+            amv_n = aliased(AssetMetadataValue, name=f"amv_null_{i}")
+            mf_n = aliased(MetadataField, name=f"mf_null_{i}")
+            null_q = null_q.join(
+                amv_n,
+                and_(
+                    amv_n.asset_id == CreativeAsset.id,
+                    amv_n.value.in_(filter_values),
+                ),
+            ).join(
+                mf_n,
+                and_(
+                    mf_n.id == amv_n.field_id,
+                    mf_n.name == field_name,
+                    mf_n.organization_id == current_user.organization_id,
+                ),
+            )
+        null_duration_count = (await db.execute(null_q)).scalar() or 0
+
     return {
         "items": assets_out,
         "total": total,
         "page": page,
         "page_size": page_size,
         "total_pages": (total + page_size - 1) // page_size,
+        "null_duration_count": null_duration_count,
     }
+
+
+@router.get("/duration-bounds", response_model=dict)
+async def get_duration_bounds(
+    date_from: date = Query(default=None),
+    date_to: date = Query(default=None),
+    platforms: Optional[str] = Query(default=None),
+    formats: Optional[str] = Query(default=None),
+    objectives: Optional[str] = Query(default=None),
+    ad_account_ids: Optional[str] = Query(default=None),
+    metadata_filter: Optional[List[str]] = Query(default=None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return min/max video_duration scoped to org + active filters (except duration itself).
+
+    Per D-01 + D-02: dynamic bounds, filter-aware. Duration filter is NOT applied here
+    (would be circular — bounds would shrink as the user moves the slider).
+    T-23-01: organization_id guard on every clause.
+    Q4 RESOLVED: Index ix_creative_assets_org_format_duration (Task 2 migration) supports
+    the MIN/MAX aggregation efficiently.
+    """
+    if not date_from:
+        date_from = date.today() - timedelta(days=30)
+    if not date_to:
+        date_to = date.today() - timedelta(days=1)
+
+    platform_list = [p.strip().upper() for p in platforms.split(",")] if platforms else None
+    format_list = [f.strip().upper() for f in formats.split(",")] if formats else None
+    objective_list = [o.strip() for o in objectives.split(",")] if objectives else None
+    account_id_list = [a.strip() for a in ad_account_ids.split(",")] if ad_account_ids else None
+
+    # Aggregate performance subquery to match /dashboard/assets filter behavior
+    perf_subq = (
+        select(HarmonizedPerformance.asset_id)
+        .where(
+            HarmonizedPerformance.report_date >= date_from,
+            HarmonizedPerformance.report_date <= date_to,
+        )
+        .group_by(HarmonizedPerformance.asset_id)
+        .having(func.sum(HarmonizedPerformance.spend).isnot(None))
+        .subquery()
+    )
+
+    query = (
+        select(
+            func.min(CreativeAsset.video_duration).label("min_duration"),
+            func.max(CreativeAsset.video_duration).label("max_duration"),
+        )
+        .join(perf_subq, perf_subq.c.asset_id == CreativeAsset.id)
+        .where(
+            CreativeAsset.organization_id == current_user.organization_id,
+            CreativeAsset.asset_format == "VIDEO",
+            CreativeAsset.video_duration.isnot(None),
+        )
+    )
+
+    if platform_list:
+        query = query.where(CreativeAsset.platform.in_(platform_list))
+    if format_list:
+        query = query.where(CreativeAsset.asset_format.in_(format_list))
+    if objective_list:
+        query = query.where(CreativeAsset.campaign_objective.in_(objective_list))
+    if account_id_list:
+        query = query.where(CreativeAsset.ad_account_id.in_(account_id_list))
+
+    # Metadata filter — copy aliased JOIN pattern from get_dashboard_assets (T-22-01)
+    filters_by_field: dict[str, list[str]] = {}
+    for meta_filter_str in (metadata_filter or []):
+        if ":" not in meta_filter_str:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid metadata_filter format; expected field_name:value (got: {meta_filter_str})",
+            )
+        field_name, filter_value = meta_filter_str.split(":", 1)
+        filters_by_field.setdefault(field_name, []).append(filter_value)
+    for i, (field_name, filter_values) in enumerate(filters_by_field.items()):
+        amv = aliased(AssetMetadataValue, name=f"amv_{i}")
+        mf = aliased(MetadataField, name=f"mf_{i}")
+        query = query.join(
+            amv,
+            and_(
+                amv.asset_id == CreativeAsset.id,
+                amv.value.in_(filter_values),
+            ),
+        ).join(
+            mf,
+            and_(
+                mf.id == amv.field_id,
+                mf.name == field_name,
+                mf.organization_id == current_user.organization_id,
+            ),
+        )
+
+    result = (await db.execute(query)).one()
+    min_dur = float(result.min_duration) if result.min_duration is not None else 0.0
+    max_dur = float(result.max_duration) if result.max_duration is not None else 3600.0
+    return {"min_duration": min_dur, "max_duration": max_dur}
 
 
 @router.get("/assets/{asset_id}", response_model=dict)
