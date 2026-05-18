@@ -59,6 +59,7 @@ from app.models.platform import PlatformConnection
 from app.models.performance import Dv360RawPerformance
 from app.core.security import decrypt_token
 from app.services.platform.dv360_oauth import dv360_oauth
+from app.services.sync.video_utils import get_video_duration
 
 
 class _CookiesExpiredError(Exception):
@@ -1329,7 +1330,7 @@ class DV360SyncService:
                     actual_path = matches[0] if matches else None
                     if actual_path:
                         size_mb = os.path.getsize(actual_path) / (1024 * 1024)
-                        duration = self._get_video_duration(actual_path)
+                        duration = get_video_duration(actual_path)
                         served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
                         logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, label)
                         try:
@@ -1434,21 +1435,6 @@ class DV360SyncService:
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
             logger.warning("Failed to download YouTube thumbnail for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
         return None, None
-
-    def _get_video_duration(self, file_path: str) -> Optional[float]:
-        try:
-            result = subprocess.run(
-                ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", file_path],
-                capture_output=True, text=True, timeout=15,
-            )
-            if result.returncode == 0:
-                data = json.loads(result.stdout)
-                duration = data.get("format", {}).get("duration")
-                if duration:
-                    return float(duration)
-        except (OSError, ValueError, subprocess.SubprocessError) as e:
-            logger.debug("ffprobe failed for %s: %s", file_path, e)
-        return None
 
     async def _upsert_records(
         self,
