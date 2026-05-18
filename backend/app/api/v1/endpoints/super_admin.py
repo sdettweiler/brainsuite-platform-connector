@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update
 
@@ -69,6 +69,17 @@ class ProxyConfigResponse(BaseModel):
 class UpdateProxyConfigRequest(BaseModel):
     proxy_enabled: Optional[bool] = None
     proxy_url: Optional[str] = None
+
+
+class ConcurrencyConfigResponse(BaseModel):
+    max_concurrent_downloads: int
+
+    class Config:
+        from_attributes = True
+
+
+class ConcurrencyConfigRequest(BaseModel):
+    max_concurrent_downloads: int = Field(ge=1, le=10)
 
 
 class ProxyTestResponse(BaseModel):
@@ -715,3 +726,57 @@ async def reset_org_scoring(
     )
 
     return ResetScoringResponse(reset_count=reset_count)
+
+
+# ===== Download concurrency config endpoints (PERF-02) =====
+
+@router.get("/download-concurrency", response_model=ConcurrencyConfigResponse)
+async def get_download_concurrency(
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return current max_concurrent_downloads setting."""
+    result = await db.execute(select(SystemConfig).limit(1))
+    config = result.scalar_one_or_none()
+
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="System config not initialized",
+        )
+
+    return ConcurrencyConfigResponse(max_concurrent_downloads=config.max_concurrent_downloads or 3)
+
+
+@router.put("/download-concurrency", response_model=ConcurrencyConfigResponse)
+async def update_download_concurrency(
+    payload: ConcurrencyConfigRequest,
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update max_concurrent_downloads setting (range 1–10).
+
+    Pydantic Field(ge=1, le=10) rejects out-of-range values before the handler body runs.
+    Changes take effect within 60 seconds (cache TTL). No explicit cache invalidation (D-04/D-05).
+    """
+    result = await db.execute(select(SystemConfig).limit(1))
+    config = result.scalar_one_or_none()
+
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="System config not initialized",
+        )
+
+    config.max_concurrent_downloads = payload.max_concurrent_downloads
+    db.add(config)
+    await db.commit()
+    await db.refresh(config)
+
+    logger.info(
+        "SuperAdmin %s set max_concurrent_downloads=%s",
+        current_user.email,
+        payload.max_concurrent_downloads,
+    )
+
+    return ConcurrencyConfigResponse(max_concurrent_downloads=config.max_concurrent_downloads)
