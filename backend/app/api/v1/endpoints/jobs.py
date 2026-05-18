@@ -28,7 +28,7 @@ from app.models.jobs import BackgroundJob
 from app.models.platform import PlatformConnection
 from app.models.user import Organization, User
 from app.schemas.jobs import JobDetail, JobListItem
-from app.services.sync.job_tracker import create_background_job
+from app.services.sync.job_tracker import create_background_job, update_background_job
 
 logger = logging.getLogger(__name__)
 
@@ -379,7 +379,7 @@ async def _dispatch_job_retry(
         org_id_str = (params or {}).get("org_id")
         if asset_id_str and org_id_str:
             from app.services.ai_autofill import run_autofill_for_asset
-            asyncio.create_task(run_autofill_for_asset(uuid.UUID(asset_id_str), uuid.UUID(org_id_str)))
+            asyncio.create_task(run_autofill_for_asset(uuid.UUID(asset_id_str), uuid.UUID(org_id_str), existing_job_id=uuid.UUID(new_job_id)))
         else:
             logger.warning("autofill retry: missing asset_id or org_id in params for job %s", new_job_id)
         return
@@ -428,7 +428,11 @@ async def retry_job(
         job_type=job.job_type,
         platform_connection_id=job.platform_connection_id,
         params=job.params,
+        metadata={**(job.metadata_ or {}), "resumed_from_job_id": str(job.id)},
     )
+
+    # Mark the original job as superseded so it no longer appears as actionable.
+    await update_background_job(job.id, metadata={"superseded_by": str(new_job_id)})
 
     await _dispatch_job_retry(job.job_type, job.params, str(new_job_id), background_tasks, db, old_output=job.output)
 

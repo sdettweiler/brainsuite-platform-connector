@@ -118,18 +118,21 @@ class AudioResult(BaseModel):
 # Public entry point
 # ---------------------------------------------------------------------------
 
-async def run_autofill_for_asset(asset_id: uuid.UUID, org_id: uuid.UUID) -> None:
+async def run_autofill_for_asset(asset_id: uuid.UUID, org_id: uuid.UUID, existing_job_id: uuid.UUID | None = None) -> None:
     """Entry point — called via asyncio.create_task() from sync services.
 
     Creates a BackgroundJob record (D-06, INSTR-03), then wraps _autofill() so
     exceptions are logged and the BackgroundJob is set to FAILED rather than
     silently swallowed.
+
+    Pass existing_job_id when retrying so the pre-created PENDING job is reused
+    instead of creating a duplicate.
     """
     async with _autofill_semaphore:
-        await _run_autofill_for_asset_inner(asset_id, org_id)
+        await _run_autofill_for_asset_inner(asset_id, org_id, existing_job_id=existing_job_id)
 
 
-async def _run_autofill_for_asset_inner(asset_id: uuid.UUID, org_id: uuid.UUID) -> None:
+async def _run_autofill_for_asset_inner(asset_id: uuid.UUID, org_id: uuid.UUID, existing_job_id: uuid.UUID | None = None) -> None:
     import traceback as _tb
 
     # Never run autofill on an asset with no downloaded content — asset_url must
@@ -139,14 +142,18 @@ async def _run_autofill_for_asset_inner(asset_id: uuid.UUID, org_id: uuid.UUID) 
         if not _asset or not (_asset.asset_url or "").strip():
             return
 
-    bg_job_id = await create_background_job(
-        job_type="autofill",
-        org_id=org_id,
-        metadata={"asset_id": str(asset_id)},
-        params={"asset_id": str(asset_id), "org_id": str(org_id)},
-        initial_status="RUNNING",
-        progress_total=1,
-    )
+    if existing_job_id:
+        bg_job_id = existing_job_id
+        await update_background_job(bg_job_id, status="RUNNING", progress_total=1, progress_current=0)
+    else:
+        bg_job_id = await create_background_job(
+            job_type="autofill",
+            org_id=org_id,
+            metadata={"asset_id": str(asset_id)},
+            params={"asset_id": str(asset_id), "org_id": str(org_id)},
+            initial_status="RUNNING",
+            progress_total=1,
+        )
 
     try:
         autofill_output = await asyncio.wait_for(_autofill(asset_id, org_id), timeout=300)
