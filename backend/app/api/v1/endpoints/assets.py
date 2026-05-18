@@ -774,11 +774,12 @@ async def redownload_missing_assets(
         org_id=conn.organization_id,
         platform_connection_id=connection_id,
         metadata={"asset_count": len(missing)},
+        initial_status="RUNNING",
+        progress_total=len(missing),
     )
 
     async def _download_all():
         downloaded = []
-        await update_background_job(bg_job_id, status="RUNNING", progress_current=0, progress_total=len(missing))
         for i, asset in enumerate(missing):
             try:
                 await _download_one(asset)
@@ -827,8 +828,9 @@ async def redownload_asset(
         org_id=asset.organization_id,
         platform_connection_id=asset.platform_connection_id,
         metadata={"asset_id": str(asset.id)},
+        initial_status="RUNNING",
+        progress_total=1,
     )
-    await update_background_job(bg_job_id, status="RUNNING", progress_current=0, progress_total=1)
 
     from app.services.sync.thumbnail_utils import is_raw_cdn_url
     org_id_str = str(asset.organization_id)
