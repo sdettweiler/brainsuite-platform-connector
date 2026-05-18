@@ -15,6 +15,7 @@ import pytz
 from app.db.base import get_session_factory
 from app.services.ai_autofill import run_autofill_for_asset, backfill_failed_autofill_for_connection
 from app.services.notifications import create_org_notification
+from app.services.sync.backfill_job import run_duration_backfill, has_null_duration_assets
 from app.services.sync.job_tracker import create_background_job, update_background_job
 
 logger = logging.getLogger(__name__)
@@ -291,6 +292,14 @@ async def run_daily_sync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
+                # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
+                try:
+                    _null_count = await has_null_duration_assets(db, connection.organization_id)
+                    if _null_count > 0:
+                        logger.info("Triggering duration backfill for org %s (%d NULL-duration video assets)", connection.organization_id, _null_count)
+                        asyncio.create_task(run_duration_backfill(connection.organization_id))
+                except Exception as _e:
+                    logger.warning("Failed to trigger duration backfill for connection %s: %s", connection.id, _e)
                 if platform == "GOOGLE_ADS" and result.get("_asset_queue"):
                     asyncio.create_task(_run_google_ads_asset_downloads(connection.id, result["_asset_queue"]))
                 elif platform == "META" and result.get("_creative_ad_ids"):
@@ -429,6 +438,14 @@ async def run_daily_sync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
+                # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
+                try:
+                    _null_count = await has_null_duration_assets(db, conn.organization_id)
+                    if _null_count > 0:
+                        logger.info("Triggering duration backfill for org %s (%d NULL-duration video assets)", conn.organization_id, _null_count)
+                        asyncio.create_task(run_duration_backfill(conn.organization_id))
+                except Exception as _e:
+                    logger.warning("Failed to trigger duration backfill for connection %s: %s", conn.id, _e)
                 logger.info(f"DV360 daily sync completed: {sync_result}")
             except Exception as e:
                 logger.error(f"DV360 daily sync harmonization failed: {type(e).__name__}: {e}")
@@ -1070,6 +1087,14 @@ async def run_full_resync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
+                # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
+                try:
+                    _null_count = await has_null_duration_assets(db, connection.organization_id)
+                    if _null_count > 0:
+                        logger.info("Triggering duration backfill for org %s (%d NULL-duration video assets)", connection.organization_id, _null_count)
+                        asyncio.create_task(run_duration_backfill(connection.organization_id))
+                except Exception as _e:
+                    logger.warning("Failed to trigger duration backfill for connection %s: %s", connection.id, _e)
                 if connection.platform == "GOOGLE_ADS" and sync_result.get("_asset_queue"):
                     asyncio.create_task(_run_google_ads_asset_downloads(connection.id, sync_result["_asset_queue"]))
                 elif connection.platform == "META" and sync_result.get("_creative_ad_ids"):
@@ -1216,6 +1241,14 @@ async def run_full_resync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
+                # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
+                try:
+                    _null_count = await has_null_duration_assets(db, conn.organization_id)
+                    if _null_count > 0:
+                        logger.info("Triggering duration backfill for org %s (%d NULL-duration video assets)", conn.organization_id, _null_count)
+                        asyncio.create_task(run_duration_backfill(conn.organization_id))
+                except Exception as _e:
+                    logger.warning("Failed to trigger duration backfill for connection %s: %s", conn.id, _e)
                 logger.info(f"DV360 full resync completed: {sync_result}")
             except Exception as e:
                 logger.error(f"DV360 full resync harmonization failed: {type(e).__name__}: {e}")
@@ -1420,6 +1453,14 @@ async def run_initial_sync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
+                # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
+                try:
+                    _null_count = await has_null_duration_assets(db, connection.organization_id)
+                    if _null_count > 0:
+                        logger.info("Triggering duration backfill for org %s (%d NULL-duration video assets)", connection.organization_id, _null_count)
+                        asyncio.create_task(run_duration_backfill(connection.organization_id))
+                except Exception as _e:
+                    logger.warning("Failed to trigger duration backfill for connection %s: %s", connection.id, _e)
                 if connection.platform == "GOOGLE_ADS" and sync_result.get("_asset_queue"):
                     asyncio.create_task(_run_google_ads_asset_downloads(connection.id, sync_result["_asset_queue"]))
                 elif connection.platform == "META" and sync_result.get("_creative_ad_ids"):
@@ -1551,6 +1592,14 @@ async def run_initial_sync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
+                # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
+                try:
+                    _null_count = await has_null_duration_assets(db, conn.organization_id)
+                    if _null_count > 0:
+                        logger.info("Triggering duration backfill for org %s (%d NULL-duration video assets)", conn.organization_id, _null_count)
+                        asyncio.create_task(run_duration_backfill(conn.organization_id))
+                except Exception as _e:
+                    logger.warning("Failed to trigger duration backfill for connection %s: %s", conn.id, _e)
                 trigger_historical = True
                 logger.info(f"DV360 initial sync completed: {sync_result}")
             except Exception as e:
@@ -1736,6 +1785,14 @@ async def run_historical_sync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
+                # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
+                try:
+                    _null_count = await has_null_duration_assets(db, connection.organization_id)
+                    if _null_count > 0:
+                        logger.info("Triggering duration backfill for org %s (%d NULL-duration video assets)", connection.organization_id, _null_count)
+                        asyncio.create_task(run_duration_backfill(connection.organization_id))
+                except Exception as _e:
+                    logger.warning("Failed to trigger duration backfill for connection %s: %s", connection.id, _e)
                 if connection.platform == "GOOGLE_ADS" and sync_result.get("_asset_queue"):
                     asyncio.create_task(_run_google_ads_asset_downloads(connection.id, sync_result["_asset_queue"]))
                 elif connection.platform == "META" and sync_result.get("_creative_ad_ids"):
@@ -1859,6 +1916,14 @@ async def run_historical_sync(connection_id: str) -> None:
                 for aid, oid in new_assets:
                     asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
+                # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
+                try:
+                    _null_count = await has_null_duration_assets(db, conn.organization_id)
+                    if _null_count > 0:
+                        logger.info("Triggering duration backfill for org %s (%d NULL-duration video assets)", conn.organization_id, _null_count)
+                        asyncio.create_task(run_duration_backfill(conn.organization_id))
+                except Exception as _e:
+                    logger.warning("Failed to trigger duration backfill for connection %s: %s", conn.id, _e)
             except Exception as e:
                 logger.error(f"DV360 historical sync harmonization failed: {type(e).__name__}: {e}")
                 import traceback
