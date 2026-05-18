@@ -474,7 +474,7 @@ async def run_daily_sync(connection_id: str) -> None:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
 
 
-async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> None:
+async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict, existing_job_id=None) -> None:
     from app.services.sync.google_ads_sync import google_ads_sync
     from app.services.sync.dv360_sync import _CookiesExpiredError
     from sqlalchemy import select, update as _upd
@@ -497,20 +497,23 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
             if not connection:
                 return
 
-        # Phase 17: Create BackgroundJob before downloads begin (D-05)
-        bg_job_id = await create_background_job(
-            job_type="download",
-            org_id=connection.organization_id,
-            platform_connection_id=connection.id,
-            metadata={"platform": "google_ads", "asset_count": len(asset_queue)},
-            params={
-                "asset_ids": [str(aid) for aid in asset_queue.keys()],
-                "platform": "GOOGLE_ADS",
-                "platform_connection_id": str(connection.id),
-            },
-            initial_status="RUNNING",
-            progress_total=len(asset_queue),
-        )
+        if existing_job_id is not None:
+            bg_job_id = existing_job_id
+            await update_background_job(bg_job_id, status="RUNNING", progress_total=len(asset_queue))
+        else:
+            bg_job_id = await create_background_job(
+                job_type="download",
+                org_id=connection.organization_id,
+                platform_connection_id=connection.id,
+                metadata={"platform": "google_ads", "asset_count": len(asset_queue)},
+                params={
+                    "asset_ids": [str(aid) for aid in asset_queue.keys()],
+                    "platform": "GOOGLE_ADS",
+                    "platform_connection_id": str(connection.id),
+                },
+                initial_status="RUNNING",
+                progress_total=len(asset_queue),
+            )
 
         # Resume support: find assets already downloaded so we can skip them
         from sqlalchemy import select as _sel
@@ -625,7 +628,7 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
             )
 
 
-async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None) -> None:
+async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None, existing_job_id=None) -> None:
     from app.services.sync.meta_sync import meta_sync
     from app.models.system_config import SystemConfig
     from sqlalchemy import select
@@ -638,20 +641,23 @@ async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None)
         conn_uuid = connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id))
         org_uuid = org_id if isinstance(org_id, uuid.UUID) else uuid.UUID(str(org_id)) if org_id else None
 
-        # Phase 17: Create BackgroundJob before creative fetch begins (D-05)
-        bg_job_id = await create_background_job(
-            job_type="download",
-            org_id=org_uuid,
-            platform_connection_id=conn_uuid,
-            metadata={"platform": "meta", "asset_count": len(ad_ids)},
-            params={
-                "asset_ids": [str(aid) for aid in ad_ids],
-                "platform": "META",
-                "platform_connection_id": str(conn_uuid),
-            },
-            initial_status="RUNNING",
-            progress_total=len(ad_ids),
-        )
+        if existing_job_id is not None:
+            bg_job_id = existing_job_id
+            await update_background_job(bg_job_id, status="RUNNING", progress_total=len(ad_ids))
+        else:
+            bg_job_id = await create_background_job(
+                job_type="download",
+                org_id=org_uuid,
+                platform_connection_id=conn_uuid,
+                metadata={"platform": "meta", "asset_count": len(ad_ids)},
+                params={
+                    "asset_ids": [str(aid) for aid in ad_ids],
+                    "platform": "META",
+                    "platform_connection_id": str(conn_uuid),
+                },
+                initial_status="RUNNING",
+                progress_total=len(ad_ids),
+            )
 
         # Phase 17: Process ad_ids one at a time; increment progress after each success (D-05, D-15)
         downloaded = []
@@ -693,7 +699,7 @@ async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None)
             )
 
 
-async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=None) -> None:
+async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=None, existing_job_id=None) -> None:
     from app.services.sync.tiktok_sync import tiktok_sync
     from app.models.system_config import SystemConfig
     from sqlalchemy import select
@@ -706,20 +712,23 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=Non
         conn_uuid = connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id))
         org_uuid = org_id if isinstance(org_id, uuid.UUID) else uuid.UUID(str(org_id)) if org_id else None
 
-        # Phase 17: Create BackgroundJob before creative fetch begins (D-05)
-        bg_job_id = await create_background_job(
-            job_type="download",
-            org_id=org_uuid,
-            platform_connection_id=conn_uuid,
-            metadata={"platform": "tiktok", "asset_count": len(ad_ids)},
-            params={
-                "asset_ids": [str(aid) for aid in ad_ids],
-                "platform": "TIKTOK",
-                "platform_connection_id": str(conn_uuid),
-            },
-            initial_status="RUNNING",
-            progress_total=len(ad_ids),
-        )
+        if existing_job_id is not None:
+            bg_job_id = existing_job_id
+            await update_background_job(bg_job_id, status="RUNNING", progress_total=len(ad_ids))
+        else:
+            bg_job_id = await create_background_job(
+                job_type="download",
+                org_id=org_uuid,
+                platform_connection_id=conn_uuid,
+                metadata={"platform": "tiktok", "asset_count": len(ad_ids)},
+                params={
+                    "asset_ids": [str(aid) for aid in ad_ids],
+                    "platform": "TIKTOK",
+                    "platform_connection_id": str(conn_uuid),
+                },
+                initial_status="RUNNING",
+                progress_total=len(ad_ids),
+            )
 
         # Phase 17: Process ad_ids one at a time; increment progress after each success (D-05, D-15)
         downloaded = []
@@ -761,7 +770,7 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=Non
             )
 
 
-async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
+async def _run_dv360_asset_downloads(connection_id, asset_queue: dict, existing_job_id=None) -> None:
     from app.services.sync.dv360_sync import dv360_sync, _CookiesExpiredError
     from app.services.ai_autofill import backfill_failed_autofill_for_connection
     from sqlalchemy import select, update as _upd
@@ -787,20 +796,23 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
         inner_queue = asset_queue.get("queue", {})
         asset_count = len(inner_queue)
 
-        # Phase 17: Create BackgroundJob before downloads begin (D-05)
-        bg_job_id = await create_background_job(
-            job_type="download",
-            org_id=connection.organization_id,
-            platform_connection_id=connection.id,
-            metadata={"platform": "dv360", "asset_count": asset_count},
-            params={
-                "asset_ids": [str(aid) for aid in inner_queue.keys()],
-                "platform": "DV360",
-                "platform_connection_id": str(connection.id),
-            },
-            initial_status="RUNNING",
-            progress_total=asset_count,
-        )
+        if existing_job_id is not None:
+            bg_job_id = existing_job_id
+            await update_background_job(bg_job_id, status="RUNNING", progress_total=asset_count)
+        else:
+            bg_job_id = await create_background_job(
+                job_type="download",
+                org_id=connection.organization_id,
+                platform_connection_id=connection.id,
+                metadata={"platform": "dv360", "asset_count": asset_count},
+                params={
+                    "asset_ids": [str(aid) for aid in inner_queue.keys()],
+                    "platform": "DV360",
+                    "platform_connection_id": str(connection.id),
+                },
+                initial_status="RUNNING",
+                progress_total=asset_count,
+            )
 
         downloaded = []
         failed = []
@@ -2114,6 +2126,8 @@ async def trigger_download_retry(params: dict, job_id: str) -> None:
         logger.warning("trigger_download_retry: connection %s not found", platform_connection_id)
         return
 
+    existing_job_uuid = uuid.UUID(str(job_id)) if job_id else None
+
     if platform == "GOOGLE_ADS":
         from app.services.sync.google_ads_sync import google_ads_sync
         asset_queue = {}
@@ -2123,13 +2137,13 @@ async def trigger_download_retry(params: dict, job_id: str) -> None:
             rows = (await db.execute(_s2(GoogleAdsRawPerformance.ad_id, GoogleAdsRawPerformance.video_id).where(GoogleAdsRawPerformance.ad_id.in_(asset_ids), GoogleAdsRawPerformance.platform_connection_id == conn_uuid))).fetchall()
             for ad_id, video_id in rows:
                 asset_queue[ad_id] = {"video_id": video_id}
-        asyncio.create_task(_run_google_ads_asset_downloads(conn_uuid, asset_queue))
+        asyncio.create_task(_run_google_ads_asset_downloads(conn_uuid, asset_queue, existing_job_id=existing_job_uuid))
     elif platform == "META":
-        asyncio.create_task(_run_meta_creatives_deferred(conn_uuid, asset_ids, org_id=connection.organization_id))
+        asyncio.create_task(_run_meta_creatives_deferred(conn_uuid, asset_ids, org_id=connection.organization_id, existing_job_id=existing_job_uuid))
     elif platform == "TIKTOK":
-        asyncio.create_task(_run_tiktok_creatives_deferred(conn_uuid, asset_ids, org_id=connection.organization_id))
+        asyncio.create_task(_run_tiktok_creatives_deferred(conn_uuid, asset_ids, org_id=connection.organization_id, existing_job_id=existing_job_uuid))
     elif platform == "DV360":
-        asyncio.create_task(_run_dv360_asset_downloads(conn_uuid, {"queue": {aid: {} for aid in asset_ids}}))
+        asyncio.create_task(_run_dv360_asset_downloads(conn_uuid, {"queue": {aid: {} for aid in asset_ids}}, existing_job_id=existing_job_uuid))
     else:
         logger.warning("trigger_download_retry: unknown platform %s", platform)
 

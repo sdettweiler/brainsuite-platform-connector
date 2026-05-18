@@ -429,6 +429,7 @@ async def retry_job(
         platform_connection_id=job.platform_connection_id,
         params=job.params,
         metadata={**(job.metadata_ or {}), "resumed_from_job_id": str(job.id)},
+        initial_status="RUNNING" if job.job_type == "download" else "PENDING",
     )
 
     # Mark the original job as superseded so it no longer appears as actionable.
