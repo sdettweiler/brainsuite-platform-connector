@@ -1948,8 +1948,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
         if (hasRealBounds) {
           const newFloor = res.min_duration!;
           const newCeil = res.max_duration!;
+          const boundsChanged = newFloor !== this.durationSliderOptions.floor || newCeil !== this.durationSliderOptions.ceil;
           this.durationSliderOptions = { ...this.durationSliderOptions, floor: newFloor, ceil: newCeil };
-          if (!this.isDurationFilterActive) {
+          // Reset handles to full range whenever bounds change (other filters changed) or no filter is active.
+          // Preserving a stale selection after bounds change silently applies an unintended filter.
+          if (boundsChanged || !this.isDurationFilterActive) {
             this.durationMin = newFloor;
             this.durationMax = newCeil;
           }
