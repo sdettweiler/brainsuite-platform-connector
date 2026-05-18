@@ -604,21 +604,23 @@ async def list_connections(
             select(
                 CreativeAsset.platform_connection_id,
                 func.count().label("asset_count"),
-                func.sum(
+                func.count(
                     case(
                         (
                             (CreativeAsset.asset_url.isnot(None)) & (CreativeAsset.thumbnail_url.isnot(None)),
                             1,
                         ),
-                        else_=0,
                     )
                 ).label("complete_count"),
             )
-            .where(CreativeAsset.platform_connection_id.in_(conn_ids))
+            .where(
+                CreativeAsset.platform_connection_id.in_(conn_ids),
+                CreativeAsset.organization_id == current_user.organization_id,
+            )
             .group_by(CreativeAsset.platform_connection_id)
         )
         asset_rows = (await db.execute(asset_q)).all()
-        asset_map = {str(r.platform_connection_id): (int(r.asset_count), int(r.complete_count)) for r in asset_rows}
+        asset_map = {str(r.platform_connection_id): (int(r.asset_count or 0), int(r.complete_count or 0)) for r in asset_rows}
 
     items_out = []
     for c in items:
