@@ -1008,6 +1008,7 @@ export class PlatformsComponent implements OnInit, OnDestroy {
         this.connectingAccounts = false;
         this.cancelPending();
         this.loadData();
+        this.startSyncStatusPolling();
         this.snackBar.open(`${accounts.length} account(s) connected. Initial sync starting...`, '', { duration: 5000 });
       },
       error: () => { this.connectingAccounts = false; },
