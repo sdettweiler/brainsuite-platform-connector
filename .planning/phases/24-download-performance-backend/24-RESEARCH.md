@@ -712,22 +712,25 @@ async def _download_videos_batch(queue: dict, org_id: str, bg_job_id: Optional[s
 
 **None of the above assumptions are blocking.** All are verified by existing codebase usage (A2, A3, A6) or by reviewing production logs (A4, A5). A1 and A7 are standard library guarantees.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Sticky session ID generation timing**
    - What we know: D-03 generates session ID with `secrets.token_urlsafe(9)` per download call; IPRoyal expects format `user-session-{id}:pass@host:port`
    - What's unclear: Should session ID be generated once per asset (current code) or once per batch? D-03 says per-call; D-09 deferred per-job pinning to future, but implementation should verify whether per-call vs per-batch affects IPRoyal connection reuse
    - Recommendation: Keep current per-call generation (simple, safe). If Phase 25 (concurrent downloads) shows connection reuse is insufficient, upgrade to per-batch in future phase.
+   - RESOLVED: Keep current per-call generation per D-03. Per-job pinning explicitly deferred to future (CONTEXT.md `<deferred>`).
 
 2. **google_ads_sync.py remote_components location**
    - What we know: DV360 has `remote_components="ejs:github"` at line 1298 after proxy injection; Google Ads currently missing this line
    - What's unclear: Should `remote_components` be added once in `_do_download_with_cookies` ydl_opts, or in both extraction AND download YoutubeDL instances? (If Phase 24 also splits extraction/download for Google Ads, two instances would exist)
    - Recommendation: Add to `_do_download_with_cookies` ydl_opts at line 407 (same structure as DV360 line 1298). If Phase 24 implements extraction/download split for Google Ads too, ensure both instances have `remote_components` set.
+   - RESOLVED: Add `remote_components="ejs:github"` to both the extraction YDL instance and each download YDL instance in google_ads_sync.py per D-05 and CONTEXT.md `<specifics>`.
 
 3. **Cache refresh semantics under high concurrent load**
    - What we know: D-06 specifies asyncio.Lock around cache dict access; 60s TTL via `time.monotonic()`. If 50+ concurrent downloads hit cache miss simultaneously, all queue on lock.
    - What's unclear: Is brief cache-miss serialization acceptable, or should Phase 24 implement "first-miss refreshes, others wait for result" pattern? Phase 25 might add semaphore for concurrent download limits.
    - Recommendation: Phase 24 implements simple asyncio.Lock. Phase 25 can upgrade if profiling shows cache lock contention. Current 3–10 concurrent downloads per analysis should not hit this issue.
+   - RESOLVED: Use simple asyncio.Lock per D-06. Read-write lock upgrade deferred to Phase 25 if profiling shows contention.
 
 ## Environment Availability
 
