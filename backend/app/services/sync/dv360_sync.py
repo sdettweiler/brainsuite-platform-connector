@@ -60,7 +60,7 @@ from app.models.performance import Dv360RawPerformance
 from app.core.security import decrypt_token
 from app.services.platform.dv360_oauth import dv360_oauth
 from app.services.sync.video_utils import get_video_duration
-from app.services.sync.proxy_cache import get_proxy_config
+from app.services.sync.proxy_cache import get_proxy_config, get_concurrency_semaphore
 
 
 class _CookiesExpiredError(Exception):
@@ -1381,102 +1381,105 @@ class DV360SyncService:
         if proxy_enabled and proxy_url:
             attempts = ["", *attempts]
 
+        # Phase 25 (PERF-02): one semaphore slot per asset, shared across DV360 + Google Ads via proxy_cache
+        semaphore = await get_concurrency_semaphore()
         try:
-            for i, cookie in enumerate(attempts):
-                if not cookie:
-                    label = "no cookies"
-                elif cookies and cookie == cookies[0]:
-                    label = "primary"
-                else:
-                    label = "backup"
-                logger.info("  Attempting DV360 video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
-
-                # PO-first: first attempt when proxy enabled uses no proxy and no cookies
-                if i == 0 and proxy_enabled and proxy_url:
-                    attempt_proxy: Optional[str] = None
-                else:
-                    attempt_proxy = proxy_url if proxy_enabled else None
-
-                try:
-                    await _do_download(info_dict, proxy=attempt_proxy, cookie_data=cookie)
-
-                    _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"}
-                    matches = [
-                        m for m in glob.glob(f"{tmp_base}.*")
-                        if os.path.getsize(m) > 0 and os.path.splitext(m)[1].lower() in _VIDEO_EXTS
-                    ]
-                    actual_path = matches[0] if matches else None
-                    if actual_path:
-                        size_mb = os.path.getsize(actual_path) / (1024 * 1024)
-                        duration = get_video_duration(actual_path)
-                        served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
-                        logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, label)
-                        try:
-                            from sqlalchemy import update as _sa_update
-                            from app.models.system_config import SystemConfig as _SC
-                            from app.db.base import get_session_factory as _gsf
-                            async with _gsf()() as _sc_db:
-                                _upd_vals: dict = {"youtube_cookies_download_count": _SC.youtube_cookies_download_count + 1}
-                                if label == "primary":
-                                    _upd_vals["youtube_cookies_runtime_expired"] = False
-                                elif label == "backup":
-                                    _upd_vals["youtube_cookies_backup_runtime_expired"] = False
-                                await _sc_db.execute(_sa_update(_SC).values(**_upd_vals))
-                                await _sc_db.commit()
-                        except Exception as _cnt_err:
-                            logger.debug("Could not increment YT download counter: %s", _cnt_err)
-                        from app.services.sync.thumbnail_utils import extract_first_frame_and_upload
-                        thumb_path = f"creatives/{org_id}/thumb_dv360_{safe_id}.jpg"
-                        frame_thumb = None
-                        if not obj_storage.file_exists(thumb_path):
-                            frame_thumb = await extract_first_frame_and_upload(actual_path, org_id, ad_id, "dv360", obj_storage)
-                        return duration, served_url, frame_thumb
+            async with semaphore:
+                for i, cookie in enumerate(attempts):
+                    if not cookie:
+                        label = "no cookies"
+                    elif cookies and cookie == cookies[0]:
+                        label = "primary"
                     else:
-                        logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
-                except _CookiesExpiredError:
-                    if i < len(attempts) - 1:
-                        logger.info("  %s cookies expired for %s — trying backup slot", label, youtube_video_id)
-                        continue
-                    logger.warning("  All cookie slots expired for %s — aborting", youtube_video_id)
-                    if cookies:
-                        try:
-                            from app.services.notifications import create_superadmin_notification
-                            from app.models.system_config import SystemConfig as _SC2
-                            from app.db.base import get_session_factory as _gsf2
-                            from sqlalchemy import select as _sel
-                            from datetime import datetime as _dt, timezone as _tz
-                            _dl_count, _days = 0, None
+                        label = "backup"
+                    logger.info("  Attempting DV360 video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
+
+                    # PO-first: first attempt when proxy enabled uses no proxy and no cookies
+                    if i == 0 and proxy_enabled and proxy_url:
+                        attempt_proxy: Optional[str] = None
+                    else:
+                        attempt_proxy = proxy_url if proxy_enabled else None
+
+                    try:
+                        await _do_download(info_dict, proxy=attempt_proxy, cookie_data=cookie)
+
+                        _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"}
+                        matches = [
+                            m for m in glob.glob(f"{tmp_base}.*")
+                            if os.path.getsize(m) > 0 and os.path.splitext(m)[1].lower() in _VIDEO_EXTS
+                        ]
+                        actual_path = matches[0] if matches else None
+                        if actual_path:
+                            size_mb = os.path.getsize(actual_path) / (1024 * 1024)
+                            duration = get_video_duration(actual_path)
+                            served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
+                            logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, label)
                             try:
-                                async with _gsf2()() as _stats_db:
-                                    _cfg = (await _stats_db.execute(_sel(_SC2).limit(1))).scalar_one_or_none()
-                                    if _cfg:
-                                        _dl_count = _cfg.youtube_cookies_download_count or 0
-                                        if _cfg.youtube_cookies_refreshed_at:
-                                            _days = (_dt.now(_tz.utc) - _cfg.youtube_cookies_refreshed_at).days
-                            except Exception:
-                                pass
-                            _stats = f"expired after {_dl_count} video{'s' if _dl_count != 1 else ''}"
-                            if _days is not None:
-                                _stats += f" and {_days} day{'s' if _days != 1 else ''}"
-                            await create_superadmin_notification(
-                                type="COOKIE_FAILED",
-                                title="YouTube cookies expired",
-                                message=f"yt-dlp download aborted — YouTube cookies are no longer valid. Update cookies in Admin settings. ({_stats})",
-                                data={"deeplink": "/configuration/admin"},
-                            )
-                        except Exception as notif_err:
-                            logger.warning("Failed to send COOKIE_FAILED notification: %s", notif_err)
-                    raise
-                except Exception as e:
-                    err_str = str(e)
-                    is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
-                    if is_format_error:
-                        logger.warning("  No video formats available for %s — skipping", youtube_video_id)
-                        break
-                    if i < len(attempts) - 1:
-                        logger.info("  %s cookies failed for %s, trying next... (%s: %s)", label, youtube_video_id, type(e).__name__, e)
-                        continue
-                    logger.warning("  Failed to download DV360 video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
+                                from sqlalchemy import update as _sa_update
+                                from app.models.system_config import SystemConfig as _SC
+                                from app.db.base import get_session_factory as _gsf
+                                async with _gsf()() as _sc_db:
+                                    _upd_vals: dict = {"youtube_cookies_download_count": _SC.youtube_cookies_download_count + 1}
+                                    if label == "primary":
+                                        _upd_vals["youtube_cookies_runtime_expired"] = False
+                                    elif label == "backup":
+                                        _upd_vals["youtube_cookies_backup_runtime_expired"] = False
+                                    await _sc_db.execute(_sa_update(_SC).values(**_upd_vals))
+                                    await _sc_db.commit()
+                            except Exception as _cnt_err:
+                                logger.debug("Could not increment YT download counter: %s", _cnt_err)
+                            from app.services.sync.thumbnail_utils import extract_first_frame_and_upload
+                            thumb_path = f"creatives/{org_id}/thumb_dv360_{safe_id}.jpg"
+                            frame_thumb = None
+                            if not obj_storage.file_exists(thumb_path):
+                                frame_thumb = await extract_first_frame_and_upload(actual_path, org_id, ad_id, "dv360", obj_storage)
+                            return duration, served_url, frame_thumb
+                        else:
+                            logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
+                    except _CookiesExpiredError:
+                        if i < len(attempts) - 1:
+                            logger.info("  %s cookies expired for %s — trying backup slot", label, youtube_video_id)
+                            continue
+                        logger.warning("  All cookie slots expired for %s — aborting", youtube_video_id)
+                        if cookies:
+                            try:
+                                from app.services.notifications import create_superadmin_notification
+                                from app.models.system_config import SystemConfig as _SC2
+                                from app.db.base import get_session_factory as _gsf2
+                                from sqlalchemy import select as _sel
+                                from datetime import datetime as _dt, timezone as _tz
+                                _dl_count, _days = 0, None
+                                try:
+                                    async with _gsf2()() as _stats_db:
+                                        _cfg = (await _stats_db.execute(_sel(_SC2).limit(1))).scalar_one_or_none()
+                                        if _cfg:
+                                            _dl_count = _cfg.youtube_cookies_download_count or 0
+                                            if _cfg.youtube_cookies_refreshed_at:
+                                                _days = (_dt.now(_tz.utc) - _cfg.youtube_cookies_refreshed_at).days
+                                except Exception:
+                                    pass
+                                _stats = f"expired after {_dl_count} video{'s' if _dl_count != 1 else ''}"
+                                if _days is not None:
+                                    _stats += f" and {_days} day{'s' if _days != 1 else ''}"
+                                await create_superadmin_notification(
+                                    type="COOKIE_FAILED",
+                                    title="YouTube cookies expired",
+                                    message=f"yt-dlp download aborted — YouTube cookies are no longer valid. Update cookies in Admin settings. ({_stats})",
+                                    data={"deeplink": "/configuration/admin"},
+                                )
+                            except Exception as notif_err:
+                                logger.warning("Failed to send COOKIE_FAILED notification: %s", notif_err)
+                        raise
+                    except Exception as e:
+                        err_str = str(e)
+                        is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
+                        if is_format_error:
+                            logger.warning("  No video formats available for %s — skipping", youtube_video_id)
+                            break
+                        if i < len(attempts) - 1:
+                            logger.info("  %s cookies failed for %s, trying next... (%s: %s)", label, youtube_video_id, type(e).__name__, e)
+                            continue
+                        logger.warning("  Failed to download DV360 video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
