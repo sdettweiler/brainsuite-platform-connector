@@ -1,82 +1,9 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { AuthService } from '../../core/services/auth.service';
-
-interface ConfigNav {
-  path: string;
-  label: string;
-  icon: string;
-}
+import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet],
-  template: `
-    <div class="config-layout">
-      <aside class="config-nav">
-        <div class="config-nav-title">Configuration</div>
-        <nav>
-          <a
-            *ngFor="let item of navItems"
-            [routerLink]="item.path"
-            routerLinkActive="active"
-            class="config-nav-item"
-          >
-            <i class="bi" [ngClass]="'bi-' + item.icon"></i>
-            <span>{{ item.label }}</span>
-          </a>
-        </nav>
-      </aside>
-
-      <main class="config-content">
-        <router-outlet></router-outlet>
-      </main>
-    </div>
-  `,
-  styles: [`
-    .config-layout { display: flex; height: 100%; overflow: hidden; }
-
-    .config-nav {
-      width: 220px; flex-shrink: 0; border-right: 1px solid var(--border);
-      padding: 24px 0; background: var(--bg-card);
-    }
-
-    .config-nav-title {
-      padding: 0 16px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 1px; color: var(--text-muted);
-    }
-
-    .config-nav-item {
-      display: flex; align-items: center; gap: 10px; padding: 10px 16px;
-      text-decoration: none; color: var(--text-secondary); font-size: 14px; transition: all 0.15s;
-      i { font-size: 18px; }
-      &:hover { background: var(--bg-secondary); color: var(--text-primary); }
-      &.active { background: var(--accent-light); color: var(--accent); font-weight: 500; }
-    }
-
-    .config-content { flex: 1; overflow-y: auto; }
-  `],
+  imports: [RouterOutlet],
+  template: `<router-outlet></router-outlet>`,
 })
-export class ConfigurationShellComponent implements OnInit {
-  navItems: ConfigNav[] = [];
-
-  private baseNavItems: ConfigNav[] = [
-    { path: 'organization', label: 'Organization & Users', icon: 'building' },
-    { path: 'metadata', label: 'Metadata Fields', icon: 'sliders' },
-    { path: 'platforms', label: 'Platform Connections', icon: 'link-45deg' },
-    { path: 'brainsuite-apps', label: 'Brainsuite Apps', icon: 'cpu' },
-  ];
-
-  constructor(private authService: AuthService) {}
-
-  ngOnInit(): void {
-    this.authService.currentUser$.subscribe(user => {
-      this.navItems = [...this.baseNavItems];
-      if (user?.is_superuser) {
-        this.navItems.push({ path: 'admin', label: 'Admin', icon: 'shield-lock' });
-        this.navItems.push({ path: 'jobs', label: 'Job Monitor', icon: 'activity' });
-      }
-    });
-  }
-}
+export class ConfigurationShellComponent {}

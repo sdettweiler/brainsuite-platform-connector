@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subscription } from 'rxjs';
 import { ThemeService } from '../../services/theme.service';
+import { AuthService } from '../../services/auth.service';
 
 interface NavItem {
   label: string;
@@ -11,6 +12,7 @@ interface NavItem {
   route: string;
   exact?: boolean;
   separator?: boolean;
+  isChild?: boolean;
 }
 
 @Component({
@@ -40,13 +42,15 @@ interface NavItem {
 
       <nav class="sidebar-nav">
         <ng-container *ngFor="let item of navItems">
-          <div class="nav-separator" *ngIf="item.separator"></div>
+          <div class="nav-separator" *ngIf="item.separator && !item.isChild"></div>
           <a
+            *ngIf="!item.isChild || !collapsed"
             class="nav-item"
+            [class.nav-child]="item.isChild"
             [routerLink]="item.route"
             routerLinkActive="active"
             [routerLinkActiveOptions]="{ exact: !!item.exact }"
-            [matTooltip]="collapsed ? item.label : ''"
+            [matTooltip]="(collapsed || item.isChild) ? item.label : ''"
             matTooltipPosition="right"
           >
             <i class="bi nav-icon" [ngClass]="'bi-' + item.icon"></i>
@@ -168,6 +172,12 @@ interface NavItem {
     .nav-icon { font-size: 20px; width: 20px; height: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
     .nav-label { font-size: 14px; }
 
+    .nav-item.nav-child {
+      padding: 7px 12px 7px 32px;
+    }
+    .nav-item.nav-child .nav-icon { font-size: 15px; width: 15px; height: 15px; }
+    .nav-item.nav-child .nav-label { font-size: 13px; }
+
     .sidebar.collapsed .nav-label { display: none; }
   `],
 })
@@ -176,22 +186,37 @@ export class SidebarComponent implements OnInit, OnDestroy {
   @Output() toggleCollapse = new EventEmitter<void>();
 
   isDark = true;
+  navItems: NavItem[] = [];
   private themeSub!: Subscription;
+  private authSub!: Subscription;
 
-  constructor(private themeService: ThemeService) {}
+  constructor(private themeService: ThemeService, private authService: AuthService) {}
 
   ngOnInit(): void {
     this.themeSub = this.themeService.currentTheme$.subscribe(
       t => this.isDark = t === 'dark-theme'
     );
+    this.authSub = this.authService.currentUser$.subscribe(user => {
+      const isSuper = user?.is_superuser ?? false;
+      this.navItems = [
+        { label: 'Home',       icon: 'house',            route: '/home' },
+        { label: 'Dashboard',  icon: 'bar-chart',        route: '/dashboard' },
+        { label: 'Comparison', icon: 'arrow-left-right', route: '/comparison' },
+        { label: 'Configuration', icon: 'gear',          route: '/configuration', separator: true },
+        { label: 'Organization & Users', icon: 'building',    route: '/configuration/organization', isChild: true },
+        { label: 'Metadata Fields',      icon: 'sliders',     route: '/configuration/metadata',     isChild: true },
+        { label: 'Platform Connections', icon: 'link-45deg',  route: '/configuration/platforms',    isChild: true },
+        { label: 'Brainsuite Apps',      icon: 'cpu',         route: '/configuration/brainsuite-apps', isChild: true },
+        ...(isSuper ? [
+          { label: 'Admin',       icon: 'shield-lock', route: '/configuration/admin', isChild: true } as NavItem,
+          { label: 'Job Monitor', icon: 'activity',    route: '/configuration/jobs',  isChild: true } as NavItem,
+        ] : []),
+      ];
+    });
   }
 
-  ngOnDestroy(): void { this.themeSub?.unsubscribe(); }
-
-  navItems: NavItem[] = [
-    { label: 'Home',        icon: 'house',              route: '/home' },
-    { label: 'Dashboard',   icon: 'bar-chart',          route: '/dashboard' },
-    { label: 'Comparison',  icon: 'arrow-left-right',   route: '/comparison' },
-    { label: 'Configuration', icon: 'gear',             route: '/configuration', separator: true },
-  ];
+  ngOnDestroy(): void {
+    this.themeSub?.unsubscribe();
+    this.authSub?.unsubscribe();
+  }
 }
