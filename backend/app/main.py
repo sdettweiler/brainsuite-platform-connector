@@ -92,6 +92,48 @@ async def _background_startup():
     except Exception as e:
         logger.warning(f"Scheduler startup failed (non-fatal): {e}")
 
+    await _auto_resume_interrupted_jobs()
+
+
+async def _auto_resume_interrupted_jobs():
+    """Re-enqueue INTERRUPTED jobs that have stored params so they resume automatically."""
+    logger = logging.getLogger(__name__)
+    try:
+        import uuid as _uuid
+        from sqlalchemy import select as _select
+        from app.db.base import get_session_factory as _gsf
+        from app.models.jobs import BackgroundJob as _BJ
+        from app.services.sync.job_tracker import create_background_job as _cbj
+
+        async with _gsf()() as db:
+            result = await db.execute(
+                _select(_BJ)
+                .where(_BJ.status == "INTERRUPTED", _BJ.params.isnot(None))
+                .order_by(_BJ.started_at.desc())
+                .limit(50)
+            )
+            jobs = result.scalars().all()
+
+        if not jobs:
+            return
+        logger.info("Auto-resume: found %d INTERRUPTED jobs with params", len(jobs))
+
+        for job in jobs:
+            try:
+                new_id = await _cbj(
+                    job_type=job.job_type,
+                    org_id=job.org_id,
+                    platform_connection_id=job.platform_connection_id,
+                    params=job.params,
+                )
+                from app.api.v1.endpoints.jobs import _dispatch_job_retry
+                await _dispatch_job_retry(job.job_type, job.params, str(new_id), None, None, old_output=job.output)
+                logger.info("Auto-resume: dispatched %s -> new job %s (old: %s)", job.job_type, new_id, job.id)
+            except Exception as exc:
+                logger.warning("Auto-resume: failed to dispatch job %s (%s): %s", job.id, job.job_type, exc)
+    except Exception as exc:
+        logger.warning("Auto-resume startup failed (non-fatal): %s", exc)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -100,11 +142,16 @@ async def lifespan(app: FastAPI):
 
     # Mark any jobs left RUNNING from a previous instance as INTERRUPTED
     try:
+        from datetime import datetime as _dt
         async with get_session_factory()() as db:
             await db.execute(
                 update(BackgroundJob)
                 .where(BackgroundJob.status == "RUNNING")
-                .values(status="INTERRUPTED")
+                .values(
+                    status="INTERRUPTED",
+                    error={"type": "ProcessInterrupted", "message": "Process restarted while job was running", "traceback": ""},
+                    ended_at=_dt.utcnow(),
+                )
             )
             await db.commit()
         logger.info("Startup: marked leftover RUNNING jobs as INTERRUPTED")

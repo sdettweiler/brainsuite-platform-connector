@@ -164,8 +164,8 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
     if (this.isOpen) this.closed.emit();
   }
 
-  // Subscribe to jobs$ so the panel re-fetches when an SSE event updates the open job.
-  // CONTEXT.md Specifics: panel should live-update for RUNNING jobs.
+  // Subscribe to jobs$ so the panel silently refreshes when an SSE event updates the open job.
+  // clearFirst=false so existing data stays visible during the background fetch (no flicker).
   ngOnInit(): void {
     this.jobMonitorService.jobs$
       .pipe(
@@ -174,7 +174,7 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
       )
       .subscribe(() => {
         if (this.isOpen && this.jobId) {
-          this.loadJobDetail();
+          this.loadJobDetail(false);
         }
       });
   }
@@ -183,7 +183,7 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
     const openChange = changes['isOpen'];
     const idChange = changes['jobId'];
     if ((openChange?.currentValue || idChange) && this.isOpen && this.jobId) {
-      this.loadJobDetail();
+      this.loadJobDetail(true);
     }
     if (!this.isOpen) {
       this.jobDetail = null;
@@ -198,9 +198,11 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
   onBackdropClick(): void { this.closed.emit(); }
   onClose(): void { this.closed.emit(); }
 
-  private loadJobDetail(): void {
+  private loadJobDetail(clearFirst = false): void {
+    if (clearFirst) {
+      this.jobDetail = null;
+    }
     this.loading = true;
-    this.jobDetail = null;
     this.jobMonitorService.getJobDetail(this.jobId!)
       .pipe(takeUntil(this.destroy$))
       .subscribe({

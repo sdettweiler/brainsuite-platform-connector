@@ -343,8 +343,8 @@ async def _dispatch_job_retry(
     job_type: str,
     params: dict,
     new_job_id: str,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession,
+    background_tasks,  # Optional — not used by any dispatch path
+    db,               # Optional — not used by any dispatch path
     old_output: Optional[dict] = None,
 ) -> None:
     """Dispatch a retry job. Each service wires up its job_type in Wave 2."""

@@ -776,11 +776,26 @@ class DV360SyncService:
                 query_id = resume_query_id
                 logger.info(f"Bid Manager v2 [{label}]: Resuming existing query {query_id}")
             else:
-                create_resp = await client.post(
-                    f"{BID_MANAGER_API_BASE}/queries",
-                    headers=headers,
-                    json=query_body,
-                )
+                # Retry up to 3 times for transient network errors (ConnectError, etc.)
+                last_connect_exc = None
+                for _attempt in range(3):
+                    try:
+                        create_resp = await client.post(
+                            f"{BID_MANAGER_API_BASE}/queries",
+                            headers=headers,
+                            json=query_body,
+                        )
+                        last_connect_exc = None
+                        break
+                    except httpx.ConnectError as exc:
+                        last_connect_exc = exc
+                        wait = 5 * (2 ** _attempt)
+                        logger.warning("Bid Manager v2 [%s]: ConnectError on create attempt %d, retrying in %ds: %s", label, _attempt + 1, wait, exc)
+                        await asyncio.sleep(wait)
+                if last_connect_exc is not None:
+                    logger.error("Bid Manager v2 [%s]: ConnectError after 3 attempts: %s", label, last_connect_exc)
+                    return None
+
                 if create_resp.status_code != 200:
                     logger.error(f"Bid Manager v2 [{label}]: Create query failed ({create_resp.status_code}): {create_resp.text[:500]}")
                     return None
@@ -1838,7 +1853,7 @@ class DV360SyncService:
 
         if thumb_results:
             for ad_id, served_url in thumb_results.items():
-                set_vals = {"thumbnail_url": served_url, "asset_url": served_url}
+                set_vals = {"thumbnail_url": served_url}
                 stmt = (
                     sa_update(Dv360RawPerformance)
                     .where(
@@ -1955,7 +1970,8 @@ class DV360SyncService:
         logger.info(f"  Asset downloads complete: {len(downloaded_videos)} videos, {len(thumb_results)} thumbnails")
 
         # Propagate downloaded URLs to CreativeAsset and reset autofill tracking
-        all_downloaded: dict[str, str] = {**thumb_results, **{ad_id: r["asset_url"] for ad_id, r in video_results.items() if r.get("asset_url")}}
+        # Only propagate video downloads to asset_url — images/thumbnails stay as thumbnail_url only
+        all_downloaded: dict[str, str] = {ad_id: r["asset_url"] for ad_id, r in video_results.items() if r.get("asset_url")}
         if all_downloaded:
             from sqlalchemy import select, or_
             from sqlalchemy import update as _sa_update
