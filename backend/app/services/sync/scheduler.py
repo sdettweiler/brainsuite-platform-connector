@@ -508,12 +508,8 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict) -> N
                 "platform": "GOOGLE_ADS",
                 "platform_connection_id": str(connection.id),
             },
-        )
-        await update_background_job(
-            bg_job_id,
-            status="RUNNING",
+            initial_status="RUNNING",
             progress_total=len(asset_queue),
-            progress_current=0,
         )
 
         # Resume support: find assets already downloaded so we can skip them
@@ -653,12 +649,8 @@ async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None)
                 "platform": "META",
                 "platform_connection_id": str(conn_uuid),
             },
-        )
-        await update_background_job(
-            bg_job_id,
-            status="RUNNING",
+            initial_status="RUNNING",
             progress_total=len(ad_ids),
-            progress_current=0,
         )
 
         # Phase 17: Process ad_ids one at a time; increment progress after each success (D-05, D-15)
@@ -725,12 +717,8 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=Non
                 "platform": "TIKTOK",
                 "platform_connection_id": str(conn_uuid),
             },
-        )
-        await update_background_job(
-            bg_job_id,
-            status="RUNNING",
+            initial_status="RUNNING",
             progress_total=len(ad_ids),
-            progress_current=0,
         )
 
         # Phase 17: Process ad_ids one at a time; increment progress after each success (D-05, D-15)
@@ -810,12 +798,8 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
                 "platform": "DV360",
                 "platform_connection_id": str(connection.id),
             },
-        )
-        await update_background_job(
-            bg_job_id,
-            status="RUNNING",
+            initial_status="RUNNING",
             progress_total=asset_count,
-            progress_current=0,
         )
 
         downloaded = []
