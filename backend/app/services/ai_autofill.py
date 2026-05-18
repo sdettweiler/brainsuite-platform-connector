@@ -136,11 +136,20 @@ async def _run_autofill_for_asset_inner(asset_id: uuid.UUID, org_id: uuid.UUID, 
     import traceback as _tb
 
     # Never run autofill on an asset with no downloaded content — asset_url must
-    # be a non-empty served URL (not a raw CDN URL or empty string).
+    # be a served URL in our object storage (starts with /objects/).
     async with get_session_factory()() as _pre_db:
         _asset = await _pre_db.get(CreativeAsset, asset_id)
-        if not _asset or not (_asset.asset_url or "").strip():
-            return
+        _url = _asset.asset_url if _asset else None
+        _has_served_url = bool(_url and _url.startswith("/objects/"))
+
+    if not _has_served_url:
+        if existing_job_id:
+            await update_background_job(
+                existing_job_id,
+                status="FAILED",
+                error={"type": "NoServedAsset", "message": "Asset has no downloaded content in object storage — video download may still be pending"},
+            )
+        return
 
     if existing_job_id:
         bg_job_id = existing_job_id
