@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Download Performance & Tech Debt
-status: executing
-stopped_at: Phase 24 context gathered
-last_updated: "2026-05-18T17:28:54.862Z"
-last_activity: 2026-05-18 -- Phase 24 planning complete
+status: planning
+stopped_at: Phase 25 context gathered
+last_updated: "2026-05-18T18:08:23.605Z"
+last_activity: 2026-05-18 -- Phase 24 complete (22 tests passing, all PERF requirements satisfied)
 progress:
   total_phases: 3
   completed_phases: 1
@@ -25,16 +25,16 @@ See: .planning/PROJECT.md (updated 2026-05-18 — milestone v1.5 started)
 
 ## Current Position
 
-Phase: Phase 24 — Download Performance Backend (not started)
+Phase: Phase 25 — Configurable Concurrency (not started)
 Plan: —
-Status: Ready to execute
-Last activity: 2026-05-18 -- Phase 24 planning complete
+Status: Ready to plan
+Last activity: 2026-05-18 -- Phase 24 complete (22 tests passing, all PERF requirements satisfied)
 
 ## Progress Bar
 
 ```
-v1.5: [░░░░░░░░░░] 0 / 3 phases complete
-      Phase 24: Download Performance Backend     [ not started ]
+v1.5: [███░░░░░░░] 1 / 3 phases complete
+      Phase 24: Download Performance Backend     [ complete ]
       Phase 25: Configurable Concurrency         [ not started ]
       Phase 26: Tech Debt Closure                [ not started ]
 ```
@@ -57,6 +57,7 @@ v1.5: [░░░░░░░░░░] 0 / 3 phases complete
 - Phase 22 Plan 01: metadata filter backend (explicit 400 for malformed filter, not silent skip; two-layer org guard T-22-01; alembic upgrade e8f9a0b1c2d3 not upgrade head due to DEBT-01)
 - Phase 23 Plan 01: null_duration_count computed only when duration filter active (D-07) to avoid COUNT on every dashboard load; backfill gated by has_null_duration_assets > 0 at each sync site; ix_creative_assets_org_format_duration composite index chains onto f8a2b3c4d5e6
 - v1.5 Phase 24 groups PERF-01/03/04/05/06 together — all modify the same yt-dlp download call chain; must ship atomically so retry order, cache, timeout, and split are internally consistent
+- v1.5 Phase 24 (complete): proxy_cache.py module created; dv360_sync.py and google_ads_sync.py refactored with extraction/download split, PO-first retry, conditional batch sleep (DV360 only), socket_timeout=10, remote_components parity
 - v1.5 Phase 25 (PERF-02) depends on Phase 24 because the semaphore wraps the call chain that Phase 24 establishes; also needs a new SystemConfig column (DB migration) and SuperAdmin UI field
 - v1.5 Phase 26 (DEBT-01 + PROXY-02): Alembic merge must run after all v1.5 migrations exist; PROXY-02 is environment troubleshooting, not new code — pair with DEBT-01 as gap-closure work
 
@@ -84,9 +85,9 @@ Items carried to v1.6 or backlog:
 
 ## Session Continuity
 
-Last session: 2026-05-18T17:28:54.803Z
-Stopped at: Phase 24 context gathered
-Resume file: None
+Last session: 2026-05-18T18:08:23.590Z
+Stopped at: Phase 25 context gathered
+Resume file: .planning/phases/25-configurable-concurrency/25-CONTEXT.md
 
 ## Quick Tasks Completed
 
@@ -96,4 +97,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 24` to plan Phase 24: Download Performance Backend
+- Run `/gsd-plan-phase 25` to plan Phase 25: Configurable Concurrency
