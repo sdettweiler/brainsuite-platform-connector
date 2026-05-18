@@ -298,7 +298,15 @@ Plans:
   3. A callout note shows how many assets lack duration data (e.g. "X assets have no duration data and are excluded from this filter")
   4. An async background backfill job populates video_duration for legacy NULL-duration assets in batches without blocking sync or scoring pipelines
   5. The duration filter composes correctly with the metadata and account filters from Phase 22 (all three active simultaneously returns correct results)
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+
+**Wave 1**
+- [ ] 23-01-PLAN.md — Backend: video_utils extraction + GET /dashboard/duration-bounds + duration_min/max params + null_duration_count + backfill_job + 8 scheduler.py post-sync triggers + Wave-0 tests (DASH-03)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 23-02-PLAN.md — Frontend: duration slider state + formatDuration helper + loadDurationBounds + slider template + chip + NULL callout + CSS + Visual UAT checkpoint (DASH-03)
+
 **UI hint**: yes
 
 ## Progress
@@ -330,7 +338,7 @@ Plans:
 | 20. Proxy Download Infrastructure | v1.4 | 0/2 | Planned | - |
 | 21. Proxy Admin UI | v1.4 | 3/3 | Complete | 2026-05-15 |
 | 22. Dashboard Metadata + Account Filters | v1.4 | 1/2 | In Progress|  |
-| 23. Dashboard Duration Filter + Backfill | v1.4 | 0/TBD | Not started | - |
+| 23. Dashboard Duration Filter + Backfill | v1.4 | 0/2 | Planned | - |
 
 ## Backlog
 
