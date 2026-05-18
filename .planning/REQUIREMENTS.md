@@ -37,11 +37,11 @@
 
 | REQ-ID | Phase | Notes |
 |--------|-------|-------|
-| PERF-01 | TBD | |
-| PERF-02 | TBD | |
-| PERF-03 | TBD | |
-| PERF-04 | TBD | |
-| PERF-05 | TBD | |
-| PERF-06 | TBD | |
-| DEBT-01 | TBD | |
-| PROXY-02 | TBD | |
+| PERF-01 | Phase 24 | Download Performance Backend |
+| PERF-02 | Phase 25 | Configurable Concurrency |
+| PERF-03 | Phase 24 | Download Performance Backend |
+| PERF-04 | Phase 24 | Download Performance Backend |
+| PERF-05 | Phase 24 | Download Performance Backend |
+| PERF-06 | Phase 24 | Download Performance Backend |
+| DEBT-01 | Phase 26 | Tech Debt Closure |
+| PROXY-02 | Phase 26 | Tech Debt Closure |

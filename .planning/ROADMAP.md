@@ -7,6 +7,7 @@
 - ✅ **v1.2 BrainSuite Configuration** — Phases 11–14 (shipped 2026-04-28) — [archive](milestones/v1.2-ROADMAP.md)
 - ✅ **v1.3 SuperAdmin Monitoring & TikTok Downloads** — Phases 15–19.3 (shipped 2026-05-13) — [archive](milestones/v1.3-ROADMAP.md)
 - ✅ **v1.4 YouTube Downloads & Dashboard Filters** — Phases 20–23 (shipped 2026-05-18) — [archive](milestones/v1.4-ROADMAP.md)
+- 🚧 **v1.5 Download Performance & Tech Debt** — Phases 24–26 (in progress)
 
 ## Phases
 
@@ -66,6 +67,49 @@
 
 </details>
 
+### v1.5 Download Performance & Tech Debt (Phases 24–26)
+
+- [ ] **Phase 24: Download Performance Backend** - Backend-only optimizations: extraction/download split, PO-first retry, proxy config cache, DV360 sleep reduction, socket timeout tuning
+- [ ] **Phase 25: Configurable Concurrency** - SuperAdmin UI + backend semaphore for max_concurrent_downloads
+- [ ] **Phase 26: Tech Debt Closure** - Alembic 4-head merge + Google Ads live download validation
+
+## Phase Details
+
+### Phase 24: Download Performance Backend
+**Goal**: DV360 and Google Ads video downloads complete 3–5x faster by routing only stream bytes through the proxy, executing proxy calls in an optimized retry order, and eliminating connection and sleep bottlenecks
+**Depends on**: Phase 23 (proxy download infrastructure established)
+**Requirements**: PERF-01, PERF-03, PERF-04, PERF-05, PERF-06
+**Success Criteria** (what must be TRUE):
+  1. A DV360 download job completes in measurably less wall-clock time — proxy overhead of 7–15s per video is gone because yt-dlp info extraction runs direct and only stream bytes touch the proxy
+  2. A download attempt with a PO token succeeds without ever routing through the residential proxy when the video is publicly accessible — proxy is reserved for the fallback path
+  3. A stuck proxy connection fails within 10 seconds and the job continues to the next asset rather than blocking the download queue for up to 30 seconds
+  4. DV360 downloads do not pause between assets when proxy sticky-session pinning is active — no artificial inter-download sleep visible in job logs
+  5. The proxy config (URL + enabled flag) is read from DB and decrypted at most once per 60-second window regardless of how many concurrent download calls are in flight
+**Plans**: TBD
+
+### Phase 25: Configurable Concurrency
+**Goal**: SuperAdmin can tune maximum parallel downloads via the admin UI, and all platforms (DV360 and Google Ads) respect the limit via a shared asyncio semaphore
+**Depends on**: Phase 24 (download call chain established before semaphore wraps it)
+**Requirements**: PERF-02
+**Success Criteria** (what must be TRUE):
+  1. A SuperAdmin can open /configuration/admin and set max concurrent downloads to any integer between 1 and 10; the setting persists across server restarts
+  2. When max_concurrent_downloads is set to 1 and two download jobs run simultaneously, the second job's downloads visibly queue behind the first in the monitoring UI rather than both executing in parallel
+  3. A fresh install with no explicit configuration defaults to 3 concurrent downloads without requiring any manual admin action
+  4. Changing the concurrency setting in the UI takes effect for the next download job without a server restart
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 26: Tech Debt Closure
+**Goal**: A developer can run `alembic upgrade head` on a fresh install without errors, and the Google Ads download pipeline is confirmed working end-to-end against a real YouTube video
+**Depends on**: Phase 24, Phase 25 (all migrations for v1.5 must exist before merge)
+**Requirements**: DEBT-01, PROXY-02
+**Success Criteria** (what must be TRUE):
+  1. Running `alembic upgrade head` on a clean database with no prior migrations completes without a "multiple heads" ambiguity error
+  2. Running `alembic history` shows a single linear chain with no branch points
+  3. A Google Ads sync job downloads at least one real YouTube video asset end-to-end in the production-like environment, with the asset appearing in MinIO/S3 storage
+  4. The Google Ads download job log shows the same proxy/PO-token retry sequence that DV360 uses — confirming code path parity
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -96,6 +140,9 @@
 | 21. Proxy Admin UI | v1.4 | 3/3 | Complete | 2026-05-15 |
 | 22. Dashboard Metadata + Account Filters | v1.4 | 2/2 | Complete | 2026-05-15 |
 | 23. Dashboard Duration Filter + Backfill | v1.4 | 2/2 | Complete | 2026-05-18 |
+| 24. Download Performance Backend | v1.5 | 0/? | Not started | - |
+| 25. Configurable Concurrency | v1.5 | 0/? | Not started | - |
+| 26. Tech Debt Closure | v1.5 | 0/? | Not started | - |
 
 ## Backlog
 
