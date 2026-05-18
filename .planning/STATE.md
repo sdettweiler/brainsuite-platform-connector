@@ -1,7 +1,7 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.5
-milestone_name: TBD
+milestone_name: Download Performance & Tech Debt
 status: planning
 last_updated: "2026-05-18T00:00:00.000Z"
 last_activity: 2026-05-18
@@ -17,20 +17,23 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-18 after v1.4 milestone)
+See: .planning/PROJECT.md (updated 2026-05-18 — milestone v1.5 started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Planning v1.5 milestone
+**Current focus:** v1.5 — Download Performance & Tech Debt
 
 ## Current Position
 
-Milestone v1.4 archived 2026-05-18. Planning v1.5.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-18 — Milestone v1.5 started
 
 ## Progress Bar
 
 ```
-v1.4: [x] Phase 20  [x] Phase 21  [x] Phase 22  [x] Phase 23
-      4 / 4 phases complete — SHIPPED 2026-05-18
+v1.5: (phases TBD — roadmap in progress)
+      0 / 0 phases complete
 ```
 
 ## Accumulated Context

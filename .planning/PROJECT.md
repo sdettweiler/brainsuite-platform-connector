@@ -10,7 +10,7 @@ A user can connect all their ad accounts, see every creative's performance metri
 
 ## Current State
 
-**Version:** v1.4 — shipped 2026-05-18
+**Version:** v1.5 — in progress (started 2026-05-18)
 
 **Stack:** Angular 17 + FastAPI + PostgreSQL + Redis + MinIO — fully containerized via Docker Compose
 **Deployment:** Any cloud host or local dev via `docker-compose up`
@@ -92,15 +92,37 @@ A user can connect all their ad accounts, see every creative's performance metri
 - ✓ Dashboard ad account multi-select filter with platform grouping (DASH-02) — v1.4 (Phase 22)
 - ✓ Dashboard video duration range slider with async backfill, NULL callout, ffprobe extraction (DASH-03) — v1.4 (Phase 23)
 
-### Active (v1.5 candidates)
+## Current Milestone: v1.5 — Download Performance & Tech Debt
 
-- TikTok live-run UAT confirmation (TKTOK-01/02 — pending live sync)
-- Google Ads proxy live validation (PROXY-02 — environment-blocked; code verified identical to DV360 which passed)
-- SSE Redis pub/sub upgrade at 50+ concurrent SuperAdmins (SSE-03)
-- Account-level metadata defaults: connection_metadata_defaults table + account config UI + lookup fallback (META-01, META-02)
-- Alembic migration 4-head merge — `alembic upgrade head` ambiguity on fresh installs (DEBT-01)
+**Goal:** Cut video download wall-clock time 3–5× via parallel + split-proxy architecture, and clear outstanding tech debt before next feature work.
+
+**Target features:**
+- Extraction/download split — info extraction runs direct (no proxy); only stream bytes route through residential proxy → saves 7–15s per video
+- Configurable parallel downloads — SuperAdmin sets max concurrent downloads; semaphore-guarded; default 3
+- PO-first retry order — cookieless+PO → PO+proxy → cookies+proxy
+- Proxy config in-memory cache (60s TTL) — no DB decrypt per video
+- DV360 sleep reduction — drop 4s inter-download sleep when proxy+session pinning active
+- socket_timeout tuning — 10s for proxy calls (down from 30s)
+- DEBT-01: Alembic 4-head merge — fix `alembic upgrade head` ambiguity on fresh installs
+- PROXY-02: Google Ads live download validation (environment unblocked)
+
+### Active (v1.5)
+
+- PERF-01: Download extraction/stream split — info extraction without proxy, stream download with proxy
+- PERF-02: Configurable parallel downloads via SuperAdmin (max_concurrent_downloads, default 3)
+- PERF-03: PO-first retry order — cookieless+PO → PO+proxy → cookies+proxy
+- PERF-04: Proxy config in-memory cache (60s TTL) — no DB decrypt per video
+- PERF-05: DV360 sleep reduction when proxy+session pinning active
+- PERF-06: socket_timeout tuned to 10s for proxy calls
+- DEBT-01: Alembic 4-head merge — fix `alembic upgrade head` ambiguity on fresh installs
+- PROXY-02: Google Ads live download validation
 
 ### Deferred
+
+- TikTok live-run UAT confirmation (TKTOK-01/02 — pending live sync)
+- SSE Redis pub/sub upgrade at 50+ concurrent SuperAdmins (SSE-03)
+- Account-level metadata defaults: connection_metadata_defaults table + account config UI + lookup fallback (META-01, META-02)
+- Dashboard filter state URL persistence
 
 ### Out of Scope
 
@@ -185,4 +207,4 @@ A user can connect all their ad accounts, see every creative's performance metri
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-18 after v1.4 milestone*
+*Last updated: 2026-05-18 — milestone v1.5 started*
