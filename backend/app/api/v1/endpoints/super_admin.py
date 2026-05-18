@@ -367,7 +367,7 @@ async def test_proxy_config(
 
     try:
         start = time.time()
-        async with httpx.AsyncClient(proxy=proxy_url) as client:
+        async with httpx.AsyncClient(proxies=proxy_url) as client:
             response = await client.get("https://www.youtube.com/", timeout=5.0)
         latency_ms = int((time.time() - start) * 1000)
         success = response.status_code == 200
