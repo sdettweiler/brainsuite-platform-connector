@@ -359,7 +359,7 @@ class GoogleAdsSyncService:
                 "outtmpl": f"{tmp_base}.%(ext)s",
                 "quiet": True,
                 "socket_timeout": 10,
-                "remote_components": "ejs:github",
+                "remote_components": ["ejs:github"],
                 "ignore_no_formats_error": True,
             }
 
@@ -427,7 +427,7 @@ class GoogleAdsSyncService:
                 "socket_timeout": 10,
                 "ignore_no_formats_error": True,
                 "logger": _YDLLogger(),
-                "remote_components": "ejs:github",
+                "remote_components": ["ejs:github"],
             }
             if proxy:
                 ydl_opts["proxy"] = proxy
