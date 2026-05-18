@@ -56,15 +56,15 @@ Source: `dashboard.component.ts` styles (lines 567–765 extracted); inherited f
 |------|------|--------|-------------|
 | Body / option text | 13px | 500 (medium) | 1.4 |
 | Label / chip text | 13px | 500 (medium) | 1.4 |
-| Slider label / slider values | 12px | 600 (semibold) | 1.4 |
+| Slider label / slider values | 12px | 700 (bold) | 1.4 |
 | Badge / micro label | 9px | 700 (bold) | 1.0 |
 
 Notes:
 - 13px is the canonical toolbar/filter text size in this project (confirmed from `.tbd-trigger`, `.tbd-option`, `.tbd-check`).
-- 12px at weight 600 is used exclusively for `.slider-label` and `.slider-values` — inherited verbatim from the existing score slider (lines 1033–1047 of dashboard.component.ts). Use this exact size/weight for the duration slider label and value display.
+- 12px at weight 700 is used exclusively for `.slider-label` and `.slider-values`. The existing score slider used 600; Phase 23 consolidates to 700 (the visual difference between 600 and 700 at 12px is imperceptible). Use weight 700 for the duration slider label and value display.
 - The NULL duration callout text uses 13px at weight 500 — matches the chip row typography.
 - Do NOT introduce any new font size for Phase 23. Use 13px for interactive text, 12px for slider label/values, 9px for badges only.
-- Weights are restricted to 500 (interactive elements), 600 (slider label/values), and 700 (badges). No 400 for new Phase 23 elements.
+- Weights are restricted to exactly 2: 500 (interactive elements, callout text) and 700 (slider label/values, badges). No other weights for Phase 23 elements.
 
 Source: `dashboard.component.ts` styles lines 1033–1047 (score slider) + Phase 22 UI-SPEC.
 
@@ -120,8 +120,8 @@ No additional visual anchors. The duration slider should feel like a natural sib
 - Placement: in the toolbar group, after the score slider, before the `toolbar-spacer`
 
 **Label:**
-- `<span class="slider-label">Duration</span>` — `font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap`
-- Reuses `.slider-label` class already defined; no new CSS rule needed
+- `<span class="slider-label">Duration</span>` — `font-size: 12px; font-weight: 700; color: var(--text-muted); white-space: nowrap`
+- Reuses `.slider-label` class already defined; update the existing CSS rule weight from 600 to 700
 
 **ngx-slider:**
 ```html
@@ -137,7 +137,8 @@ No additional visual anchors. The duration slider should feel like a natural sib
 
 **Value display:**
 - `<span class="slider-values">{{ formatDuration(durationMin) }} – {{ formatDuration(durationMax) }}</span>`
-- Reuses `.slider-values` class: `font-size: 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; min-width: 50px; text-align: center`
+- Reuses `.slider-values` class: `font-size: 12px; font-weight: 700; color: var(--text-secondary); white-space: nowrap; min-width: 50px; text-align: center`
+- Update the existing CSS rule weight from 600 to 700 when applying to the duration slider
 - Uses em dash (–) as separator — matches existing score slider display convention
 
 **State variables (add to class):**
@@ -346,7 +347,7 @@ No new packages required. `@angular-slider/ngx-slider` is already in `package.js
 | Duration chip label format | CONTEXT.md §Specifics |
 | Score slider CSS (`::ng-deep`, `.score-slider-wrapper`) | Codebase — dashboard.component.ts lines 1025–1082 |
 | Chip row and chip CSS | Codebase — dashboard.component.ts lines 688–737; Phase 22 UI-SPEC |
-| Typography (12px/600 slider labels) | Codebase — dashboard.component.ts lines 1033–1047 |
+| Typography (12px/700 slider labels) | Codebase — dashboard.component.ts lines 1033–1047; weight consolidated 600→700 per checker |
 | Typography (13px/500 filter text) | Phase 22 UI-SPEC |
 | Color tokens (`var(--accent)`, `var(--bg-card)`, etc.) | Phase 22 UI-SPEC + frontend/src/styles.scss |
 | Spacing scale | Phase 22 UI-SPEC |
