@@ -1341,7 +1341,11 @@ class DV360SyncService:
                 try:
                     await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))
 
-                    matches = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0]
+                    _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"}
+                    matches = [
+                        m for m in glob.glob(f"{tmp_base}.*")
+                        if os.path.getsize(m) > 0 and os.path.splitext(m)[1].lower() in _VIDEO_EXTS
+                    ]
                     actual_path = matches[0] if matches else None
                     if actual_path:
                         size_mb = os.path.getsize(actual_path) / (1024 * 1024)
