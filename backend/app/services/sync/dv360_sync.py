@@ -1295,6 +1295,7 @@ class DV360SyncService:
             # Proxy applies to both info extraction and stream download phases.
             if proxy_enabled and proxy_url:
                 ydl_opts["proxy"] = proxy_url
+            ydl_opts["remote_components"] = "ejs:github"
             # Accept cookie string directly (T-14-10: never log cookie content)
             cookies_data = cookie_data if cookie_data else ""
             cookie_file = None

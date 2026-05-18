@@ -3,7 +3,7 @@ set -e
 
 # Start bgutil HTTP server in background (required for yt-dlp YouTube PO token solving).
 # The server is cloned to /bgutil during the Docker build; it runs under Deno.
-cd /bgutil/server && deno run --allow-env --allow-net --allow-ffi=. --allow-read=. ../src/main.ts &
+cd /bgutil/server && deno run --allow-env --allow-net --allow-ffi=. --allow-read=. src/main.ts &
 BGUTIL_PID=$!
 cd /app
 
