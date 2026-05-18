@@ -1,8 +1,9 @@
 import { Component, Input, Output, EventEmitter, OnInit, OnDestroy } from '@angular/core';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive, NavigationEnd } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
 import { ThemeService } from '../../services/theme.service';
 import { AuthService } from '../../services/auth.service';
 
@@ -44,7 +45,7 @@ interface NavItem {
         <ng-container *ngFor="let item of navItems">
           <div class="nav-separator" *ngIf="item.separator && !item.isChild"></div>
           <a
-            *ngIf="!item.isChild || !collapsed"
+            *ngIf="!item.isChild || (configOpen && !collapsed)"
             class="nav-item"
             [class.nav-child]="item.isChild"
             [routerLink]="item.route"
@@ -186,13 +187,19 @@ export class SidebarComponent implements OnInit, OnDestroy {
   @Output() toggleCollapse = new EventEmitter<void>();
 
   isDark = true;
+  configOpen = false;
   navItems: NavItem[] = [];
   private themeSub!: Subscription;
   private authSub!: Subscription;
+  private routerSub!: Subscription;
 
-  constructor(private themeService: ThemeService, private authService: AuthService) {}
+  constructor(private themeService: ThemeService, private authService: AuthService, private router: Router) {}
 
   ngOnInit(): void {
+    this.configOpen = this.router.url.startsWith('/configuration');
+    this.routerSub = this.router.events.pipe(filter(e => e instanceof NavigationEnd)).subscribe((e: any) => {
+      this.configOpen = e.urlAfterRedirects.startsWith('/configuration');
+    });
     this.themeSub = this.themeService.currentTheme$.subscribe(
       t => this.isDark = t === 'dark-theme'
     );
@@ -218,5 +225,6 @@ export class SidebarComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.themeSub?.unsubscribe();
     this.authSub?.unsubscribe();
+    this.routerSub?.unsubscribe();
   }
 }
