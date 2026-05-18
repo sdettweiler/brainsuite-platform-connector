@@ -4,8 +4,8 @@ milestone: v1.5
 milestone_name: Download Performance & Tech Debt
 status: executing
 stopped_at: Phase 25 UI-SPEC approved
-last_updated: "2026-05-18T18:43:59.260Z"
-last_activity: 2026-05-18 -- Phase 25 planning complete
+last_updated: "2026-05-18T18:45:03.314Z"
+last_activity: 2026-05-18 -- Phase 25 execution started
 progress:
   total_phases: 3
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 — milestone v1.5 started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** v1.5 — Download Performance & Tech Debt
+**Current focus:** Phase 25 — configurable-concurrency
 
 ## Current Position
 
-Phase: Phase 25 — Configurable Concurrency (not started)
-Plan: —
-Status: Ready to execute
-Last activity: 2026-05-18 -- Phase 25 planning complete
+Phase: 25 (configurable-concurrency) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 25
+Last activity: 2026-05-18 -- Phase 25 execution started
 
 ## Progress Bar
 
