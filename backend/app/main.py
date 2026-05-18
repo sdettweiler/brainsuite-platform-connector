@@ -120,13 +120,20 @@ async def _auto_resume_interrupted_jobs():
 
         for job in jobs:
             try:
+                error_reason = (job.error or {}).get("message", "interrupted")
                 new_id = await _cbj(
                     job_type=job.job_type,
                     org_id=job.org_id,
                     platform_connection_id=job.platform_connection_id,
                     params=job.params,
-                    metadata={**(job.metadata_ or {}), "resumed_from_job_id": str(job.id)},
+                    metadata={
+                        **(job.metadata_ or {}),
+                        "resumed_from_job_id": str(job.id),
+                        "resume_reason": error_reason,
+                    },
                 )
+                from app.services.sync.job_tracker import update_background_job as _ubj
+                await _ubj(job.id, metadata={"superseded_by": str(new_id)})
                 from app.api.v1.endpoints.jobs import _dispatch_job_retry
                 await _dispatch_job_retry(job.job_type, job.params, str(new_id), None, None, old_output=job.output)
                 logger.info("Auto-resume: dispatched %s -> new job %s (old: %s)", job.job_type, new_id, job.id)
@@ -165,11 +172,16 @@ async def lifespan(app: FastAPI):
 
     # Mark any jobs still RUNNING as INTERRUPTED on graceful shutdown (SIGTERM)
     try:
+        from datetime import datetime as _dt
         async with get_session_factory()() as db:
             await db.execute(
                 update(BackgroundJob)
                 .where(BackgroundJob.status == "RUNNING")
-                .values(status="INTERRUPTED")
+                .values(
+                    status="INTERRUPTED",
+                    error={"type": "ProcessShutdown", "message": "Server shutting down (SIGTERM)", "traceback": ""},
+                    ended_at=_dt.utcnow(),
+                )
             )
             await db.commit()
         logger.info("Shutdown: marked leftover RUNNING jobs as INTERRUPTED")

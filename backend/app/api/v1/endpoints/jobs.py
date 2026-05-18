@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
@@ -437,3 +437,67 @@ async def retry_job(
     await _dispatch_job_retry(job.job_type, job.params, str(new_job_id), background_tasks, db, old_output=job.output)
 
     return {"job_id": str(new_job_id), "status": "queued"}
+
+
+_JOB_TYPE_CATEGORIES = {
+    "sync": ["sync_daily", "sync_full", "sync_initial", "sync_historical"],
+    "download": ["download"],
+    "autofill": ["autofill"],
+    "scoring": ["scoring"],
+}
+
+_KILL_ERROR = {"type": "KilledByAdmin", "message": "Killed by admin", "traceback": ""}
+
+
+@router.post("/kill", status_code=200)
+async def kill_jobs_by_category(
+    category: str = Query(..., description="Job category: sync, download, autofill, or scoring"),
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Kill all active (RUNNING/PENDING) jobs in a category (SuperAdmin only)."""
+    if category not in _JOB_TYPE_CATEGORIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown category '{category}'. Must be one of: {', '.join(_JOB_TYPE_CATEGORIES)}",
+        )
+    job_types = _JOB_TYPE_CATEGORIES[category]
+    result = await db.execute(
+        update(BackgroundJob)
+        .where(BackgroundJob.job_type.in_(job_types), BackgroundJob.status.in_(["RUNNING", "PENDING"]))
+        .values(status="INTERRUPTED", error={**_KILL_ERROR, "message": f"Killed by admin (category: {category})"}, ended_at=datetime.utcnow())
+        .returning(BackgroundJob.id)
+    )
+    killed_ids = [row[0] for row in result.all()]
+    await db.commit()
+    redis = get_redis()
+    for jid in killed_ids:
+        try:
+            await asyncio.wait_for(redis.publish("sse:job_updates", str(jid)), timeout=2.0)
+        except Exception as exc:
+            logger.warning("SSE publish failed after kill %s: %s", jid, exc)
+    return {"killed": len(killed_ids), "job_ids": [str(jid) for jid in killed_ids]}
+
+
+@router.post("/{job_id}/kill", status_code=200)
+async def kill_job(
+    job_id: uuid.UUID,
+    current_user: User = Depends(get_current_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Kill a single RUNNING or PENDING job by ID (SuperAdmin only)."""
+    job = await db.get(BackgroundJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status not in ("RUNNING", "PENDING"):
+        raise HTTPException(status_code=400, detail=f"Job is not active (status={job.status}); only RUNNING or PENDING jobs can be killed")
+    job.status = "INTERRUPTED"
+    job.error = _KILL_ERROR
+    job.ended_at = datetime.utcnow()
+    db.add(job)
+    await db.commit()
+    try:
+        await asyncio.wait_for(get_redis().publish("sse:job_updates", str(job_id)), timeout=2.0)
+    except Exception as exc:
+        logger.warning("SSE publish failed after kill %s: %s", job_id, exc)
+    return {"job_id": str(job_id), "status": "INTERRUPTED"}
