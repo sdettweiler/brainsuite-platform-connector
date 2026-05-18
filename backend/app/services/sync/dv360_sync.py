@@ -60,6 +60,7 @@ from app.models.performance import Dv360RawPerformance
 from app.core.security import decrypt_token
 from app.services.platform.dv360_oauth import dv360_oauth
 from app.services.sync.video_utils import get_video_duration
+from app.services.sync.proxy_cache import get_proxy_config
 
 
 class _CookiesExpiredError(Exception):
@@ -1211,56 +1212,82 @@ class DV360SyncService:
         # Read cookies from DB first, fall back to env vars if DB is empty (D-11)
         cookies = await self._get_cookies_from_db()
 
-        # Load proxy config from SystemConfig (D-08: IPRoyal HTTP proxy)
-        proxy_url = None
-        proxy_enabled = False
-        try:
-            from app.db.base import get_session_factory as _gsf_proxy
-            from app.models.system_config import SystemConfig as _SC_proxy
-            from sqlalchemy import select as _sel_proxy
-            async with _gsf_proxy()() as _proxy_db:
-                _proxy_cfg = (await _proxy_db.execute(_sel_proxy(_SC_proxy).limit(1))).scalar_one_or_none()
-                _p_enabled = bool(_proxy_cfg and _proxy_cfg.proxy_enabled)
-                _p_url_enc = _proxy_cfg.proxy_url_encrypted if _proxy_cfg else None
-            if _p_enabled and _p_url_enc:
-                from app.core.security import decrypt_token as _dt_proxy
-                proxy_url = _dt_proxy(_p_url_enc)
-                proxy_enabled = True
-                # Sticky session injection — IPRoyal only (user-session-ID format)
-                # Other providers (DataImpulse etc.) use plain user:pass and reject the suffix
-                _session_id = secrets.token_urlsafe(9)
-                if "@" in proxy_url and "iproyal.com" in proxy_url:
-                    _user_part, _host_part = proxy_url.rsplit("@", 1)
-                    if "://" in _user_part:
-                        _scheme_end = _user_part.index("://") + 3
-                        _scheme = _user_part[:_scheme_end]
-                        _creds = _user_part[_scheme_end:]
-                        if ":" in _creds:
-                            _username, _password = _creds.split(":", 1)
-                            proxy_url = f"{_scheme}{_username}-session-{_session_id}:{_password}@{_host_part}"
-        except Exception as _proxy_load_err:
-            logger.warning("Failed to load proxy config: %s", _proxy_load_err)
-            proxy_url = None
-            proxy_enabled = False
+        # Load proxy config from shared cache (PERF-04, D-07)
+        proxy_enabled, proxy_url = await get_proxy_config()
+        if proxy_enabled and proxy_url:
+            # Sticky session injection — IPRoyal only (user-session-ID format)
+            # Other providers (DataImpulse etc.) use plain user:pass and reject the suffix
+            _session_id = secrets.token_urlsafe(9)
+            if "@" in proxy_url and "iproyal.com" in proxy_url:
+                _user_part, _host_part = proxy_url.rsplit("@", 1)
+                if "://" in _user_part:
+                    _scheme_end = _user_part.index("://") + 3
+                    _scheme = _user_part[:_scheme_end]
+                    _creds = _user_part[_scheme_end:]
+                    if ":" in _creds:
+                        _username, _password = _creds.split(":", 1)
+                        proxy_url = f"{_scheme}{_username}-session-{_session_id}:{_password}@{_host_part}"
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
 
         tmpdir = tempfile.mkdtemp()
         tmp_base = os.path.join(tmpdir, "video")
 
-        def _do_download_with_cookies(cookie_data: str):
+        loop = asyncio.get_running_loop()
+
+        async def _extract_info() -> Optional[dict]:
+            """Extract metadata only (no download) — runs without proxy (PERF-01, D-01).
+
+            On failure, retries once with proxy as fallback (geo-restricted metadata).
+            Returns info_dict on success, None if both attempts fail.
+            """
             import yt_dlp
+
+            ydl_opts: dict = {
+                "outtmpl": f"{tmp_base}.%(ext)s",
+                "quiet": True,
+                "socket_timeout": 10,
+                "remote_components": "ejs:github",
+                "ignore_no_formats_error": True,
+            }
+
+            def extract_sync(opts):
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    return ydl.extract_info(url, download=False)
+
+            try:
+                return await loop.run_in_executor(None, lambda: extract_sync(dict(ydl_opts)))
+            except Exception as e:
+                logger.warning("DV360 extraction (direct) failed for %s: %s", youtube_video_id, type(e).__name__)
+                if proxy_enabled and proxy_url:
+                    try:
+                        opts_with_proxy = dict(ydl_opts)
+                        opts_with_proxy["proxy"] = proxy_url
+                        return await loop.run_in_executor(None, lambda: extract_sync(opts_with_proxy))
+                    except Exception as e2:
+                        logger.warning("DV360 extraction (proxy fallback) failed for %s: %s", youtube_video_id, type(e2).__name__)
+                return None
+
+        async def _do_download(info_dict: dict, proxy: Optional[str], cookie_data: str) -> bool:
+            """Download from pre-extracted info_dict (PERF-01, D-02).
+
+            Uses process_ie_result() so info extraction is not repeated per attempt.
+            Returns True on success, raises _CookiesExpiredError or Exception on failure.
+            """
+            import yt_dlp
+            import copy
 
             _expired = [False]
 
             def _redact(msg: str) -> str:
                 """Redact proxy credentials from log/exception message (D-05).
-                Pattern: "http://user:pass@geo.iproyal.com:12321" -> "[PROXY:geo.iproyal.com]"
+
+                Uses proxy_url from outer _download_video_asset scope so credentials
+                are redacted even on the PO-first attempt where proxy param is None.
                 """
                 if not proxy_url:
                     return msg
-                import re as _re
-                return _re.sub(r'https?://[^@/]+@([^/:]+)[^"\s]*', r'[PROXY:\1]', msg)
+                return re.sub(r'https?://[^@/]+@([^/:]+)[^"\s]*', r'[PROXY:\1]', msg)
 
             class _YDLLogger:
                 def debug(self, msg):
@@ -1278,7 +1305,7 @@ class DV360SyncService:
                         _expired[0] = True
                     logger.error("yt-dlp: %s", _redact(msg))
 
-            ydl_opts = {
+            ydl_opts: dict = {
                 "outtmpl": f"{tmp_base}.%(ext)s",
                 # Use pre-merged format — no ffmpeg required for format selection.
                 # "best" picks the highest-quality single stream (typically 720p/1080p mp4).
@@ -1287,21 +1314,19 @@ class DV360SyncService:
                 # no_warnings intentionally omitted: yt-dlp's report_warning() returns early
                 # when no_warnings=True, suppressing the custom logger's warning() call even
                 # with a custom logger attached. We need warning() to detect "no longer valid".
-                "socket_timeout": 30,
+                "socket_timeout": 10,
                 "ignore_no_formats_error": True,
                 "logger": _YDLLogger(),
+                "remote_components": "ejs:github",
             }
-            # Inject proxy into ydl_opts BEFORE YoutubeDL instantiation (D-02)
-            # Proxy applies to both info extraction and stream download phases.
-            if proxy_enabled and proxy_url:
-                ydl_opts["proxy"] = proxy_url
-            ydl_opts["remote_components"] = "ejs:github"
+            if proxy:
+                ydl_opts["proxy"] = proxy
+
             # Accept cookie string directly (T-14-10: never log cookie content)
-            cookies_data = cookie_data if cookie_data else ""
             cookie_file = None
-            if cookies_data:
+            if cookie_data:
                 cleaned = "\n".join(
-                    line.lstrip() for line in cookies_data.splitlines()
+                    line.lstrip() for line in cookie_data.splitlines()
                 )
                 cookie_file = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".txt", delete=False
@@ -1309,9 +1334,20 @@ class DV360SyncService:
                 cookie_file.write(cleaned)
                 cookie_file.close()
                 ydl_opts["cookiefile"] = cookie_file.name
-            try:
+
+            def download_sync():
+                # Deep-copy info_dict so process_ie_result mutations don't bleed across attempts
+                info_copy = copy.deepcopy(info_dict)
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
+                    ydl.process_ie_result(info_copy, download=True)
+
+            try:
+                await loop.run_in_executor(None, download_sync)
+                if _expired[0]:
+                    raise _CookiesExpiredError("YouTube cookies are no longer valid")
+                return True
+            except _CookiesExpiredError:
+                raise
             except Exception as e:
                 if _expired[0]:
                     raise _CookiesExpiredError("YouTube cookies are no longer valid") from e
@@ -1322,13 +1358,19 @@ class DV360SyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
-        # Cookieless-first retry when proxy is enabled (D-04)
+        # Extract info once — reused across all download attempts (PERF-01, D-02)
+        info_dict = await _extract_info()
+        if not info_dict:
+            logger.warning("Could not extract info for %s", youtube_video_id)
+            return None, None, None
+
+        # Build download attempt list (D-04):
         # proxy off: [primary, backup] or [""] if no cookies (existing behavior preserved)
-        # proxy on:  ["", primary, backup] — residential IP makes cookieless viable
+        # proxy on:  ["", primary, backup] — PO-first (no proxy, no cookies), then proxy variants
         attempts = cookies if cookies else [""]
         if proxy_enabled and proxy_url:
             attempts = ["", *attempts]
-        loop = asyncio.get_running_loop()
+
         try:
             for i, cookie in enumerate(attempts):
                 if not cookie:
@@ -1338,8 +1380,15 @@ class DV360SyncService:
                 else:
                     label = "backup"
                 logger.info("  Attempting DV360 video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
+
+                # PO-first: first attempt when proxy enabled uses no proxy and no cookies
+                if i == 0 and proxy_enabled and proxy_url:
+                    attempt_proxy: Optional[str] = None
+                else:
+                    attempt_proxy = proxy_url if proxy_enabled else None
+
                 try:
-                    await loop.run_in_executor(None, lambda cd=cookie: _do_download_with_cookies(cd))
+                    await _do_download(info_dict, proxy=attempt_proxy, cookie_data=cookie)
 
                     _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"}
                     matches = [
@@ -1894,13 +1943,16 @@ class DV360SyncService:
         video_failures: dict = {}
         video_download_count = 0
         consecutive_failures = 0
+        # PERF-05: check proxy state once for batch sleep gating (D-08/D-09)
+        proxy_enabled, _ = await get_proxy_config()
         for ad_id, info in queue.items():
             yt_vid = info.get("youtube_video_id", "")
             if not yt_vid:
                 continue
 
             if yt_vid not in downloaded_videos:
-                if video_download_count > 0:
+                # PERF-05: skip sleep when proxy is active (proxy handles rate spacing)
+                if not proxy_enabled and video_download_count > 0:
                     await asyncio.sleep(4)
                 try:
                     vid_duration, vid_served, frame_thumb = await self._download_video_asset(
