@@ -99,3 +99,70 @@ def reset_cache() -> None:
     Sets expires_at to 0.0 so the TTL check fails on the next call.
     """
     _cache["expires_at"] = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Concurrency semaphore cache (Phase 25, PERF-02)
+# ---------------------------------------------------------------------------
+
+_concurrency_cache: dict = {
+    "semaphore": asyncio.Semaphore(3),  # default capacity (D-11)
+    "max_concurrent": 3,  # tracks integer capacity for change detection (D-03)
+    "expires_at": 0.0,  # forces first call to load from DB
+}
+
+
+async def get_concurrency_semaphore() -> asyncio.Semaphore:
+    """Return the current asyncio.Semaphore for download concurrency control.
+
+    On cache hit (within 60s of last DB load): returns immediately from memory.
+    On cache miss (TTL expired): reads max_concurrent_downloads from SystemConfig DB,
+    and if the capacity has changed, creates a new Semaphore with the new capacity.
+
+    In-flight downloads holding the old semaphore reference finish on it;
+    new downloads acquire from the new semaphore after TTL expiry (D-03, D-04).
+
+    On DB error: logs a warning and returns a Semaphore with default capacity 3 (never raises).
+    """
+    async with _cache_lock:
+        now = time.monotonic()
+
+        # Cache hit — TTL not yet expired
+        if now < _concurrency_cache["expires_at"]:
+            return _concurrency_cache["semaphore"]
+
+        # Cache miss — load fresh from DB
+        max_concurrent = 3  # default (D-11)
+
+        try:
+            async with get_session_factory()() as db:
+                cfg = (
+                    await db.execute(select(SystemConfig).limit(1))
+                ).scalar_one_or_none()
+
+                if cfg is not None and cfg.max_concurrent_downloads:
+                    max_concurrent = cfg.max_concurrent_downloads
+
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to load concurrency config from DB: %s", e)
+
+        # Capacity-change detection (D-03): only create a new Semaphore when the
+        # DB-loaded value differs from the cached capacity. This preserves the
+        # in-flight-finishes-on-old-semaphore property for callers already holding
+        # the prior Semaphore reference.
+        if max_concurrent != _concurrency_cache["max_concurrent"]:
+            _concurrency_cache["semaphore"] = asyncio.Semaphore(max_concurrent)
+
+        _concurrency_cache["max_concurrent"] = max_concurrent
+        _concurrency_cache["expires_at"] = time.monotonic() + CACHE_TTL_SECONDS
+
+        return _concurrency_cache["semaphore"]
+
+
+def reset_concurrency_cache() -> None:
+    """Force the next get_concurrency_semaphore() call to re-query the DB.
+
+    # Test helper — not part of public API.
+    Sets expires_at to 0.0 so the TTL check fails on the next call.
+    """
+    _concurrency_cache["expires_at"] = 0.0
