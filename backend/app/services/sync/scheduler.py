@@ -2105,6 +2105,21 @@ async def startup_scheduler(db_session=None) -> None:
         if pending_ids:
             logger.warning("Startup: reset %d orphaned PENDING job(s) to FAILED", len(pending_ids))
 
+    # At startup no sync is actively running, so any connection stuck in PENDING
+    # sync_status had its sync interrupted (SIGTERM) without reaching the ERROR handler.
+    # Reset them to ERROR so the UI shows "sync failed" instead of "syncing" forever.
+    async with get_session_factory()() as db:
+        stuck_result = await db.execute(
+            _sa_update(PlatformConnection)
+            .where(PlatformConnection.sync_status == "PENDING")
+            .values(sync_status="ERROR")
+            .returning(PlatformConnection.id)
+        )
+        stuck_ids = [row[0] for row in stuck_result.all()]
+        await db.commit()
+    if stuck_ids:
+        logger.warning("Startup: reset %d connection(s) stuck in PENDING sync_status to ERROR", len(stuck_ids))
+
     pending_initial = []
 
     async with get_session_factory()() as db:
