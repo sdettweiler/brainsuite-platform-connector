@@ -484,7 +484,7 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict, exis
     import traceback as _tb
 
     connection = None
-    bg_job_id = None
+    bg_job_id = existing_job_id  # expose to except handler even if exception fires before RUNNING update
 
     try:
         async with get_session_factory()() as db:
@@ -500,7 +500,6 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict, exis
                 return
 
         if existing_job_id is not None:
-            bg_job_id = existing_job_id
             await update_background_job(bg_job_id, status="RUNNING", progress_total=len(asset_queue))
         else:
             bg_job_id = await create_background_job(
@@ -637,14 +636,13 @@ async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None,
     import uuid
     import traceback as _tb
 
-    bg_job_id = None
+    bg_job_id = existing_job_id  # expose to except handler even if exception fires before RUNNING update
 
     try:
         conn_uuid = connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id))
         org_uuid = org_id if isinstance(org_id, uuid.UUID) else uuid.UUID(str(org_id)) if org_id else None
 
         if existing_job_id is not None:
-            bg_job_id = existing_job_id
             await update_background_job(bg_job_id, status="RUNNING", progress_total=len(ad_ids))
         else:
             bg_job_id = await create_background_job(
@@ -708,14 +706,13 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=Non
     import uuid
     import traceback as _tb
 
-    bg_job_id = None
+    bg_job_id = existing_job_id  # expose to except handler even if exception fires before RUNNING update
 
     try:
         conn_uuid = connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id))
         org_uuid = org_id if isinstance(org_id, uuid.UUID) else uuid.UUID(str(org_id)) if org_id else None
 
         if existing_job_id is not None:
-            bg_job_id = existing_job_id
             await update_background_job(bg_job_id, status="RUNNING", progress_total=len(ad_ids))
         else:
             bg_job_id = await create_background_job(
@@ -782,7 +779,7 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict, existing_
     import traceback as _tb
 
     connection = None
-    bg_job_id = None
+    bg_job_id = existing_job_id  # expose to except handler even if exception fires before RUNNING update
 
     try:
         async with get_session_factory()() as db:
@@ -2054,6 +2051,7 @@ async def auto_resume_interrupted_jobs() -> None:
                         "resumed_from_job_id": str(job.id),
                         "resume_reason": error_reason,
                     },
+                    initial_status="RUNNING" if job.job_type == "download" else "PENDING",
                 )
                 await _ubj(job.id, metadata={"superseded_by": str(new_id)})
                 from app.api.v1.endpoints.jobs import _dispatch_job_retry
