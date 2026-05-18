@@ -4,7 +4,7 @@ import { RouterOutlet } from '@angular/router';
 @Component({
   standalone: true,
   imports: [RouterOutlet],
-  template: `<router-outlet></router-outlet>`,
-  styles: [`:host { display: block; }`],
+  template: `<div class="config-content"><router-outlet></router-outlet></div>`,
+  styles: [`:host { display: block; height: 100%; } .config-content { height: 100%; overflow-y: auto; }`],
 })
 export class ConfigurationShellComponent {}
