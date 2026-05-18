@@ -87,7 +87,7 @@
   5. The proxy config (URL + enabled flag) is read from DB and decrypted at most once per 60-second window regardless of how many concurrent download calls are in flight
 **Plans**: 3 plans
 - [x] 24-01-PLAN.md — proxy_cache.py module with 60s TTL get_proxy_config() + unit tests (foundational, Wave 1)
-- [ ] 24-02-PLAN.md — dv360_sync.py refactor: extraction/download split, PO-first retry, conditional batch sleep, socket_timeout=10 (Wave 2)
+- [x] 24-02-PLAN.md — dv360_sync.py refactor: extraction/download split, PO-first retry, conditional batch sleep, socket_timeout=10 (Wave 2)
 - [ ] 24-03-PLAN.md — google_ads_sync.py parity refactor: split, PO-first, remote_components fix (D-05), socket_timeout=10 (Wave 2)
 
 ### Phase 25: Configurable Concurrency
@@ -143,7 +143,7 @@
 | 21. Proxy Admin UI | v1.4 | 3/3 | Complete | 2026-05-15 |
 | 22. Dashboard Metadata + Account Filters | v1.4 | 2/2 | Complete | 2026-05-15 |
 | 23. Dashboard Duration Filter + Backfill | v1.4 | 2/2 | Complete | 2026-05-18 |
-| 24. Download Performance Backend | v1.5 | 1/3 | In Progress|  |
+| 24. Download Performance Backend | v1.5 | 2/3 | In Progress|  |
 | 25. Configurable Concurrency | v1.5 | 0/? | Not started | - |
 | 26. Tech Debt Closure | v1.5 | 0/? | Not started | - |
 
