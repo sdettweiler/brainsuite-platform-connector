@@ -9,7 +9,7 @@
 - [ ] **PERF-01**: User's YouTube video downloads complete faster because yt-dlp info extraction runs direct (no proxy) while only the actual video stream bytes route through the residential proxy — eliminates 7–15s of proxy overhead per video
 - [ ] **PERF-02**: SuperAdmin can configure max concurrent downloads per sync batch (default 3, range 1–10) via a setting in the SuperAdmin UI; all platforms (DV360 + Google Ads) respect the limit via a shared asyncio semaphore
 - [ ] **PERF-03**: System attempts PO-token cookieless download first (no proxy), then PO+proxy, then cookies+proxy — reduces proxy calls for public ad creatives that don't require authentication
-- [ ] **PERF-04**: Decrypted proxy config (URL + enabled flag) is cached in application memory with a 60-second TTL so the database and Fernet decryption are not invoked on every individual download call
+- [x] **PERF-04**: Decrypted proxy config (URL + enabled flag) is cached in application memory with a 60-second TTL so the database and Fernet decryption are not invoked on every individual download call
 - [ ] **PERF-05**: DV360 inter-download sleep is dropped (or reduced to ≤1s) when residential proxy with sticky-session pinning is active — session pinning replaces the need for the artificial delay
 - [ ] **PERF-06**: socket_timeout for all proxy-routed yt-dlp calls is set to 10 seconds (reduced from 30s) so stuck proxy connections fail fast rather than blocking the download queue
 
