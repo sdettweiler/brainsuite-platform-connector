@@ -466,7 +466,12 @@ async def kill_jobs_by_category(
     result = await db.execute(
         update(BackgroundJob)
         .where(BackgroundJob.job_type.in_(job_types), BackgroundJob.status.in_(["RUNNING", "PENDING"]))
-        .values(status="INTERRUPTED", error={**_KILL_ERROR, "message": f"Killed by admin (category: {category})"}, ended_at=datetime.utcnow())
+        .values(
+            status="INTERRUPTED",
+            error={**_KILL_ERROR, "message": f"Killed by admin (category: {category})"},
+            ended_at=datetime.utcnow(),
+            metadata_=BackgroundJob.metadata_.concat({"superseded_by": "killed"}),
+        )
         .returning(BackgroundJob.id)
     )
     killed_ids = [row[0] for row in result.all()]
@@ -495,6 +500,7 @@ async def kill_job(
     job.status = "INTERRUPTED"
     job.error = _KILL_ERROR
     job.ended_at = datetime.utcnow()
+    job.metadata_ = {**(job.metadata_ or {}), "superseded_by": "killed"}
     db.add(job)
     await db.commit()
     try:

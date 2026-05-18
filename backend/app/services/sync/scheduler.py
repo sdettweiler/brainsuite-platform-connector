@@ -2012,6 +2012,8 @@ async def auto_resume_interrupted_jobs() -> None:
                     _BJ.status == "INTERRUPTED",
                     _BJ.params.isnot(None),
                     _not_(_func.jsonb_exists(_BJ.metadata_, "superseded_by")),
+                    # Never resume jobs that were deliberately killed by an admin.
+                    _func.coalesce(_BJ.error["type"].astext, "") != "KilledByAdmin",
                 )
                 .order_by(_BJ.started_at.desc())
                 .limit(50)
