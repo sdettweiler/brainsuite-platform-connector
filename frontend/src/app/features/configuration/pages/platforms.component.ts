@@ -55,6 +55,8 @@ interface PlatformConnection {
   brainsuite_app_id_image?: string;
   brainsuite_app_id_video?: string;
   default_metadata_values?: Record<string, string>;
+  asset_count?: number;
+  complete_count?: number;
 }
 
 interface ConnectionsResponse {
@@ -269,6 +271,7 @@ const PLATFORMS: PlatformDef[] = [
                 <th class="col-platform">Platform</th>
                 <th class="col-name">Account</th>
                 <th class="col-health">Health</th>
+                <th class="col-assets">Assets</th>
                 <th class="col-currency">Currency</th>
                 <th class="col-tz">Timezone</th>
                 <th class="col-sync">Last Synced</th>
@@ -303,6 +306,9 @@ const PLATFORMS: PlatformDef[] = [
                     {{ getHealthLabel(getHealthState(conn)) }}
                   </span>
                   <span class="sync-sub" *ngIf="!conn.initial_sync_completed">Syncing...</span>
+                </td>
+                <td class="col-assets">
+                  <span class="asset-chip" [ngClass]="getAssetChipClass(conn)">{{ getAssetChipLabel(conn) }}</span>
                 </td>
                 <td class="col-currency">{{ conn.currency }}</td>
                 <td class="col-tz" [matTooltip]="conn.timezone">{{ conn.timezone }}</td>
@@ -1139,6 +1145,22 @@ export class PlatformsComponent implements OnInit, OnDestroy {
       case 'sync_failed': return 'badge badge-error';
       case 'syncing': return 'badge badge-info';
     }
+  }
+
+  getAssetChipClass(conn: PlatformConnection): string {
+    const total = conn.asset_count ?? 0;
+    const complete = conn.complete_count ?? 0;
+    if (total === 0) return 'chip-gray';
+    if (complete === total) return 'chip-green';
+    if (complete === 0) return 'chip-red';
+    return 'chip-amber';
+  }
+
+  getAssetChipLabel(conn: PlatformConnection): string {
+    const total = conn.asset_count ?? 0;
+    const complete = conn.complete_count ?? 0;
+    if (total === 0) return '–';
+    return `${complete}/${total}`;
   }
 
   getRelativeTime(isoString: string | undefined): string {

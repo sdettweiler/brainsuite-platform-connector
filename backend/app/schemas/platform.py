@@ -67,6 +67,8 @@ class PlatformConnectionResponse(BaseModel):
     brainsuite_app_id_image: Optional[uuid.UUID] = None
     brainsuite_app_id_video: Optional[uuid.UUID] = None
     default_metadata_values: Dict[str, Any] = {}
+    asset_count: int = 0
+    complete_count: int = 0
 
     class Config:
         from_attributes = True

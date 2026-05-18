@@ -181,7 +181,7 @@
 .table-wrapper { overflow-x: auto; }
 
 .connections-table {
-  width: 100%; border-collapse: collapse; table-layout: fixed;
+  width: 100%; border-collapse: collapse; table-layout: auto;
 
   thead th {
     padding: 10px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase;
@@ -201,20 +201,30 @@
     padding: 8px 12px; font-size: 13px; vertical-align: middle;
   }
 
-  .col-check { width: 44px; text-align: center; }
-  .col-platform { width: 120px; }
-  .col-name { width: auto; min-width: 180px; }
-  .col-status { width: 110px; }
-  .col-health { width: 130px; }
-  .col-currency { width: 75px; }
-  .col-tz { width: 140px; }
-  .col-sync { width: 120px; }
-  .col-app { width: 140px; }
-  .col-actions { width: 180px; text-align: right; }
+  .col-check { width: 44px; min-width: 44px; text-align: center; }
+  .col-platform { width: 110px; min-width: 100px; }
+  .col-name { min-width: 160px; }
+  .col-status { width: 110px; min-width: 90px; }
+  .col-health { width: 130px; min-width: 110px; }
+  .col-assets { width: 90px; min-width: 80px; text-align: center; }
+  .col-currency { width: 70px; min-width: 60px; }
+  .col-tz { width: 120px; min-width: 80px; }
+  .col-sync { width: 110px; min-width: 90px; }
+  .col-app { width: 130px; min-width: 120px; }
+  .col-actions {
+    width: 180px; min-width: 50px; text-align: right;
+    position: sticky; right: 0; z-index: 2;
+    background: var(--bg-card);
+    box-shadow: -2px 0 6px rgba(0, 0, 0, 0.07);
+  }
 
   td, th {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+
+  thead th.col-actions { background: var(--bg-secondary); }
+  tbody tr:hover td.col-actions { background: var(--bg-secondary); }
+  tbody tr.selected td.col-actions { background: var(--accent-light); }
 }
 
 .platform-badge {
@@ -260,6 +270,16 @@
 .badge-error {
   background: rgba(231, 76, 60, 0.15);
   color: var(--error, #E74C3C);
+}
+
+.asset-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px 8px; border-radius: 12px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  &.chip-green { background: rgba(52, 168, 83, 0.15); color: #34A853; }
+  &.chip-amber { background: rgba(240, 147, 0, 0.15); color: #F09300; }
+  &.chip-red { background: rgba(234, 67, 53, 0.15); color: #EA4335; }
+  &.chip-gray { background: rgba(158, 158, 158, 0.12); color: #9E9E9E; font-weight: 400; }
 }
 
 .reconnect-btn {

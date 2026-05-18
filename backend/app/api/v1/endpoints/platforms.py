@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, case
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -595,8 +595,41 @@ async def list_connections(
     items = result.scalars().all()
 
     from app.schemas.platform import PlatformConnectionResponse
+    from app.models.creative import CreativeAsset
+
+    conn_ids = [c.id for c in items]
+    asset_map: dict = {}
+    if conn_ids:
+        asset_q = (
+            select(
+                CreativeAsset.platform_connection_id,
+                func.count().label("asset_count"),
+                func.sum(
+                    case(
+                        (
+                            (CreativeAsset.asset_url.isnot(None)) & (CreativeAsset.thumbnail_url.isnot(None)),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("complete_count"),
+            )
+            .where(CreativeAsset.platform_connection_id.in_(conn_ids))
+            .group_by(CreativeAsset.platform_connection_id)
+        )
+        asset_rows = (await db.execute(asset_q)).all()
+        asset_map = {str(r.platform_connection_id): (int(r.asset_count), int(r.complete_count)) for r in asset_rows}
+
+    items_out = []
+    for c in items:
+        d = PlatformConnectionResponse.model_validate(c).model_dump()
+        counts = asset_map.get(str(c.id), (0, 0))
+        d["asset_count"] = counts[0]
+        d["complete_count"] = counts[1]
+        items_out.append(d)
+
     return {
-        "items": [PlatformConnectionResponse.model_validate(c) for c in items],
+        "items": items_out,
         "total": total,
         "page": page,
         "page_size": page_size,
