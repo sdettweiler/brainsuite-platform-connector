@@ -151,6 +151,7 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
   loading = false;
   private fullTraceback: string = '';
   private destroy$ = new Subject<void>();
+  private lastKnownSnapshot: JobSnapshot | null = null;
 
   constructor(
     private jobMonitorService: JobMonitorService,
@@ -164,12 +165,22 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
     if (this.isOpen) this.closed.emit();
   }
 
-  // Subscribe to jobs$ so the panel silently refreshes when an SSE event updates the open job.
-  // clearFirst=false so existing data stays visible during the background fetch (no flicker).
+  // Subscribe to jobs$ and reload ONLY when the open job's own status or progress changes.
+  // jobs$ emits the full job map on every SSE frame (any job update), so we must compare
+  // against the last known snapshot to avoid reloading on unrelated events.
   ngOnInit(): void {
     this.jobMonitorService.jobs$
       .pipe(
-        filter((jobs: JobSnapshot[]) => !!this.jobId && jobs.some(j => j.job_id === this.jobId)),
+        filter((jobs: JobSnapshot[]) => {
+          if (!this.jobId || !this.isOpen) return false;
+          const snapshot = jobs.find(j => j.job_id === this.jobId);
+          if (!snapshot) return false;
+          const changed = !this.lastKnownSnapshot
+            || this.lastKnownSnapshot.status !== snapshot.status
+            || this.lastKnownSnapshot.progress_current !== snapshot.progress_current;
+          if (changed) this.lastKnownSnapshot = snapshot;
+          return changed;
+        }),
         takeUntil(this.destroy$),
       )
       .subscribe(() => {
@@ -182,6 +193,9 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
   ngOnChanges(changes: SimpleChanges): void {
     const openChange = changes['isOpen'];
     const idChange = changes['jobId'];
+    if (idChange) {
+      this.lastKnownSnapshot = null;  // reset when switching to a different job
+    }
     if ((openChange?.currentValue || idChange) && this.isOpen && this.jobId) {
       this.loadJobDetail(true);
     }
