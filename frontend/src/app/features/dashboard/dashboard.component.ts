@@ -229,6 +229,21 @@ interface CorrelationAsset {
           <span class="slider-values">{{ scoreMin }} - {{ scoreMax }}</span>
         </div>
 
+        <!-- Phase 23 (DASH-03): Duration range filter — visible only when VIDEO assets present (D-04) -->
+        <div class="duration-slider-wrapper"
+             *ngIf="hasVideoAssets"
+             aria-label="Duration filter"
+             [matTooltip]="loadingDurationBounds ? 'Loading duration data…' : ''">
+          <span class="slider-label">Duration</span>
+          <ngx-slider
+            [(value)]="durationMin"
+            [(highValue)]="durationMax"
+            [options]="durationSliderOptions"
+            (userChangeEnd)="onFilterChange()"
+          ></ngx-slider>
+          <span class="slider-values">{{ formatDuration(durationMin) }} – {{ formatDuration(durationMax) }}</span>
+        </div>
+
         <div class="toolbar-spacer"></div>
 
         <!-- Export button -->
@@ -239,12 +254,25 @@ interface CorrelationAsset {
       </div>
 
       <!-- Metadata filter chip row -->
-      <div class="metadata-chip-row" *ngIf="activeMetadataFilters.length > 0">
+      <div class="metadata-chip-row" *ngIf="activeMetadataFilters.length > 0 || isDurationFilterActive">
         <div class="metadata-chip" *ngFor="let f of activeMetadataFilters; let i = index" role="listitem">
           <span>{{ f.fieldLabel }}: {{ f.value }}</span>
           <button class="chip-dismiss" type="button" (click)="removeMetadataFilter(i)" [attr.aria-label]="'Remove ' + f.fieldLabel + ': ' + f.value + ' filter'" title="Remove filter"><i class="bi bi-x"></i></button>
         </div>
+        <!-- Phase 23 (DASH-03): Duration filter chip — appears only when filter is active -->
+        <div class="metadata-chip" *ngIf="isDurationFilterActive" role="listitem">
+          <span>Duration: {{ formatDuration(durationMin) }} – {{ formatDuration(durationMax) }}</span>
+          <button class="chip-dismiss" type="button" (click)="clearDurationFilter()" aria-label="Remove duration filter" title="Remove filter"><i class="bi bi-x"></i></button>
+        </div>
         <button class="chip-clear-all" type="button" *ngIf="activeMetadataFilters.length >= 2" (click)="clearAllMetadataFilters()" aria-label="Clear all metadata filters">Clear all filters</button>
+      </div>
+
+      <!-- Phase 23 (DASH-03 D-06 D-07 D-08): NULL duration callout — below chip row, only when filter active and counts > 0 -->
+      <div class="duration-null-callout"
+           *ngIf="isDurationFilterActive && nullDurationCount > 0"
+           role="status">
+        <i class="bi bi-info-circle" aria-hidden="true"></i>
+        <span>{{ nullDurationCount }} video{{ nullDurationCount !== 1 ? 's' : '' }} {{ nullDurationCount === 1 ? 'has' : 'have' }} no duration data and {{ nullDurationCount === 1 ? 'is' : 'are' }} excluded from this filter</span>
       </div>
 
       <!-- Aggregate Stats -->
@@ -1049,6 +1077,54 @@ interface CorrelationAsset {
 
       ngx-slider {
         flex: 1;
+      }
+    }
+
+    /* Phase 23 (DASH-03): Duration filter — clone .score-slider-wrapper exactly */
+    .duration-slider-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 280px;
+      max-width: 380px;
+      padding: 0 8px;
+
+      .slider-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+
+      .slider-values {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        min-width: 70px;
+        text-align: center;
+      }
+
+      ngx-slider {
+        flex: 1;
+      }
+    }
+
+    /* Phase 23 (DASH-03 D-08): NULL duration callout — small info text below chip row */
+    .duration-null-callout {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+      margin-bottom: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+
+      .bi-info-circle {
+        font-size: 13px;
+        color: var(--accent);
+        flex-shrink: 0;
       }
     }
 
