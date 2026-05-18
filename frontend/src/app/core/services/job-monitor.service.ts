@@ -106,6 +106,14 @@ export class JobMonitorService implements OnDestroy {
     return this.api.post<{ job_id: string; status: string }>(`/jobs/${jobId}/retry`, {});
   }
 
+  killJob(jobId: string): Observable<{ job_id: string; status: string }> {
+    return this.api.post<{ job_id: string; status: string }>(`/jobs/${jobId}/kill`, {});
+  }
+
+  killCategory(category: string): Observable<{ killed: number; job_ids: string[] }> {
+    return this.api.post<{ killed: number; job_ids: string[] }>(`/jobs/kill?category=${encodeURIComponent(category)}`, {});
+  }
+
   ngOnDestroy(): void {
     this.disconnect();
   }

@@ -185,3 +185,31 @@
   border-color: var(--accent) !important;
   color: var(--accent) !important;
 }
+
+.btn-kill {
+  font-size: 12px;
+  padding: 0 10px;
+  height: 28px;
+  line-height: 28px;
+  border-color: var(--error) !important;
+  color: var(--error) !important;
+}
+
+.btn-kill-all {
+  border-color: var(--error) !important;
+  color: var(--error) !important;
+  font-size: 13px;
+}
+
+.btn-clear-interrupted {
+  border-color: var(--text-secondary) !important;
+  color: var(--text-secondary) !important;
+  font-size: 13px;
+}
+
+.actions-cell {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}

@@ -45,6 +45,9 @@ export class JobMonitorComponent implements OnInit, OnDestroy {
   selectedJobId: string | null = null;
   // Retry loading state — tracks which job IDs are awaiting retry response
   retryingJobIds = new Set<string>();
+  // Kill loading state
+  killingJobIds = new Set<string>();
+  killingCategory = false;
 
   // Tab type groups
   readonly TAB_TYPES = [
@@ -213,6 +216,46 @@ export class JobMonitorComponent implements OnInit, OnDestroy {
         error: () => {
           this.retryingJobIds.delete(job.job_id);
           this.snackBar.open('Retry failed — job may have no stored params.', 'Close', { duration: 4000 });
+        },
+      });
+  }
+
+  canKill(job: JobSnapshot): boolean {
+    return job.status === 'RUNNING' || job.status === 'PENDING';
+  }
+
+  killJob(job: JobSnapshot, event: Event): void {
+    event.stopPropagation();
+    if (this.killingJobIds.has(job.job_id)) return;
+    this.killingJobIds.add(job.job_id);
+    this.jobMonitorService.killJob(job.job_id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.killingJobIds.delete(job.job_id);
+          this.snackBar.open('Job killed.', 'Close', { duration: 3000 });
+        },
+        error: () => {
+          this.killingJobIds.delete(job.job_id);
+          this.snackBar.open('Kill failed — job may have already finished.', 'Close', { duration: 4000 });
+        },
+      });
+  }
+
+  killCategory(allJobs: JobSnapshot[]): void {
+    const category = this.TAB_TYPE_LABEL[this.activeTab];
+    const count = this.getActiveCount(allJobs, this.activeTab);
+    this.killingCategory = true;
+    this.jobMonitorService.killCategory(category)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (res) => {
+          this.killingCategory = false;
+          this.snackBar.open(`${res.killed} ${category} job${res.killed !== 1 ? 's' : ''} killed.`, 'Close', { duration: 3000 });
+        },
+        error: () => {
+          this.killingCategory = false;
+          this.snackBar.open('Kill all failed.', 'Close', { duration: 4000 });
         },
       });
   }
