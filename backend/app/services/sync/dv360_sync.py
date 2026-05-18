@@ -1853,7 +1853,7 @@ class DV360SyncService:
 
         if thumb_results:
             for ad_id, served_url in thumb_results.items():
-                set_vals = {"thumbnail_url": served_url}
+                set_vals = {"thumbnail_url": served_url, "asset_url": served_url}
                 stmt = (
                     sa_update(Dv360RawPerformance)
                     .where(
@@ -1969,9 +1969,15 @@ class DV360SyncService:
 
         logger.info(f"  Asset downloads complete: {len(downloaded_videos)} videos, {len(thumb_results)} thumbnails")
 
-        # Propagate downloaded URLs to CreativeAsset and reset autofill tracking
-        # Only propagate video downloads to asset_url — images/thumbnails stay as thumbnail_url only
-        all_downloaded: dict[str, str] = {ad_id: r["asset_url"] for ad_id, r in video_results.items() if r.get("asset_url")}
+        # Propagate downloaded URLs to CreativeAsset and reset autofill tracking.
+        # - Video ads (has youtube_video_id): only a successful video download sets asset_url.
+        #   A failed video download leaves asset_url NULL — the thumbnail is never a fallback.
+        # - Image-only ads (no youtube_video_id): the downloaded image IS the asset, so it goes to asset_url too.
+        image_only_ad_ids = {ad_id for ad_id, info in queue.items() if not info.get("youtube_video_id", "")}
+        all_downloaded: dict[str, str] = {
+            **{ad_id: url for ad_id, url in thumb_results.items() if ad_id in image_only_ad_ids},
+            **{ad_id: r["asset_url"] for ad_id, r in video_results.items() if r.get("asset_url")},
+        }
         if all_downloaded:
             from sqlalchemy import select, or_
             from sqlalchemy import update as _sa_update
