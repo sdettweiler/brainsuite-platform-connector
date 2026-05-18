@@ -370,3 +370,288 @@ def test_mask_proxy_url_helper():
 
     # Case 4: empty string — return empty string, no crash
     assert _mask_proxy_url("") == ""
+
+
+# ===== /download-concurrency endpoint tests (Phase 25, PERF-02) =====
+
+
+def _make_system_config_concurrency(max_concurrent: int):
+    """Return a MagicMock with max_concurrent_downloads set as a real attribute.
+
+    The attribute is set on the instance (not on the MagicMock spec) so the PUT
+    handler can mutate it and the assertion can check the mutated value.
+    """
+    config = MagicMock()
+    config.max_concurrent_downloads = max_concurrent
+    return config
+
+
+# ---------------------------------------------------------------------------
+# test_get_download_concurrency_returns_default_3
+# ---------------------------------------------------------------------------
+
+def test_get_download_concurrency_returns_default_3(app):
+    """GET /download-concurrency when config.max_concurrent_downloads=3 returns 200 + {max_concurrent_downloads: 3}."""
+    from app.db.base import get_db
+    from app.api.v1.deps import get_current_superadmin
+
+    config = _make_system_config_concurrency(3)
+    mock_db = _make_db_with_config(config)
+
+    async def override_get_db():
+        yield mock_db
+
+    async def override_superadmin():
+        return _make_superuser()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_superadmin] = override_superadmin
+    try:
+        from fastapi.testclient import TestClient
+        client = TestClient(app, raise_server_exceptions=True)
+        response = client.get("/api/v1/super-admin/download-concurrency")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_superadmin, None)
+
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+    body = response.json()
+    assert body["max_concurrent_downloads"] == 3
+
+
+# ---------------------------------------------------------------------------
+# test_get_download_concurrency_returns_stored_value
+# ---------------------------------------------------------------------------
+
+def test_get_download_concurrency_returns_stored_value(app):
+    """GET /download-concurrency when config.max_concurrent_downloads=7 returns 200 + {max_concurrent_downloads: 7}."""
+    from app.db.base import get_db
+    from app.api.v1.deps import get_current_superadmin
+
+    config = _make_system_config_concurrency(7)
+    mock_db = _make_db_with_config(config)
+
+    async def override_get_db():
+        yield mock_db
+
+    async def override_superadmin():
+        return _make_superuser()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_superadmin] = override_superadmin
+    try:
+        from fastapi.testclient import TestClient
+        client = TestClient(app, raise_server_exceptions=True)
+        response = client.get("/api/v1/super-admin/download-concurrency")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_superadmin, None)
+
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+    body = response.json()
+    assert body["max_concurrent_downloads"] == 7
+
+
+# ---------------------------------------------------------------------------
+# test_get_download_concurrency_500_when_no_row
+# ---------------------------------------------------------------------------
+
+def test_get_download_concurrency_500_when_no_row(app):
+    """GET /download-concurrency with no SystemConfig row returns 500."""
+    from app.db.base import get_db
+    from app.api.v1.deps import get_current_superadmin
+
+    mock_db = _make_db_with_config(None)
+
+    async def override_get_db():
+        yield mock_db
+
+    async def override_superadmin():
+        return _make_superuser()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_superadmin] = override_superadmin
+    try:
+        from fastapi.testclient import TestClient
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/api/v1/super-admin/download-concurrency")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_superadmin, None)
+
+    assert response.status_code == 500, f"Expected 500, got {response.status_code}: {response.text}"
+
+
+# ---------------------------------------------------------------------------
+# test_put_download_concurrency_persists_value
+# ---------------------------------------------------------------------------
+
+def test_put_download_concurrency_persists_value(app):
+    """PUT {max_concurrent_downloads: 5} returns 200 + {max_concurrent_downloads: 5} AND mutates config."""
+    from app.db.base import get_db
+    from app.api.v1.deps import get_current_superadmin
+
+    config = _make_system_config_concurrency(3)
+    mock_db = _make_db_with_config(config)
+
+    async def override_get_db():
+        yield mock_db
+
+    async def override_superadmin():
+        return _make_superuser()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_superadmin] = override_superadmin
+    try:
+        from fastapi.testclient import TestClient
+        client = TestClient(app, raise_server_exceptions=True)
+        response = client.put(
+            "/api/v1/super-admin/download-concurrency",
+            json={"max_concurrent_downloads": 5},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_superadmin, None)
+
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+    body = response.json()
+    assert body["max_concurrent_downloads"] == 5
+
+    # Verify the config object was mutated before commit
+    assert config.max_concurrent_downloads == 5
+    mock_db.add.assert_called_once()
+    mock_db.commit.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# test_put_download_concurrency_rejects_zero
+# ---------------------------------------------------------------------------
+
+def test_put_download_concurrency_rejects_zero(app):
+    """PUT {max_concurrent_downloads: 0} returns 422 (Pydantic validation, DB never touched)."""
+    from app.db.base import get_db
+    from app.api.v1.deps import get_current_superadmin
+
+    config = _make_system_config_concurrency(3)
+    mock_db = _make_db_with_config(config)
+
+    async def override_get_db():
+        yield mock_db
+
+    async def override_superadmin():
+        return _make_superuser()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_superadmin] = override_superadmin
+    try:
+        from fastapi.testclient import TestClient
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.put(
+            "/api/v1/super-admin/download-concurrency",
+            json={"max_concurrent_downloads": 0},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_superadmin, None)
+
+    assert response.status_code == 422, f"Expected 422, got {response.status_code}: {response.text}"
+
+
+# ---------------------------------------------------------------------------
+# test_put_download_concurrency_rejects_eleven
+# ---------------------------------------------------------------------------
+
+def test_put_download_concurrency_rejects_eleven(app):
+    """PUT {max_concurrent_downloads: 11} returns 422 (Pydantic validation, DB never touched)."""
+    from app.db.base import get_db
+    from app.api.v1.deps import get_current_superadmin
+
+    config = _make_system_config_concurrency(3)
+    mock_db = _make_db_with_config(config)
+
+    async def override_get_db():
+        yield mock_db
+
+    async def override_superadmin():
+        return _make_superuser()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_superadmin] = override_superadmin
+    try:
+        from fastapi.testclient import TestClient
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.put(
+            "/api/v1/super-admin/download-concurrency",
+            json={"max_concurrent_downloads": 11},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_superadmin, None)
+
+    assert response.status_code == 422, f"Expected 422, got {response.status_code}: {response.text}"
+
+
+# ---------------------------------------------------------------------------
+# test_put_download_concurrency_rejects_missing_field
+# ---------------------------------------------------------------------------
+
+def test_put_download_concurrency_rejects_missing_field(app):
+    """PUT {} (missing max_concurrent_downloads) returns 422 (Pydantic required field)."""
+    from app.db.base import get_db
+    from app.api.v1.deps import get_current_superadmin
+
+    config = _make_system_config_concurrency(3)
+    mock_db = _make_db_with_config(config)
+
+    async def override_get_db():
+        yield mock_db
+
+    async def override_superadmin():
+        return _make_superuser()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_superadmin] = override_superadmin
+    try:
+        from fastapi.testclient import TestClient
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.put(
+            "/api/v1/super-admin/download-concurrency",
+            json={},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_superadmin, None)
+
+    assert response.status_code == 422, f"Expected 422, got {response.status_code}: {response.text}"
+
+
+# ---------------------------------------------------------------------------
+# test_download_concurrency_endpoints_reject_non_superadmin
+# ---------------------------------------------------------------------------
+
+def test_download_concurrency_endpoints_reject_non_superadmin(app):
+    """GET and PUT /download-concurrency each return 403 for non-SuperAdmin callers."""
+    from app.db.base import get_db
+    from app.api.v1.deps import get_current_superadmin
+    from fastapi import HTTPException
+
+    async def override_get_db():
+        yield AsyncMock()
+
+    async def override_non_superadmin():
+        raise HTTPException(status_code=403, detail="SuperAdmin privileges required")
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_superadmin] = override_non_superadmin
+    try:
+        from fastapi.testclient import TestClient
+        client = TestClient(app, raise_server_exceptions=False)
+
+        r_get = client.get("/api/v1/super-admin/download-concurrency")
+        assert r_get.status_code == 403, f"GET expected 403, got {r_get.status_code}"
+
+        r_put = client.put("/api/v1/super-admin/download-concurrency", json={"max_concurrent_downloads": 5})
+        assert r_put.status_code == 403, f"PUT expected 403, got {r_put.status_code}"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_superadmin, None)
