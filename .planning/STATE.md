@@ -1,40 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: YouTube Downloads & Dashboard Filters
-status: verifying
-stopped_at: context exhaustion at 75% (2026-05-18)
-last_updated: "2026-05-18T13:48:16.519Z"
+milestone: v1.5
+milestone_name: TBD
+status: planning
+last_updated: "2026-05-18T00:00:00.000Z"
 last_activity: 2026-05-18
 progress:
-  total_phases: 13
-  completed_phases: 12
-  total_plans: 32
-  completed_plans: 34
-  percent: 92
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-14 — v1.4 milestone started)
+See: .planning/PROJECT.md (updated 2026-05-18 after v1.4 milestone)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 23 — dashboard-duration-filter-backfill
+**Current focus:** Planning v1.5 milestone
 
 ## Current Position
 
-Phase: 23 (dashboard-duration-filter-backfill) — EXECUTING
-Plan: 2 of 2
-Status: Phase complete — ready for verification
-Last activity: 2026-05-18
+Milestone v1.4 archived 2026-05-18. Planning v1.5.
 
 ## Progress Bar
 
 ```
-v1.4: [P] Phase 20  [ ] Phase 21  [ ] Phase 22  [ ] Phase 23
-      0 / 4 phases complete  (P = planned)
+v1.4: [x] Phase 20  [x] Phase 21  [x] Phase 22  [x] Phase 23
+      4 / 4 phases complete — SHIPPED 2026-05-18
 ```
 
 ## Accumulated Context

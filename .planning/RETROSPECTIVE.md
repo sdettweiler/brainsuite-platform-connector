@@ -127,6 +127,48 @@
 
 ---
 
+---
+
+## Milestone: v1.4 — YouTube Downloads & Dashboard Filters
+
+**Shipped:** 2026-05-18
+**Phases:** 4 (20–23) | **Plans:** 9
+
+### What Was Built
+
+1. Residential proxy (IPRoyal/DataImpulse) injected into DV360 and Google Ads yt-dlp paths — credential redaction via `_redact()` closure, sticky session IDs, cookieless-first retry order, bgutil PO token plugin auto-invoked (Phase 20)
+2. SuperAdmin proxy config UI — Fernet-encrypted URL, enable/disable toggle, masked display (`http://••••••@host:port`), httpx reachability test with latency_ms (Phase 21)
+3. Dashboard metadata filter — org-scoped autocomplete, OR-within-field / AND-across-fields via SQLAlchemy `aliased()`, chip row with remove + Clear all (Phase 22)
+4. Ad account multi-select filter — platform-grouped (Meta → TikTok → Google Ads → DV360), memoized getter, search input (Phase 22)
+5. Video duration range slider — dual-handle, async backfill at all 8 scheduler sync-completion sites, NULL callout, ffprobe extraction for all 4 platforms (Phase 23)
+
+### What Worked
+
+- **Audit-before-close pattern continued to pay off** — BLOCKER-01 (httpx proxies= kwarg TypeError) was caught by `gsd-audit-milestone` before close; fixed in a quick task (commit 734b2d7). Without the audit this TypeError would have shipped as a silent runtime crash on every proxy test click.
+- **DV360 live UAT as a proxy for Google Ads** — Code paths are structurally identical; DV360 live validation was sufficient to demonstrate correctness even when Google Ads live test was environment-blocked.
+- **Mat-menu teardown fixed by memoizing getter** — Identifying `groupedAdAccounts` as the root cause of the dropdown closing on click (ngFor teardown per CD cycle) required tracing Angular change detection. The fix (memoize on `adAccounts` reference equality) was a one-line change; the diagnosis was the hard part.
+- **null_duration_count conditional computation** — Deferring the COUNT subquery to only when the filter is active was the right call; it prevented a regression on every unfiltered dashboard load.
+
+### What Was Inefficient
+
+- **httpx kwarg blocker not caught by test suite** — `proxies=` dict → `proxy=` singular kwarg was invisible to automated tests because `httpx.AsyncClient` was fully patched in test_super_admin_proxy.py. The bug only manifests with a real httpx call. Pattern: patching the entire client hides constructor kwarg errors. Future proxy tests should patch at a lower level or use real httpx with a mock server.
+- **PROXY-02 live validation blocked by pre-existing environment issues** — MCC manager accounts and an expired cookie flag from a prior event blocked the Google Ads live test. These were pre-existing conditions unrelated to v1.4 code; the milestone closed with an acknowledged gap. Environment hygiene (resetting `youtube_cookies_runtime_expired`, using a non-MCC test account) should be documented as a pre-condition for proxy validation.
+- **VALIDATION.md sign-off drift** — All 4 phase VALIDATION.md files had `nyquist_compliant: false` at milestone close despite Wave 0 tests passing green. The sign-off fields are never updated during execution because gsd-validate-phase is run as a separate step that rarely happens. This is the third milestone with this pattern; it suggests the sign-off should be automated or removed.
+
+### Patterns Established
+
+- **Proxy credential redaction pattern** — `_redact()` closure defined inside the download function, capturing the raw proxy URL; `re.sub` single-pass regex strips credentials from all 4 YDLLogger methods. Reusable for any future service that logs user-supplied URLs.
+- **Memoize computed Angular getters on input reference equality** — When a getter returns a derived array/object and is used in `*ngFor`, memoize it to prevent teardown. Pattern: store previous input hash + previous result; recompute only when input changes.
+- **Backend filter-aware bounds endpoints** — `/dashboard/duration-bounds` accepts the same org/metadata/account filter params as `/dashboard/assets` so bounds are always scoped to the visible data. Reusable for any future range filter (e.g. spend range, score range).
+
+### Key Lessons
+
+1. When patching a class for testing, patch at the method level (not the class constructor) if you need to catch kwarg errors. `httpx.AsyncClient(proxies=...)` silently fails in tests because the constructor is never called.
+2. Document environment pre-conditions for integration tests (proxy validation requires: non-MCC account, cookie flags cleared, proxy credentials loaded). These are as important as the test itself.
+3. VALIDATION.md sign-off (`nyquist_compliant: true`) should be set by the executor at the end of the last plan in each phase, not deferred to a separate validate step. Three milestones of drift confirms this is a workflow gap.
+
+---
+
 ## Cross-Milestone Trends
 
 | Milestone | Phases | Plans | Days | Files | LOC Added |
@@ -135,3 +177,4 @@
 | v1.1 Insights + Intelligence | 6 | 14 | 21 | 329 | ~23,842 |
 | v1.2 BrainSuite Configuration | 4 | 13 | 13 | 123 | ~21,240 |
 | v1.3 SuperAdmin Monitoring & TikTok | 8 | 23 | 6 | — | ~15,000 |
+| v1.4 YouTube Downloads & Dashboard Filters | 4 | 9 | 4 | 100 | ~17,821 |

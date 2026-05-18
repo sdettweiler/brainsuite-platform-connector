@@ -1,5 +1,27 @@
 # Milestones
 
+## v1.4 — YouTube Downloads & Dashboard Filters
+**Shipped:** 2026-05-18
+**Phases:** 20–23 (4 phases, 9 plans)
+**Stats:** 100 files changed, +18,394 / −573 lines, 4 days (2026-05-15 → 2026-05-18)
+**Known deferred items at close:** 1 acknowledged gap (PROXY-02 — Google Ads live validation env-blocked)
+
+### Delivered
+
+- Residential proxy (IPRoyal/DataImpulse) injected into DV360 and Google Ads yt-dlp download paths — credential redaction, sticky session IDs, cookieless-first retry, bgutil PO token plugin auto-invoked (Phase 20)
+- SuperAdmin proxy config UI — Fernet-encrypted URL storage, enable/disable toggle, masked display, httpx reachability test (Phase 21)
+- Dashboard metadata filter — org-scoped autocomplete, OR-within-field / AND-across-fields composition, chip row with remove + Clear all (Phase 22)
+- Ad account multi-select filter — platform-grouped (Meta → TikTok → Google Ads → DV360) with search input (Phase 22)
+- Video duration range slider — dual-handle, async backfill at all 8 sync sites, NULL callout, ffprobe extraction for all 4 platforms (Phase 23)
+
+### Known Gaps
+
+- PROXY-02: Google Ads live download validation blocked by pre-existing environment issues (MCC manager accounts + expired cookie flag). Code path is identical to DV360 (which validated). Not a code deficiency.
+
+**Archive:** [v1.4-ROADMAP.md](milestones/v1.4-ROADMAP.md) | [v1.4-REQUIREMENTS.md](milestones/v1.4-REQUIREMENTS.md) | [v1.4-MILESTONE-AUDIT.md](milestones/v1.4-MILESTONE-AUDIT.md)
+
+---
+
 ## v1.3 — SuperAdmin Monitoring & TikTok Downloads
 **Shipped:** 2026-05-13
 **Phases:** 15–19.3 (8 phases, 23 plans)

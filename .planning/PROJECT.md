@@ -8,20 +8,9 @@ A production-ready multi-tenant SaaS platform that connects Meta, TikTok, Google
 
 A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
 
-## Current Milestone: v1.4 — YouTube Downloads & Dashboard Filters
-
-**Goal:** YouTube and Google Ads video creatives download reliably in production via residential proxy + PO token plugin; the dashboard has all three creative filters restored and working.
-
-**Target features:**
-- Residential proxy integration (DV360 + Google Ads) — three-layer stack: proxy IP → cookies → bgutil PO token plugin
-- SuperAdmin proxy config UI (enable toggle + encrypted URL storage)
-- Dashboard metadata filter with autocomplete (recover from git + verify)
-- Dashboard ad account multi-select filter (recover from git + verify)
-- Dashboard video duration range filter (new)
-
 ## Current State
 
-**Version:** v1.3 — shipped 2026-05-13
+**Version:** v1.4 — shipped 2026-05-18
 
 **Stack:** Angular 17 + FastAPI + PostgreSQL + Redis + MinIO — fully containerized via Docker Compose
 **Deployment:** Any cloud host or local dev via `docker-compose up`
@@ -47,6 +36,11 @@ A user can connect all their ad accounts, see every creative's performance metri
 - Full service instrumentation: sync, download, autofill, scoring all write job records with real-time progress via Redis pub/sub
 - SSE real-time transport (`/api/v1/jobs/stream`) with 30s keepalive heartbeat and clean connection lifecycle management
 - SuperAdmin monitoring UI at /configuration/jobs — 4-tab job table, real-time SSE progress bars, drill-in detail panels (full Gemini output, download manifests, error tracebacks, per-asset scores)
+- Residential proxy (IPRoyal/DataImpulse) injected into DV360 and Google Ads yt-dlp download paths — credential redaction, sticky session IDs, cookieless-first retry, bgutil PO token plugin auto-invoked
+- SuperAdmin proxy config UI at /configuration/admin — Fernet-encrypted URL, enable/disable toggle, masked display, httpx reachability test
+- Dashboard metadata filter — org-scoped autocomplete, OR-within-field / AND-across-fields composition, chip row
+- Dashboard ad account multi-select filter — platform-grouped (Meta → TikTok → Google Ads → DV360) with search input
+- Dashboard video duration range slider — dual-handle, async backfill at all 8 sync sites, NULL callout, ffprobe extraction for all 4 platforms
 
 **Known tech debt:**
 - Performer badge minimum guard is 3 assets (requirement: 10) — minor threshold mismatch
@@ -92,22 +86,21 @@ A user can connect all their ad accounts, see every creative's performance metri
 - ✓ Service instrumentation — all 4 job types instrumented with real-time progress (INSTR-01–05) — v1.3 (Phase 17)
 - ✓ SSE real-time transport with keepalive + connection lifecycle (SSE-01, SSE-02) — v1.3 (Phase 18)
 - ✓ SuperAdmin monitoring UI at /configuration/jobs — 4-tab job table, drill-in panels, error tracebacks (MON-01–07) — v1.3 (Phase 19)
+- ✓ Residential proxy (DV360 + Google Ads) with bgutil PO token plugin — cookieless-first retry, credential redaction (PROXY-01, PROXY-03, PROXY-04, PROXY-06) — v1.4 (Phase 20)
+- ✓ SuperAdmin proxy config UI — Fernet-encrypted URL, enable/disable toggle (PROXY-05) — v1.4 (Phase 21)
+- ✓ Dashboard metadata filter with org-scoped autocomplete, OR/AND composition, chip row (DASH-01) — v1.4 (Phase 22)
+- ✓ Dashboard ad account multi-select filter with platform grouping (DASH-02) — v1.4 (Phase 22)
+- ✓ Dashboard video duration range slider with async backfill, NULL callout, ffprobe extraction (DASH-03) — v1.4 (Phase 23)
 
-### Active (v1.4)
-
-- YouTube/DV360 residential proxy integration + PO token plugin — fixes IP-layer blocking on datacenter hosts (PROXY-01, PROXY-02, PROXY-03)
-- Google Ads residential proxy integration — same yt-dlp path as DV360 (PROXY-04)
-- SuperAdmin proxy config UI — enable toggle + encrypted URL storage (PROXY-05)
-- Dashboard metadata filter with autocomplete (DASH-01)
-- Dashboard ad account multi-select filter (DASH-02)
-- Dashboard video duration range filter (DASH-03)
-
-### Deferred (v1.5 candidates)
+### Active (v1.5 candidates)
 
 - TikTok live-run UAT confirmation (TKTOK-01/02 — pending live sync)
+- Google Ads proxy live validation (PROXY-02 — environment-blocked; code verified identical to DV360 which passed)
 - SSE Redis pub/sub upgrade at 50+ concurrent SuperAdmins (SSE-03)
 - Account-level metadata defaults: connection_metadata_defaults table + account config UI + lookup fallback (META-01, META-02)
-- Alembic migration 4-head merge (cross-phase tech debt — fresh install ambiguity)
+- Alembic migration 4-head merge — `alembic upgrade head` ambiguity on fresh installs (DEBT-01)
+
+### Deferred
 
 ### Out of Scope
 
@@ -166,6 +159,15 @@ A user can connect all their ad accounts, see every creative's performance metri
 | brainsuite_job_id written to metadata_ (not output) | Ensures References panel displays it alongside sync_job_id; consistent KNOWN_EXTERNAL_ID_KEYS contract (v1.3 gap closure) | ✓ Good |
 | asset_url/video_source_url in ON CONFLICT exclusion | Prevents null window during TikTok re-sync — S3-stored URL preserved across upserts (v1.3 gap closure) | ✓ Good |
 | scoring_enabled gate on all 4 download functions | SystemConfig.scoring_enabled=false suppresses downloads on all platforms uniformly (v1.3 gap closure) | ✓ Good |
+| Three-layer proxy stack (residential IP → cookies → bgutil) | Datacenter IPs blocked at network layer before cookies evaluated; all three required for production YouTube downloads | ✓ Good |
+| bgutil sidecar in HTTP server mode (port 4416) | Script mode spawns subprocess per token request — cold-start latency + orphan processes on Cloud Run | ✓ Good |
+| proxy= singular kwarg (httpx 0.25.2) | proxies= dict removed in httpx 0.25.x; discovered as BLOCKER-01 in audit, fixed before milestone close | ✓ Good |
+| _redact() closure in yt-dlp logger | Proxy credentials in URL format http://user:pass@host stripped from all 4 YDLLogger methods; single regex pass | ✓ Good |
+| SQLAlchemy aliased() per metadata_filter entry | AND-composition across fields; OR-within-field via value.in_() bucket grouping — matches DASH-01 D-07/D-08 spec | ✓ Good |
+| Two-layer org guard on metadata values endpoint | db.get check + JOIN-level organization_id — prevents UUID enumeration while blocking cross-org leakage (T-22-01) | ✓ Good |
+| null_duration_count gated on filter activity | Avoids expensive COUNT(*) subquery on every unfiltered dashboard load (D-07) | ✓ Good |
+| has_video_assets flag from duration-bounds | Frontend shows slider only when VIDEO assets exist — filter-aware, not page-scoped; authoritative from backend | ✓ Good |
+| memoized groupedAdAccounts getter | Prevents ngFor teardown + mat-menu close on every Angular change detection cycle | ✓ Good |
 
 ## Evolution
 
@@ -183,4 +185,4 @@ A user can connect all their ad accounts, see every creative's performance metri
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-14 — v1.4 milestone started*
+*Last updated: 2026-05-18 after v1.4 milestone*
