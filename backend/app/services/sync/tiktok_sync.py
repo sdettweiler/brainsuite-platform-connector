@@ -433,6 +433,7 @@ class TikTokSyncService:
                 asset_url: Optional[str] = None
                 video_source_url: Optional[str] = None
 
+                asset_video_duration: Optional[float] = None
                 try:
                     if video_id_val and not is_spark:
                         # Standard video ad: fetch download URL then download bytes to S3
@@ -440,7 +441,7 @@ class TikTokSyncService:
                             access_token, advertiser_id, [str(video_id_val)]
                         )
                         if raw_video_url:
-                            asset_url = await self._download_video_asset(raw_video_url, org_id, ad_id)
+                            asset_url, asset_video_duration = await self._download_video_asset(raw_video_url, org_id, ad_id)
                             video_source_url = raw_video_url  # Store API URL per D-06
 
                     elif image_ids_raw and not video_id_val and not is_spark:
@@ -499,6 +500,18 @@ class TikTokSyncService:
                         **({"video_source_url": video_source_url} if video_source_url else {}),
                     )
                 )
+
+                # Populate video_duration on CreativeAsset inline — no separate backfill needed.
+                if asset_video_duration is not None:
+                    from app.models.creative import CreativeAsset
+                    await db.execute(
+                        update(CreativeAsset).where(
+                            CreativeAsset.organization_id == connection.organization_id,
+                            CreativeAsset.platform == "TIKTOK",
+                            CreativeAsset.ad_id == ad_id,
+                            CreativeAsset.video_duration.is_(None),
+                        ).values(video_duration=asset_video_duration)
+                    )
 
             await db.flush()
             logger.info(f"  Enriched {len(batch)} ads from /ad/get/")
@@ -600,31 +613,33 @@ class TikTokSyncService:
         url: str,
         org_id: str,
         ad_id: str,
-    ) -> Optional[str]:
-        """Download a TikTok video from URL, upload to S3/MinIO. Returns served URL or None.
+    ) -> tuple[Optional[str], Optional[float]]:
+        """Download a TikTok video from URL, upload to S3/MinIO. Returns (served_url, duration_seconds).
         Storage path: creatives/{org_id}/video_tiktok_{ad_id}.mp4
-        Decision D-04: Inline download; failures are non-fatal (log + return None).
+        Decision D-04: Inline download; failures are non-fatal (log + return None, None).
         Decision D-06: Result stored in asset_url (scoring/autofill input, not thumbnail).
         """
         from app.services.object_storage import get_object_storage
+        from app.services.sync.video_utils import probe_duration_from_bytes
         obj_storage = get_object_storage()
 
         filename = f"video_tiktok_{ad_id}.mp4"
         relative_path = f"creatives/{org_id}/{filename}"
 
         if obj_storage.file_exists(relative_path):
-            return obj_storage.served_url(relative_path)
+            return obj_storage.served_url(relative_path), None
 
         try:
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
             served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="video/mp4")
-            logger.info("Downloaded TikTok video for ad %s: %s (%d bytes)", ad_id, filename, len(resp.content))
-            return served_url
+            duration = await asyncio.to_thread(probe_duration_from_bytes, resp.content, ".mp4")
+            logger.info("Downloaded TikTok video for ad %s: %s (%d bytes, duration=%s)", ad_id, filename, len(resp.content), duration)
+            return served_url, duration
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
             logger.warning("Failed to download TikTok video for ad %s: %s", ad_id, e, exc_info=True)
-            return None
+            return None, None
 
     async def _download_image_asset(
         self,

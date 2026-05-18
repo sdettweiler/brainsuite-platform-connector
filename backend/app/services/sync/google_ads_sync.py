@@ -468,7 +468,9 @@ class GoogleAdsSyncService:
             if actual_path:
                 size_mb = os.path.getsize(actual_path) / (1024 * 1024)
                 served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
-                logger.info("  Downloaded Google Ads YouTube video: %s (%.1f MB)", filename, size_mb)
+                from app.services.sync.video_utils import get_video_duration as _get_dur
+                yt_video_duration = await asyncio.get_event_loop().run_in_executor(None, _get_dur, actual_path)
+                logger.info("  Downloaded Google Ads YouTube video: %s (%.1f MB, duration=%s)", filename, size_mb, yt_video_duration)
                 try:
                     from sqlalchemy import update as _sa_update
                     from app.models.system_config import SystemConfig as _SC
@@ -488,7 +490,7 @@ class GoogleAdsSyncService:
                 frame_thumb = None
                 if not obj_storage.file_exists(thumb_rel):
                     frame_thumb = await extract_first_frame_and_upload(actual_path, org_id, ad_id, "yt", obj_storage)
-                return None, served_url, frame_thumb
+                return yt_video_duration, served_url, frame_thumb
             else:
                 logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
                 return None, None, None
@@ -671,9 +673,10 @@ class GoogleAdsSyncService:
             # remaining video downloads but still persist the thumbnail we already have.
             video_url: Optional[str] = None
             frame_thumb: Optional[str] = None
+            yt_duration: Optional[float] = None
             if not cookies_expired:
                 try:
-                    _, video_url, frame_thumb = await self._download_video(youtube_video_id, org_id, ad_id)
+                    yt_duration, video_url, frame_thumb = await self._download_video(youtube_video_id, org_id, ad_id)
                     if video_url:
                         video_successes += 1
                         served_url = video_url
@@ -703,6 +706,17 @@ class GoogleAdsSyncService:
                         GoogleAdsRawPerformance.platform_connection_id == connection.id,
                     )
                     .values(**update_vals)
+                )
+            # Populate video_duration on CreativeAsset inline — no separate backfill needed.
+            if yt_duration is not None:
+                from app.models.creative import CreativeAsset
+                await db.execute(
+                    sa_update(CreativeAsset).where(
+                        CreativeAsset.organization_id == connection.organization_id,
+                        CreativeAsset.platform == "GOOGLE_ADS",
+                        CreativeAsset.ad_id == ad_id,
+                        CreativeAsset.video_duration.is_(None),
+                    ).values(video_duration=yt_duration)
                 )
         await db.commit()
         if cookies_expired:

@@ -830,6 +830,7 @@ class MetaSyncService:
                 thumbnail_url = creative_data.get("thumbnail_url")
                 video_id = creative_data.get("video_id")
                 story_spec = creative_data.get("object_story_spec", {})
+                meta_video_duration = None
 
                 has_video_data = "video_data" in story_spec
                 if not video_id and has_video_data:
@@ -852,8 +853,9 @@ class MetaSyncService:
                 if is_video and video_id:
                     video_info = await self._get_video_info(access_token, video_id)
                     video_source = video_info.get("source") if video_info else None
+                    meta_video_duration = None
                     if video_source:
-                        _, asset_served_url = await self._download_asset(
+                        _, asset_served_url, meta_video_duration = await self._download_asset(
                             video_source, connection.organization_id, ad_id, "vid"
                         )
                     video_thumbs = video_info.get("thumbnails", {}).get("data", []) if video_info else []
@@ -913,7 +915,7 @@ class MetaSyncService:
                     video_info = await self._get_video_info(access_token, video_id)
                     video_source = video_info.get("source") if video_info else None
                     if video_source:
-                        _, asset_served_url = await self._download_asset(
+                        _, asset_served_url, meta_video_duration = await self._download_asset(
                             video_source, connection.organization_id, ad_id, "vid"
                         )
                     video_thumbs = video_info.get("thumbnails", {}).get("data", []) if video_info else []
@@ -925,7 +927,7 @@ class MetaSyncService:
                 # For videos: download the best thumbnail from Meta
                 # For images: thumb_served_url already set above from generated thumbnail
                 if thumbnail_url and not thumb_served_url:
-                    _, thumb_served_url = await self._download_asset(
+                    _, thumb_served_url, _ = await self._download_asset(
                         thumbnail_url, connection.organization_id, ad_id, "thumb"
                     )
 
@@ -949,6 +951,18 @@ class MetaSyncService:
                         asset_url=final_asset,
                     )
                 )
+
+                # Populate video_duration on CreativeAsset inline — no separate backfill needed.
+                if meta_video_duration is not None:
+                    from app.models.creative import CreativeAsset
+                    await db.execute(
+                        update(CreativeAsset).where(
+                            CreativeAsset.organization_id == connection.organization_id,
+                            CreativeAsset.platform == "META",
+                            CreativeAsset.ad_id == ad_id,
+                            CreativeAsset.video_duration.is_(None),
+                        ).values(video_duration=meta_video_duration)
+                    )
 
             await db.flush()
             logger.info(f"  Updated creatives for batch of {len(batch)} ads")
@@ -1104,7 +1118,9 @@ class MetaSyncService:
         ad_id: str,
         prefix: str,
     ) -> tuple:
-        """Download a file from URL, upload to object storage. Returns (None, served_url)."""
+        """Download a file from URL, upload to object storage. Returns (None, served_url, duration_seconds).
+        duration_seconds is populated only for video files; None for images.
+        """
         try:
             from app.services.object_storage import get_object_storage
             obj_storage = get_object_storage()
@@ -1121,7 +1137,7 @@ class MetaSyncService:
             relative_path = f"creatives/{org_id}/{filename}"
 
             if obj_storage.file_exists(relative_path):
-                return None, obj_storage.served_url(relative_path)
+                return None, obj_storage.served_url(relative_path), None
 
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 resp = await client.get(url)
@@ -1141,11 +1157,18 @@ class MetaSyncService:
             ct = content_type.split(";")[0].strip() or "application/octet-stream"
             served_url = obj_storage.upload_bytes(resp.content, relative_path, ct)
             logger.info(f"  Downloaded asset: {filename} ({len(resp.content)} bytes)")
-            return None, served_url
+
+            duration = None
+            if ext == ".mp4":
+                import asyncio as _asyncio
+                from app.services.sync.video_utils import probe_duration_from_bytes
+                duration = await _asyncio.to_thread(probe_duration_from_bytes, resp.content, ".mp4")
+
+            return None, served_url, duration
 
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
             logger.warning("Failed to download asset for ad %s: %s", ad_id, e, exc_info=True)
-            return None, None
+            return None, None, None
 
     @staticmethod
     def _generate_thumbnail(

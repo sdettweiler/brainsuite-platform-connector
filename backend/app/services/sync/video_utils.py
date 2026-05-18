@@ -4,11 +4,34 @@ Extracted from dv360_sync.py:1423 so backfill_job and all sync services can shar
 duration extraction without method-level coupling.
 """
 import json
+import os
 import subprocess
+import tempfile
 import logging
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def probe_duration_from_bytes(file_bytes: bytes, suffix: str = ".mp4") -> Optional[float]:
+    """Write bytes to a temp file, probe duration with ffprobe, clean up.
+
+    Used by Meta, TikTok, and any sync that has bytes in memory rather than a path.
+    Returns None when ffprobe fails or file_bytes is empty.
+    """
+    if not file_bytes:
+        return None
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        tmp.write(file_bytes)
+        tmp.flush()
+        tmp.close()
+        return get_video_duration(tmp.name)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
 
 
 def get_video_duration(file_path: str) -> Optional[float]:
