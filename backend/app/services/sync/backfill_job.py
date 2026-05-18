@@ -41,6 +41,7 @@ async def has_null_duration_assets(db: AsyncSession, org_id: uuid.UUID) -> int:
         CreativeAsset.asset_format == "VIDEO",
         CreativeAsset.video_duration.is_(None),
         CreativeAsset.asset_url.isnot(None),
+        CreativeAsset.asset_url != "",
     )
     return (await db.execute(q)).scalar() or 0
 
@@ -69,6 +70,7 @@ async def run_duration_backfill(org_id: uuid.UUID, batch_size: int = 100) -> Non
                 CreativeAsset.asset_format == "VIDEO",
                 CreativeAsset.video_duration.is_(None),
                 CreativeAsset.asset_url.isnot(None),
+        CreativeAsset.asset_url != "",
             )
             total = (await db.execute(total_q)).scalar() or 0
 
@@ -96,6 +98,7 @@ async def run_duration_backfill(org_id: uuid.UUID, batch_size: int = 100) -> Non
                         CreativeAsset.asset_format == "VIDEO",
                         CreativeAsset.video_duration.is_(None),
                         CreativeAsset.asset_url.isnot(None),
+        CreativeAsset.asset_url != "",
                     )
                     .limit(batch_size)
                 )
