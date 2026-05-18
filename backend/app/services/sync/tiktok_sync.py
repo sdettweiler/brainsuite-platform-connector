@@ -420,8 +420,12 @@ class TikTokSyncService:
                 post_link = f"https://www.tiktok.com/@{display_name}/video/{video_id_val}" if display_name and video_id_val else None
 
                 thumbnail_url: Optional[str] = None
-                if isinstance(image_ids_raw, list) and image_ids_raw:
-                    cover_url = await self._fetch_cover_image_url(access_token, advertiser_id, image_ids_raw[:1])
+                _thumb_image_ids = (
+                    image_ids_raw if isinstance(image_ids_raw, list)
+                    else (image_ids_raw.split(",") if image_ids_raw else [])
+                )
+                if _thumb_image_ids:
+                    cover_url = await self._fetch_cover_image_url(access_token, advertiser_id, _thumb_image_ids[:1])
                     if cover_url:
                         thumbnail_url = await self._download_tiktok_thumbnail(cover_url, org_id, ad_id)
 

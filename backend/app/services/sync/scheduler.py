@@ -839,12 +839,13 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict) -> None:
 
         asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id))
 
-        # Phase 17: Mark COMPLETE with D-11 output manifest
+        # Phase 17: Mark COMPLETE (all downloaded), PARTIAL (some failed), or leave for exception path
         output = {"downloaded": downloaded, "failed": failed}
+        dl_status = "PARTIAL" if failed else "COMPLETE"
         await update_background_job(
             bg_job_id,
-            status="COMPLETE",
-            progress_current=asset_count,
+            status=dl_status,
+            progress_current=len(downloaded),
             output=output,
         )
 
@@ -2044,10 +2045,19 @@ async def startup_scheduler(db_session=None) -> None:
         )
         connections = result.scalars().all()
 
+        # Connections with INTERRUPTED jobs will be resumed by _auto_resume_interrupted_jobs().
+        # Exclude them here to prevent a duplicate initial sync from firing.
+        interrupted_result = await db.execute(
+            select(BackgroundJob.platform_connection_id)
+            .where(BackgroundJob.status == "INTERRUPTED", BackgroundJob.platform_connection_id.isnot(None))
+            .distinct()
+        )
+        has_interrupted_job: set = {row[0] for row in interrupted_result.all()}
+
         for conn in connections:
             timezone = conn.timezone or "UTC"
             schedule_connection(str(conn.id), timezone)
-            if not conn.initial_sync_completed:
+            if not conn.initial_sync_completed and conn.id not in has_interrupted_job:
                 pending_initial.append(str(conn.id))
 
     from app.core.config import settings as _settings
@@ -2062,7 +2072,7 @@ async def startup_scheduler(db_session=None) -> None:
             max_instances=10,
         )
         logger.info("Registered scoring_batch job (every 15 minutes)")
-        from app.services.sync.maintenance import cleanup_old_background_jobs
+        from app.services.sync.maintenance import cleanup_old_background_jobs, reset_stale_background_jobs
         scheduler.add_job(
             cleanup_old_background_jobs,
             trigger=CronTrigger(hour=3, minute=0),
@@ -2070,6 +2080,13 @@ async def startup_scheduler(db_session=None) -> None:
             replace_existing=True,
         )
         logger.info("Registered cleanup_background_jobs job (daily at 03:00 UTC)")
+        scheduler.add_job(
+            reset_stale_background_jobs,
+            trigger=IntervalTrigger(minutes=10),
+            id="reset_stale_background_jobs",
+            replace_existing=True,
+        )
+        logger.info("Registered reset_stale_background_jobs job (every 10 minutes)")
         scheduler.add_job(
             purge_read_notifications,
             trigger=CronTrigger(hour=3, minute=0),

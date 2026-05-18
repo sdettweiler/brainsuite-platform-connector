@@ -1838,8 +1838,11 @@ class DV360SyncService:
                     logger.warning("Image download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
 
         if thumb_results:
+            image_only_ids = {ad_id for ad_id, info in queue.items() if not info.get("youtube_video_id", "")}
             for ad_id, served_url in thumb_results.items():
-                set_vals = {"thumbnail_url": served_url, "asset_url": served_url}
+                set_vals = {"thumbnail_url": served_url}
+                if ad_id in image_only_ids:
+                    set_vals["asset_url"] = served_url
                 stmt = (
                     sa_update(Dv360RawPerformance)
                     .where(

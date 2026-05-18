@@ -63,8 +63,9 @@ async def create_background_job(
 
     # D-01: Notify SSE subscribers of new job. Failures must not block job creation.
     try:
+        import asyncio as _asyncio
         redis = get_redis()
-        await redis.publish("sse:job_updates", str(job_id))
+        await _asyncio.wait_for(redis.publish("sse:job_updates", str(job_id)), timeout=2.0)
     except Exception as exc:  # noqa: BLE001
         logger.warning("SSE publish failed for job %s: %s", job_id, exc)
 
@@ -127,7 +128,8 @@ async def update_background_job(
 
     # D-01: Notify SSE subscribers of job update. Failures must not block update.
     try:
+        import asyncio as _asyncio
         redis = get_redis()
-        await redis.publish("sse:job_updates", str(job_id))
+        await _asyncio.wait_for(redis.publish("sse:job_updates", str(job_id)), timeout=2.0)
     except Exception as exc:  # noqa: BLE001
         logger.warning("SSE publish failed for job %s: %s", job_id, exc)

@@ -125,6 +125,7 @@ async def _auto_resume_interrupted_jobs():
                     org_id=job.org_id,
                     platform_connection_id=job.platform_connection_id,
                     params=job.params,
+                    metadata={**(job.metadata_ or {}), "resumed_from_job_id": str(job.id)},
                 )
                 from app.api.v1.endpoints.jobs import _dispatch_job_retry
                 await _dispatch_job_retry(job.job_type, job.params, str(new_id), None, None, old_output=job.output)

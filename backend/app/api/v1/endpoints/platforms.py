@@ -607,7 +607,7 @@ async def list_connections(
                 func.count(
                     case(
                         (
-                            (CreativeAsset.asset_url.isnot(None)) & (CreativeAsset.thumbnail_url.isnot(None)),
+                            CreativeAsset.asset_url.like("/objects/%"),
                             1,
                         ),
                     )
