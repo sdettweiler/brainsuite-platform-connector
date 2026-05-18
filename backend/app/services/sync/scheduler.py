@@ -495,6 +495,8 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict, exis
             )
             connection = result.scalar_one_or_none()
             if not connection:
+                if existing_job_id is not None:
+                    await update_background_job(existing_job_id, status="FAILED", error={"type": "ConnectionNotFound", "message": "Platform connection not found", "traceback": ""})
                 return
 
         if existing_job_id is not None:
@@ -791,6 +793,8 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict, existing_
             )
             connection = result.scalar_one_or_none()
             if not connection:
+                if existing_job_id is not None:
+                    await update_background_job(existing_job_id, status="FAILED", error={"type": "ConnectionNotFound", "message": "Platform connection not found", "traceback": ""})
                 return
 
         inner_queue = asset_queue.get("queue", {})
@@ -2189,8 +2193,12 @@ async def trigger_download_retry(params: dict, job_id: str) -> None:
     platform_connection_id = params.get("platform_connection_id")
     asset_ids = params.get("asset_ids", [])
 
+    job_uuid = _uuid.UUID(str(job_id)) if job_id else None
+
     if not platform or not platform_connection_id or not asset_ids:
         logger.warning("trigger_download_retry: missing required params — platform=%s connection=%s asset_ids=%s", platform, platform_connection_id, len(asset_ids))
+        if job_uuid:
+            await update_background_job(job_uuid, status="FAILED", error={"type": "MissingParams", "message": f"Cannot retry: missing platform/connection/asset_ids in job params", "traceback": ""})
         return
 
     conn_uuid = _uuid.UUID(str(platform_connection_id))
@@ -2201,28 +2209,43 @@ async def trigger_download_retry(params: dict, job_id: str) -> None:
 
     if not connection:
         logger.warning("trigger_download_retry: connection %s not found", platform_connection_id)
+        if job_uuid:
+            await update_background_job(job_uuid, status="FAILED", error={"type": "ConnectionNotFound", "message": f"Platform connection {platform_connection_id} not found", "traceback": ""})
         return
 
-    existing_job_uuid = uuid.UUID(str(job_id)) if job_id else None
+    existing_job_uuid = job_uuid
 
     if platform == "GOOGLE_ADS":
-        from app.services.sync.google_ads_sync import google_ads_sync
         asset_queue = {}
         async with get_session_factory()() as db:
             from app.models.performance import GoogleAdsRawPerformance
             from sqlalchemy import select as _s2
             rows = (await db.execute(_s2(GoogleAdsRawPerformance.ad_id, GoogleAdsRawPerformance.video_id).where(GoogleAdsRawPerformance.ad_id.in_(asset_ids), GoogleAdsRawPerformance.platform_connection_id == conn_uuid))).fetchall()
             for ad_id, video_id in rows:
-                asset_queue[ad_id] = {"video_id": video_id}
+                # download_assets_post_commit expects "youtube_video_id" and "org_id" per entry
+                asset_queue[ad_id] = {"youtube_video_id": video_id, "org_id": str(connection.organization_id)}
         asyncio.create_task(_run_google_ads_asset_downloads(conn_uuid, asset_queue, existing_job_id=existing_job_uuid))
     elif platform == "META":
         asyncio.create_task(_run_meta_creatives_deferred(conn_uuid, asset_ids, org_id=connection.organization_id, existing_job_id=existing_job_uuid))
     elif platform == "TIKTOK":
         asyncio.create_task(_run_tiktok_creatives_deferred(conn_uuid, asset_ids, org_id=connection.organization_id, existing_job_id=existing_job_uuid))
     elif platform == "DV360":
-        asyncio.create_task(_run_dv360_asset_downloads(conn_uuid, {"queue": {aid: {} for aid in asset_ids}}, existing_job_id=existing_job_uuid))
+        dv360_queue: dict = {}
+        async with get_session_factory()() as db:
+            from app.models.performance import Dv360RawPerformance
+            from sqlalchemy import select as _s2
+            rows = (await db.execute(_s2(Dv360RawPerformance.ad_id, Dv360RawPerformance.youtube_ad_video_id).where(Dv360RawPerformance.ad_id.in_(asset_ids), Dv360RawPerformance.platform_connection_id == conn_uuid))).fetchall()
+            seen: set = set()
+            for ad_id, yt_vid in rows:
+                if ad_id not in seen:
+                    seen.add(ad_id)
+                    dv360_queue[ad_id] = {"youtube_video_id": yt_vid or ""}
+        # download_assets_post_commit expects {"queue": {...}, "org_id": "..."}
+        asyncio.create_task(_run_dv360_asset_downloads(conn_uuid, {"queue": dv360_queue, "org_id": str(connection.organization_id)}, existing_job_id=existing_job_uuid))
     else:
         logger.warning("trigger_download_retry: unknown platform %s", platform)
+        if job_uuid:
+            await update_background_job(job_uuid, status="FAILED", error={"type": "UnknownPlatform", "message": f"Unknown platform: {platform}", "traceback": ""})
 
 
 async def trigger_dv360_sync_retry(params: dict, new_job_id: str, resume_query_id: Optional[str]) -> None:
