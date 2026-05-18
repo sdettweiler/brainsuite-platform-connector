@@ -229,9 +229,9 @@ interface CorrelationAsset {
           <span class="slider-values">{{ scoreMin }} - {{ scoreMax }}</span>
         </div>
 
-        <!-- Phase 23 (DASH-03): Duration range filter — visible only when VIDEO assets present (D-04) -->
+        <!-- Phase 23 (DASH-03): Duration range filter — visible when VIDEO assets present AND real bounds exist (D-04, Bug 2 fix) -->
         <div class="duration-slider-wrapper"
-             *ngIf="hasVideoAssets"
+             *ngIf="hasVideoAssets && hasDurationData"
              aria-label="Duration filter"
              [matTooltip]="loadingDurationBounds ? 'Loading duration data…' : ''">
           <span class="slider-label">Duration</span>
@@ -1503,6 +1503,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   durationMin = 0;
   durationMax = 3600;
   hasVideoAssets = false;
+  /** True once video assets were seen — never set back to false while filter is active (Bug 3 fix). */
+  private hadVideoAssets = false;
+  /** True when duration-bounds returned real (non-synthetic) values — prevents showing slider with fake 0–3600 defaults (Bug 2 fix). */
+  hasDurationData = false;
   nullDurationCount = 0;
   loadingDurationBounds = false;
   durationSliderOptions: Options = {
@@ -1884,7 +1888,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.totalPages = d.total_pages;
         this.loading = false;
         // Phase 23 (D-05, D-07): derive hasVideoAssets + nullDurationCount from response
-        this.hasVideoAssets = this.assets.some((a: any) => a.asset_format === 'VIDEO');
+        // Bug 3 fix: hasVideoAssets is sticky — never reset to false while filter is active,
+        // and tracks via hadVideoAssets so slider stays visible after a filter narrows results.
+        const freshHasVideo = this.assets.some((a: any) => a.asset_format === 'VIDEO');
+        if (freshHasVideo) {
+          this.hasVideoAssets = true;
+          this.hadVideoAssets = true;
+        } else if (!this.isDurationFilterActive) {
+          // Only clear the flag when there's genuinely no video in an unfiltered result
+          this.hasVideoAssets = this.hadVideoAssets;
+        }
+        // If had video before and filter is active, keep showing slider even if current page has no video
+        if (this.isDurationFilterActive && this.hadVideoAssets) {
+          this.hasVideoAssets = true;
+        }
         this.nullDurationCount = d.null_duration_count ?? 0;
         if (this.hasVideoAssets) {
           this.loadDurationBounds();
@@ -1939,17 +1956,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     this.api.get<{ min_duration: number; max_duration: number }>('/dashboard/duration-bounds', params).subscribe({
       next: (res) => {
+        // Bug 2 fix: track whether bounds are real data vs synthetic defaults.
+        // The backend returns 0/3600 when no assets have video_duration — don't show slider with fake range.
+        this.hasDurationData = res.max_duration > 0 && !(res.min_duration === 0 && res.max_duration === 3600);
         this.durationSliderOptions = {
           ...this.durationSliderOptions,
           floor: res.min_duration,
           ceil: res.max_duration,
         };
-        // Reset handles to full range (avoids stuck state when bounds shift)
-        this.durationMin = res.min_duration;
-        this.durationMax = res.max_duration;
+        // Bug 1 fix: only reset handles to full range when filter is NOT currently active.
+        // If filter is active, keep current handle positions — user explicitly set them.
+        if (!this.isDurationFilterActive) {
+          this.durationMin = res.min_duration;
+          this.durationMax = res.max_duration;
+        }
         this.loadingDurationBounds = false;
       },
       error: () => {
+        this.hasDurationData = false;
         this.durationSliderOptions = { ...this.durationSliderOptions, floor: 0, ceil: 3600 };
         this.loadingDurationBounds = false;
       },
