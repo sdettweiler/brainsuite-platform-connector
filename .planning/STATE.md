@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Download Performance & Tech Debt
 status: planning
-stopped_at: Phase 25 context gathered
-last_updated: "2026-05-18T18:08:23.605Z"
+stopped_at: Phase 25 UI-SPEC approved
+last_updated: "2026-05-18T18:24:01.926Z"
 last_activity: 2026-05-18 -- Phase 24 complete (22 tests passing, all PERF requirements satisfied)
 progress:
   total_phases: 3
@@ -85,9 +85,9 @@ Items carried to v1.6 or backlog:
 
 ## Session Continuity
 
-Last session: 2026-05-18T18:08:23.590Z
-Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-configurable-concurrency/25-CONTEXT.md
+Last session: 2026-05-18T18:24:01.912Z
+Stopped at: Phase 25 UI-SPEC approved
+Resume file: .planning/phases/25-configurable-concurrency/25-UI-SPEC.md
 
 ## Quick Tasks Completed
 

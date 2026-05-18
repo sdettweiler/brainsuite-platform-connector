@@ -99,7 +99,10 @@
   2. When max_concurrent_downloads is set to 1 and two download jobs run simultaneously, the second job's downloads visibly queue behind the first in the monitoring UI rather than both executing in parallel
   3. A fresh install with no explicit configuration defaults to 3 concurrent downloads without requiring any manual admin action
   4. Changing the concurrency setting in the UI takes effect for the next download job without a server restart
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 25-01-PLAN.md — SystemConfig.max_concurrent_downloads column + Alembic migration + proxy_cache.get_concurrency_semaphore() with 60s TTL + unit tests (Wave 1)
+- [ ] 25-02-PLAN.md — Wrap DV360 + Google Ads _do_download with semaphore + GET/PUT /super-admin/download-concurrency endpoints + endpoint tests (Wave 2)
+- [ ] 25-03-PLAN.md — Admin UI restructure: merge Residential Proxy + YouTube Cookies into 'Download Settings' section + new Parallel Downloads mat-slider + human-verify checkpoint (Wave 3)
 **UI hint**: yes
 
 ### Phase 26: Tech Debt Closure
@@ -144,7 +147,7 @@
 | 22. Dashboard Metadata + Account Filters | v1.4 | 2/2 | Complete | 2026-05-15 |
 | 23. Dashboard Duration Filter + Backfill | v1.4 | 2/2 | Complete | 2026-05-18 |
 | 24. Download Performance Backend | v1.5 | 3/3 | Complete   | 2026-05-18 |
-| 25. Configurable Concurrency | v1.5 | 0/? | Not started | - |
+| 25. Configurable Concurrency | v1.5 | 0/3 | Planning | - |
 | 26. Tech Debt Closure | v1.5 | 0/? | Not started | - |
 
 ## Backlog
