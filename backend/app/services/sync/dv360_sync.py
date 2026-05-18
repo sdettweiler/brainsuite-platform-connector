@@ -787,16 +787,16 @@ class DV360SyncService:
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            if resume_query_id:
-                query_id = resume_query_id
-                logger.info(f"Bid Manager v2 [{label}]: Resuming existing query {query_id}")
-            else:
-                # Retry up to 3 times for transient network errors (ConnectError, etc.)
-                last_connect_exc = None
+        if resume_query_id:
+            query_id = resume_query_id
+            logger.info(f"Bid Manager v2 [{label}]: Resuming existing query {query_id}")
+        else:
+            # Retry up to 3 times for transient network errors (ConnectError, etc.)
+            last_connect_exc = None
+            async with httpx.AsyncClient(timeout=30) as _setup_client:
                 for _attempt in range(3):
                     try:
-                        create_resp = await client.post(
+                        create_resp = await _setup_client.post(
                             f"{BID_MANAGER_API_BASE}/queries",
                             headers=headers,
                             json=query_body,
@@ -822,7 +822,7 @@ class DV360SyncService:
                     logger.error(f"Bid Manager v2 [{label}]: No queryId returned: {query_data}")
                     return []
 
-                run_resp = await client.post(
+                run_resp = await _setup_client.post(
                     f"{BID_MANAGER_API_BASE}/queries/{query_id}:run",
                     headers=headers,
                     json={},
@@ -831,113 +831,123 @@ class DV360SyncService:
                     logger.error(f"Bid Manager v2 [{label}]: Run query failed ({run_resp.status_code}): {run_resp.text[:500]}")
                     return None
 
-            # Write checkpoint before entering poll loop so an INTERRUPTED job can resume
-            if bg_job_id is not None:
+        # Write checkpoint before entering poll loop so an INTERRUPTED job can resume
+        if bg_job_id is not None:
+            try:
+                from app.services.sync.job_tracker import update_background_job as _ubj
+                import uuid as _uuid
+                _jid = bg_job_id if isinstance(bg_job_id, _uuid.UUID) else _uuid.UUID(str(bg_job_id))
+                await _ubj(_jid, output={"dv360_query_id": query_id, "dv360_poll_started_at": datetime.utcnow().isoformat()})
+            except Exception as _ck_err:
+                logger.warning("DV360: checkpoint write failed (non-fatal): %s", _ck_err)
+
+        logger.info(f"Bid Manager v2 [{label}]: Query {query_id} {'resumed' if resume_query_id else 'created and running'}, polling for results (YouTube reports may take up to 2 hours)")
+
+        report_url = None
+        poll_interval = 30
+        max_wait_seconds = 7200
+        elapsed = 0
+        attempt = 0
+        last_token_refresh = 0
+        while elapsed < max_wait_seconds:
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+            attempt += 1
+
+            if elapsed > 300 and poll_interval < 60:
+                poll_interval = 60
+            elif elapsed > 1800 and poll_interval < 120:
+                poll_interval = 120
+
+            if connection_id and refresh_token_encrypted and (elapsed - last_token_refresh) > 2700:
                 try:
-                    from app.services.sync.job_tracker import update_background_job as _ubj
-                    import uuid as _uuid
-                    _jid = bg_job_id if isinstance(bg_job_id, _uuid.UUID) else _uuid.UUID(str(bg_job_id))
-                    await _ubj(_jid, output={"dv360_query_id": query_id, "dv360_poll_started_at": datetime.utcnow().isoformat()})
-                except Exception as _ck_err:
-                    logger.warning("DV360: checkpoint write failed (non-fatal): %s", _ck_err)
+                    current_token = await self._refresh_token_standalone(connection_id, refresh_token_encrypted)
+                    headers["Authorization"] = f"Bearer {current_token}"
+                    last_token_refresh = elapsed
+                except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                    logger.warning("Bid Manager v2 [%s]: Token refresh failed: %s: %s", label, type(e).__name__, e, exc_info=True)
 
-            logger.info(f"Bid Manager v2 [{label}]: Query {query_id} {'resumed' if resume_query_id else 'created and running'}, polling for results (YouTube reports may take up to 2 hours)")
-
-            report_url = None
-            poll_interval = 30
-            max_wait_seconds = 7200
-            elapsed = 0
-            attempt = 0
-            last_token_refresh = 0
-            while elapsed < max_wait_seconds:
-                await asyncio.sleep(poll_interval)
-                elapsed += poll_interval
-                attempt += 1
-
-                if elapsed > 300 and poll_interval < 60:
-                    poll_interval = 60
-                elif elapsed > 1800 and poll_interval < 120:
-                    poll_interval = 120
-
-                if connection_id and refresh_token_encrypted and (elapsed - last_token_refresh) > 2700:
-                    try:
-                        current_token = await self._refresh_token_standalone(connection_id, refresh_token_encrypted)
-                        headers["Authorization"] = f"Bearer {current_token}"
-                        last_token_refresh = elapsed
-                    except (httpx.RequestError, httpx.HTTPStatusError) as e:
-                        logger.warning("Bid Manager v2 [%s]: Token refresh failed: %s: %s", label, type(e).__name__, e, exc_info=True)
-
-                try:
-                    status_resp = await client.get(
+            # Fresh client per poll tick — avoids RemoteProtocolError on stale pooled connections
+            try:
+                async with httpx.AsyncClient(timeout=60) as _poll_client:
+                    status_resp = await _poll_client.get(
                         f"{BID_MANAGER_API_BASE}/queries/{query_id}/reports",
                         headers=headers,
                     )
-                except (httpx.RequestError, httpx.HTTPStatusError) as e:
-                    logger.warning("Bid Manager v2 [%s]: Poll error: %s: %s", label, type(e).__name__, e, exc_info=True)
-                    continue
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                logger.warning("Bid Manager v2 [%s]: Poll error: %s: %s", label, type(e).__name__, e, exc_info=True)
+                continue
 
-                if status_resp.status_code == 401 and connection_id and refresh_token_encrypted:
-                    try:
-                        current_token = await self._refresh_token_standalone(connection_id, refresh_token_encrypted)
-                        headers["Authorization"] = f"Bearer {current_token}"
-                        last_token_refresh = elapsed
-                        continue
-                    except (httpx.RequestError, httpx.HTTPStatusError) as e:
-                        logger.warning("Bid Manager v2 [%s]: Token refresh on 401 failed: %s: %s", label, type(e).__name__, e, exc_info=True)
-
-                if status_resp.status_code != 200:
-                    continue
-
-                resp_data = status_resp.json()
-                reports = resp_data.get("reports", [])
-                if reports:
-                    latest = reports[0]
-                    r_metadata = latest.get("metadata", {})
-                    r_status = r_metadata.get("status", {})
-                    state = r_status.get("state", "UNKNOWN")
-                    if attempt % 10 == 0 or attempt <= 3:
-                        elapsed_min = elapsed / 60
-                        logger.info(f"Bid Manager v2 [{label}]: Poll #{attempt} ({elapsed_min:.0f}m elapsed), state={state}")
-                    if state == "DONE":
-                        report_url = r_metadata.get("googleCloudStoragePath")
-                        logger.info(f"Bid Manager v2 [{label}]: Report ready after {elapsed/60:.1f} minutes")
-                        break
-                    elif state == "FAILED":
-                        logger.error(f"Bid Manager v2 [{label}]: Report failed: {r_status}")
-                        return None
-                else:
-                    if attempt % 10 == 0 or attempt <= 3:
-                        logger.info(f"Bid Manager v2 [{label}]: Poll #{attempt} ({elapsed/60:.0f}m elapsed), no reports yet")
-
-            if not report_url:
-                logger.error(f"Bid Manager v2 [{label}]: Report timed out after {max_wait_seconds/60:.0f} minutes")
+            if status_resp.status_code == 401 and connection_id and refresh_token_encrypted:
                 try:
-                    await client.delete(
+                    current_token = await self._refresh_token_standalone(connection_id, refresh_token_encrypted)
+                    headers["Authorization"] = f"Bearer {current_token}"
+                    last_token_refresh = elapsed
+                    continue
+                except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                    logger.warning("Bid Manager v2 [%s]: Token refresh on 401 failed: %s: %s", label, type(e).__name__, e, exc_info=True)
+
+            if status_resp.status_code != 200:
+                continue
+
+            resp_data = status_resp.json()
+            reports = resp_data.get("reports", [])
+            if reports:
+                latest = reports[0]
+                r_metadata = latest.get("metadata", {})
+                r_status = r_metadata.get("status", {})
+                state = r_status.get("state", "UNKNOWN")
+                if attempt % 10 == 0 or attempt <= 3:
+                    elapsed_min = elapsed / 60
+                    logger.info(f"Bid Manager v2 [{label}]: Poll #{attempt} ({elapsed_min:.0f}m elapsed), state={state}")
+                if state == "DONE":
+                    report_url = r_metadata.get("googleCloudStoragePath")
+                    logger.info(f"Bid Manager v2 [{label}]: Report ready after {elapsed/60:.1f} minutes")
+                    break
+                elif state == "FAILED":
+                    logger.error(f"Bid Manager v2 [{label}]: Report failed: {r_status}")
+                    return None
+            else:
+                if attempt % 10 == 0 or attempt <= 3:
+                    logger.info(f"Bid Manager v2 [{label}]: Poll #{attempt} ({elapsed/60:.0f}m elapsed), no reports yet")
+
+        if not report_url:
+            logger.error(f"Bid Manager v2 [{label}]: Report timed out after {max_wait_seconds/60:.0f} minutes")
+            try:
+                async with httpx.AsyncClient(timeout=30) as _cleanup_client:
+                    await _cleanup_client.delete(
                         f"{BID_MANAGER_API_BASE}/queries/{query_id}",
                         headers=headers,
                     )
-                except (httpx.RequestError, httpx.HTTPStatusError):
-                    pass
-                return None
+            except (httpx.RequestError, httpx.HTTPStatusError):
+                pass
+            return None
 
-            csv_resp = await client.get(
-                report_url,
-                headers={"Authorization": f"Bearer {current_token}"},
-            )
-            if csv_resp.status_code != 200:
-                logger.error(f"Bid Manager v2 [{label}]: CSV download failed ({csv_resp.status_code})")
-                return None
+        # CSV download — fresh client with long timeout for potentially large GCS files
+        try:
+            async with httpx.AsyncClient(timeout=600, follow_redirects=True) as _csv_client:
+                csv_resp = await _csv_client.get(
+                    report_url,
+                    headers={"Authorization": f"Bearer {current_token}"},
+                )
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            logger.error(f"Bid Manager v2 [{label}]: CSV download failed: {type(e).__name__}: {e}")
+            return None
+        if csv_resp.status_code != 200:
+            logger.error(f"Bid Manager v2 [{label}]: CSV download failed ({csv_resp.status_code})")
+            return None
 
-            records = self._parse_csv(csv_resp.text)
-            logger.info(f"Bid Manager v2 [{label}]: Downloaded CSV with {len(records)} data rows")
+        records = self._parse_csv(csv_resp.text)
+        logger.info(f"Bid Manager v2 [{label}]: Downloaded CSV with {len(records)} data rows")
 
-            try:
-                await client.delete(
+        try:
+            async with httpx.AsyncClient(timeout=30) as _cleanup_client:
+                await _cleanup_client.delete(
                     f"{BID_MANAGER_API_BASE}/queries/{query_id}",
                     headers=headers,
                 )
-            except (httpx.RequestError, httpx.HTTPStatusError):
-                pass
+        except (httpx.RequestError, httpx.HTTPStatusError):
+            pass
 
         return records
 
