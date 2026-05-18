@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: YouTube Downloads & Dashboard Filters
-status: executing
-stopped_at: build-resume-retry COMPLETE — all waves done (2026-05-15)
-last_updated: "2026-05-15T19:37:00.000Z"
-last_activity: 2026-05-15
+status: planning
+stopped_at: phase 22 complete — ready to plan phase 23 (2026-05-18)
+last_updated: "2026-05-18T08:00:00.000Z"
+last_activity: 2026-05-18
 progress:
   total_phases: 12
-  completed_phases: 10
-  total_plans: 30
-  completed_plans: 31
-  percent: 83
+  completed_phases: 11
+  total_plans: 32
+  completed_plans: 32
+  percent: 92
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-14 — v1.4 milestone started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 22 — dashboard-metadata-account-filters
+**Current focus:** Phase 23 — dashboard-duration-filter-backfill
 
 ## Current Position
 
-Phase: 22 (dashboard-metadata-account-filters) — IN PROGRESS
-Plan: 1 of 2 — COMPLETE
-Status: Executing — Plan 01 complete, Plan 02 ready
-Last activity: 2026-05-15
+Phase: 23 (dashboard-duration-filter-backfill) — NOT STARTED
+Plan: 0 of TBD — not yet planned
+Status: Planning — Phase 22 complete, Phase 23 ready to plan
+Last activity: 2026-05-18
 
 ## Progress Bar
 
@@ -79,11 +79,11 @@ Items carried to v1.5 or backlog:
 
 ## Session Continuity
 
-Last session: 2026-05-15T19:37:00.000Z
-Stopped at: build-resume-retry complete — all waves shipped; returning to Phase 22 Plan 02
+Last session: 2026-05-18T07:40:00.288Z
+Stopped at: context exhaustion at 75% (2026-05-18)
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Phase 22 Plan 02 (dashboard filter UI — Angular)
-- Phase 22 Plan 02 is the only incomplete plan blocking v1.4 milestone completion
+- Plan Phase 23 (dashboard duration filter + backfill) — last phase before v1.4 milestone completion
+- Phase 23 depends on Phase 22 (complete); depends on Phase 20 (proxy infra — check before planning)

@@ -64,7 +64,7 @@
 
 - [ ] **Phase 20: Proxy Download Infrastructure** — DV360 + Google Ads download via residential proxy with bgutil PO token plugin; cookieless-first retry order; credential redaction
 - [x] **Phase 21: Proxy Admin UI** — SuperAdmin can configure and toggle residential proxy from /configuration/admin (complete 2026-05-15)
-- [ ] **Phase 22: Dashboard Metadata + Account Filters** — Metadata autocomplete filter and ad account multi-select filter (full stack)
+- [x] **Phase 22: Dashboard Metadata + Account Filters** — Metadata autocomplete filter and ad account multi-select filter (full stack) (complete 2026-05-15)
 - [ ] **Phase 23: Dashboard Duration Filter + Backfill** — Video duration range slider with legacy asset backfill job (full stack)
 
 ## Phase Details
