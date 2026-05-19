@@ -3,7 +3,7 @@ import httpx
 import logging
 import json
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Dict, Any
 from sqlalchemy.exc import SQLAlchemyError
@@ -237,6 +237,17 @@ class TikTokSyncService:
         return records
 
     @staticmethod
+    def _parse_date(val) -> Optional[date]:
+        if not val:
+            return None
+        if isinstance(val, date):
+            return val
+        try:
+            return datetime.strptime(str(val)[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
     def _safe_int(val) -> Optional[int]:
         if val is None or val == "" or val == "-":
             return None
@@ -300,7 +311,7 @@ class TikTokSyncService:
             rows.append({
                 "platform_connection_id": connection.id,
                 "sync_job_id": sync_job_id,
-                "report_date": dims.get("stat_time_day"),
+                "report_date": self._parse_date(dims.get("stat_time_day")),
                 "ad_account_id": connection.ad_account_id,
                 "ad_id": dims.get("ad_id"),
                 "currency": connection.currency,
