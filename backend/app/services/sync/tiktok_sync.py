@@ -843,7 +843,7 @@ class TikTokSyncService:
                         .values(**update_vals)
                     )
                 else:
-                    logger.info("TikTok ad %s: no assets to store (spark or no downloadable creative)", ad_id)
+                    logger.warning("TikTok ad %s: no assets stored — thumb=%s asset=%s (spark=%s video_id=%s image_ids=%s)", ad_id, bool(thumbnail_url), bool(asset_url), is_spark, bool(video_id_val), bool(image_ids_raw))
 
                 if asset_video_duration is not None:
                     from app.models.creative import CreativeAsset
@@ -960,9 +960,9 @@ class TikTokSyncService:
                         logger.info("TikTok oEmbed thumbnail retrieved for %s/%s", display_name, video_id)
                         return thumb
                 else:
-                    logger.debug("TikTok oEmbed %s for post %s", resp.status_code, post_url)
+                    logger.warning("TikTok oEmbed %s for post_url=%s", resp.status_code, post_url)
         except Exception as e:
-            logger.debug("TikTok oEmbed failed for %s/%s: %s", display_name, video_id, e)
+            logger.warning("TikTok oEmbed exception for display_name=%s video_id=%s: %s", display_name, video_id, e, exc_info=True)
         return None
 
     async def _fetch_cover_image_url(
