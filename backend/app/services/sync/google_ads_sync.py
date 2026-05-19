@@ -287,11 +287,12 @@ class GoogleAdsSyncService:
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         from app.services.object_storage import get_object_storage
         obj_storage = get_object_storage()
+        loop = asyncio.get_running_loop()
 
         filename = f"vid_yt_{ad_id}.mp4"
         relative_path = f"creatives/{org_id}/{filename}"
 
-        if obj_storage.file_exists(relative_path):
+        if await loop.run_in_executor(None, obj_storage.file_exists, relative_path):
             return None, obj_storage.served_url(relative_path), None
 
         url = f"https://www.youtube.com/watch?v={youtube_video_id}"
@@ -344,7 +345,6 @@ class GoogleAdsSyncService:
 
         tmpdir = tempfile.mkdtemp()
         tmp_base = os.path.join(tmpdir, "video")
-        loop = asyncio.get_running_loop()
 
         async def _extract_info() -> Optional[dict]:
             """Extract video metadata without proxy (PERF-01, D-01).
@@ -525,9 +525,9 @@ class GoogleAdsSyncService:
             actual_path = matches[0] if matches else None
             if actual_path:
                 size_mb = os.path.getsize(actual_path) / (1024 * 1024)
-                served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
+                served_url = await loop.run_in_executor(None, obj_storage.upload_file, actual_path, relative_path, "video/mp4")
                 from app.services.sync.video_utils import get_video_duration as _get_dur
-                yt_video_duration = await asyncio.get_event_loop().run_in_executor(None, _get_dur, actual_path)
+                yt_video_duration = await loop.run_in_executor(None, _get_dur, actual_path)
                 logger.info("  Downloaded Google Ads YouTube video: %s (%.1f MB, duration=%s)", filename, size_mb, yt_video_duration)
                 try:
                     from sqlalchemy import update as _sa_update
@@ -546,7 +546,7 @@ class GoogleAdsSyncService:
                 from app.services.sync.thumbnail_utils import extract_first_frame_and_upload
                 thumb_rel = f"creatives/{org_id}/thumb_yt_{ad_id}.jpg"
                 frame_thumb = None
-                if not obj_storage.file_exists(thumb_rel):
+                if not await loop.run_in_executor(None, obj_storage.file_exists, thumb_rel):
                     frame_thumb = await extract_first_frame_and_upload(actual_path, org_id, ad_id, "yt", obj_storage)
                 return yt_video_duration, served_url, frame_thumb
             else:

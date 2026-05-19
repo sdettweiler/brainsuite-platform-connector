@@ -1211,12 +1211,13 @@ class DV360SyncService:
     ) -> Tuple[Optional[float], Optional[str], Optional[str]]:
         from app.services.object_storage import get_object_storage
         obj_storage = get_object_storage()
+        loop = asyncio.get_running_loop()
 
         safe_id = _sanitize_for_filename(ad_id)
         filename = f"vid_dv360_{safe_id}.mp4"
         relative_path = f"creatives/{org_id}/{filename}"
 
-        if obj_storage.file_exists(relative_path):
+        if await loop.run_in_executor(None, obj_storage.file_exists, relative_path):
             return None, obj_storage.served_url(relative_path), None
 
         # Read cookies from DB first, fall back to env vars if DB is empty (D-11)
@@ -1242,8 +1243,6 @@ class DV360SyncService:
 
         tmpdir = tempfile.mkdtemp()
         tmp_base = os.path.join(tmpdir, "video")
-
-        loop = asyncio.get_running_loop()
 
         async def _extract_info() -> Optional[dict]:
             """Extract metadata only (no download) — runs without proxy (PERF-01, D-01).
@@ -1381,8 +1380,10 @@ class DV360SyncService:
         if proxy_enabled and proxy_url:
             attempts = ["", *attempts]
 
-        # Phase 25 (PERF-02): one semaphore slot per asset, shared across DV360 + Google Ads via proxy_cache
+        # Phase 25 (PERF-02): semaphore only wraps yt-dlp download — upload/DB run after release.
         semaphore = await get_concurrency_semaphore()
+        actual_path: Optional[str] = None
+        winning_label: Optional[str] = None
         try:
             async with semaphore:
                 for i, cookie in enumerate(attempts):
@@ -1410,30 +1411,8 @@ class DV360SyncService:
                         ]
                         actual_path = matches[0] if matches else None
                         if actual_path:
-                            size_mb = os.path.getsize(actual_path) / (1024 * 1024)
-                            duration = get_video_duration(actual_path)
-                            served_url = obj_storage.upload_file(actual_path, relative_path, content_type="video/mp4")
-                            logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, label)
-                            try:
-                                from sqlalchemy import update as _sa_update
-                                from app.models.system_config import SystemConfig as _SC
-                                from app.db.base import get_session_factory as _gsf
-                                async with _gsf()() as _sc_db:
-                                    _upd_vals: dict = {"youtube_cookies_download_count": _SC.youtube_cookies_download_count + 1}
-                                    if label == "primary":
-                                        _upd_vals["youtube_cookies_runtime_expired"] = False
-                                    elif label == "backup":
-                                        _upd_vals["youtube_cookies_backup_runtime_expired"] = False
-                                    await _sc_db.execute(_sa_update(_SC).values(**_upd_vals))
-                                    await _sc_db.commit()
-                            except Exception as _cnt_err:
-                                logger.debug("Could not increment YT download counter: %s", _cnt_err)
-                            from app.services.sync.thumbnail_utils import extract_first_frame_and_upload
-                            thumb_path = f"creatives/{org_id}/thumb_dv360_{safe_id}.jpg"
-                            frame_thumb = None
-                            if not obj_storage.file_exists(thumb_path):
-                                frame_thumb = await extract_first_frame_and_upload(actual_path, org_id, ad_id, "dv360", obj_storage)
-                            return duration, served_url, frame_thumb
+                            winning_label = label
+                            break  # semaphore released after this block; upload runs outside
                         else:
                             logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
                     except _CookiesExpiredError:
@@ -1480,6 +1459,33 @@ class DV360SyncService:
                             logger.info("  %s cookies failed for %s, trying next... (%s: %s)", label, youtube_video_id, type(e).__name__, e)
                             continue
                         logger.warning("  Failed to download DV360 video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
+
+            # Semaphore released — upload, DB update, frame extraction run concurrently with other downloads
+            if actual_path:
+                size_mb = os.path.getsize(actual_path) / (1024 * 1024)
+                duration = get_video_duration(actual_path)
+                served_url = await loop.run_in_executor(None, obj_storage.upload_file, actual_path, relative_path, "video/mp4")
+                logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, winning_label)
+                try:
+                    from sqlalchemy import update as _sa_update
+                    from app.models.system_config import SystemConfig as _SC
+                    from app.db.base import get_session_factory as _gsf
+                    async with _gsf()() as _sc_db:
+                        _upd_vals: dict = {"youtube_cookies_download_count": _SC.youtube_cookies_download_count + 1}
+                        if winning_label == "primary":
+                            _upd_vals["youtube_cookies_runtime_expired"] = False
+                        elif winning_label == "backup":
+                            _upd_vals["youtube_cookies_backup_runtime_expired"] = False
+                        await _sc_db.execute(_sa_update(_SC).values(**_upd_vals))
+                        await _sc_db.commit()
+                except Exception as _cnt_err:
+                    logger.debug("Could not increment YT download counter: %s", _cnt_err)
+                from app.services.sync.thumbnail_utils import extract_first_frame_and_upload
+                thumb_path = f"creatives/{org_id}/thumb_dv360_{safe_id}.jpg"
+                frame_thumb = None
+                if not await loop.run_in_executor(None, obj_storage.file_exists, thumb_path):
+                    frame_thumb = await extract_first_frame_and_upload(actual_path, org_id, ad_id, "dv360", obj_storage)
+                return duration, served_url, frame_thumb
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
