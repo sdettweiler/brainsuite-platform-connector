@@ -123,7 +123,6 @@ CAMPAIGN_INFO_FIELDS = [
     "campaign_id",
     "objective_type",
     "budget_mode",
-    "buying_type",
     "operation_status",
 ]
 
@@ -592,7 +591,6 @@ class TikTokSyncService:
                         adgroup_status=adgroup_data.get("operation_status"),
                         optimization_goal=adgroup_data.get("optimization_goal"),
                         billing_event=adgroup_data.get("billing_event"),
-                        buying_type=campaign_data.get("buying_type"),
                         ad_format=ad_format,
                         creative_type=creative_type,
                         is_spark_ad=is_spark,
@@ -750,8 +748,7 @@ class TikTokSyncService:
                                 adgroup_status=adgroup_data.get("operation_status"),
                                 optimization_goal=adgroup_data.get("optimization_goal"),
                                 billing_event=adgroup_data.get("billing_event"),
-                                buying_type=campaign_data.get("buying_type"),
-                                ad_format=ad.get("ad_format"),
+                                        ad_format=ad.get("ad_format"),
                                 creative_type=ad.get("creative_type"),
                                 is_spark_ad=is_spark,
                                 identity_type=ad.get("identity_type"),
