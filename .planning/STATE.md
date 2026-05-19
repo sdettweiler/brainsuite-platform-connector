@@ -4,14 +4,14 @@ milestone: v1.5
 milestone_name: Download Performance & Tech Debt
 status: executing
 stopped_at: Phase 25 UI-SPEC approved
-last_updated: "2026-05-18T18:45:03.314Z"
-last_activity: 2026-05-18 -- Phase 25 execution started
+last_updated: "2026-05-19T09:12:19.457Z"
+last_activity: 2026-05-19
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 3
-  percent: 33
+  completed_plans: 6
+  percent: 67
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-18 — milestone v1.5 started)
 
 **Core value:** A user can connect all their ad accounts, see every creative's performance metrics alongside its BrainSuite effectiveness score, and immediately know which creatives to scale or kill.
-**Current focus:** Phase 25 — configurable-concurrency
+**Current focus:** Phase 26 — tech-debt-closure
 
 ## Current Position
 
-Phase: 25 (configurable-concurrency) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 25
-Last activity: 2026-05-18 -- Phase 25 execution started
+Phase: 25 (configurable-concurrency) — COMPLETE
+Plan: 3 of 3
+Status: Phase 25 complete; Phase 26 ready to execute
+Last activity: 2026-05-19
 
 ## Progress Bar
 
@@ -60,6 +60,9 @@ v1.5: [███░░░░░░░] 1 / 3 phases complete
 - v1.5 Phase 24 (complete): proxy_cache.py module created; dv360_sync.py and google_ads_sync.py refactored with extraction/download split, PO-first retry, conditional batch sleep (DV360 only), socket_timeout=10, remote_components parity
 - v1.5 Phase 25 (PERF-02) depends on Phase 24 because the semaphore wraps the call chain that Phase 24 establishes; also needs a new SystemConfig column (DB migration) and SuperAdmin UI field
 - v1.5 Phase 26 (DEBT-01 + PROXY-02): Alembic merge must run after all v1.5 migrations exist; PROXY-02 is environment troubleshooting, not new code — pair with DEBT-01 as gap-closure work
+- Phase 25 Plan 03: Angular mat-slider uses matSliderThumb directive on inner input element (Angular Material 17); valueChange event fires on input, not mat-slider
+- Phase 25 Plan 03: Section-merge pattern established — related config sections absorbed as subsections, inner bindings preserved verbatim; subsection CSS-only separator via border-top
+- Phase 25 Plan 03: SC-4 live-effect accepted via semaphore unit test coverage; full live-effect test blocked by pre-existing corrupt cookie (fixed in ddaf6cd with Netscape format validation + zombie job cancellation across all platforms)
 
 ### Roadmap Evolution
 
@@ -85,9 +88,9 @@ Items carried to v1.6 or backlog:
 
 ## Session Continuity
 
-Last session: 2026-05-18T18:24:01.912Z
-Stopped at: Phase 25 UI-SPEC approved
-Resume file: .planning/phases/25-configurable-concurrency/25-UI-SPEC.md
+Last session: 2026-05-19T09:12:19.438Z
+Stopped at: Phase 25 Plan 03 complete — admin UI merged section approved by SuperAdmin
+Resume file: None
 
 ## Quick Tasks Completed
 
@@ -97,4 +100,5 @@ Resume file: .planning/phases/25-configurable-concurrency/25-UI-SPEC.md
 
 ## Operator Next Steps
 
-- Run `/gsd-plan-phase 25` to plan Phase 25: Configurable Concurrency
+- Run `/gsd-execute-phase 26` to execute Phase 26: Tech Debt Closure (DEBT-01 Alembic merge + PROXY-02 environment validation)
+- Before Phase 26: confirm PROXY-02 cookie environment is healthy (ddaf6cd fixed corrupt cookie format validation)
