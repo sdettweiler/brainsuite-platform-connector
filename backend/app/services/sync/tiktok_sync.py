@@ -944,24 +944,21 @@ class TikTokSyncService:
         return thumbnail_url, asset_url, video_source_url, asset_video_duration
 
     async def _resolve_tiktok_handle(self, tiktok_item_id: str) -> Optional[str]:
-        """Resolve @handle for a public TikTok post by following the redirect from /video/{id}."""
+        """Resolve @handle for a public TikTok post by following redirects from /video/{id}."""
         try:
-            async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
+            async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
                 resp = await client.get(
                     f"https://www.tiktok.com/video/{tiktok_item_id}",
                     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
                 )
-                if resp.status_code in (301, 302, 307, 308):
-                    location = resp.headers.get("location", "")
-                    match = re.search(r'/@([^/]+)/video/', location)
-                    if match:
-                        logger.debug("Resolved TikTok handle=%s for item_id=%s", match.group(1), tiktok_item_id)
-                        return match.group(1)
-                    logger.debug("TikTok redirect for item_id=%s had no @handle: location=%s", tiktok_item_id, location)
-                else:
-                    logger.debug("TikTok handle resolution: unexpected status %s for item_id=%s", resp.status_code, tiktok_item_id)
+                final_url = str(resp.url)
+                match = re.search(r'/@([^/]+)/video/', final_url)
+                if match:
+                    logger.debug("Resolved TikTok handle=%s for item_id=%s", match.group(1), tiktok_item_id)
+                    return match.group(1)
+                logger.warning("TikTok handle resolve: no @handle in final URL %s (item_id=%s status=%s)", final_url, tiktok_item_id, resp.status_code)
         except Exception as e:
-            logger.debug("TikTok handle resolution failed for item_id=%s: %s", tiktok_item_id, e)
+            logger.warning("TikTok handle resolution failed for item_id=%s: %s", tiktok_item_id, e)
         return None
 
     async def _fetch_tiktok_oembed_thumbnail(
