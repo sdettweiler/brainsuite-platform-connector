@@ -99,8 +99,10 @@ interface ConcurrencyConfig { max_concurrent_downloads: number; }
           <div class="slider-actions">
             <button mat-stroked-button (click)="discardConcurrencyEdit()" [disabled]="savingConcurrency">Discard</button>
             <button mat-flat-button class="save-btn" (click)="saveConcurrency()" [disabled]="savingConcurrency">
-              <mat-spinner *ngIf="savingConcurrency" diameter="14"></mat-spinner>
-              {{ savingConcurrency ? 'Saving...' : 'Save' }}
+              <span class="btn-row">
+                <mat-spinner *ngIf="savingConcurrency" diameter="14"></mat-spinner>
+                {{ savingConcurrency ? 'Saving...' : 'Save' }}
+              </span>
             </button>
           </div>
         </ng-container>
@@ -667,6 +669,7 @@ interface ConcurrencyConfig { max_concurrent_downloads: number; }
     .slider-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
     .slider-value { font-weight: 600; font-size: 14px; min-width: 20px; text-align: right; color: var(--text-primary); }
     .slider-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+    .btn-row { display: flex; align-items: center; gap: 6px; }
   `],
 })
 export class AdminComponent implements OnInit {
