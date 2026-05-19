@@ -123,6 +123,7 @@ CAMPAIGN_INFO_FIELDS = [
     "campaign_id",
     "objective_type",
     "budget_mode",
+    "buying_type",
     "operation_status",
 ]
 
@@ -131,7 +132,6 @@ ADGROUP_INFO_FIELDS = [
     "campaign_id",
     "optimization_goal",
     "billing_event",
-    "buying_type",
     "operation_status",
 ]
 
@@ -592,7 +592,7 @@ class TikTokSyncService:
                         adgroup_status=adgroup_data.get("operation_status"),
                         optimization_goal=adgroup_data.get("optimization_goal"),
                         billing_event=adgroup_data.get("billing_event"),
-                        buying_type=adgroup_data.get("buying_type"),
+                        buying_type=campaign_data.get("buying_type"),
                         ad_format=ad_format,
                         creative_type=creative_type,
                         is_spark_ad=is_spark,
@@ -750,7 +750,7 @@ class TikTokSyncService:
                                 adgroup_status=adgroup_data.get("operation_status"),
                                 optimization_goal=adgroup_data.get("optimization_goal"),
                                 billing_event=adgroup_data.get("billing_event"),
-                                buying_type=adgroup_data.get("buying_type"),
+                                buying_type=campaign_data.get("buying_type"),
                                 ad_format=ad.get("ad_format"),
                                 creative_type=ad.get("creative_type"),
                                 is_spark_ad=is_spark,
@@ -955,7 +955,10 @@ class TikTokSyncService:
                 images = data.get("data", {}).get("list", [])
                 if images:
                     return images[0].get("image_url")
-        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+        except httpx.HTTPStatusError as e:
+            level = logger.debug if e.response.status_code == 404 else logger.warning
+            level("TikTok /file/image/ad/ %s for advertiser %s: %s", e.response.status_code, advertiser_id, e)
+        except httpx.RequestError as e:
             logger.warning("Failed to fetch TikTok cover image URL: %s", e)
         return None
 
@@ -988,7 +991,10 @@ class TikTokSyncService:
                 if videos:
                     v = videos[0]
                     return v.get("video_url"), v.get("video_cover_url")
-        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+        except httpx.HTTPStatusError as e:
+            level = logger.debug if e.response.status_code == 404 else logger.warning
+            level("TikTok /file/video/ad/ %s for advertiser %s: %s", e.response.status_code, advertiser_id, e)
+        except httpx.RequestError as e:
             logger.warning("Failed to fetch TikTok video URL for advertiser %s: %s", advertiser_id, e)
         return None
 
@@ -1134,7 +1140,7 @@ class TikTokSyncService:
         advertiser_id: str,
         adgroup_ids: List[str],
     ) -> List[Dict[str, Any]]:
-        """Fetch adgroup-level metadata (optimization_goal, billing_event, buying_type, status) via /adgroup/get/."""
+        """Fetch adgroup-level metadata (optimization_goal, billing_event, status) via /adgroup/get/."""
         all_adgroups: List[Dict[str, Any]] = []
         page = 1
         async with httpx.AsyncClient(timeout=30) as client:
