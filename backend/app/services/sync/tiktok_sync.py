@@ -117,6 +117,7 @@ AD_INFO_FIELDS = [
     "image_ids",
     "call_to_action",
     "operation_status",
+    "tiktok_item_id",
 ]
 
 CAMPAIGN_INFO_FIELDS = [
@@ -569,7 +570,7 @@ class TikTokSyncService:
                 post_link = f"https://www.tiktok.com/@{display_name}/video/{video_id_val}" if display_name and video_id_val else None
 
                 thumbnail_url, asset_url, video_source_url, asset_video_duration = await self._download_ad_assets(
-                    access_token, advertiser_id, org_id, ad_id, video_id_val, image_ids_raw, is_spark, display_name
+                    access_token, advertiser_id, org_id, ad_id, video_id_val, image_ids_raw, is_spark, display_name, ad.get("tiktok_item_id")
                 )
 
                 await db.execute(
@@ -766,6 +767,7 @@ class TikTokSyncService:
                             "image_ids": image_ids_raw,
                             "is_spark": is_spark,
                             "display_name": display_name,
+                            "tiktok_item_id": ad.get("tiktok_item_id"),
                         }
 
                         flushed += 1
@@ -810,14 +812,15 @@ class TikTokSyncService:
                 image_ids_raw = hints.get("image_ids")
                 is_spark = hints.get("is_spark", False)
                 display_name = hints.get("display_name")
+                tiktok_item_id = hints.get("tiktok_item_id")
 
                 logger.info(
-                    "TikTok asset download ad %s: is_spark=%s video_id=%s image_ids=%s display_name=%s",
-                    ad_id, is_spark, bool(video_id_val), bool(image_ids_raw), bool(display_name),
+                    "TikTok asset download ad %s: is_spark=%s video_id=%s image_ids=%s item_id=%s",
+                    ad_id, is_spark, bool(video_id_val), bool(image_ids_raw), bool(tiktok_item_id),
                 )
 
                 thumbnail_url, asset_url, video_source_url, asset_video_duration = await self._download_ad_assets(
-                    access_token, advertiser_id, org_id, ad_id, video_id_val, image_ids_raw, is_spark, display_name
+                    access_token, advertiser_id, org_id, ad_id, video_id_val, image_ids_raw, is_spark, display_name, tiktok_item_id
                 )
 
                 logger.info(
@@ -870,6 +873,7 @@ class TikTokSyncService:
         image_ids_raw,
         is_spark: bool,
         display_name: Optional[str] = None,
+        tiktok_item_id: Optional[str] = None,
     ) -> tuple[Optional[str], Optional[str], Optional[str], Optional[float]]:
         """Download thumbnail + full asset for one ad.
         Returns (thumbnail_url, asset_url, video_source_url, video_duration_sec).
@@ -904,9 +908,9 @@ class TikTokSyncService:
                 else:
                     logger.info("TikTok ad %s: file API returned no data for video_id %s — trying oEmbed", ad_id, video_id_val)
                     # Organic post content (Spark ads, creator partnerships) isn't in the creative
-                    # library — fall back to oEmbed for at least a thumbnail.
-                    if not thumbnail_url and display_name:
-                        oembed_thumb = await self._fetch_tiktok_oembed_thumbnail(display_name, str(video_id_val))
+                    # library — fall back to oEmbed using tiktok_item_id (actual public post ID).
+                    if not thumbnail_url and tiktok_item_id:
+                        oembed_thumb = await self._fetch_tiktok_oembed_thumbnail(tiktok_item_id)
                         if oembed_thumb:
                             thumbnail_url = await self._download_tiktok_thumbnail(oembed_thumb, org_id, ad_id)
 
@@ -924,8 +928,8 @@ class TikTokSyncService:
 
             elif is_spark:
                 # Spark ad — no download, but try oEmbed for thumbnail if image_ids didn't give one.
-                if not thumbnail_url and video_id_val and display_name:
-                    oembed_thumb = await self._fetch_tiktok_oembed_thumbnail(display_name, str(video_id_val))
+                if not thumbnail_url and tiktok_item_id:
+                    oembed_thumb = await self._fetch_tiktok_oembed_thumbnail(tiktok_item_id)
                     if oembed_thumb:
                         thumbnail_url = await self._download_tiktok_thumbnail(oembed_thumb, org_id, ad_id)
 
@@ -941,11 +945,11 @@ class TikTokSyncService:
 
     async def _fetch_tiktok_oembed_thumbnail(
         self,
-        display_name: str,
-        video_id: str,
+        tiktok_item_id: str,
     ) -> Optional[str]:
-        """Fetch thumbnail URL via TikTok oEmbed for organic post videos not in the creative library."""
-        post_url = f"https://www.tiktok.com/@{display_name}/video/{video_id}"
+        """Fetch thumbnail URL via TikTok oEmbed using the public post ID (tiktok_item_id).
+        Uses /video/{id} format — no @handle needed, avoids display_name/internal-ID confusion."""
+        post_url = f"https://www.tiktok.com/video/{tiktok_item_id}"
         try:
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
                 resp = await client.get(
@@ -957,12 +961,12 @@ class TikTokSyncService:
                     data = resp.json()
                     thumb = data.get("thumbnail_url")
                     if thumb:
-                        logger.info("TikTok oEmbed thumbnail retrieved for %s/%s", display_name, video_id)
+                        logger.info("TikTok oEmbed thumbnail retrieved for item_id=%s", tiktok_item_id)
                         return thumb
                 else:
-                    logger.warning("TikTok oEmbed %s for post_url=%s", resp.status_code, post_url)
+                    logger.warning("TikTok oEmbed %s for item_id=%s url=%s", resp.status_code, tiktok_item_id, post_url)
         except Exception as e:
-            logger.warning("TikTok oEmbed exception for display_name=%s video_id=%s: %s", display_name, video_id, e, exc_info=True)
+            logger.warning("TikTok oEmbed exception for item_id=%s: %s", tiktok_item_id, e, exc_info=True)
         return None
 
     async def _fetch_cover_image_url(
