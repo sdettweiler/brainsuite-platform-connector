@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, case
+from sqlalchemy import select, func, or_, case, and_
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -607,7 +607,17 @@ async def list_connections(
                 func.count(
                     case(
                         (
-                            CreativeAsset.asset_url.like("/objects/%"),
+                            and_(
+                                CreativeAsset.asset_format == "VIDEO",
+                                CreativeAsset.asset_url.like("%.mp4"),
+                            ),
+                            1,
+                        ),
+                        (
+                            and_(
+                                CreativeAsset.asset_format != "VIDEO",
+                                CreativeAsset.asset_url.like("/objects/%"),
+                            ),
                             1,
                         ),
                     )
