@@ -19,6 +19,7 @@ Additional: Google Ads API requires a Developer Token from ads.google.com
 Note: YouTube ad data lives in Google Ads API (not YouTube Data API).
 Use Google Ads API v15+ for all campaign/ad performance data.
 """
+import asyncio
 import httpx
 import logging
 from typing import Optional, List, Dict, Any
@@ -81,19 +82,28 @@ class GoogleAdsOAuthHandler:
 
     async def refresh_access_token(self, refresh_token: str) -> Dict[str, Any]:
         """Refresh an expired Google access token using refresh_token."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                GOOGLE_TOKEN_URL,
-                data={
-                    "refresh_token": refresh_token,
-                    "client_id": settings.GOOGLE_CLIENT_ID,
-                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                    "grant_type": "refresh_token",
-                },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
-            resp.raise_for_status()
-            return resp.json()
+        _transient = (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError)
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post(
+                        GOOGLE_TOKEN_URL,
+                        data={
+                            "refresh_token": refresh_token,
+                            "client_id": settings.GOOGLE_CLIENT_ID,
+                            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                            "grant_type": "refresh_token",
+                        },
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    )
+                    resp.raise_for_status()
+                    return resp.json()
+            except _transient as exc:
+                if attempt == 2:
+                    raise
+                wait = 2 ** attempt
+                logger.warning("Token refresh attempt %d failed (%s), retrying in %ds", attempt + 1, exc, wait)
+                await asyncio.sleep(wait)
 
     async def fetch_accessible_customers(self, access_token: str) -> List[Dict[str, Any]]:
         """
