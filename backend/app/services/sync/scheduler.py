@@ -531,40 +531,45 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict, exis
             )
             already_downloaded = {row[0] for row in _already_done.fetchall()}
 
-        # Phase 17: Process assets one at a time; increment progress after each success (D-05, D-15)
+        # Parallel download: all assets launched concurrently, semaphore inside limits to N
         downloaded = []
         failed = []
-        cookie_expired_count = 0
-        for asset_id, asset_info in asset_queue.items():
+        cookie_expired_count = [0]
+        _dl_lock = asyncio.Lock()
+
+        async def _process_one(asset_id, asset_info):
             if await get_job_status(bg_job_id) == "INTERRUPTED":
-                logger.info("Google Ads download job %s interrupted — stopping loop", bg_job_id)
-                break
-            # Skip if already downloaded (resume support)
+                return
             if str(asset_id) in already_downloaded:
-                downloaded.append({"asset_id": str(asset_id), "url": "(already downloaded)"})
-                continue
+                async with _dl_lock:
+                    downloaded.append({"asset_id": str(asset_id), "url": "(already downloaded)"})
+                return
             single_queue = {asset_id: asset_info}
             try:
                 async with get_session_factory()() as db:
                     result = await google_ads_sync.download_assets_post_commit(db, connection, single_queue)
                 video_url = (result or {}).get("video_url") or ""
-                if video_url or not (result or {}).get("video_failures"):
-                    downloaded.append({"asset_id": str(asset_id), "url": video_url})
-                else:
-                    fail_msg = next(iter((result or {}).get("video_failures", {}).values()), "silent failure")
-                    failed.append({"asset_id": str(asset_id), "error": fail_msg})
+                async with _dl_lock:
+                    if video_url or not (result or {}).get("video_failures"):
+                        downloaded.append({"asset_id": str(asset_id), "url": video_url})
+                    else:
+                        fail_msg = next(iter((result or {}).get("video_failures", {}).values()), "silent failure")
+                        failed.append({"asset_id": str(asset_id), "error": fail_msg})
             except _CookiesExpiredError:
-                cookie_expired_count += 1
-                failed.append({"asset_id": str(asset_id), "error": "YouTube cookies expired"})
+                async with _dl_lock:
+                    cookie_expired_count[0] += 1
+                    failed.append({"asset_id": str(asset_id), "error": "YouTube cookies expired"})
             except Exception as asset_err:
-                failed.append({"asset_id": str(asset_id), "error": str(asset_err)})
-            # Progress tracks confirmed successes only, not total attempts
+                async with _dl_lock:
+                    failed.append({"asset_id": str(asset_id), "error": str(asset_err)})
             await update_background_job(bg_job_id, status="RUNNING", progress_current=len(downloaded))
+
+        await asyncio.gather(*[_process_one(asset_id, asset_info) for asset_id, asset_info in asset_queue.items()])
 
         # Only declare global cookie expiry when every single failure was a cookie error
         # and nothing succeeded. Mixed failures (some cookie, some non-cookie) mean the
         # issue is per-video access restrictions, not expired credentials.
-        if cookie_expired_count > 0 and len(downloaded) == 0 and len(failed) == cookie_expired_count:
+        if cookie_expired_count[0] > 0 and len(downloaded) == 0 and len(failed) == cookie_expired_count[0]:
             raise _CookiesExpiredError("All Google Ads video downloads failed with cookie errors")
 
         # Phase 17: Mark COMPLETE/PARTIAL with D-11 output manifest

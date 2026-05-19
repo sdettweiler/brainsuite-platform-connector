@@ -1954,75 +1954,57 @@ class DV360SyncService:
         downloaded_videos = set()
         video_results = {}
         video_failures: dict = {}
-        video_download_count = 0
-        consecutive_failures = 0
-        # PERF-05: check proxy state once for batch sleep gating (D-08/D-09)
-        proxy_enabled, _ = await get_proxy_config()
-        for ad_id, info in queue.items():
+        import uuid as _uuid
+        from app.services.sync.job_tracker import get_job_status as _get_status, update_background_job as _ubj
+
+        # Group ads by yt_vid — each unique video downloaded once, results mapped to all ad_ids
+        _yt_vid_to_ads: dict = {}
+        for _ad_id, _info in queue.items():
+            _yt = _info.get("youtube_video_id", "")
+            if _yt:
+                _yt_vid_to_ads.setdefault(_yt, []).append(_ad_id)
+
+        _dl_lock = asyncio.Lock()
+        _cookies_expired = [False]
+
+        async def _dl_video(yt_vid: str, related_ads: list) -> None:
             if bg_job_id:
-                import uuid as _uuid
-                from app.services.sync.job_tracker import get_job_status as _get_status
                 _jid = bg_job_id if isinstance(bg_job_id, _uuid.UUID) else _uuid.UUID(str(bg_job_id))
                 if await _get_status(_jid) == "INTERRUPTED":
-                    logger.info("DV360 download: job %s interrupted — stopping download loop", _jid)
-                    break
-
-            yt_vid = info.get("youtube_video_id", "")
-            if not yt_vid:
-                continue
-
-            if yt_vid not in downloaded_videos:
-                # PERF-05: skip sleep when proxy is active (proxy handles rate spacing)
-                if not proxy_enabled and video_download_count > 0:
-                    await asyncio.sleep(4)
-                try:
-                    vid_duration, vid_served, frame_thumb = await self._download_video_asset(
-                        yt_vid, org_id, yt_vid
-                    )
-                    video_download_count += 1
+                    logger.info("DV360 download: job %s interrupted — skipping %s", _jid, yt_vid)
+                    return
+            try:
+                vid_duration, vid_served, frame_thumb = await self._download_video_asset(yt_vid, org_id, yt_vid)
+                async with _dl_lock:
                     if vid_served:
-                        consecutive_failures = 0
-                        video_results[ad_id] = {
-                            "video_url": vid_served,
-                            "asset_url": vid_served,
-                            "video_duration_seconds": vid_duration,
-                            "frame_thumb": frame_thumb,
-                        }
                         downloaded_videos.add(yt_vid)
-                        if bg_job_id:
-                            from app.services.sync.job_tracker import update_background_job as _ubj
-                            await _ubj(bg_job_id, progress_current=len(video_results))
+                        for _ad_id in related_ads:
+                            video_results[_ad_id] = {
+                                "video_url": vid_served,
+                                "asset_url": vid_served,
+                                "video_duration_seconds": vid_duration,
+                                "frame_thumb": frame_thumb,
+                            }
+                            if frame_thumb and _ad_id not in thumb_results:
+                                thumb_results[_ad_id] = frame_thumb
                     else:
-                        consecutive_failures += 1
-                        video_failures[ad_id] = "yt-dlp returned no URL (silent download failure)"
-                        logger.warning("Video download returned no URL for ad %s (consecutive failures: %d)", ad_id, consecutive_failures)
-                        if consecutive_failures >= 3:
-                            logger.warning("DV360 download: 3 consecutive failures — aborting batch early")
-                            break
-                    if frame_thumb and ad_id not in thumb_results:
-                        thumb_results[ad_id] = frame_thumb
-                except _CookiesExpiredError:
-                    video_download_count += 1
-                    raise  # propagate so scheduler tracks it correctly, not as a generic failure
-                except Exception as e:
-                    video_download_count += 1
-                    consecutive_failures += 1
-                    video_failures[ad_id] = f"{type(e).__name__}: {e}"
-                    logger.warning("Video download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
-                    if consecutive_failures >= 3:
-                        logger.warning("DV360 download: 3 consecutive failures — aborting batch early")
-                        break
+                        for _ad_id in related_ads:
+                            video_failures[_ad_id] = "yt-dlp returned no URL (silent download failure)"
+                        logger.warning("Video download returned no URL for %s", yt_vid)
+                if vid_served and bg_job_id:
+                    await _ubj(bg_job_id, progress_current=len(video_results))
+            except _CookiesExpiredError:
+                async with _dl_lock:
+                    _cookies_expired[0] = True
+            except Exception as e:
+                async with _dl_lock:
+                    for _ad_id in related_ads:
+                        video_failures[_ad_id] = f"{type(e).__name__}: {e}"
+                logger.warning("Video download failed for %s: %s: %s", yt_vid, type(e).__name__, e, exc_info=True)
 
-                # High failure-rate abort: if ≥10 attempts and >70% failed, something is systemically wrong
-                if video_download_count >= 10:
-                    total_failed = len(video_failures)
-                    fail_rate = total_failed / video_download_count
-                    if fail_rate > 0.70:
-                        logger.warning(
-                            "DV360 download: %d/%d attempts failed (%.0f%%) — aborting batch early",
-                            total_failed, video_download_count, fail_rate * 100,
-                        )
-                        break
+        await asyncio.gather(*[_dl_video(yt_vid, ads) for yt_vid, ads in _yt_vid_to_ads.items()])
+        if _cookies_expired[0]:
+            raise _CookiesExpiredError("YouTube cookies expired during batch download")
 
         if video_results:
             for ad_id, r in video_results.items():
