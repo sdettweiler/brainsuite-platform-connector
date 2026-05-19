@@ -252,11 +252,12 @@ class GoogleAdsSyncService:
     ) -> Tuple[Optional[str], Optional[str]]:
         from app.services.object_storage import get_object_storage
         obj_storage = get_object_storage()
+        loop = asyncio.get_running_loop()
 
         filename = f"thumb_yt_{ad_id}.jpg"
         relative_path = f"creatives/{org_id}/{filename}"
 
-        if obj_storage.file_exists(relative_path):
+        if await loop.run_in_executor(None, obj_storage.file_exists, relative_path):
             return None, obj_storage.served_url(relative_path)
 
         thumb_candidates = [
@@ -272,7 +273,7 @@ class GoogleAdsSyncService:
                     if resp.status_code == 200 and len(resp.content) > 1000:
                         break
                 resp.raise_for_status()
-            served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="image/jpeg")
+            served_url = await loop.run_in_executor(None, obj_storage.upload_bytes, resp.content, relative_path, "image/jpeg")
             logger.info(f"  Downloaded YouTube thumbnail: {filename} ({len(resp.content)} bytes)")
             return None, served_url
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
@@ -433,9 +434,18 @@ class GoogleAdsSyncService:
                 ydl_opts["proxy"] = proxy
             cookie_file = None
             if cookie_data:
-                cleaned = "\n".join(
-                    line.lstrip() for line in cookie_data.splitlines()
-                )
+                _raw_lines = cookie_data.splitlines()
+                _valid_lines = []
+                _skipped = 0
+                for _ln in _raw_lines:
+                    _stripped = _ln.lstrip()
+                    if not _stripped or _stripped.startswith('#') or len(_stripped.split('\t')) == 7:
+                        _valid_lines.append(_stripped)
+                    else:
+                        _skipped += 1
+                if _skipped:
+                    logger.warning("[DL:%s] Stripped %d corrupt cookie line(s) from %s cookie file", _dl_tag, _skipped, label)
+                cleaned = "\n".join(_valid_lines)
                 cookie_file = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".txt", delete=False
                 )
@@ -468,12 +478,13 @@ class GoogleAdsSyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
+        _dl_tag = youtube_video_id[:8]
         winning_slot: int | None = None
         try:
             # Extract info once (no proxy) — reused across all download attempts (PERF-01)
             info_dict = await _extract_info()
             if not info_dict:
-                logger.warning("  Could not extract info for Google Ads video %s (ad=%s)", youtube_video_id, ad_id)
+                logger.warning("[DL:%s] Could not extract info for Google Ads video (ad=%s)", _dl_tag, ad_id)
                 return None, None, None
 
             # Build attempt list (D-04, PERF-03):
@@ -486,7 +497,9 @@ class GoogleAdsSyncService:
             # Phase 25 (PERF-02): one semaphore slot per asset, shared across DV360 + Google Ads via proxy_cache
             from app.services.sync.proxy_cache import get_concurrency_semaphore
             semaphore = await get_concurrency_semaphore()
+            logger.info("[DL:%s] Google Ads — waiting for slot (%d attempt(s))", _dl_tag, len(attempts))
             async with semaphore:
+                logger.info("[DL:%s] Slot acquired", _dl_tag)
                 for i, cookie in enumerate(attempts):
                     if not cookie:
                         label = "no cookies"
@@ -494,7 +507,7 @@ class GoogleAdsSyncService:
                         label = "primary"
                     else:
                         label = "backup"
-                    logger.info("  Attempting Google Ads video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
+                    logger.info("[DL:%s] Attempt %d/%d (%s)", _dl_tag, i + 1, len(attempts), label)
 
                     # D-04: first attempt when proxy enabled = no-proxy/no-cookies (PO auto via bgutil)
                     # subsequent attempts route through proxy
@@ -512,23 +525,36 @@ class GoogleAdsSyncService:
                         break
                     except _CookiesExpiredError:
                         if i < len(attempts) - 1:
-                            logger.warning("  Google Ads: cookie attempt %d failed (expired), trying next", i + 1)
+                            logger.warning("[DL:%s] Attempt %d expired — trying next", _dl_tag, i + 1)
                             continue
                         raise
                     except Exception as _attempt_err:
+                        # yt-dlp __exit__ raises when saving back a corrupt cookie file even after
+                        # a successful download. Recover the file if it landed on disk.
+                        _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"}
+                        _recovery = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0 and os.path.splitext(m)[1].lower() in _VIDEO_EXTS]
+                        if _recovery:
+                            logger.info("[DL:%s] Download succeeded despite exception (%s) — recovering file", _dl_tag, type(_attempt_err).__name__)
+                            if cookie and cookies and cookie in cookies:
+                                winning_slot = cookies.index(cookie)
+                            else:
+                                winning_slot = None
+                            break
                         if i < len(attempts) - 1:
-                            logger.warning("  Google Ads: cookie attempt %d failed (%s), trying next", i + 1, type(_attempt_err).__name__)
+                            logger.warning("[DL:%s] Attempt %d failed (%s) — trying next", _dl_tag, i + 1, type(_attempt_err).__name__)
                             continue
                         raise
 
+            logger.info("[DL:%s] Slot released", _dl_tag)
             matches = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0]
             actual_path = matches[0] if matches else None
             if actual_path:
                 size_mb = os.path.getsize(actual_path) / (1024 * 1024)
+                logger.info("[DL:%s] Uploading (%.1f MB)", _dl_tag, size_mb)
                 served_url = await loop.run_in_executor(None, obj_storage.upload_file, actual_path, relative_path, "video/mp4")
                 from app.services.sync.video_utils import get_video_duration as _get_dur
                 yt_video_duration = await loop.run_in_executor(None, _get_dur, actual_path)
-                logger.info("  Downloaded Google Ads YouTube video: %s (%.1f MB, duration=%s)", filename, size_mb, yt_video_duration)
+                logger.info("[DL:%s] COMPLETE: %s (%.1f MB, duration=%s)", _dl_tag, filename, size_mb, yt_video_duration)
                 try:
                     from sqlalchemy import update as _sa_update
                     from app.models.system_config import SystemConfig as _SC
@@ -550,7 +576,7 @@ class GoogleAdsSyncService:
                     frame_thumb = await extract_first_frame_and_upload(actual_path, org_id, ad_id, "yt", obj_storage)
                 return yt_video_duration, served_url, frame_thumb
             else:
-                logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
+                logger.warning("[DL:%s] yt-dlp finished but output file missing", _dl_tag)
                 return None, None, None
         except _CookiesExpiredError:
             try:
@@ -739,8 +765,8 @@ class GoogleAdsSyncService:
                         video_successes += 1
                         served_url = video_url
                     else:
-                        video_failures[ad_id] = "yt-dlp returned no URL (silent download failure)"
-                        logger.warning("Video download returned no URL for ad %s", ad_id)
+                        video_failures[ad_id] = "video unavailable or deleted"
+                        logger.warning("[DL:%s] Video unavailable or deleted — skipping ad %s", youtube_video_id[:8] if youtube_video_id else "?", ad_id)
                 except _CookiesExpiredError:
                     cookies_expired = True
                     logger.warning("YouTube cookies expired — skipping video downloads for remaining ads in queue")

@@ -79,6 +79,13 @@
         <tr *ngIf="jobDetail.connection_name"><td>Ad Account</td><td>{{ jobDetail.connection_name }}</td></tr>
         <tr *ngIf="jobDetail.platform_ad_account_id"><td>Platform Account ID</td><td style="font-family:monospace">{{ jobDetail.platform_ad_account_id }}</td></tr>
       </table>
+      <ng-container *ngIf="getDownloadStats() as stats">
+        <div class="download-stats-row">
+          <span class="stat-pill stat-success"><i class="bi bi-check-circle"></i> {{ stats.succeeded }} succeeded</span>
+          <span class="stat-pill stat-error" *ngIf="stats.failed > 0"><i class="bi bi-x-circle"></i> {{ stats.failed }} failed</span>
+          <span class="stat-pill stat-muted" *ngIf="stats.notFound > 0"><i class="bi bi-slash-circle"></i> {{ stats.notFound }} not found</span>
+        </div>
+      </ng-container>
       <div class="section-label">Downloaded Assets</div>
       <p *ngIf="hasCorruptedDownloads()" style="font-size:12px;color:var(--text-muted);margin:0 0 8px">Some items could not be identified (corrupted job data).</p>
       <ul class="asset-list">

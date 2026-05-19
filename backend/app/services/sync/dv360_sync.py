@@ -66,6 +66,9 @@ from app.services.sync.proxy_cache import get_proxy_config, get_concurrency_sema
 class _CookiesExpiredError(Exception):
     """Raised when yt-dlp reports YouTube cookies are no longer valid."""
 
+class _VideoUnavailableError(Exception):
+    """Raised when a YouTube video cannot be accessed (deleted, private, region-blocked)."""
+
 logger = logging.getLogger(__name__)
 
 _SAFE_FILENAME_RE = re.compile(r'[^a-zA-Z0-9_\-]')
@@ -1084,6 +1087,7 @@ class DV360SyncService:
         try:
             from app.services.object_storage import get_object_storage
             obj_storage = get_object_storage()
+            loop = asyncio.get_running_loop()
 
             safe_id = _sanitize_for_filename(ad_id)
             ext = ".jpg"
@@ -1095,7 +1099,7 @@ class DV360SyncService:
             filename = f"{prefix}_dv360_{safe_id}{ext}"
             relative_path = f"creatives/{org_id}/{filename}"
 
-            if obj_storage.file_exists(relative_path):
+            if await loop.run_in_executor(None, obj_storage.file_exists, relative_path):
                 return None, obj_storage.served_url(relative_path)
 
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
@@ -1111,7 +1115,7 @@ class DV360SyncService:
                 filename = f"{prefix}_dv360_{safe_id}{ext}"
                 relative_path = f"creatives/{org_id}/{filename}"
 
-            served_url = obj_storage.upload_bytes(resp.content, relative_path)
+            served_url = await loop.run_in_executor(None, obj_storage.upload_bytes, resp.content, relative_path)
             logger.info(f"  Downloaded DV360 asset: {filename} ({len(resp.content)} bytes)")
             return None, served_url
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
@@ -1208,6 +1212,7 @@ class DV360SyncService:
         youtube_video_id: str,
         org_id: str,
         ad_id: str,
+        bg_job_id=None,
     ) -> Tuple[Optional[float], Optional[str], Optional[str]]:
         from app.services.object_storage import get_object_storage
         obj_storage = get_object_storage()
@@ -1334,9 +1339,22 @@ class DV360SyncService:
             # Accept cookie string directly (T-14-10: never log cookie content)
             cookie_file = None
             if cookie_data:
-                cleaned = "\n".join(
-                    line.lstrip() for line in cookie_data.splitlines()
-                )
+                _raw_lines = cookie_data.splitlines()
+                _valid_lines = []
+                _skipped = 0
+                for _ln in _raw_lines:
+                    _stripped = _ln.lstrip()
+                    # Keep comments, blank lines, and lines with exactly 7 tab-separated fields.
+                    # Netscape cookie data lines must have 7 fields; anything else is corrupt.
+                    if not _stripped or _stripped.startswith('#') or len(_stripped.split('\t')) == 7:
+                        _valid_lines.append(_stripped)
+                    else:
+                        _skipped += 1
+                if _skipped:
+                    logger.warning("[DL:%s] Stripped %d corrupt cookie line(s) from %s cookie file", _dl_tag, _skipped, label)
+                first_line = _valid_lines[0] if _valid_lines else "(empty)"
+                logger.info("[DL:%s] Cookie file: %d raw lines, %d valid, %d stripped, first=%r", _dl_tag, len(_raw_lines), len(_valid_lines), _skipped, first_line[:80])
+                cleaned = "\n".join(_valid_lines)
                 cookie_file = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".txt", delete=False
                 )
@@ -1367,11 +1385,13 @@ class DV360SyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
+        _dl_tag = youtube_video_id[:8]
+
         # Extract info once — reused across all download attempts (PERF-01, D-02)
         info_dict = await _extract_info()
         if not info_dict:
-            logger.warning("Could not extract info for %s", youtube_video_id)
-            return None, None, None
+            logger.warning("[DL:%s] Video not found or unavailable (extraction failed) — skipping", _dl_tag)
+            raise _VideoUnavailableError(youtube_video_id)
 
         # Build download attempt list (D-04):
         # proxy off: [primary, backup] or [""] if no cookies (existing behavior preserved)
@@ -1384,8 +1404,15 @@ class DV360SyncService:
         semaphore = await get_concurrency_semaphore()
         actual_path: Optional[str] = None
         winning_label: Optional[str] = None
+        logger.info("[DL:%s] DV360 — waiting for slot (%d attempt(s))", _dl_tag, len(attempts))
         try:
             async with semaphore:
+                if bg_job_id:
+                    from app.services.sync.job_tracker import get_job_status as _gjstat
+                    if await _gjstat(bg_job_id) == "INTERRUPTED":
+                        logger.info("[DL:%s] Job interrupted — slot released without downloading", _dl_tag)
+                        return None, None, None
+                logger.info("[DL:%s] Slot acquired", _dl_tag)
                 for i, cookie in enumerate(attempts):
                     if not cookie:
                         label = "no cookies"
@@ -1393,7 +1420,7 @@ class DV360SyncService:
                         label = "primary"
                     else:
                         label = "backup"
-                    logger.info("  Attempting DV360 video download: %s (ad=%s, cookies=%s)", youtube_video_id, ad_id, label)
+                    logger.info("[DL:%s] Attempt %d/%d (%s)", _dl_tag, i + 1, len(attempts), label)
 
                     # PO-first: first attempt when proxy enabled uses no proxy and no cookies
                     if i == 0 and proxy_enabled and proxy_url:
@@ -1414,12 +1441,12 @@ class DV360SyncService:
                             winning_label = label
                             break  # semaphore released after this block; upload runs outside
                         else:
-                            logger.warning("  yt-dlp finished but output file missing in %s", tmpdir)
+                            logger.warning("[DL:%s] yt-dlp finished but output file missing", _dl_tag)
                     except _CookiesExpiredError:
                         if i < len(attempts) - 1:
-                            logger.info("  %s cookies expired for %s — trying backup slot", label, youtube_video_id)
+                            logger.info("[DL:%s] %s cookies expired — trying backup slot", _dl_tag, label)
                             continue
-                        logger.warning("  All cookie slots expired for %s — aborting", youtube_video_id)
+                        logger.warning("[DL:%s] All cookie slots expired — aborting", _dl_tag)
                         if cookies:
                             try:
                                 from app.services.notifications import create_superadmin_notification
@@ -1453,19 +1480,29 @@ class DV360SyncService:
                         err_str = str(e)
                         is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
                         if is_format_error:
-                            logger.warning("  No video formats available for %s — skipping", youtube_video_id)
+                            logger.warning("[DL:%s] No video formats available — skipping", _dl_tag)
+                            break
+                        # yt-dlp __exit__ raises when saving back a corrupt cookie file even after
+                        # a successful download. Recover the file if it landed on disk.
+                        _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"}
+                        _recovery = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0 and os.path.splitext(m)[1].lower() in _VIDEO_EXTS]
+                        if _recovery:
+                            logger.info("[DL:%s] Download succeeded despite exception (%s) — recovering file", _dl_tag, type(e).__name__)
+                            actual_path = _recovery[0]
+                            winning_label = label
                             break
                         if i < len(attempts) - 1:
-                            logger.info("  %s cookies failed for %s, trying next... (%s: %s)", label, youtube_video_id, type(e).__name__, e)
+                            logger.info("[DL:%s] Attempt %d failed (%s) — trying next", _dl_tag, i + 1, type(e).__name__)
                             continue
-                        logger.warning("  Failed to download DV360 video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
+                        logger.warning("[DL:%s] FAILED: %s: %s", _dl_tag, type(e).__name__, e, exc_info=True)
 
             # Semaphore released — upload, DB update, frame extraction run concurrently with other downloads
             if actual_path:
                 size_mb = os.path.getsize(actual_path) / (1024 * 1024)
+                logger.info("[DL:%s] Slot released — uploading (%.1f MB)", _dl_tag, size_mb)
                 duration = get_video_duration(actual_path)
                 served_url = await loop.run_in_executor(None, obj_storage.upload_file, actual_path, relative_path, "video/mp4")
-                logger.info("  Downloaded DV360 YouTube video: %s (%.1f MB) [%s cookies]", filename, size_mb, winning_label)
+                logger.info("[DL:%s] COMPLETE: %s (%.1f MB, %s cookies)", _dl_tag, filename, size_mb, winning_label)
                 try:
                     from sqlalchemy import update as _sa_update
                     from app.models.system_config import SystemConfig as _SC
@@ -1489,6 +1526,7 @@ class DV360SyncService:
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
+        logger.warning("[DL:%s] No file produced — all attempts failed", _dl_tag)
         return None, None, None
 
     async def _download_youtube_thumbnail(
@@ -1499,12 +1537,13 @@ class DV360SyncService:
     ) -> Tuple[Optional[str], Optional[str]]:
         from app.services.object_storage import get_object_storage
         obj_storage = get_object_storage()
+        loop = asyncio.get_running_loop()
 
         safe_id = _sanitize_for_filename(ad_id)
         filename = f"thumb_dv360_{safe_id}.jpg"
         relative_path = f"creatives/{org_id}/{filename}"
 
-        if obj_storage.file_exists(relative_path):
+        if await loop.run_in_executor(None, obj_storage.file_exists, relative_path):
             return None, obj_storage.served_url(relative_path)
 
         candidates = [
@@ -1517,7 +1556,7 @@ class DV360SyncService:
                 for thumb_url in candidates:
                     resp = await client.get(thumb_url)
                     if resp.status_code == 200 and len(resp.content) > 1000:
-                        served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="image/jpeg")
+                        served_url = await loop.run_in_executor(None, obj_storage.upload_bytes, resp.content, relative_path, "image/jpeg")
                         return None, served_url
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
             logger.warning("Failed to download YouTube thumbnail for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
@@ -1972,17 +2011,23 @@ class DV360SyncService:
 
         _dl_lock = asyncio.Lock()
         _cookies_expired = [False]
+        _succeeded_count = [0]
+        _failed_count = [0]
+        _not_found_count = [0]
 
         async def _dl_video(yt_vid: str, related_ads: list) -> None:
+            _interrupted = False
             if bg_job_id:
                 _jid = bg_job_id if isinstance(bg_job_id, _uuid.UUID) else _uuid.UUID(str(bg_job_id))
                 if await _get_status(_jid) == "INTERRUPTED":
                     logger.info("DV360 download: job %s interrupted — skipping %s", _jid, yt_vid)
+                    _interrupted = True
                     return
             try:
-                vid_duration, vid_served, frame_thumb = await self._download_video_asset(yt_vid, org_id, yt_vid)
+                vid_duration, vid_served, frame_thumb = await self._download_video_asset(yt_vid, org_id, yt_vid, bg_job_id=bg_job_id)
                 async with _dl_lock:
                     if vid_served:
+                        _succeeded_count[0] += len(related_ads)
                         downloaded_videos.add(yt_vid)
                         for _ad_id in related_ads:
                             video_results[_ad_id] = {
@@ -1994,19 +2039,29 @@ class DV360SyncService:
                             if frame_thumb and _ad_id not in thumb_results:
                                 thumb_results[_ad_id] = frame_thumb
                     else:
+                        _failed_count[0] += len(related_ads)
                         for _ad_id in related_ads:
-                            video_failures[_ad_id] = "yt-dlp returned no URL (silent download failure)"
-                        logger.warning("Video download returned no URL for %s", yt_vid)
-                if vid_served and bg_job_id:
-                    await _ubj(bg_job_id, progress_current=len(video_results))
+                            video_failures[_ad_id] = "video unavailable or deleted"
+                        logger.warning("[DL:%s] No file produced — skipping %d ad(s)", yt_vid[:8], len(related_ads))
+            except _VideoUnavailableError:
+                async with _dl_lock:
+                    _not_found_count[0] += len(related_ads)
+                    for _ad_id in related_ads:
+                        video_failures[_ad_id] = "video unavailable or deleted"
+                logger.info("[DL:%s] Video not found — skipping %d ad(s)", yt_vid[:8], len(related_ads))
             except _CookiesExpiredError:
                 async with _dl_lock:
                     _cookies_expired[0] = True
+                    _failed_count[0] += len(related_ads)
             except Exception as e:
                 async with _dl_lock:
+                    _failed_count[0] += len(related_ads)
                     for _ad_id in related_ads:
                         video_failures[_ad_id] = f"{type(e).__name__}: {e}"
                 logger.warning("Video download failed for %s: %s: %s", yt_vid, type(e).__name__, e, exc_info=True)
+            finally:
+                if not _interrupted and bg_job_id:
+                    await _ubj(bg_job_id, progress_current=_succeeded_count[0], output={"stats": {"succeeded": _succeeded_count[0], "failed": _failed_count[0], "not_found": _not_found_count[0]}})
 
         await asyncio.gather(*[_dl_video(yt_vid, ads) for yt_vid, ads in _yt_vid_to_ads.items()])
         if _cookies_expired[0]:
@@ -2118,7 +2173,7 @@ class DV360SyncService:
             + [{"asset_id": ad_id, "url": url} for ad_id, url in thumb_results.items() if ad_id not in video_results]
         )
         failed_list = [{"asset_id": ad_id, "error": err} for ad_id, err in video_failures.items()]
-        return {"downloaded": downloaded_list, "failed": failed_list}
+        return {"downloaded": downloaded_list, "failed": failed_list, "stats": {"succeeded": _succeeded_count[0], "failed": _failed_count[0], "not_found": _not_found_count[0]}}
 
     async def _upsert_conversion_records(
         self,

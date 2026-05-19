@@ -111,6 +111,11 @@ const KNOWN_EXTERNAL_ID_KEYS = ['brainsuite_job_id', 'sync_job_id'];
     }
     .spinner-center { display: flex; justify-content: center; align-items: center; height: 200px; }
     summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); margin: 8px 0; }
+    .download-stats-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
+    .stat-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+    .stat-success { background: rgba(52,168,83,0.12); color: #34A853; }
+    .stat-error { background: rgba(234,67,53,0.12); color: #EA4335; }
+    .stat-muted { background: rgba(128,128,128,0.12); color: var(--text-secondary); }
     .org-row { display: flex; align-items: center; }
     .asset-name-text { font-size: 13px; color: var(--text-primary); font-weight: 500; }
     .asset-type-badge {
@@ -284,6 +289,19 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
 
   getFailedDownloads(): any[] {
     return (this.jobDetail?.output as any)?.failed ?? [];
+  }
+
+  getDownloadStats(): { succeeded: number; failed: number; notFound: number } | null {
+    const out = this.jobDetail?.output as any;
+    if (!out) return null;
+    if (out.stats) {
+      return { succeeded: out.stats.succeeded ?? 0, failed: out.stats.failed ?? 0, notFound: out.stats.not_found ?? 0 };
+    }
+    // Fallback: derive from arrays (completed jobs without stats key)
+    const downloaded = Array.isArray(out.downloaded) ? out.downloaded.length : 0;
+    const allFailed: any[] = Array.isArray(out.failed) ? out.failed : [];
+    const notFound = allFailed.filter((f: any) => { const e = (f.error || '').toLowerCase(); return e.includes('unavailable') || e.includes('deleted') || e.includes('not found'); }).length;
+    return { succeeded: downloaded, failed: allFailed.length - notFound, notFound };
   }
 
   getScoringAssets(): any[] {

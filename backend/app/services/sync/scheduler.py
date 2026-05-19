@@ -574,7 +574,8 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict, exis
 
         # Phase 17: Mark COMPLETE/PARTIAL with D-11 output manifest
         final_status = "COMPLETE" if not failed else ("PARTIAL" if downloaded else "FAILED")
-        output = {"downloaded": downloaded, "failed": failed}
+        _not_found_gads = [f for f in failed if "unavailable" in f.get("error", "").lower() or "deleted" in f.get("error", "").lower() or "not found" in f.get("error", "").lower()]
+        output = {"downloaded": downloaded, "failed": failed, "stats": {"succeeded": len(downloaded), "failed": len(failed) - len(_not_found_gads), "not_found": len(_not_found_gads)}}
         await update_background_job(
             bg_job_id,
             status=final_status,
@@ -680,12 +681,12 @@ async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None,
                 downloaded.append({"asset_id": str(ad_id), "url": ""})
             except Exception as asset_err:
                 failed.append({"asset_id": str(ad_id), "error": str(asset_err)})
-            # Progress tracks confirmed successes only, not total attempts
             await update_background_job(bg_job_id, status="RUNNING", progress_current=len(downloaded))
 
         # Phase 17: Mark COMPLETE/PARTIAL with D-11 output manifest
         final_status = "COMPLETE" if not failed else ("PARTIAL" if downloaded else "FAILED")
-        output = {"downloaded": downloaded, "failed": failed}
+        _not_found_meta = [f for f in failed if "unavailable" in f.get("error", "").lower() or "deleted" in f.get("error", "").lower() or "not found" in f.get("error", "").lower()]
+        output = {"downloaded": downloaded, "failed": failed, "stats": {"succeeded": len(downloaded), "failed": len(failed) - len(_not_found_meta), "not_found": len(_not_found_meta)}}
         await update_background_job(
             bg_job_id,
             status=final_status,
@@ -765,7 +766,8 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=Non
 
         # Phase 17: Mark COMPLETE/PARTIAL with D-11 output manifest
         final_status = "COMPLETE" if not failed else ("PARTIAL" if downloaded else "FAILED")
-        output = {"downloaded": downloaded, "failed": failed}
+        _not_found_tiktok = [f for f in failed if "unavailable" in f.get("error", "").lower() or "deleted" in f.get("error", "").lower() or "not found" in f.get("error", "").lower()]
+        output = {"downloaded": downloaded, "failed": failed, "stats": {"succeeded": len(downloaded), "failed": len(failed) - len(_not_found_tiktok), "not_found": len(_not_found_tiktok)}}
         await update_background_job(
             bg_job_id,
             status=final_status,
@@ -844,6 +846,7 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict, existing_
                 result = await dv360_sync.download_assets_post_commit(db, connection, asset_queue, bg_job_id=str(bg_job_id))
             downloaded = result.get("downloaded", []) if result else []
             failed = result.get("failed", []) if result else []
+            _dv360_stats = result.get("stats", {}) if result else {}
         except _CookiesExpiredError:
             raise
         except Exception as asset_err:
@@ -859,7 +862,7 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict, existing_
         asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id))
 
         # Phase 17: Mark COMPLETE (all downloaded), PARTIAL (some failed), or leave for exception path
-        output = {"downloaded": downloaded, "failed": failed}
+        output = {"downloaded": downloaded, "failed": failed, "stats": _dv360_stats}
         dl_status = "PARTIAL" if failed else "COMPLETE"
         await update_background_job(
             bg_job_id,
