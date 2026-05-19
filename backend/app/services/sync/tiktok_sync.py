@@ -193,6 +193,11 @@ class TikTokSyncService:
                     resp.raise_for_status()
                     data = resp.json()
 
+                    if data.get("code") == 40100:
+                        logger.warning("TikTok report rate limit (code 40100), backing off 60s")
+                        await asyncio.sleep(60)
+                        continue
+
                     if data.get("code") != 0:
                         msg = data.get("message", "")
                         # Adaptive field stripping: some metrics are only valid for
@@ -470,13 +475,16 @@ class TikTokSyncService:
                 asset_video_duration: Optional[float] = None
                 try:
                     if video_id_val and not is_spark:
-                        # Standard video ad: fetch download URL then download bytes to S3
-                        raw_video_url = await self._fetch_video_download_url(
+                        # Standard video ad: fetch download URL + cover URL from same API call
+                        video_info = await self._fetch_video_download_url(
                             access_token, advertiser_id, [str(video_id_val)]
                         )
-                        if raw_video_url:
+                        if video_info:
+                            raw_video_url, raw_cover_url = video_info
                             asset_url, asset_video_duration = await self._download_video_asset(raw_video_url, org_id, ad_id)
                             video_source_url = raw_video_url  # Store API URL per D-06
+                            if not thumbnail_url and raw_cover_url:
+                                thumbnail_url = await self._download_tiktok_thumbnail(raw_cover_url, org_id, ad_id)
 
                     elif image_ids_raw and not video_id_val and not is_spark:
                         # Image-only ad: download full-resolution image to asset_url (D-03)
@@ -513,7 +521,7 @@ class TikTokSyncService:
                         ad_group_name=ad.get("adgroup_name"),
                         ad_name=ad.get("ad_name"),
                         campaign_objective=ad.get("objective_type"),
-                        ad_status=ad.get("status"),
+                        ad_status=ad.get("operation_status"),
                         ad_format=ad_format,
                         creative_type=creative_type,
                         is_spark_ad=is_spark,
@@ -526,7 +534,6 @@ class TikTokSyncService:
                         billing_event=ad.get("billing_event"),
                         buying_type=ad.get("buying_type"),
                         campaign_budget_mode=ad.get("campaign_budget_mode"),
-                        campaign_status=ad.get("operation_status"),
                         call_to_action=ad.get("call_to_action"),
                         post_link=post_link,
                         **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
@@ -615,9 +622,9 @@ class TikTokSyncService:
         access_token: str,
         advertiser_id: str,
         video_ids: List[str],
-    ) -> Optional[str]:
-        """Fetch the video download URL for given video ID via /file/video/ad/.
-        Returns download URL or None if unavailable (non-fatal).
+    ) -> Optional[tuple]:
+        """Fetch the video download URL and cover image URL via /file/video/ad/.
+        Returns (video_url, cover_url) tuple or None if unavailable (non-fatal).
         Decision D-01: Use TikTok API endpoint, not yt-dlp.
         """
         try:
@@ -637,7 +644,8 @@ class TikTokSyncService:
                     return None
                 videos = data.get("data", {}).get("list", [])
                 if videos:
-                    return videos[0].get("video_url")
+                    v = videos[0]
+                    return v.get("video_url"), v.get("video_cover_url")
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             logger.warning("Failed to fetch TikTok video URL for advertiser %s: %s", advertiser_id, e)
         return None
@@ -767,6 +775,11 @@ class TikTokSyncService:
                     break
 
                 data = resp.json()
+                if data.get("code") == 40100:
+                    logger.warning("TikTok /ad/get/ rate limit (code 40100), backing off 60s")
+                    await asyncio.sleep(60)
+                    continue
+
                 if data.get("code") != 0:
                     msg = data.get("message", "")
                     # Adaptive field stripping: TikTok reports the first bad field as
