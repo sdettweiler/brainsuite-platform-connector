@@ -108,6 +108,22 @@ AD_INFO_FIELDS = [
     "operation_status",
 ]
 
+CAMPAIGN_INFO_FIELDS = [
+    "campaign_id",
+    "objective_type",
+    "budget_mode",
+    "operation_status",
+]
+
+ADGROUP_INFO_FIELDS = [
+    "adgroup_id",
+    "campaign_id",
+    "optimization_goal",
+    "billing_event",
+    "buying_type",
+    "operation_status",
+]
+
 
 class TikTokAPIError(Exception):
     pass
@@ -413,7 +429,7 @@ class TikTokSyncService:
                                          "creative_type", "is_spark_ad", "identity_type", "display_name",
                                          "landing_page_url", "video_id", "image_ids", "optimization_goal",
                                          "billing_event", "buying_type", "campaign_budget_mode",
-                                         "campaign_status", "call_to_action", "post_link", "thumbnail_url",
+                                         "campaign_status", "adgroup_status", "call_to_action", "post_link", "thumbnail_url",
                                          # populated by deferred _enrich_from_ad_get — preserve on re-sync
                                          "asset_url", "video_source_url")}
         update_cols["is_processed"] = False
@@ -442,10 +458,33 @@ class TikTokSyncService:
                 logger.error("Failed to fetch ad info batch for %s: %s", advertiser_id, e, exc_info=True)
                 continue
 
+            # Build campaign + adgroup lookups for this batch so we can populate the
+            # metadata that lives at campaign/adgroup level rather than ad level.
+            campaign_ids = list({str(ad.get("campaign_id")) for ad in ads if ad.get("campaign_id")})
+            adgroup_ids = list({str(ad.get("adgroup_id")) for ad in ads if ad.get("adgroup_id")})
+
+            campaign_lookup: Dict[str, Dict[str, Any]] = {}
+            adgroup_lookup: Dict[str, Dict[str, Any]] = {}
+            if campaign_ids:
+                try:
+                    campaigns = await self._fetch_campaign_info(access_token, advertiser_id, campaign_ids)
+                    campaign_lookup = {str(c.get("campaign_id")): c for c in campaigns}
+                except Exception as e:
+                    logger.warning("Failed to fetch campaign info for advertiser %s: %s", advertiser_id, e)
+            if adgroup_ids:
+                try:
+                    adgroups = await self._fetch_adgroup_info(access_token, advertiser_id, adgroup_ids)
+                    adgroup_lookup = {str(ag.get("adgroup_id")): ag for ag in adgroups}
+                except Exception as e:
+                    logger.warning("Failed to fetch adgroup info for advertiser %s: %s", advertiser_id, e)
+
             for ad in ads:
                 ad_id = str(ad.get("ad_id", ""))
                 if not ad_id:
                     continue
+
+                campaign_data = campaign_lookup.get(str(ad.get("campaign_id", "")), {})
+                adgroup_data = adgroup_lookup.get(str(ad.get("adgroup_id", "")), {})
 
                 image_ids_raw = ad.get("image_ids")
                 image_ids_str = ",".join(image_ids_raw) if isinstance(image_ids_raw, list) else None
@@ -520,8 +559,14 @@ class TikTokSyncService:
                         ad_group_id=str(ad.get("adgroup_id", "")),
                         ad_group_name=ad.get("adgroup_name"),
                         ad_name=ad.get("ad_name"),
-                        campaign_objective=ad.get("objective_type"),
+                        campaign_objective=campaign_data.get("objective_type"),
+                        campaign_budget_mode=campaign_data.get("budget_mode"),
+                        campaign_status=campaign_data.get("operation_status"),
                         ad_status=ad.get("operation_status"),
+                        adgroup_status=adgroup_data.get("operation_status"),
+                        optimization_goal=adgroup_data.get("optimization_goal"),
+                        billing_event=adgroup_data.get("billing_event"),
+                        buying_type=adgroup_data.get("buying_type"),
                         ad_format=ad_format,
                         creative_type=creative_type,
                         is_spark_ad=is_spark,
@@ -530,10 +575,6 @@ class TikTokSyncService:
                         landing_page_url=ad.get("landing_page_url"),
                         video_id=str(video_id_val) if video_id_val else None,
                         image_ids=image_ids_str,
-                        optimization_goal=ad.get("optimization_goal"),
-                        billing_event=ad.get("billing_event"),
-                        buying_type=ad.get("buying_type"),
-                        campaign_budget_mode=ad.get("campaign_budget_mode"),
                         call_to_action=ad.get("call_to_action"),
                         post_link=post_link,
                         **({"thumbnail_url": thumbnail_url} if thumbnail_url else {}),
@@ -746,6 +787,84 @@ class TikTokSyncService:
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
             logger.warning("Failed to download TikTok thumbnail for ad %s: %s", ad_id, e, exc_info=True)
             return None
+
+    async def _fetch_campaign_info(
+        self,
+        access_token: str,
+        advertiser_id: str,
+        campaign_ids: List[str],
+    ) -> List[Dict[str, Any]]:
+        """Fetch campaign-level metadata (objective, budget_mode, status) via /campaign/get/."""
+        all_campaigns: List[Dict[str, Any]] = []
+        page = 1
+        async with httpx.AsyncClient(timeout=30) as client:
+            while True:
+                resp = await client.get(
+                    f"{TIKTOK_API_BASE}/campaign/get/",
+                    params={
+                        "advertiser_id": advertiser_id,
+                        "filtering": json.dumps({"campaign_ids": [str(cid) for cid in campaign_ids]}),
+                        "fields": json.dumps(CAMPAIGN_INFO_FIELDS),
+                        "page_size": 100,
+                        "page": page,
+                    },
+                    headers={"Access-Token": access_token},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") == 40100:
+                    logger.warning("TikTok /campaign/get/ rate limit (code 40100), backing off 60s")
+                    await asyncio.sleep(60)
+                    continue
+                if data.get("code") != 0:
+                    logger.warning("TikTok /campaign/get/ error: %s", data.get("message"))
+                    break
+                page_data = data.get("data", {})
+                all_campaigns.extend(page_data.get("list", []))
+                page_info = page_data.get("page_info", {})
+                if page >= page_info.get("total_page", 1):
+                    break
+                page += 1
+        return all_campaigns
+
+    async def _fetch_adgroup_info(
+        self,
+        access_token: str,
+        advertiser_id: str,
+        adgroup_ids: List[str],
+    ) -> List[Dict[str, Any]]:
+        """Fetch adgroup-level metadata (optimization_goal, billing_event, buying_type, status) via /adgroup/get/."""
+        all_adgroups: List[Dict[str, Any]] = []
+        page = 1
+        async with httpx.AsyncClient(timeout=30) as client:
+            while True:
+                resp = await client.get(
+                    f"{TIKTOK_API_BASE}/adgroup/get/",
+                    params={
+                        "advertiser_id": advertiser_id,
+                        "filtering": json.dumps({"adgroup_ids": [str(agid) for agid in adgroup_ids]}),
+                        "fields": json.dumps(ADGROUP_INFO_FIELDS),
+                        "page_size": 100,
+                        "page": page,
+                    },
+                    headers={"Access-Token": access_token},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") == 40100:
+                    logger.warning("TikTok /adgroup/get/ rate limit (code 40100), backing off 60s")
+                    await asyncio.sleep(60)
+                    continue
+                if data.get("code") != 0:
+                    logger.warning("TikTok /adgroup/get/ error: %s", data.get("message"))
+                    break
+                page_data = data.get("data", {})
+                all_adgroups.extend(page_data.get("list", []))
+                page_info = page_data.get("page_info", {})
+                if page >= page_info.get("total_page", 1):
+                    break
+                page += 1
+        return all_adgroups
 
     async def _fetch_ad_info(
         self, access_token: str, advertiser_id: str, ad_ids: List[str]
