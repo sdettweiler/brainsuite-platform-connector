@@ -358,7 +358,7 @@ async def _dispatch_job_retry(
         if conn_id:
             fn = {"sync_daily": run_daily_sync, "sync_full": run_full_resync, "sync_initial": run_initial_sync, "sync_historical": run_historical_sync}.get(job_type)
             if fn:
-                asyncio.create_task(fn(conn_id))
+                asyncio.create_task(fn(conn_id, existing_bg_job_id=new_job_id))
         return
     if job_type in ("sync_daily", "sync_full", "sync_initial", "sync_historical") and (params or {}).get("platform") == "DV360":
         from app.services.sync.scheduler import trigger_dv360_sync_retry

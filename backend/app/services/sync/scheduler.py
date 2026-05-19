@@ -111,7 +111,7 @@ async def _supersede_running_jobs(connection_id: str) -> int:
         return count
 
 
-async def run_daily_sync(connection_id: str) -> None:
+async def run_daily_sync(connection_id: str, existing_bg_job_id=None) -> None:
     """Execute daily sync for a single platform connection."""
     from sqlalchemy import select
     from app.models.platform import PlatformConnection
@@ -136,7 +136,7 @@ async def run_daily_sync(connection_id: str) -> None:
 
     # Phase 17: bg_job_id must be accessible to both the first-phase async-with
     # block and the DV360 second-phase blocks below (D-01, Python scoping).
-    bg_job_id = None
+    bg_job_id = uuid.UUID(str(existing_bg_job_id)) if existing_bg_job_id is not None else None
 
     async with get_session_factory()() as db:
         result = await db.execute(
@@ -167,13 +167,14 @@ async def run_daily_sync(connection_id: str) -> None:
         job_id = str(job.id)
 
         # Phase 17: Create BackgroundJob alongside SyncJob (D-01, D-03)
-        bg_job_id = await create_background_job(
-            job_type="sync_daily",
-            org_id=connection.organization_id,
-            platform_connection_id=connection.id,
-            metadata={"sync_job_id": job_id, "platform": connection.platform},
-            params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "daily"},
-        )
+        if bg_job_id is None:
+            bg_job_id = await create_background_job(
+                job_type="sync_daily",
+                org_id=connection.organization_id,
+                platform_connection_id=connection.id,
+                metadata={"sync_job_id": job_id, "platform": connection.platform},
+                params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "daily"},
+            )
         await update_background_job(
             bg_job_id,
             status="RUNNING",
@@ -902,7 +903,7 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict, existing_
             )
 
 
-async def run_full_resync(connection_id: str) -> None:
+async def run_full_resync(connection_id: str, existing_bg_job_id=None) -> None:
     """Full resync: re-fetch all historical data (24 months) with latest field mappings."""
     from sqlalchemy import select
     from app.models.platform import PlatformConnection
@@ -927,7 +928,7 @@ async def run_full_resync(connection_id: str) -> None:
     _terr_platform = None
     # Phase 17: bg_job_id must be accessible in both the first-phase async-with
     # block and the DV360 second-phase blocks below (D-01, Python scoping).
-    bg_job_id = None
+    bg_job_id = uuid.UUID(str(existing_bg_job_id)) if existing_bg_job_id is not None else None
 
     await _supersede_running_jobs(connection_id)
 
@@ -964,13 +965,14 @@ async def run_full_resync(connection_id: str) -> None:
         job_id = str(job.id)
 
         # Phase 17: Create BackgroundJob alongside SyncJob (D-01, D-03)
-        bg_job_id = await create_background_job(
-            job_type="sync_full",
-            org_id=connection.organization_id,
-            platform_connection_id=connection.id,
-            metadata={"sync_job_id": job_id, "platform": connection.platform},
-            params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "full"},
-        )
+        if bg_job_id is None:
+            bg_job_id = await create_background_job(
+                job_type="sync_full",
+                org_id=connection.organization_id,
+                platform_connection_id=connection.id,
+                metadata={"sync_job_id": job_id, "platform": connection.platform},
+                params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "full"},
+            )
         await update_background_job(
             bg_job_id,
             status="RUNNING",
@@ -1293,7 +1295,7 @@ async def run_full_resync(connection_id: str) -> None:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
 
 
-async def run_initial_sync(connection_id: str) -> None:
+async def run_initial_sync(connection_id: str, existing_bg_job_id=None) -> None:
     """Fetch first 30 days immediately after account connect."""
     from sqlalchemy import select
     from app.models.platform import PlatformConnection
@@ -1316,7 +1318,7 @@ async def run_initial_sync(connection_id: str) -> None:
     trigger_historical = False
     # Phase 17: bg_job_id must be accessible in both the first-phase async-with
     # block and the DV360 second-phase blocks below (D-01, Python scoping).
-    bg_job_id = None
+    bg_job_id = uuid.UUID(str(existing_bg_job_id)) if existing_bg_job_id is not None else None
 
     await _supersede_running_jobs(connection_id)
 
@@ -1345,13 +1347,14 @@ async def run_initial_sync(connection_id: str) -> None:
         job_id = str(job.id)
 
         # Phase 17: Create BackgroundJob alongside SyncJob (D-01, D-03)
-        bg_job_id = await create_background_job(
-            job_type="sync_initial",
-            org_id=connection.organization_id,
-            platform_connection_id=connection.id,
-            metadata={"sync_job_id": job_id, "platform": connection.platform},
-            params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "initial"},
-        )
+        if bg_job_id is None:
+            bg_job_id = await create_background_job(
+                job_type="sync_initial",
+                org_id=connection.organization_id,
+                platform_connection_id=connection.id,
+                metadata={"sync_job_id": job_id, "platform": connection.platform},
+                params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "initial"},
+            )
         await update_background_job(
             bg_job_id,
             status="RUNNING",
@@ -1627,7 +1630,7 @@ async def run_initial_sync(connection_id: str) -> None:
         await _run_dv360_asset_downloads(conn_id_for_assets, dv360_asset_queue)
 
 
-async def run_historical_sync(connection_id: str) -> None:
+async def run_historical_sync(connection_id: str, existing_bg_job_id=None) -> None:
     """Fetch full historical data (lifetime) after initial sync."""
     from sqlalchemy import select
     from app.models.platform import PlatformConnection
@@ -1645,7 +1648,7 @@ async def run_historical_sync(connection_id: str) -> None:
     conn_id_for_assets = None
     # Phase 17: bg_job_id must be accessible in both the first-phase async-with
     # block and the DV360 second-phase blocks below (D-01, Python scoping).
-    bg_job_id = None
+    bg_job_id = uuid.UUID(str(existing_bg_job_id)) if existing_bg_job_id is not None else None
 
     await _supersede_running_jobs(connection_id)
 
@@ -1683,13 +1686,14 @@ async def run_historical_sync(connection_id: str) -> None:
         await db.flush()
 
         # Phase 17: Create BackgroundJob alongside SyncJob (D-01, D-03)
-        bg_job_id = await create_background_job(
-            job_type="sync_historical",
-            org_id=connection.organization_id,
-            platform_connection_id=connection.id,
-            metadata={"sync_job_id": job_id, "platform": connection.platform},
-            params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "historical"},
-        )
+        if bg_job_id is None:
+            bg_job_id = await create_background_job(
+                job_type="sync_historical",
+                org_id=connection.organization_id,
+                platform_connection_id=connection.id,
+                metadata={"sync_job_id": job_id, "platform": connection.platform},
+                params={"platform": connection.platform, "platform_connection_id": str(connection.id), "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "sync_type": "historical"},
+            )
         await update_background_job(
             bg_job_id,
             status="RUNNING",
