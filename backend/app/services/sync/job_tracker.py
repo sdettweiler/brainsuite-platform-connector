@@ -130,8 +130,10 @@ async def update_background_job(
             job.progress_total = progress_total
         if output is not None:
             job.output = output
+            flag_modified(job, "output")
         if error is not None:
             job.error = error
+            flag_modified(job, "error")
         if metadata is not None:
             job.metadata_ = {**(job.metadata_ or {}), **metadata}
             flag_modified(job, "metadata_")

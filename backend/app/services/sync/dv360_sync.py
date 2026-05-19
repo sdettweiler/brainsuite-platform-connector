@@ -1352,8 +1352,11 @@ class DV360SyncService:
                         _skipped += 1
                 if _skipped:
                     logger.warning("[DL:%s] Stripped %d corrupt cookie line(s) from %s cookie file", _dl_tag, _skipped, label)
-                first_line = _valid_lines[0] if _valid_lines else "(empty)"
-                logger.info("[DL:%s] Cookie file: %d raw lines, %d valid, %d stripped, first=%r", _dl_tag, len(_raw_lines), len(_valid_lines), _skipped, first_line[:80])
+                # MozillaCookieJar requires the first line to match "# (Netscape )?HTTP Cookie File"
+                _NETSCAPE_HEADER = "# Netscape HTTP Cookie File"
+                if not any(ln.strip().startswith("# ") and "HTTP Cookie File" in ln for ln in _valid_lines[:3]):
+                    _valid_lines.insert(0, _NETSCAPE_HEADER)
+                    logger.warning("[DL:%s] Cookie file missing Netscape header — injected", _dl_tag)
                 cleaned = "\n".join(_valid_lines)
                 cookie_file = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".txt", delete=False
