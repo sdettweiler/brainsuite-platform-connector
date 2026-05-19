@@ -71,148 +71,172 @@ interface ConcurrencyConfig { max_concurrent_downloads: number; }
   template: `
 <div class="page-container">
 
-  <!-- Section 1: Residential Proxy -->
+  <!-- Section 1: Download Settings (merged: Parallel Downloads + Residential Proxy + YouTube Cookies) -->
   <section class="config-section">
     <div class="section-header">
       <div>
-        <h2>Residential Proxy</h2>
-        <p class="section-desc">Manage the system-wide residential proxy used for YouTube video creative downloads on production hosts.</p>
-      </div>
-      <div class="scoring-toggle-row">
-        <div>
-          <div class="proxy-toggle-label">Residential Proxy</div>
-          <div class="proxy-toggle-hint">Routes all YouTube downloads through the configured residential proxy.</div>
-        </div>
-        <mat-slide-toggle
-          aria-label="Residential proxy"
-          [checked]="proxyConfig?.proxy_enabled || false"
-          [disabled]="togglingProxy || loadingProxy"
-          (change)="onProxyToggle($event.checked)">
-          {{ proxyConfig?.proxy_enabled ? 'Enabled' : 'Disabled' }}
-        </mat-slide-toggle>
+        <h2>Download Settings</h2>
+        <p class="section-desc">Configure parallel download concurrency, residential proxy, and YouTube cookies for all platforms.</p>
       </div>
     </div>
     <div class="section-body">
-      <div *ngIf="loadingProxy" class="skeleton-block"></div>
-      <ng-container *ngIf="proxyConfig && !loadingProxy">
-        <div class="proxy-url-card" [class.disabled]="!proxyConfig.proxy_enabled">
-          <!-- State: No URL saved -->
-          <div *ngIf="!proxyConfig.proxy_url_masked && !editingProxyUrl" class="url-missing">
-            <span class="text-muted">No URL saved.</span>
-            <button mat-stroked-button (click)="editingProxyUrl = true" [disabled]="!proxyConfig.proxy_enabled">Add URL</button>
-          </div>
-          <!-- State: URL configured -->
-          <div *ngIf="proxyConfig.proxy_url_masked && !editingProxyUrl" class="url-display">
-            <span class="masked" aria-label="Proxy URL configured, masked">{{ proxyConfig.proxy_url_masked }}</span>
-            <button mat-stroked-button (click)="editingProxyUrl = true" [disabled]="!proxyConfig.proxy_enabled">Replace</button>
-          </div>
-          <!-- State: Edit mode -->
-          <div *ngIf="editingProxyUrl" class="url-edit">
-            <input type="text" [(ngModel)]="newProxyUrl" placeholder="http://user:pass@host:port" aria-label="Proxy URL">
-            <div class="url-edit-actions cookie-edit-actions">
-              <button mat-stroked-button (click)="discardProxyUrlEdit()" [disabled]="savingProxyUrl">Discard</button>
-              <button mat-flat-button class="save-btn" (click)="saveProxyUrl()" [disabled]="!newProxyUrl.trim() || savingProxyUrl">
-                <mat-spinner *ngIf="savingProxyUrl" diameter="14"></mat-spinner>
-                {{ savingProxyUrl ? 'Saving...' : 'Save URL' }}
-              </button>
+
+      <!-- Subsection 1: Parallel Downloads -->
+      <div class="subsection">
+        <h3 class="subsection-label">Parallel Downloads</h3>
+        <p class="subsection-hint">Set the maximum number of videos that download simultaneously across all sync jobs. Higher values use more proxy bandwidth.</p>
+        <div *ngIf="loadingConcurrency" class="skeleton-block"></div>
+        <ng-container *ngIf="!loadingConcurrency && concurrencyConfig">
+          <div class="slider-container">
+            <label for="concurrency-slider">Maximum concurrent downloads:</label>
+            <div class="slider-row">
+              <mat-slider min="1" max="10" step="1" discrete>
+                <input matSliderThumb id="concurrency-slider" [value]="concurrencyDraft" (valueChange)="concurrencyDraft = $event">
+              </mat-slider>
+              <span class="slider-value">{{ concurrencyDraft }}</span>
             </div>
           </div>
-        </div>
-        <!-- Test Connection row (only when enabled AND URL configured) -->
-        <div *ngIf="proxyConfig.proxy_enabled && proxyConfig.proxy_url_masked" class="test-section">
-          <button mat-stroked-button (click)="testProxyConnection()" [disabled]="testingProxy">
-            <span class="btn-inner">
-              <mat-spinner *ngIf="testingProxy" diameter="14"></mat-spinner>
-              {{ testingProxy ? 'Testing...' : 'Test Connection' }}
-            </span>
-          </button>
-          <div *ngIf="testResult" class="test-result" role="status" [class.success]="testResult.success" [class.error]="!testResult.success">
-            <span *ngIf="testResult.success">Reachable ({{ testResult.latency_ms }}ms)</span>
-            <span *ngIf="!testResult.success">Failed: {{ testResult.error }}</span>
+          <div class="slider-actions">
+            <button mat-stroked-button (click)="discardConcurrencyEdit()" [disabled]="savingConcurrency">Discard</button>
+            <button mat-flat-button class="save-btn" (click)="saveConcurrency()" [disabled]="savingConcurrency">
+              <mat-spinner *ngIf="savingConcurrency" diameter="14"></mat-spinner>
+              {{ savingConcurrency ? 'Saving...' : 'Save' }}
+            </button>
           </div>
-        </div>
-      </ng-container>
-    </div>
-  </section>
-
-  <!-- Section 2: YouTube Cookies -->
-  <section class="config-section">
-    <div class="section-header">
-      <div>
-        <h2>YouTube Cookies</h2>
-        <p class="section-desc">Manage system-wide DV360 cookie credentials used for video asset downloads.</p>
+        </ng-container>
       </div>
-    </div>
-    <div class="section-body">
-      <div *ngIf="loadingCookies" class="skeleton-block"></div>
-      <div *ngIf="cookieError && !loadingCookies" class="error-text">Could not load cookie status. Refresh to retry.</div>
 
-      <ng-container *ngIf="cookieHealth && !loadingCookies">
-        <!-- Primary Cookie Card -->
-        <div class="cookie-card">
-          <div class="slot-header">
-            <span>Primary Cookie</span>
-            <span class="badge" [ngClass]="'badge-' + cookieHealth.primary.status">{{ cookieHealth.primary.status | uppercase }}</span>
+      <!-- Subsection 2: Residential Proxy -->
+      <div class="subsection">
+        <h3 class="subsection-label">Residential Proxy</h3>
+        <div class="scoring-toggle-row">
+          <div>
+            <div class="proxy-toggle-label">Residential Proxy</div>
+            <div class="proxy-toggle-hint">Routes all YouTube downloads through the configured residential proxy.</div>
           </div>
-
-          <!-- State D: MISSING -->
-          <div *ngIf="cookieHealth.primary.status === 'missing' && !editingPrimary" class="cookie-missing">
-            <span class="text-muted">No cookie saved.</span>
-            <button mat-stroked-button (click)="editingPrimary = true">Add Cookie</button>
-          </div>
-
-          <!-- State A: Masked (not missing, not editing) -->
-          <div *ngIf="cookieHealth.primary.status !== 'missing' && !editingPrimary" class="cookie-display">
-            <span class="masked">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;</span>
-            <button mat-stroked-button (click)="editingPrimary = true">Replace</button>
-          </div>
-
-          <!-- State C: Replace mode -->
-          <div *ngIf="editingPrimary" class="cookie-edit">
-            <textarea [(ngModel)]="newPrimaryCookie" placeholder="Paste Netscape cookie text here" rows="6" aria-label="Primary cookie content"></textarea>
-            <div class="cookie-edit-actions">
-              <button mat-stroked-button (click)="discardEdit('primary')">Discard</button>
-              <button mat-flat-button class="save-btn" (click)="saveCookie('primary')" [disabled]="savingPrimary">
-                <mat-spinner *ngIf="savingPrimary" diameter="16"></mat-spinner>
-                {{ savingPrimary ? 'Saving...' : 'Save Cookie' }}
-              </button>
+          <mat-slide-toggle
+            aria-label="Residential proxy"
+            [checked]="proxyConfig?.proxy_enabled || false"
+            [disabled]="togglingProxy || loadingProxy"
+            (change)="onProxyToggle($event.checked)">
+            {{ proxyConfig?.proxy_enabled ? 'Enabled' : 'Disabled' }}
+          </mat-slide-toggle>
+        </div>
+        <div *ngIf="loadingProxy" class="skeleton-block"></div>
+        <ng-container *ngIf="proxyConfig && !loadingProxy">
+          <div class="proxy-url-card" [class.disabled]="!proxyConfig.proxy_enabled">
+            <!-- State: No URL saved -->
+            <div *ngIf="!proxyConfig.proxy_url_masked && !editingProxyUrl" class="url-missing">
+              <span class="text-muted">No URL saved.</span>
+              <button mat-stroked-button (click)="editingProxyUrl = true" [disabled]="!proxyConfig.proxy_enabled">Add URL</button>
+            </div>
+            <!-- State: URL configured -->
+            <div *ngIf="proxyConfig.proxy_url_masked && !editingProxyUrl" class="url-display">
+              <span class="masked" aria-label="Proxy URL configured, masked">{{ proxyConfig.proxy_url_masked }}</span>
+              <button mat-stroked-button (click)="editingProxyUrl = true" [disabled]="!proxyConfig.proxy_enabled">Replace</button>
+            </div>
+            <!-- State: Edit mode -->
+            <div *ngIf="editingProxyUrl" class="url-edit">
+              <input type="text" [(ngModel)]="newProxyUrl" placeholder="http://user:pass@host:port" aria-label="Proxy URL">
+              <div class="url-edit-actions cookie-edit-actions">
+                <button mat-stroked-button (click)="discardProxyUrlEdit()" [disabled]="savingProxyUrl">Discard</button>
+                <button mat-flat-button class="save-btn" (click)="saveProxyUrl()" [disabled]="!newProxyUrl.trim() || savingProxyUrl">
+                  <mat-spinner *ngIf="savingProxyUrl" diameter="14"></mat-spinner>
+                  {{ savingProxyUrl ? 'Saving...' : 'Save URL' }}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-
-        <!-- Backup Cookie Card -->
-        <div class="cookie-card">
-          <div class="slot-header">
-            <span>Backup Cookie</span>
-            <span class="badge" [ngClass]="'badge-' + cookieHealth.backup.status">{{ cookieHealth.backup.status | uppercase }}</span>
-          </div>
-
-          <div *ngIf="cookieHealth.backup.status === 'missing' && !editingBackup" class="cookie-missing">
-            <span class="text-muted">No cookie saved.</span>
-            <button mat-stroked-button (click)="editingBackup = true">Add Cookie</button>
-          </div>
-
-          <div *ngIf="cookieHealth.backup.status !== 'missing' && !editingBackup" class="cookie-display">
-            <span class="masked">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;</span>
-            <button mat-stroked-button (click)="editingBackup = true">Replace</button>
-          </div>
-
-          <div *ngIf="editingBackup" class="cookie-edit">
-            <textarea [(ngModel)]="newBackupCookie" placeholder="Paste Netscape cookie text here" rows="6" aria-label="Backup cookie content"></textarea>
-            <div class="cookie-edit-actions">
-              <button mat-stroked-button (click)="discardEdit('backup')">Discard</button>
-              <button mat-flat-button class="save-btn" (click)="saveCookie('backup')" [disabled]="savingBackup">
-                <mat-spinner *ngIf="savingBackup" diameter="16"></mat-spinner>
-                {{ savingBackup ? 'Saving...' : 'Save Cookie' }}
-              </button>
+          <!-- Test Connection row (only when enabled AND URL configured) -->
+          <div *ngIf="proxyConfig.proxy_enabled && proxyConfig.proxy_url_masked" class="test-section">
+            <button mat-stroked-button (click)="testProxyConnection()" [disabled]="testingProxy">
+              <span class="btn-inner">
+                <mat-spinner *ngIf="testingProxy" diameter="14"></mat-spinner>
+                {{ testingProxy ? 'Testing...' : 'Test Connection' }}
+              </span>
+            </button>
+            <div *ngIf="testResult" class="test-result" role="status" [class.success]="testResult.success" [class.error]="!testResult.success">
+              <span *ngIf="testResult.success">Reachable ({{ testResult.latency_ms }}ms)</span>
+              <span *ngIf="!testResult.success">Failed: {{ testResult.error }}</span>
             </div>
           </div>
-        </div>
-      </ng-container>
+        </ng-container>
+      </div>
+
+      <!-- Subsection 3: YouTube Cookies -->
+      <div class="subsection">
+        <h3 class="subsection-label">YouTube Cookies</h3>
+        <div *ngIf="loadingCookies" class="skeleton-block"></div>
+        <div *ngIf="cookieError && !loadingCookies" class="error-text">Could not load cookie status. Refresh to retry.</div>
+
+        <ng-container *ngIf="cookieHealth && !loadingCookies">
+          <!-- Primary Cookie Card -->
+          <div class="cookie-card">
+            <div class="slot-header">
+              <span>Primary Cookie</span>
+              <span class="badge" [ngClass]="'badge-' + cookieHealth.primary.status">{{ cookieHealth.primary.status | uppercase }}</span>
+            </div>
+
+            <!-- State D: MISSING -->
+            <div *ngIf="cookieHealth.primary.status === 'missing' && !editingPrimary" class="cookie-missing">
+              <span class="text-muted">No cookie saved.</span>
+              <button mat-stroked-button (click)="editingPrimary = true">Add Cookie</button>
+            </div>
+
+            <!-- State A: Masked (not missing, not editing) -->
+            <div *ngIf="cookieHealth.primary.status !== 'missing' && !editingPrimary" class="cookie-display">
+              <span class="masked">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;</span>
+              <button mat-stroked-button (click)="editingPrimary = true">Replace</button>
+            </div>
+
+            <!-- State C: Replace mode -->
+            <div *ngIf="editingPrimary" class="cookie-edit">
+              <textarea [(ngModel)]="newPrimaryCookie" placeholder="Paste Netscape cookie text here" rows="6" aria-label="Primary cookie content"></textarea>
+              <div class="cookie-edit-actions">
+                <button mat-stroked-button (click)="discardEdit('primary')">Discard</button>
+                <button mat-flat-button class="save-btn" (click)="saveCookie('primary')" [disabled]="savingPrimary">
+                  <mat-spinner *ngIf="savingPrimary" diameter="16"></mat-spinner>
+                  {{ savingPrimary ? 'Saving...' : 'Save Cookie' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Backup Cookie Card -->
+          <div class="cookie-card">
+            <div class="slot-header">
+              <span>Backup Cookie</span>
+              <span class="badge" [ngClass]="'badge-' + cookieHealth.backup.status">{{ cookieHealth.backup.status | uppercase }}</span>
+            </div>
+
+            <div *ngIf="cookieHealth.backup.status === 'missing' && !editingBackup" class="cookie-missing">
+              <span class="text-muted">No cookie saved.</span>
+              <button mat-stroked-button (click)="editingBackup = true">Add Cookie</button>
+            </div>
+
+            <div *ngIf="cookieHealth.backup.status !== 'missing' && !editingBackup" class="cookie-display">
+              <span class="masked">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;</span>
+              <button mat-stroked-button (click)="editingBackup = true">Replace</button>
+            </div>
+
+            <div *ngIf="editingBackup" class="cookie-edit">
+              <textarea [(ngModel)]="newBackupCookie" placeholder="Paste Netscape cookie text here" rows="6" aria-label="Backup cookie content"></textarea>
+              <div class="cookie-edit-actions">
+                <button mat-stroked-button (click)="discardEdit('backup')">Discard</button>
+                <button mat-flat-button class="save-btn" (click)="saveCookie('backup')" [disabled]="savingBackup">
+                  <mat-spinner *ngIf="savingBackup" diameter="16"></mat-spinner>
+                  {{ savingBackup ? 'Saving...' : 'Save Cookie' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+
     </div>
   </section>
 
-  <!-- Section 3: SuperAdmin Management -->
+  <!-- Section 2: SuperAdmin Management (was Section 3) -->
   <section class="config-section">
     <div class="section-header">
       <div>
@@ -626,6 +650,23 @@ interface ConcurrencyConfig { max_concurrent_downloads: number; }
       &.success { background: rgba(46, 204, 113, 0.1); color: var(--success); }
       &.error { background: rgba(231, 76, 60, 0.1); color: var(--error); }
     }
+
+    .subsection {
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+      margin-top: 16px;
+    }
+    .subsection:first-child {
+      border-top: none;
+      padding-top: 0;
+      margin-top: 0;
+    }
+    .subsection-label { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+    .subsection-hint  { font-size: 13px; color: var(--text-secondary); max-width: 480px; margin-bottom: 16px; }
+    .slider-container { margin-bottom: 16px; }
+    .slider-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+    .slider-value { font-weight: 600; font-size: 14px; min-width: 20px; text-align: right; color: var(--text-primary); }
+    .slider-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
   `],
 })
 export class AdminComponent implements OnInit {
