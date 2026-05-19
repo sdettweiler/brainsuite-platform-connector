@@ -923,7 +923,11 @@ class TikTokSyncService:
                         logger.info("TikTok ad %s: /file/image/ad/ returned no URL", ad_id)
 
             elif is_spark:
-                logger.info("TikTok ad %s: Spark ad — skipping full asset download", ad_id)
+                # Spark ad — no download, but try oEmbed for thumbnail if image_ids didn't give one.
+                if not thumbnail_url and video_id_val and display_name:
+                    oembed_thumb = await self._fetch_tiktok_oembed_thumbnail(display_name, str(video_id_val))
+                    if oembed_thumb:
+                        thumbnail_url = await self._download_tiktok_thumbnail(oembed_thumb, org_id, ad_id)
 
             else:
                 logger.info("TikTok ad %s: no video_id and no image_ids — nothing to download", ad_id)
