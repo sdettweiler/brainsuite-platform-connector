@@ -21,6 +21,7 @@ TIKTOK_API_BASE = "https://business-api.tiktok.com/open_api/v1.3"
 
 AD_REPORT_DIMENSIONS = ["ad_id", "stat_time_day"]
 
+# Core metrics — valid for all account types and all ad objectives.
 AD_REPORT_METRICS = [
     "spend",
     "impressions",
@@ -62,8 +63,6 @@ AD_REPORT_METRICS = [
     "secondary_goal_result",
     "cost_per_secondary_goal_result",
     "secondary_goal_result_rate",
-    "interactive_add_on_impression",
-    "interactive_add_on_destination_click",
     "real_time_conversion_rate",
     "app_install",
     "cost_per_app_install",
@@ -78,16 +77,28 @@ AD_REPORT_METRICS = [
     "total_onsite_shopping_value",
     "onsite_form",
     "cost_per_onsite_form",
+    "cta_conversion",
+    "vta_conversion",
+    "cta_purchase",
+    "vta_purchase",
+]
+
+# Reach & Frequency buying type only — account_type == "REACH_FREQUENCY" required.
+_METRICS_RF = ["average_frequency_7_day"]
+
+# Interactive Add-On creative feature — only available if account has this feature enabled.
+_METRICS_INTERACTIVE = [
+    "interactive_add_on_impression",
+    "interactive_add_on_destination_click",
+]
+
+# TikTok LIVE / TikTok Shop — requires LIVE or Shop features on the advertiser account.
+_METRICS_LIVE_SHOP = [
     "live_views",
     "live_unique_viewed",
     "live_product_clicks",
     "total_live_shopping_amount",
     "subscribe_amount",
-    "average_frequency_7_day",
-    "cta_conversion",
-    "vta_conversion",
-    "cta_purchase",
-    "vta_purchase",
 ]
 
 AD_INFO_FIELDS = [
@@ -132,12 +143,12 @@ class TikTokAPIError(Exception):
 class TikTokSyncService:
 
     def __init__(self):
-        # Adaptive field-stripping caches — reset on server restart, fine.
-        self._metrics_cache: dict = {}   # advertiser_id -> stripped AD_REPORT_METRICS list
+        # Proactively-built metrics list per advertiser (account_type + feature detection).
+        # Populated in sync_date_range before the first /report call; never relies on error signals.
+        self._metrics_cache: dict = {}   # advertiser_id -> metrics list
         self._ad_info_cache: dict = {}   # advertiser_id -> stripped AD_INFO_FIELDS list
+        self._advertiser_info_cache: dict = {}  # advertiser_id -> /advertiser/info/ response
         # Campaign / adgroup metadata caches — keyed by advertiser_id then entity id.
-        # Bounded in size (hundreds of campaigns/adgroups, not millions). Shared across all
-        # concurrent sync jobs for the same advertiser; harmless double-fetch on race.
         self._campaign_lookup: dict = {}  # advertiser_id -> {campaign_id -> data}
         self._adgroup_lookup: dict = {}   # advertiser_id -> {adgroup_id -> data}
 
@@ -151,6 +162,10 @@ class TikTokSyncService:
     ) -> Dict[str, int]:
         access_token = decrypt_token(connection.access_token_encrypted)
         advertiser_id = connection.ad_account_id
+
+        # Build the metrics list proactively from account info — no error-signal discovery.
+        if advertiser_id not in self._metrics_cache:
+            await self._build_report_metrics(access_token, advertiser_id)
 
         total_fetched = 0
         total_upserted = 0
@@ -179,6 +194,51 @@ class TikTokSyncService:
 
         logger.info(f"TikTok sync complete: fetched={total_fetched}, upserted={total_upserted}")
         return {"fetched": total_fetched, "upserted": total_upserted, "_creative_ad_ids": list(all_ad_ids) if all_ad_ids else []}
+
+    async def _fetch_advertiser_info(self, access_token: str, advertiser_id: str) -> Dict[str, Any]:
+        """Fetch /advertiser/info/ and cache result. Returns empty dict on failure."""
+        if advertiser_id in self._advertiser_info_cache:
+            return self._advertiser_info_cache[advertiser_id]
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(
+                    f"{TIKTOK_API_BASE}/advertiser/info/",
+                    params={
+                        "advertiser_ids": json.dumps([advertiser_id]),
+                        "fields": json.dumps(["account_type", "promotion_area", "industry"]),
+                    },
+                    headers={"Access-Token": access_token},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") == 0:
+                    items = data.get("data", {}).get("list", [])
+                    info = items[0] if items else {}
+                    self._advertiser_info_cache[advertiser_id] = info
+                    logger.info("TikTok advertiser %s: account_type=%s", advertiser_id, info.get("account_type"))
+                    return info
+        except Exception as e:
+            logger.warning("Failed to fetch TikTok advertiser info for %s: %s", advertiser_id, e)
+        self._advertiser_info_cache[advertiser_id] = {}
+        return {}
+
+    async def _build_report_metrics(self, access_token: str, advertiser_id: str) -> None:
+        """Proactively determine which metrics to request based on account type and features.
+        Called once per advertiser per server lifetime before the first /report call."""
+        info = await self._fetch_advertiser_info(access_token, advertiser_id)
+        metrics = list(AD_REPORT_METRICS)
+
+        account_type = info.get("account_type", "AUCTION")
+        if account_type == "REACH_FREQUENCY":
+            metrics.extend(_METRICS_RF)
+            logger.info("TikTok advertiser %s: RF account — adding RF metrics", advertiser_id)
+
+        # Interactive Add-On and Live/Shop features can't be determined from advertiser info alone.
+        # They require specific account features; excluded by default to avoid API errors.
+        # To enable per-account, add them here based on a feature flag or connection metadata.
+
+        self._metrics_cache[advertiser_id] = metrics
+        logger.info("TikTok advertiser %s: using %d report metrics (account_type=%s)", advertiser_id, len(metrics), account_type)
 
     async def _fetch_ad_reports(
         self,
@@ -230,8 +290,8 @@ class TikTokSyncService:
                                 metrics = [f for f in metrics if f not in bad]
                                 if len(metrics) < before:
                                     self._metrics_cache[advertiser_id] = metrics
-                                    logger.warning(
-                                        "TikTok: stripped %d unsupported metric(s) for advertiser %s, retrying: %s",
+                                    logger.debug(
+                                        "TikTok: stripped %d unexpected metric(s) for advertiser %s: %s",
                                         before - len(metrics), advertiser_id, sorted(bad),
                                     )
                                     records = []
@@ -753,8 +813,18 @@ class TikTokSyncService:
                 image_ids_raw = hints.get("image_ids")
                 is_spark = hints.get("is_spark", False)
 
+                logger.info(
+                    "TikTok asset download ad %s: is_spark=%s video_id=%s image_ids=%s",
+                    ad_id, is_spark, bool(video_id_val), bool(image_ids_raw),
+                )
+
                 thumbnail_url, asset_url, video_source_url, asset_video_duration = await self._download_ad_assets(
                     access_token, advertiser_id, org_id, ad_id, video_id_val, image_ids_raw, is_spark
+                )
+
+                logger.info(
+                    "TikTok asset download ad %s result: thumb=%s asset=%s video_src=%s",
+                    ad_id, bool(thumbnail_url), bool(asset_url), bool(video_source_url),
                 )
 
                 update_vals = {}
@@ -774,6 +844,8 @@ class TikTokSyncService:
                         )
                         .values(**update_vals)
                     )
+                else:
+                    logger.info("TikTok ad %s: no assets to store (spark or no downloadable creative)", ad_id)
 
                 if asset_video_duration is not None:
                     from app.models.creative import CreativeAsset
@@ -788,7 +860,7 @@ class TikTokSyncService:
 
                 await db.commit()
         except Exception as e:
-            logger.warning("TikTok download_assets_deferred failed for ad %s (non-fatal): %s", ad_id, e)
+            logger.warning("TikTok download_assets_deferred failed for ad %s (non-fatal): %s", ad_id, e, exc_info=True)
 
     async def _download_ad_assets(
         self,
@@ -825,10 +897,13 @@ class TikTokSyncService:
                 video_info = await self._fetch_video_download_url(access_token, advertiser_id, [str(video_id_val)])
                 if video_info:
                     raw_video_url, raw_cover_url = video_info
-                    asset_url, asset_video_duration = await self._download_video_asset(raw_video_url, org_id, ad_id)
-                    video_source_url = raw_video_url
+                    if raw_video_url:
+                        asset_url, asset_video_duration = await self._download_video_asset(raw_video_url, org_id, ad_id)
+                        video_source_url = raw_video_url
                     if not thumbnail_url and raw_cover_url:
                         thumbnail_url = await self._download_tiktok_thumbnail(raw_cover_url, org_id, ad_id)
+                else:
+                    logger.info("TikTok ad %s: /file/video/ad/ returned no data for video_id %s", ad_id, video_id_val)
 
             elif image_ids_raw and not video_id_val and not is_spark:
                 image_ids_list = (
@@ -839,6 +914,14 @@ class TikTokSyncService:
                     image_url = await self._fetch_cover_image_url(access_token, advertiser_id, image_ids_list[:1])
                     if image_url:
                         asset_url = await self._download_image_asset(image_url, org_id, ad_id)
+                    else:
+                        logger.info("TikTok ad %s: /file/image/ad/ returned no URL", ad_id)
+
+            elif is_spark:
+                logger.info("TikTok ad %s: Spark ad — skipping full asset download", ad_id)
+
+            else:
+                logger.info("TikTok ad %s: no video_id and no image_ids — nothing to download", ad_id)
 
         except Exception as e:
             logger.warning("Asset download failed for ad %s (non-fatal): %s", ad_id, e, exc_info=True)
