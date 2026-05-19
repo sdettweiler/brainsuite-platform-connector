@@ -132,10 +132,14 @@ class TikTokAPIError(Exception):
 class TikTokSyncService:
 
     def __init__(self):
-        # Cache stripped field lists per advertiser so each chunk / batch doesn't re-trigger the
-        # error+retry. Both caches reset on server restart, which is fine.
+        # Adaptive field-stripping caches — reset on server restart, fine.
         self._metrics_cache: dict = {}   # advertiser_id -> stripped AD_REPORT_METRICS list
         self._ad_info_cache: dict = {}   # advertiser_id -> stripped AD_INFO_FIELDS list
+        # Campaign / adgroup metadata caches — keyed by advertiser_id then entity id.
+        # Bounded in size (hundreds of campaigns/adgroups, not millions). Shared across all
+        # concurrent sync jobs for the same advertiser; harmless double-fetch on race.
+        self._campaign_lookup: dict = {}  # advertiser_id -> {campaign_id -> data}
+        self._adgroup_lookup: dict = {}   # advertiser_id -> {adgroup_id -> data}
 
     async def sync_date_range(
         self,
@@ -458,25 +462,33 @@ class TikTokSyncService:
                 logger.error("Failed to fetch ad info batch for %s: %s", advertiser_id, e, exc_info=True)
                 continue
 
-            # Build campaign + adgroup lookups for this batch so we can populate the
-            # metadata that lives at campaign/adgroup level rather than ad level.
+            # Build campaign + adgroup lookups using instance caches — fetch only IDs
+            # not already populated by a previous batch or prefetch_and_write_metadata call.
             campaign_ids = list({str(ad.get("campaign_id")) for ad in ads if ad.get("campaign_id")})
             adgroup_ids = list({str(ad.get("adgroup_id")) for ad in ads if ad.get("adgroup_id")})
 
-            campaign_lookup: Dict[str, Dict[str, Any]] = {}
-            adgroup_lookup: Dict[str, Dict[str, Any]] = {}
-            if campaign_ids:
+            adv_campaign_cache = self._campaign_lookup.setdefault(advertiser_id, {})
+            adv_adgroup_cache = self._adgroup_lookup.setdefault(advertiser_id, {})
+
+            missing_campaigns = [cid for cid in campaign_ids if cid not in adv_campaign_cache]
+            missing_adgroups = [agid for agid in adgroup_ids if agid not in adv_adgroup_cache]
+
+            if missing_campaigns:
                 try:
-                    campaigns = await self._fetch_campaign_info(access_token, advertiser_id, campaign_ids)
-                    campaign_lookup = {str(c.get("campaign_id")): c for c in campaigns}
+                    campaigns = await self._fetch_campaign_info(access_token, advertiser_id, missing_campaigns)
+                    adv_campaign_cache.update({str(c.get("campaign_id")): c for c in campaigns})
                 except Exception as e:
                     logger.warning("Failed to fetch campaign info for advertiser %s: %s", advertiser_id, e)
-            if adgroup_ids:
+
+            if missing_adgroups:
                 try:
-                    adgroups = await self._fetch_adgroup_info(access_token, advertiser_id, adgroup_ids)
-                    adgroup_lookup = {str(ag.get("adgroup_id")): ag for ag in adgroups}
+                    adgroups = await self._fetch_adgroup_info(access_token, advertiser_id, missing_adgroups)
+                    adv_adgroup_cache.update({str(ag.get("adgroup_id")): ag for ag in adgroups})
                 except Exception as e:
                     logger.warning("Failed to fetch adgroup info for advertiser %s: %s", advertiser_id, e)
+
+            campaign_lookup = adv_campaign_cache
+            adgroup_lookup = adv_adgroup_cache
 
             for ad in ads:
                 ad_id = str(ad.get("ad_id", ""))
@@ -497,55 +509,9 @@ class TikTokSyncService:
                 video_id_val = ad.get("video_id")
                 post_link = f"https://www.tiktok.com/@{display_name}/video/{video_id_val}" if display_name and video_id_val else None
 
-                thumbnail_url: Optional[str] = None
-                _thumb_image_ids = (
-                    image_ids_raw if isinstance(image_ids_raw, list)
-                    else (image_ids_raw.split(",") if image_ids_raw else [])
+                thumbnail_url, asset_url, video_source_url, asset_video_duration = await self._download_ad_assets(
+                    access_token, advertiser_id, org_id, ad_id, video_id_val, image_ids_raw, is_spark
                 )
-                if _thumb_image_ids:
-                    cover_url = await self._fetch_cover_image_url(access_token, advertiser_id, _thumb_image_ids[:1])
-                    if cover_url:
-                        thumbnail_url = await self._download_tiktok_thumbnail(cover_url, org_id, ad_id)
-
-                # --- Download full-resolution video or image asset (D-01, D-03, D-04, D-06) ---
-                asset_url: Optional[str] = None
-                video_source_url: Optional[str] = None
-
-                asset_video_duration: Optional[float] = None
-                try:
-                    if video_id_val and not is_spark:
-                        # Standard video ad: fetch download URL + cover URL from same API call
-                        video_info = await self._fetch_video_download_url(
-                            access_token, advertiser_id, [str(video_id_val)]
-                        )
-                        if video_info:
-                            raw_video_url, raw_cover_url = video_info
-                            asset_url, asset_video_duration = await self._download_video_asset(raw_video_url, org_id, ad_id)
-                            video_source_url = raw_video_url  # Store API URL per D-06
-                            if not thumbnail_url and raw_cover_url:
-                                thumbnail_url = await self._download_tiktok_thumbnail(raw_cover_url, org_id, ad_id)
-
-                    elif image_ids_raw and not video_id_val and not is_spark:
-                        # Image-only ad: download full-resolution image to asset_url (D-03)
-                        # Parse image_ids as list or comma-separated string (Pitfall 4 handling)
-                        image_ids_list = (
-                            image_ids_raw if isinstance(image_ids_raw, list)
-                            else (image_ids_raw.split(",") if image_ids_raw else [])
-                        )
-                        if image_ids_list:
-                            image_url = await self._fetch_cover_image_url(
-                                access_token, advertiser_id, image_ids_list[:1]
-                            )
-                            if image_url:
-                                asset_url = await self._download_image_asset(image_url, org_id, ad_id)
-
-                    # Spark ads (is_spark=True): skip download per D-02 (leave asset_url=None)
-
-                except Exception as e:
-                    logger.warning("Asset download failed for ad %s (non-fatal, sync continues): %s", ad_id, e, exc_info=True)
-                    asset_url = None
-                    video_source_url = None
-                # --- END asset download ---
 
                 await db.execute(
                     update(TikTokRawPerformance)
@@ -628,6 +594,258 @@ class TikTokSyncService:
                 await self._enrich_from_ad_get(db, conn, access_token, advertiser_id, ad_ids)
         except Exception as e:
             logger.warning("TikTok deferred creative enrichment failed (non-fatal): %s", e)
+
+    async def prefetch_and_write_metadata(
+        self,
+        connection_id,
+        ad_ids: List[str],
+    ) -> Optional[Dict[str, Dict]]:
+        """Phase 1 of two-phase enrichment: fetch all ad/campaign/adgroup metadata, write to DB.
+        Returns {str(ad_id) -> {video_id, image_ids, is_spark, display_name}} hints for Phase 2,
+        or None on failure so caller can fall back to enrich_creatives_deferred."""
+        from app.db.base import get_session_factory
+        from app.models.platform import PlatformConnection
+        from sqlalchemy import select
+        import uuid
+        try:
+            async with get_session_factory()() as db:
+                conn = (await db.execute(
+                    select(PlatformConnection).where(
+                        PlatformConnection.id == (connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id)))
+                    )
+                )).scalar_one_or_none()
+                if not conn:
+                    return None
+                from datetime import datetime, timezone
+                if conn.token_expiry and conn.token_expiry < datetime.now(timezone.utc):
+                    logger.warning("TikTok prefetch_and_write_metadata: token expired for connection %s", connection_id)
+                access_token = decrypt_token(conn.access_token_encrypted)
+                advertiser_id = conn.ad_account_id
+
+                download_hints: Dict[str, Dict] = {}
+                flushed = 0
+
+                for i in range(0, len(ad_ids), 100):
+                    batch = ad_ids[i:i + 100]
+                    try:
+                        ads = await self._fetch_ad_info(access_token, advertiser_id, batch)
+                    except Exception as e:
+                        logger.warning("prefetch_and_write_metadata: ad info fetch failed for batch %d: %s", i, e)
+                        continue
+
+                    campaign_ids = list({str(ad.get("campaign_id")) for ad in ads if ad.get("campaign_id")})
+                    adgroup_ids = list({str(ad.get("adgroup_id")) for ad in ads if ad.get("adgroup_id")})
+
+                    adv_campaign_cache = self._campaign_lookup.setdefault(advertiser_id, {})
+                    adv_adgroup_cache = self._adgroup_lookup.setdefault(advertiser_id, {})
+
+                    missing_campaigns = [cid for cid in campaign_ids if cid not in adv_campaign_cache]
+                    missing_adgroups = [agid for agid in adgroup_ids if agid not in adv_adgroup_cache]
+
+                    if missing_campaigns:
+                        try:
+                            campaigns = await self._fetch_campaign_info(access_token, advertiser_id, missing_campaigns)
+                            adv_campaign_cache.update({str(c.get("campaign_id")): c for c in campaigns})
+                        except Exception as e:
+                            logger.warning("prefetch_and_write_metadata: campaign fetch failed: %s", e)
+
+                    if missing_adgroups:
+                        try:
+                            adgroups = await self._fetch_adgroup_info(access_token, advertiser_id, missing_adgroups)
+                            adv_adgroup_cache.update({str(ag.get("adgroup_id")): ag for ag in adgroups})
+                        except Exception as e:
+                            logger.warning("prefetch_and_write_metadata: adgroup fetch failed: %s", e)
+
+                    for ad in ads:
+                        ad_id = str(ad.get("ad_id", ""))
+                        if not ad_id:
+                            continue
+
+                        campaign_data = adv_campaign_cache.get(str(ad.get("campaign_id", "")), {})
+                        adgroup_data = adv_adgroup_cache.get(str(ad.get("adgroup_id", "")), {})
+
+                        image_ids_raw = ad.get("image_ids")
+                        image_ids_str = ",".join(image_ids_raw) if isinstance(image_ids_raw, list) else None
+                        video_id_val = ad.get("video_id")
+                        is_spark = ad.get("identity_type") == "AUTH_CODE"
+                        display_name = ad.get("display_name")
+                        post_link = f"https://www.tiktok.com/@{display_name}/video/{video_id_val}" if display_name and video_id_val else None
+
+                        await db.execute(
+                            update(TikTokRawPerformance)
+                            .where(
+                                TikTokRawPerformance.ad_id == ad_id,
+                                TikTokRawPerformance.platform_connection_id == conn.id,
+                            )
+                            .values(
+                                campaign_id=str(ad.get("campaign_id", "")),
+                                campaign_name=ad.get("campaign_name"),
+                                ad_group_id=str(ad.get("adgroup_id", "")),
+                                ad_group_name=ad.get("adgroup_name"),
+                                ad_name=ad.get("ad_name"),
+                                campaign_objective=campaign_data.get("objective_type"),
+                                campaign_budget_mode=campaign_data.get("budget_mode"),
+                                campaign_status=campaign_data.get("operation_status"),
+                                ad_status=ad.get("operation_status"),
+                                adgroup_status=adgroup_data.get("operation_status"),
+                                optimization_goal=adgroup_data.get("optimization_goal"),
+                                billing_event=adgroup_data.get("billing_event"),
+                                buying_type=adgroup_data.get("buying_type"),
+                                ad_format=ad.get("ad_format"),
+                                creative_type=ad.get("creative_type"),
+                                is_spark_ad=is_spark,
+                                identity_type=ad.get("identity_type"),
+                                display_name=display_name,
+                                landing_page_url=ad.get("landing_page_url"),
+                                video_id=str(video_id_val) if video_id_val else None,
+                                image_ids=image_ids_str,
+                                call_to_action=ad.get("call_to_action"),
+                                post_link=post_link,
+                            )
+                        )
+
+                        download_hints[ad_id] = {
+                            "video_id": video_id_val,
+                            "image_ids": image_ids_raw,
+                            "is_spark": is_spark,
+                            "display_name": display_name,
+                        }
+
+                        flushed += 1
+                        if flushed % 100 == 0:
+                            await db.flush()
+
+                await db.commit()
+                logger.info("TikTok prefetch_and_write_metadata: wrote metadata for %d ads", len(download_hints))
+                return download_hints
+        except Exception as e:
+            logger.warning("TikTok prefetch_and_write_metadata failed (non-fatal): %s", e)
+            return None
+
+    async def download_assets_deferred(
+        self,
+        connection_id,
+        ad_id: str,
+        hints: Dict,
+    ) -> None:
+        """Phase 2 of two-phase enrichment: download and store assets for a single ad using pre-fetched hints."""
+        from app.db.base import get_session_factory
+        from app.models.platform import PlatformConnection
+        from sqlalchemy import select
+        import uuid
+        try:
+            async with get_session_factory()() as db:
+                conn = (await db.execute(
+                    select(PlatformConnection).where(
+                        PlatformConnection.id == (connection_id if isinstance(connection_id, uuid.UUID) else uuid.UUID(str(connection_id)))
+                    )
+                )).scalar_one_or_none()
+                if not conn:
+                    return
+                from datetime import datetime, timezone
+                if conn.token_expiry and conn.token_expiry < datetime.now(timezone.utc):
+                    logger.warning("TikTok download_assets_deferred: token expired for connection %s", connection_id)
+                access_token = decrypt_token(conn.access_token_encrypted)
+                advertiser_id = conn.ad_account_id
+                org_id = str(conn.organization_id)
+
+                video_id_val = hints.get("video_id")
+                image_ids_raw = hints.get("image_ids")
+                is_spark = hints.get("is_spark", False)
+
+                thumbnail_url, asset_url, video_source_url, asset_video_duration = await self._download_ad_assets(
+                    access_token, advertiser_id, org_id, ad_id, video_id_val, image_ids_raw, is_spark
+                )
+
+                update_vals = {}
+                if thumbnail_url:
+                    update_vals["thumbnail_url"] = thumbnail_url
+                if asset_url:
+                    update_vals["asset_url"] = asset_url
+                if video_source_url:
+                    update_vals["video_source_url"] = video_source_url
+
+                if update_vals:
+                    await db.execute(
+                        update(TikTokRawPerformance)
+                        .where(
+                            TikTokRawPerformance.ad_id == ad_id,
+                            TikTokRawPerformance.platform_connection_id == conn.id,
+                        )
+                        .values(**update_vals)
+                    )
+
+                if asset_video_duration is not None:
+                    from app.models.creative import CreativeAsset
+                    await db.execute(
+                        update(CreativeAsset).where(
+                            CreativeAsset.organization_id == conn.organization_id,
+                            CreativeAsset.platform == "TIKTOK",
+                            CreativeAsset.ad_id == ad_id,
+                            CreativeAsset.video_duration.is_(None),
+                        ).values(video_duration=asset_video_duration)
+                    )
+
+                await db.commit()
+        except Exception as e:
+            logger.warning("TikTok download_assets_deferred failed for ad %s (non-fatal): %s", ad_id, e)
+
+    async def _download_ad_assets(
+        self,
+        access_token: str,
+        advertiser_id: str,
+        org_id: str,
+        ad_id: str,
+        video_id_val,
+        image_ids_raw,
+        is_spark: bool,
+    ) -> tuple[Optional[str], Optional[str], Optional[str], Optional[float]]:
+        """Download thumbnail + full asset for one ad.
+        Returns (thumbnail_url, asset_url, video_source_url, video_duration_sec).
+        Spark ads: thumbnail only via image_ids; asset_url/video_source_url always None.
+        Video ads: cover from /file/video/ad/ as thumbnail fallback; full video to asset_url.
+        Image ads: full image to asset_url; same URL serves as thumbnail.
+        All download failures are non-fatal (returns Nones)."""
+        thumbnail_url: Optional[str] = None
+        asset_url: Optional[str] = None
+        video_source_url: Optional[str] = None
+        asset_video_duration: Optional[float] = None
+
+        _thumb_image_ids = (
+            image_ids_raw if isinstance(image_ids_raw, list)
+            else (image_ids_raw.split(",") if image_ids_raw else [])
+        )
+        if _thumb_image_ids:
+            cover_url = await self._fetch_cover_image_url(access_token, advertiser_id, _thumb_image_ids[:1])
+            if cover_url:
+                thumbnail_url = await self._download_tiktok_thumbnail(cover_url, org_id, ad_id)
+
+        try:
+            if video_id_val and not is_spark:
+                video_info = await self._fetch_video_download_url(access_token, advertiser_id, [str(video_id_val)])
+                if video_info:
+                    raw_video_url, raw_cover_url = video_info
+                    asset_url, asset_video_duration = await self._download_video_asset(raw_video_url, org_id, ad_id)
+                    video_source_url = raw_video_url
+                    if not thumbnail_url and raw_cover_url:
+                        thumbnail_url = await self._download_tiktok_thumbnail(raw_cover_url, org_id, ad_id)
+
+            elif image_ids_raw and not video_id_val and not is_spark:
+                image_ids_list = (
+                    image_ids_raw if isinstance(image_ids_raw, list)
+                    else (image_ids_raw.split(",") if image_ids_raw else [])
+                )
+                if image_ids_list:
+                    image_url = await self._fetch_cover_image_url(access_token, advertiser_id, image_ids_list[:1])
+                    if image_url:
+                        asset_url = await self._download_image_asset(image_url, org_id, ad_id)
+
+        except Exception as e:
+            logger.warning("Asset download failed for ad %s (non-fatal): %s", ad_id, e, exc_info=True)
+            asset_url = None
+            video_source_url = None
+
+        return thumbnail_url, asset_url, video_source_url, asset_video_duration
 
     async def _fetch_cover_image_url(
         self,

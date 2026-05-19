@@ -741,7 +741,11 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=Non
                 progress_total=len(ad_ids),
             )
 
-        # Phase 17: Process ad_ids one at a time; increment progress after each success (D-05, D-15)
+        # Phase 1: batch metadata prefetch + DB write (O(unique_campaigns + unique_adgroups) API calls)
+        download_hints = await tiktok_sync.prefetch_and_write_metadata(connection_id, ad_ids)
+        prefetch_ok = download_hints is not None
+
+        # Phase 2: per-ad asset download with progress tracking
         downloaded = []
         failed = []
         for ad_id in ad_ids:
@@ -749,11 +753,14 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=Non
                 logger.info("TikTok download job %s interrupted — stopping loop", bg_job_id)
                 break
             try:
-                await tiktok_sync.enrich_creatives_deferred(connection_id, [ad_id])
+                if prefetch_ok:
+                    hints = download_hints.get(str(ad_id), {})
+                    await tiktok_sync.download_assets_deferred(connection_id, str(ad_id), hints)
+                else:
+                    await tiktok_sync.enrich_creatives_deferred(connection_id, [ad_id])
                 downloaded.append({"asset_id": str(ad_id), "url": ""})
             except Exception as asset_err:
                 failed.append({"asset_id": str(ad_id), "error": str(asset_err)})
-            # Progress tracks confirmed successes only, not total attempts
             await update_background_job(bg_job_id, status="RUNNING", progress_current=len(downloaded))
 
         # Phase 17: Mark COMPLETE/PARTIAL with D-11 output manifest
