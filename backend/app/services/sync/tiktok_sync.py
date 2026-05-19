@@ -2,6 +2,7 @@ import asyncio
 import httpx
 import logging
 import json
+import re
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Dict, Any
@@ -61,6 +62,8 @@ AD_REPORT_METRICS = [
     "secondary_goal_result",
     "cost_per_secondary_goal_result",
     "secondary_goal_result_rate",
+    "interactive_add_on_impression",
+    "interactive_add_on_destination_click",
     "real_time_conversion_rate",
     "app_install",
     "cost_per_app_install",
@@ -76,7 +79,11 @@ AD_REPORT_METRICS = [
     "onsite_form",
     "cost_per_onsite_form",
     "live_views",
+    "live_unique_viewed",
     "live_product_clicks",
+    "total_live_shopping_amount",
+    "subscribe_amount",
+    "average_frequency_7_day",
     "cta_conversion",
     "vta_conversion",
     "cta_purchase",
@@ -107,6 +114,10 @@ AD_INFO_FIELDS = [
     "operation_status",
     "is_comment_disable",
 ]
+
+
+class TikTokAPIError(Exception):
+    pass
 
 
 class TikTokSyncService:
@@ -157,9 +168,11 @@ class TikTokSyncService:
         date_from: date,
         date_to: date,
     ) -> List[Dict[str, Any]]:
-        records = []
+        metrics = list(AD_REPORT_METRICS)
+        records: List[Dict[str, Any]] = []
         page = 1
         page_size = 1000
+        stripped_once = False  # only auto-strip invalid fields once per call
 
         async with httpx.AsyncClient(timeout=60) as client:
             while True:
@@ -171,7 +184,7 @@ class TikTokSyncService:
                             "report_type": "BASIC",
                             "data_level": "AUCTION_AD",
                             "dimensions": json.dumps(AD_REPORT_DIMENSIONS),
-                            "metrics": json.dumps(AD_REPORT_METRICS),
+                            "metrics": json.dumps(metrics),
                             "start_date": date_from.strftime("%Y-%m-%d"),
                             "end_date": date_to.strftime("%Y-%m-%d"),
                             "page": page,
@@ -183,8 +196,27 @@ class TikTokSyncService:
                     data = resp.json()
 
                     if data.get("code") != 0:
-                        logger.error(f"TikTok report error: {data.get('message')}")
-                        break
+                        msg = data.get("message", "")
+                        # Adaptive field stripping: some metrics are only valid for
+                        # TikTok Shop / live-enabled accounts. Strip and retry once.
+                        if not stripped_once and "Invalid metric fields" in msg:
+                            match = re.search(r"Invalid metric fields:\s*\[([^\]]+)\]", msg)
+                            if match:
+                                bad = {f.strip().strip("'\"") for f in match.group(1).split(",")}
+                                before = len(metrics)
+                                metrics = [f for f in metrics if f not in bad]
+                                if len(metrics) < before:
+                                    logger.warning(
+                                        "TikTok: stripped %d unsupported metric(s) for advertiser %s, retrying: %s",
+                                        before - len(metrics), advertiser_id, sorted(bad),
+                                    )
+                                    stripped_once = True
+                                    records = []
+                                    page = 1
+                                    continue
+                        raise TikTokAPIError(
+                            f"TikTok API error (code={data.get('code')}): {msg}"
+                        )
 
                     page_data = data.get("data", {})
                     records.extend(page_data.get("list", []))
@@ -200,8 +232,7 @@ class TikTokSyncService:
                         logger.warning("TikTok rate limit, backing off 60s")
                         await asyncio.sleep(60)
                     else:
-                        logger.error(f"TikTok HTTP error: {e}")
-                        break
+                        raise TikTokAPIError(f"TikTok HTTP error {e.response.status_code}: {e}") from e
 
         return records
 
