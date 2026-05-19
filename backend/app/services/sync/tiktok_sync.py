@@ -943,13 +943,37 @@ class TikTokSyncService:
 
         return thumbnail_url, asset_url, video_source_url, asset_video_duration
 
+    async def _resolve_tiktok_handle(self, tiktok_item_id: str) -> Optional[str]:
+        """Resolve @handle for a public TikTok post by following the redirect from /video/{id}."""
+        try:
+            async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
+                resp = await client.get(
+                    f"https://www.tiktok.com/video/{tiktok_item_id}",
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                )
+                if resp.status_code in (301, 302, 307, 308):
+                    location = resp.headers.get("location", "")
+                    match = re.search(r'/@([^/]+)/video/', location)
+                    if match:
+                        logger.debug("Resolved TikTok handle=%s for item_id=%s", match.group(1), tiktok_item_id)
+                        return match.group(1)
+                    logger.debug("TikTok redirect for item_id=%s had no @handle: location=%s", tiktok_item_id, location)
+                else:
+                    logger.debug("TikTok handle resolution: unexpected status %s for item_id=%s", resp.status_code, tiktok_item_id)
+        except Exception as e:
+            logger.debug("TikTok handle resolution failed for item_id=%s: %s", tiktok_item_id, e)
+        return None
+
     async def _fetch_tiktok_oembed_thumbnail(
         self,
         tiktok_item_id: str,
     ) -> Optional[str]:
-        """Fetch thumbnail URL via TikTok oEmbed using the public post ID (tiktok_item_id).
-        Uses /video/{id} format — no @handle needed, avoids display_name/internal-ID confusion."""
-        post_url = f"https://www.tiktok.com/video/{tiktok_item_id}"
+        """Fetch thumbnail URL via TikTok oEmbed. Resolves @handle first since oEmbed requires @handle/video/{id} format."""
+        handle = await self._resolve_tiktok_handle(tiktok_item_id)
+        if handle:
+            post_url = f"https://www.tiktok.com/@{handle}/video/{tiktok_item_id}"
+        else:
+            post_url = f"https://www.tiktok.com/video/{tiktok_item_id}"
         try:
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
                 resp = await client.get(
@@ -961,7 +985,7 @@ class TikTokSyncService:
                     data = resp.json()
                     thumb = data.get("thumbnail_url")
                     if thumb:
-                        logger.info("TikTok oEmbed thumbnail retrieved for item_id=%s", tiktok_item_id)
+                        logger.info("TikTok oEmbed thumbnail retrieved for item_id=%s handle=%s", tiktok_item_id, handle)
                         return thumb
                 else:
                     logger.warning("TikTok oEmbed %s for item_id=%s url=%s", resp.status_code, tiktok_item_id, post_url)
