@@ -97,7 +97,6 @@ AD_INFO_FIELDS = [
     "campaign_name",
     "adgroup_id",
     "adgroup_name",
-    "objective_type",
     "ad_format",
     "creative_type",
     "identity_type",
@@ -106,12 +105,7 @@ AD_INFO_FIELDS = [
     "video_id",
     "image_ids",
     "call_to_action",
-    "optimization_goal",
-    "billing_event",
-    "buying_type",
-    "campaign_budget_mode",
     "operation_status",
-    "is_comment_disable",
 ]
 
 
@@ -122,9 +116,10 @@ class TikTokAPIError(Exception):
 class TikTokSyncService:
 
     def __init__(self):
-        # Cache stripped metrics per advertiser so each chunk doesn't re-trigger the error+retry.
-        # Resets on server restart, which is fine.
-        self._metrics_cache: dict = {}
+        # Cache stripped field lists per advertiser so each chunk / batch doesn't re-trigger the
+        # error+retry. Both caches reset on server restart, which is fine.
+        self._metrics_cache: dict = {}   # advertiser_id -> stripped AD_REPORT_METRICS list
+        self._ad_info_cache: dict = {}   # advertiser_id -> stripped AD_INFO_FIELDS list
 
     async def sync_date_range(
         self,
@@ -750,7 +745,8 @@ class TikTokSyncService:
         if not ad_ids:
             return []
 
-        all_ads = []
+        fields = list(self._ad_info_cache.get(advertiser_id, AD_INFO_FIELDS))
+        all_ads: List[Dict[str, Any]] = []
         page = 1
 
         async with httpx.AsyncClient(timeout=30) as client:
@@ -760,19 +756,35 @@ class TikTokSyncService:
                     params={
                         "advertiser_id": advertiser_id,
                         "filtering": json.dumps({"ad_ids": [str(aid) for aid in ad_ids]}),
-                        "fields": json.dumps(AD_INFO_FIELDS),
+                        "fields": json.dumps(fields),
                         "page_size": 100,
                         "page": page,
                     },
                     headers={"Access-Token": access_token},
                 )
                 if resp.status_code != 200:
-                    logger.error(f"TikTok /ad/get/ HTTP {resp.status_code}")
+                    logger.error("TikTok /ad/get/ HTTP %s", resp.status_code)
                     break
 
                 data = resp.json()
                 if data.get("code") != 0:
-                    logger.error(f"TikTok /ad/get/ error: {data.get('message')}")
+                    msg = data.get("message", "")
+                    # Adaptive field stripping: TikTok reports the first bad field as
+                    # "... error is <fieldname>" — strip it and retry once.
+                    match = re.search(r"error is (\w+)", msg)
+                    if match:
+                        bad_field = match.group(1)
+                        if bad_field in fields:
+                            fields = [f for f in fields if f != bad_field]
+                            self._ad_info_cache[advertiser_id] = fields
+                            logger.warning(
+                                "TikTok /ad/get/: stripped unsupported field '%s' for advertiser %s, retrying",
+                                bad_field, advertiser_id,
+                            )
+                            all_ads = []
+                            page = 1
+                            continue
+                    logger.error("TikTok /ad/get/ error: %s", msg)
                     break
 
                 page_data = data.get("data", {})
