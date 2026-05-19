@@ -1959,6 +1959,14 @@ class DV360SyncService:
         # PERF-05: check proxy state once for batch sleep gating (D-08/D-09)
         proxy_enabled, _ = await get_proxy_config()
         for ad_id, info in queue.items():
+            if bg_job_id:
+                import uuid as _uuid
+                from app.services.sync.job_tracker import get_job_status as _get_status
+                _jid = bg_job_id if isinstance(bg_job_id, _uuid.UUID) else _uuid.UUID(str(bg_job_id))
+                if await _get_status(_jid) == "INTERRUPTED":
+                    logger.info("DV360 download: job %s interrupted — stopping download loop", _jid)
+                    break
+
             yt_vid = info.get("youtube_video_id", "")
             if not yt_vid:
                 continue

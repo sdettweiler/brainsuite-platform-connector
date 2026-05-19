@@ -114,6 +114,22 @@ class OrgListItem(BaseModel):
 # Cookie health helper (T-14-05: expiry parsing only, no live yt-dlp test)
 # ---------------------------------------------------------------------------
 
+def _validate_netscape_format(cookie_data: str) -> bool:
+    """Return True if cookie_data contains at least one valid Netscape cookie line.
+
+    A valid line is non-empty, non-comment, and has exactly 7 tab-separated fields.
+    """
+    if not cookie_data:
+        return False
+    for line in cookie_data.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if len(line.split("\t")) >= 7:
+            return True
+    return False
+
+
 def _check_cookie_health(cookie_data: str) -> str:
     """Parse Netscape cookie expiry timestamps. Returns 'valid', 'expired', or 'missing'.
 
@@ -231,10 +247,20 @@ async def update_youtube_cookies(
         )
 
     if payload.primary is not None:
+        if not _validate_netscape_format(payload.primary):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Primary cookie is not valid Netscape format — must contain at least one tab-separated 7-field cookie line.",
+            )
         config.youtube_cookies_encrypted = encrypt_token(payload.primary)
         logger.info("SuperAdmin updated primary YouTube cookie slot (cookie content not logged)")
 
     if payload.backup is not None:
+        if not _validate_netscape_format(payload.backup):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Backup cookie is not valid Netscape format — must contain at least one tab-separated 7-field cookie line.",
+            )
         config.youtube_cookies_backup_encrypted = encrypt_token(payload.backup)
         logger.info("SuperAdmin updated backup YouTube cookie slot (cookie content not logged)")
 

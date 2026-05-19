@@ -81,6 +81,13 @@ async def create_background_job(
     return job_id
 
 
+async def get_job_status(job_id: uuid.UUID) -> Optional[str]:
+    """Return the current status of a BackgroundJob, or None if not found."""
+    async with get_session_factory()() as db:
+        job = await db.get(BackgroundJob, job_id)
+        return job.status if job else None
+
+
 async def update_background_job(
     job_id: uuid.UUID,
     status: Optional[str] = None,

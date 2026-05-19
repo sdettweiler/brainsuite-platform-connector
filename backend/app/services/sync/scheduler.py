@@ -16,7 +16,7 @@ from app.db.base import get_session_factory
 from app.services.ai_autofill import run_autofill_for_asset, backfill_failed_autofill_for_connection
 from app.services.notifications import create_org_notification
 from app.services.sync.backfill_job import run_duration_backfill, has_null_duration_assets
-from app.services.sync.job_tracker import create_background_job, update_background_job
+from app.services.sync.job_tracker import create_background_job, update_background_job, get_job_status
 
 logger = logging.getLogger(__name__)
 
@@ -536,6 +536,9 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict, exis
         failed = []
         cookie_expired_count = 0
         for asset_id, asset_info in asset_queue.items():
+            if await get_job_status(bg_job_id) == "INTERRUPTED":
+                logger.info("Google Ads download job %s interrupted — stopping loop", bg_job_id)
+                break
             # Skip if already downloaded (resume support)
             if str(asset_id) in already_downloaded:
                 downloaded.append({"asset_id": str(asset_id), "url": "(already downloaded)"})
@@ -664,6 +667,9 @@ async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None,
         downloaded = []
         failed = []
         for ad_id in ad_ids:
+            if await get_job_status(bg_job_id) == "INTERRUPTED":
+                logger.info("Meta download job %s interrupted — stopping loop", bg_job_id)
+                break
             try:
                 await meta_sync.fetch_and_store_creatives_deferred(connection_id, [ad_id])
                 downloaded.append({"asset_id": str(ad_id), "url": ""})
@@ -734,6 +740,9 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=Non
         downloaded = []
         failed = []
         for ad_id in ad_ids:
+            if await get_job_status(bg_job_id) == "INTERRUPTED":
+                logger.info("TikTok download job %s interrupted — stopping loop", bg_job_id)
+                break
             try:
                 await tiktok_sync.enrich_creatives_deferred(connection_id, [ad_id])
                 downloaded.append({"asset_id": str(ad_id), "url": ""})
