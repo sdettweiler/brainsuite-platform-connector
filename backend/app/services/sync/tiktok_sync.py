@@ -97,7 +97,6 @@ AD_INFO_FIELDS = [
     "campaign_name",
     "adgroup_id",
     "adgroup_name",
-    "status",
     "objective_type",
     "ad_format",
     "creative_type",
@@ -121,6 +120,11 @@ class TikTokAPIError(Exception):
 
 
 class TikTokSyncService:
+
+    def __init__(self):
+        # Cache stripped metrics per advertiser so each chunk doesn't re-trigger the error+retry.
+        # Resets on server restart, which is fine.
+        self._metrics_cache: dict = {}
 
     async def sync_date_range(
         self,
@@ -168,11 +172,10 @@ class TikTokSyncService:
         date_from: date,
         date_to: date,
     ) -> List[Dict[str, Any]]:
-        metrics = list(AD_REPORT_METRICS)
+        metrics = list(self._metrics_cache.get(advertiser_id, AD_REPORT_METRICS))
         records: List[Dict[str, Any]] = []
         page = 1
         page_size = 1000
-        stripped_once = False  # only auto-strip invalid fields once per call
 
         async with httpx.AsyncClient(timeout=60) as client:
             while True:
@@ -199,18 +202,18 @@ class TikTokSyncService:
                         msg = data.get("message", "")
                         # Adaptive field stripping: some metrics are only valid for
                         # TikTok Shop / live-enabled accounts. Strip and retry once.
-                        if not stripped_once and "Invalid metric fields" in msg:
+                        if "Invalid metric fields" in msg:
                             match = re.search(r"Invalid metric fields:\s*\[([^\]]+)\]", msg)
                             if match:
                                 bad = {f.strip().strip("'\"") for f in match.group(1).split(",")}
                                 before = len(metrics)
                                 metrics = [f for f in metrics if f not in bad]
                                 if len(metrics) < before:
+                                    self._metrics_cache[advertiser_id] = metrics
                                     logger.warning(
                                         "TikTok: stripped %d unsupported metric(s) for advertiser %s, retrying: %s",
                                         before - len(metrics), advertiser_id, sorted(bad),
                                     )
-                                    stripped_once = True
                                     records = []
                                     page = 1
                                     continue
