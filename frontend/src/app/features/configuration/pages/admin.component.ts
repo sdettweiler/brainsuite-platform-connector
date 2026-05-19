@@ -6,6 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatSliderModule } from '@angular/material/slider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ApiService } from '../../../core/services/api.service';
 
@@ -61,10 +62,12 @@ interface ProxyTestResult {
   error: string | null;
 }
 
+interface ConcurrencyConfig { max_concurrent_downloads: number; }
+
 @Component({
   standalone: true,
   selector: 'app-admin',
-  imports: [CommonModule, FormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressSpinnerModule, MatSlideToggleModule, MatSnackBarModule],
+  imports: [CommonModule, FormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatProgressSpinnerModule, MatSlideToggleModule, MatSnackBarModule, MatSliderModule],
   template: `
 <div class="page-container">
 
@@ -657,6 +660,11 @@ export class AdminComponent implements OnInit {
   testingProxy = false;
   testResult: ProxyTestResult | null = null;
 
+  concurrencyConfig: ConcurrencyConfig | null = null;
+  loadingConcurrency = true;
+  savingConcurrency = false;
+  concurrencyDraft: number = 3;
+
   constructor(
     private api: ApiService,
     private snackBar: MatSnackBar,
@@ -664,6 +672,7 @@ export class AdminComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadProxyConfig();
+    this.loadConcurrencyConfig();
     this.loadCookieHealth();
     this.loadSuperAdmins();
     this.loadOrganizations();
@@ -715,6 +724,41 @@ export class AdminComponent implements OnInit {
   discardProxyUrlEdit(): void {
     this.editingProxyUrl = false;
     this.newProxyUrl = '';
+  }
+
+  loadConcurrencyConfig(): void {
+    this.loadingConcurrency = true;
+    this.api.get<ConcurrencyConfig>('/super-admin/download-concurrency').subscribe({
+      next: (data) => {
+        this.concurrencyConfig = data;
+        this.concurrencyDraft = data.max_concurrent_downloads;
+        this.loadingConcurrency = false;
+      },
+      error: () => {
+        this.loadingConcurrency = false;
+        this.snackBar.open('Could not load concurrency config. Refresh to retry.', 'Close');
+      },
+    });
+  }
+
+  saveConcurrency(): void {
+    this.savingConcurrency = true;
+    this.api.put<ConcurrencyConfig>('/super-admin/download-concurrency', { max_concurrent_downloads: this.concurrencyDraft }).subscribe({
+      next: (data) => {
+        this.concurrencyConfig = data;
+        this.concurrencyDraft = data.max_concurrent_downloads;
+        this.savingConcurrency = false;
+        this.snackBar.open('Concurrency setting saved.', 'Close', { duration: 3000 });
+      },
+      error: () => {
+        this.savingConcurrency = false;
+        this.snackBar.open('Failed to save concurrency setting. Check your connection and try again.', 'Close');
+      },
+    });
+  }
+
+  discardConcurrencyEdit(): void {
+    this.concurrencyDraft = this.concurrencyConfig?.max_concurrent_downloads ?? 3;
   }
 
   testProxyConnection(): void {
