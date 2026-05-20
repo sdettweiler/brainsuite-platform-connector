@@ -383,6 +383,7 @@ class HarmonizationService:
                     thumbnail_url=raw.thumbnail_url,
                     asset_url=raw.asset_url or raw.creative_url,
                     creative_id=str(raw.ad_id),
+                    video_duration=raw.video_duration_sec,
                     first_seen_at=raw.report_date,
                     is_creator_content=raw.is_spark_ad if raw.is_spark_ad is not None else None,
                     content_source="SPARK" if raw.is_spark_ad else None,
@@ -954,6 +955,8 @@ class HarmonizationService:
                 asset.asset_url = kwargs.get("asset_url")
             if kwargs.get("creative_id") and not asset.creative_id:
                 asset.creative_id = kwargs.get("creative_id")
+            if kwargs.get("video_duration") and not asset.video_duration:
+                asset.video_duration = kwargs.get("video_duration")
             if kwargs.get("asset_format") and not asset.asset_format:
                 asset.asset_format = _normalize_asset_format(kwargs.get("asset_format"))
             if kwargs.get("ad_name") and not asset.ad_name:
