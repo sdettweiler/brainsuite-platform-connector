@@ -997,11 +997,11 @@ class TikTokSyncService:
         advertiser_id: str,
         image_ids: List[str],
     ) -> Optional[str]:
-        """Fetch the cover image download URL for given image IDs via /file/image/ad/."""
+        """Fetch the cover image URL for given image IDs via GET /file/image/ad/info/."""
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
-                    f"{TIKTOK_API_BASE}/file/image/ad/",
+                    f"{TIKTOK_API_BASE}/file/image/ad/info/",
                     params={
                         "advertiser_id": advertiser_id,
                         "image_ids": json.dumps([str(iid) for iid in image_ids]),
@@ -1010,16 +1010,22 @@ class TikTokSyncService:
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                if data.get("code") != 0:
-                    logger.warning("TikTok /file/image/ad/ error: %s", data.get("message"))
+                code = data.get("code")
+                if code != 0:
+                    logger.warning("TikTok /file/image/ad/info/ api_code=%s msg=%s image_ids=%s", code, data.get("message"), image_ids)
                     return None
                 images = data.get("data", {}).get("list", [])
-                if images:
-                    return images[0].get("image_url")
+                if not images:
+                    logger.warning("TikTok /file/image/ad/info/ empty list for image_ids=%s advertiser=%s", image_ids, advertiser_id)
+                    return None
+                img = images[0]
+                url = img.get("image_url") or img.get("url")
+                logger.info("TikTok /file/image/ad/info/ ok image_id=%s url=%s", image_ids[0], bool(url))
+                return url
         except httpx.HTTPStatusError as e:
-            logger.warning("TikTok /file/image/ad/ http_%s advertiser=%s image_ids=%s body=%s", e.response.status_code, advertiser_id, image_ids, e.response.text[:300])
+            logger.warning("TikTok /file/image/ad/info/ http_%s advertiser=%s image_ids=%s body=%s", e.response.status_code, advertiser_id, image_ids, e.response.text[:300])
         except httpx.RequestError as e:
-            logger.warning("Failed to fetch TikTok cover image URL: %s", e)
+            logger.warning("TikTok /file/image/ad/info/ request error: %s", e)
         return None
 
     async def _fetch_video_info(
