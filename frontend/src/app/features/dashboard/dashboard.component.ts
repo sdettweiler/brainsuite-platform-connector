@@ -2546,7 +2546,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   getTileThumbnail(asset: any): string | null {
-    if (asset.asset_format === 'VIDEO') {
+    if ((asset.asset_format || '').includes('VIDEO')) {
       // Video: use thumbnail_url if available, else null triggers CSS fallback (D-06)
       return asset.thumbnail_url || null;
     }
@@ -2557,7 +2557,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   isVideoNoThumb(asset: any): boolean {
-    return asset.asset_format === 'VIDEO' && !asset.thumbnail_url;
+    return (asset.asset_format || '').includes('VIDEO') && !asset.thumbnail_url;
   }
 
   onImgError(event: Event): void {

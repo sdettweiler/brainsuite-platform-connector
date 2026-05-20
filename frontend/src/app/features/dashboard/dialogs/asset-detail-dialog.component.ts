@@ -217,9 +217,9 @@ echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZo
                     </span>
                   </div>
                   <div class="perf-preview">
-                    <video *ngIf="detail?.asset_format === 'VIDEO' && detail?.asset_url"
+                    <video *ngIf="detail?.asset_format?.includes('VIDEO') && detail?.asset_url"
                            [src]="detail!.asset_url!" controls preload="metadata"></video>
-                    <img *ngIf="detail?.asset_format !== 'VIDEO'"
+                    <img *ngIf="!detail?.asset_format?.includes('VIDEO')"
                          [src]="detail?.asset_url || detail?.thumbnail_url || ''"
                          [alt]="detail?.ad_name || 'Asset'" />
                   </div>
