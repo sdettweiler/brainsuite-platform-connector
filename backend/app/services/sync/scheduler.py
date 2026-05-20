@@ -1995,6 +1995,8 @@ async def auto_resume_interrupted_jobs() -> None:
 
         # Wave 4b: clear dead superseded_by from INTERRUPTED jobs whose manual-retry
         # successor has itself failed with no further chain — restores rescuability.
+        # Guards: exclude KilledByAdmin jobs and jobs whose superseded_by is the
+        # sentinel string "killed" (set by the admin kill endpoint).
         async with _gsf()() as db:
             await db.execute(_text("""
                 UPDATE background_jobs j1
@@ -2002,6 +2004,7 @@ async def auto_resume_interrupted_jobs() -> None:
                 WHERE j1.status = 'INTERRUPTED'
                   AND jsonb_exists(j1.metadata, 'superseded_by')
                   AND coalesce(j1.error->>'type', '') != 'KilledByAdmin'
+                  AND (j1.metadata->>'superseded_by') != 'killed'
                   AND EXISTS (
                     SELECT 1 FROM background_jobs j2
                     WHERE j2.id::text = j1.metadata->>'superseded_by'
@@ -2345,4 +2348,11 @@ async def trigger_dv360_sync_retry(params: dict, new_job_id: str, resume_query_i
     except Exception as _e:
         import traceback as _tb
         logger.error("trigger_dv360_sync_retry failed: %s: %s", type(_e).__name__, _e)
-        await _ubj(job_uuid, status="INTERRUPTED", error={"type": type(_e).__name__, "message": str(_e), "traceback": _tb.format_exc()[:10000]})
+        # Permanent failures (auth revoked, bad params) must not be retried forever.
+        _msg_lower = str(_e).lower()
+        _is_permanent = (
+            isinstance(_e, (ValueError, KeyError))
+            or any(s in _msg_lower for s in ("invalid_grant", "unauthorized", "forbidden", "401", "403", "invalid credentials"))
+        )
+        _terminal = "FAILED" if _is_permanent else "INTERRUPTED"
+        await _ubj(job_uuid, status=_terminal, error={"type": type(_e).__name__, "message": str(_e), "traceback": _tb.format_exc()[:10000]})

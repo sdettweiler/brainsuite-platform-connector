@@ -162,7 +162,7 @@ async def revive_background_job(job_id: uuid.UUID) -> bool:
     Returns True if the job was claimed (was INTERRUPTED), False if another
     process already claimed it or the job was not found.
     """
-    from sqlalchemy import update as _update, text as _text
+    from sqlalchemy import update as _update, literal_column as _lc
     now = datetime.utcnow()
 
     async with get_session_factory()() as db:
@@ -176,7 +176,7 @@ async def revive_background_job(job_id: uuid.UUID) -> bool:
                 progress_current=0,
                 output={},
                 started_at=now,
-                metadata_=_text(
+                metadata_=_lc(
                     "metadata || jsonb_build_object('resumed_at', to_jsonb(now()::text))"
                 ),
             )

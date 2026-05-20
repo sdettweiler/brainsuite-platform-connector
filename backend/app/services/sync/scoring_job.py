@@ -276,6 +276,8 @@ async def score_asset_now(score_id: uuid.UUID, existing_job_id: uuid.UUID | None
                     "score_asset_now: skipping score_id=%s — org %s has reached scoring quota (%d/%d)",
                     score_id, asset.organization_id, current_count, quota,
                 )
+                if existing_job_id is not None:
+                    await update_background_job(existing_job_id, status="FAILED", error={"type": "QuotaExceeded", "message": f"Org scoring quota reached ({current_count}/{quota})", "traceback": ""})
                 return
 
     endpoint_type = score_row.endpoint_type
@@ -285,6 +287,8 @@ async def score_asset_now(score_id: uuid.UUID, existing_job_id: uuid.UUID | None
             "score_asset_now: asset %s is UNSUPPORTED, skipping",
             score_row.creative_asset_id,
         )
+        if existing_job_id is not None:
+            await update_background_job(existing_job_id, status="FAILED", error={"type": "Unsupported", "message": "Asset endpoint_type is UNSUPPORTED", "traceback": ""})
         return
 
     if endpoint_type not in ("VIDEO", "STATIC_IMAGE"):
@@ -293,6 +297,8 @@ async def score_asset_now(score_id: uuid.UUID, existing_job_id: uuid.UUID | None
             endpoint_type,
             score_id,
         )
+        if existing_job_id is not None:
+            await update_background_job(existing_job_id, status="FAILED", error={"type": "UnknownEndpointType", "message": f"Unknown endpoint_type={endpoint_type}", "traceback": ""})
         return
 
     # Mark PENDING before handing off (same as batch does before processing)
