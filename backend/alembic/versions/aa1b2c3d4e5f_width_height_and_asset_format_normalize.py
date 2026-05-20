@@ -1,7 +1,7 @@
 """Add width_px/height_px to creative_assets and dv360_raw_performance; normalize asset_format
 
 Revision ID: aa1b2c3d4e5f
-Revises: z8a9b1c2d3e5
+Revises: a1b2c3d5e7f9
 Create Date: 2026-05-20
 
 Adds width_px and height_px dimension columns to creative_assets and dv360_raw_performance.
@@ -12,7 +12,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "aa1b2c3d4e5f"
-down_revision = "z8a9b1c2d3e5"
+down_revision = "a1b2c3d5e7f9"
 branch_labels = None
 depends_on = None
 
