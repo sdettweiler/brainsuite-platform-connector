@@ -181,51 +181,63 @@ class GoogleAdsSyncService:
             ORDER BY segments.date DESC
         """
 
-        records = []
-        next_page_token = None
+        _MAX_RETRIES = 3
+        for _attempt in range(_MAX_RETRIES + 1):
+            try:
+                records = []
+                next_page_token = None
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            while True:
-                body = {"query": query}
-                if next_page_token:
-                    body["pageToken"] = next_page_token
+                async with httpx.AsyncClient(timeout=60) as client:
+                    while True:
+                        body = {"query": query}
+                        if next_page_token:
+                            body["pageToken"] = next_page_token
 
-                resp = await client.post(
-                    f"{GOOGLE_ADS_API_BASE}/customers/{customer_id}/googleAds:search",
-                    headers={
-                        "Authorization": f"Bearer {access_token}",
-                        "developer-token": settings.GOOGLE_DEVELOPER_TOKEN or "",
-                        "login-customer-id": customer_id,
-                    },
-                    json=body,
-                )
-
-                if resp.status_code != 200:
-                    err_text = resp.text
-                    if "REQUESTED_METRICS_FOR_MANAGER" in err_text:
-                        logger.warning(
-                            "Google Ads: skipping customer %s — manager account cannot return metrics "
-                            "(REQUESTED_METRICS_FOR_MANAGER). Configure a client account instead.",
-                            customer_id,
+                        resp = await client.post(
+                            f"{GOOGLE_ADS_API_BASE}/customers/{customer_id}/googleAds:search",
+                            headers={
+                                "Authorization": f"Bearer {access_token}",
+                                "developer-token": settings.GOOGLE_DEVELOPER_TOKEN or "",
+                                "login-customer-id": customer_id,
+                            },
+                            json=body,
                         )
-                        return []
-                    logger.error(f"Google Ads API error {resp.status_code}: {err_text[:500]}")
-                    break
 
-                data = resp.json()
-                results = data.get("results", [])
-                if results:
-                    logger.info(f"Fetched {len(results)} records for {customer_id} ({date_from} to {date_to})")
-                else:
-                    logger.info(f"No results for {customer_id} ({date_from} to {date_to})")
-                records.extend(results)
+                        if resp.status_code != 200:
+                            err_text = resp.text
+                            if "REQUESTED_METRICS_FOR_MANAGER" in err_text:
+                                logger.warning(
+                                    "Google Ads: skipping customer %s — manager account cannot return metrics "
+                                    "(REQUESTED_METRICS_FOR_MANAGER). Configure a client account instead.",
+                                    customer_id,
+                                )
+                                return []
+                            logger.error(f"Google Ads API error {resp.status_code}: {err_text[:500]}")
+                            break
 
-                next_page_token = data.get("nextPageToken")
-                if not next_page_token:
-                    break
+                        data = resp.json()
+                        results = data.get("results", [])
+                        if results:
+                            logger.info(f"Fetched {len(results)} records for {customer_id} ({date_from} to {date_to})")
+                        else:
+                            logger.info(f"No results for {customer_id} ({date_from} to {date_to})")
+                        records.extend(results)
 
-        logger.info(f"Total records fetched for {customer_id}: {len(records)}")
-        return records
+                        next_page_token = data.get("nextPageToken")
+                        if not next_page_token:
+                            break
+
+                logger.info(f"Total records fetched for {customer_id}: {len(records)}")
+                return records
+            except (httpx.ReadError, httpx.ConnectError) as _net_err:
+                if _attempt == _MAX_RETRIES:
+                    raise
+                _wait = 2 ** _attempt
+                logger.warning(
+                    "Google Ads API transient error (attempt %d/%d), retrying in %ds: %s: %s",
+                    _attempt + 1, _MAX_RETRIES + 1, _wait, type(_net_err).__name__, _net_err,
+                )
+                await asyncio.sleep(_wait)
 
     def _extract_youtube_id(
         self, ad: Dict[str, Any], asset_map: Dict[str, str]
@@ -722,8 +734,8 @@ class GoogleAdsSyncService:
                         video_successes += 1
                         served_url = video_url
                     else:
-                        video_failures[ad_id] = "video unavailable or deleted"
-                        logger.warning("[DL:%s] Video unavailable or deleted — skipping ad %s", youtube_video_id[:8] if youtube_video_id else "?", ad_id)
+                        video_failures[ad_id] = "download failed — no output file produced"
+                        logger.warning("[DL:%s] yt-dlp finished but no output file — skipping ad %s", youtube_video_id[:8] if youtube_video_id else "?", ad_id)
                 except _CookiesExpiredError:
                     cookies_expired = True
                     logger.warning("YouTube cookies expired — skipping video downloads for remaining ads in queue")
