@@ -652,12 +652,13 @@ async def redownload_missing_assets(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Find all VIDEO assets for a connection that are missing a valid .mp4 asset_url
-    and re-download them in the background. Supports DV360 and GOOGLE_ADS.
+    """Re-download all missing/CDN assets for a connection in the background.
+
+    Missing = VIDEO with no valid .mp4 asset_url, or any asset with a raw CDN thumbnail_url.
+    Supports all platforms (DV360, GOOGLE_ADS, META, TIKTOK).
     """
     from app.models.platform import PlatformConnection
-    from app.services.sync.dv360_sync import DV360SyncService, _CookiesExpiredError
-    from app.services.sync.google_ads_sync import google_ads_sync
+    from app.services.sync.scheduler import backfill_missing_downloads_for_connection
 
     conn_result = await db.execute(
         select(PlatformConnection).where(PlatformConnection.id == connection_id)
@@ -667,137 +668,11 @@ async def redownload_missing_assets(
         raise HTTPException(status_code=404, detail="Connection not found")
     if conn.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Connection not in your organization")
-    if conn.platform not in ("DV360", "GOOGLE_ADS"):
-        raise HTTPException(status_code=422, detail=f"Re-download not supported for platform {conn.platform}")
 
-    assets_result = await db.execute(
-        select(CreativeAsset).where(
-            CreativeAsset.platform_connection_id == connection_id,
-            CreativeAsset.asset_format == "VIDEO",
-        )
-    )
-    all_video_assets = assets_result.scalars().all()
-    missing = [a for a in all_video_assets if not a.asset_url or not a.asset_url.endswith(".mp4")]
-
-    if not missing:
-        return {"queued": 0, "message": "No missing videos found"}
-
-    async def _download_one(asset: CreativeAsset) -> None:
-        from app.db.base import get_session_factory
-        from app.services.sync.thumbnail_utils import is_raw_cdn_url
-        org_id_str = str(asset.organization_id)
-        served_url = None
-        frame_thumb = None
-        if asset.platform == "DV360":
-            from app.models.performance import Dv360RawPerformance
-            async with get_session_factory()() as _dv360_lookup_db:
-                _dv360_yt_id = (await _dv360_lookup_db.execute(
-                    select(Dv360RawPerformance.youtube_ad_video_id).where(
-                        Dv360RawPerformance.ad_id == asset.ad_id,
-                        Dv360RawPerformance.platform_connection_id == asset.platform_connection_id,
-                        Dv360RawPerformance.youtube_ad_video_id.isnot(None),
-                    ).limit(1)
-                )).scalar_one_or_none()
-            _dv360_yt_id = _dv360_yt_id or asset.ad_id
-        elif asset.platform == "GOOGLE_ADS":
-            from app.models.performance import GoogleAdsRawPerformance
-            from app.db.base import get_session_factory as _gsf_bulk
-            async with _gsf_bulk()() as _lookup_db:
-                _ga_yt_id = (await _lookup_db.execute(
-                    select(GoogleAdsRawPerformance.video_id).where(
-                        GoogleAdsRawPerformance.ad_id == asset.ad_id,
-                        GoogleAdsRawPerformance.platform_connection_id == asset.platform_connection_id,
-                        GoogleAdsRawPerformance.video_id.isnot(None),
-                    ).limit(1)
-                )).scalar_one_or_none()
-            if not _ga_yt_id:
-                logger.warning("redownload_missing_assets: no YouTube video ID for asset %s (ad_id=%s)", asset.id, asset.ad_id)
-                return
-        # Download CDN thumbnail BEFORE the video so the official thumb occupies
-        # the MinIO slot and _download_video_asset skips first-frame extraction.
-        cdn_thumb = None
-        try:
-            if asset.platform == "DV360":
-                svc_pre = DV360SyncService()
-                _, cdn_thumb = await svc_pre._download_youtube_thumbnail(_dv360_yt_id, org_id_str, _dv360_yt_id)
-            elif asset.platform == "GOOGLE_ADS":
-                _, cdn_thumb = await google_ads_sync._download_thumbnail(_ga_yt_id, org_id_str, asset.ad_id)
-        except Exception as _te:
-            logger.warning("redownload_missing_assets: thumbnail fetch failed for %s: %s", asset.id, _te)
-        if asset.platform == "DV360":
-            svc = DV360SyncService()
-            _, served_url, frame_thumb = await svc._download_video_asset(
-                youtube_video_id=_dv360_yt_id,
-                org_id=org_id_str,
-                ad_id=_dv360_yt_id,
-            )
-        elif asset.platform == "GOOGLE_ADS":
-            _, served_url, frame_thumb = await google_ads_sync._download_video(
-                youtube_video_id=_ga_yt_id,
-                org_id=org_id_str,
-                ad_id=asset.ad_id,
-            )
-        if not served_url:
-            return
-        best_thumb = cdn_thumb or frame_thumb
-        SessionFactory = get_session_factory()
-        async with SessionFactory() as session:
-            res = await session.execute(select(CreativeAsset).where(CreativeAsset.id == asset.id))
-            db_asset = res.scalar_one_or_none()
-            if db_asset:
-                db_asset.asset_url = served_url
-                if best_thumb and (not db_asset.thumbnail_url or is_raw_cdn_url(db_asset.thumbnail_url)):
-                    db_asset.thumbnail_url = best_thumb
-                session.add(db_asset)
-                score_res = await session.execute(
-                    select(CreativeScoreResult).where(CreativeScoreResult.creative_asset_id == asset.id)
-                )
-                score_row = score_res.scalar_one_or_none()
-                if score_row and score_row.scoring_status != "UNSCORED":
-                    score_row.scoring_status = "UNSCORED"
-                    session.add(score_row)
-                await session.commit()
-                from datetime import datetime as _dt_af2
-                from sqlalchemy.dialects.postgresql import insert as pg_insert2
-                await session.execute(
-                    pg_insert2(AIInferenceTracking)
-                    .values(id=uuid.uuid4(), asset_id=asset.id, org_id=asset.organization_id,
-                            ai_inference_status="FAILED", created_at=_dt_af2.utcnow(), updated_at=_dt_af2.utcnow())
-                    .on_conflict_do_update(index_elements=["asset_id"],
-                                           set_={"ai_inference_status": "FAILED", "updated_at": _dt_af2.utcnow()})
-                )
-                await session.commit()
-        await run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id)
-
-    bg_job_id = await create_background_job(
-        job_type="download",
-        org_id=conn.organization_id,
-        platform_connection_id=connection_id,
-        metadata={"asset_count": len(missing)},
-        initial_status="RUNNING",
-        progress_total=len(missing),
-    )
-
-    async def _download_all():
-        downloaded = []
-        for i, asset in enumerate(missing):
-            try:
-                await _download_one(asset)
-                downloaded.append({"asset_id": str(asset.id), "asset_name": asset.ad_name, "asset_format": asset.asset_format})
-            except _CookiesExpiredError:
-                logger.warning("redownload_missing_assets: YouTube cookies expired — aborting batch after first failure")
-                await update_background_job(bg_job_id, status="FAILED", progress_current=i,
-                    error={"type": "CookiesExpiredError", "message": "YouTube cookies expired", "traceback": ""})
-                return
-            except Exception as exc:
-                logger.warning("redownload_missing_assets: asset %s failed: %s", asset.id, exc)
-            await update_background_job(bg_job_id, progress_current=i + 1)
-        await update_background_job(bg_job_id, status="COMPLETE", progress_current=len(missing),
-            output={"downloaded": downloaded})
-
-    asyncio.create_task(_download_all())
-
-    return {"queued": len(missing), "message": f"Downloading {len(missing)} missing video(s) in background"}
+    bg_job_id, count = await backfill_missing_downloads_for_connection(str(connection_id))
+    if bg_job_id is None:
+        return {"queued": 0, "message": "No missing assets found"}
+    return {"queued": count, "message": f"Downloading {count} missing asset(s) in background"}
 
 
 @router.post("/{asset_id}/redownload")

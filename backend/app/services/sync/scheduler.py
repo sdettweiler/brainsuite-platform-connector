@@ -181,6 +181,7 @@ async def run_daily_sync(connection_id: str, existing_bg_job_id=None) -> None:
             progress_total=1,
             progress_current=0,
         )
+        asyncio.create_task(backfill_missing_downloads_for_connection(connection_id))
 
         try:
             if is_dv360:
@@ -964,6 +965,7 @@ async def run_full_resync(connection_id: str, existing_bg_job_id=None) -> None:
             progress_total=1,
             progress_current=0,
         )
+        asyncio.create_task(backfill_missing_downloads_for_connection(connection_id))
 
         try:
             if is_dv360:
@@ -1683,6 +1685,7 @@ async def run_historical_sync(connection_id: str, existing_bg_job_id=None) -> No
             progress_total=1,
             progress_current=0,
         )
+        asyncio.create_task(backfill_missing_downloads_for_connection(connection_id))
 
         try:
             if is_dv360:
@@ -2297,6 +2300,7 @@ async def trigger_dv360_sync_retry(params: dict, new_job_id: str, resume_query_i
         return
 
     await _ubj(job_uuid, status="RUNNING", progress_total=1, progress_current=0)
+    asyncio.create_task(backfill_missing_downloads_for_connection(str(conn_uuid)))
 
     try:
         async with get_session_factory()() as db:
@@ -2360,3 +2364,221 @@ async def trigger_dv360_sync_retry(params: dict, new_job_id: str, resume_query_i
         )
         _terminal = "FAILED" if _is_permanent else "INTERRUPTED"
         await _ubj(job_uuid, status=_terminal, error={"type": type(_e).__name__, "message": str(_e), "traceback": _tb.format_exc()[:10000]})
+
+
+async def _download_asset_for_backfill(asset) -> bool:
+    """Download a missing/CDN asset and write asset_url + thumbnail_url back to DB.
+
+    Resets scoring to UNSCORED and triggers autofill on success.
+    Returns True on successful download, False if skipped or failed.
+    """
+    from sqlalchemy import select
+    from app.db.base import get_session_factory as _gsf
+    from app.services.sync.thumbnail_utils import is_raw_cdn_url
+    import uuid as _uuid
+    from datetime import datetime as _dt
+
+    org_id_str = str(asset.organization_id)
+    served_url = None
+    best_thumb = None
+
+    try:
+        if asset.platform == "DV360":
+            from app.models.performance import Dv360RawPerformance
+            from app.services.sync.dv360_sync import DV360SyncService
+            async with _gsf()() as _db:
+                _yt_id = (await _db.execute(
+                    select(Dv360RawPerformance.youtube_ad_video_id).where(
+                        Dv360RawPerformance.ad_id == asset.ad_id,
+                        Dv360RawPerformance.platform_connection_id == asset.platform_connection_id,
+                        Dv360RawPerformance.youtube_ad_video_id.isnot(None),
+                    ).limit(1)
+                )).scalar_one_or_none()
+            _yt_id = _yt_id or asset.ad_id
+            svc = DV360SyncService()
+            cdn_thumb = None
+            try:
+                _, cdn_thumb = await svc._download_youtube_thumbnail(_yt_id, org_id_str, _yt_id)
+            except Exception as _te:
+                logger.warning("backfill: DV360 thumbnail failed for asset %s: %s", asset.id, _te)
+            _, served_url, frame_thumb = await svc._download_video_asset(
+                youtube_video_id=_yt_id, org_id=org_id_str, ad_id=_yt_id)
+            best_thumb = cdn_thumb or frame_thumb
+
+        elif asset.platform == "GOOGLE_ADS":
+            from app.models.performance import GoogleAdsRawPerformance
+            from app.services.sync.google_ads_sync import google_ads_sync
+            async with _gsf()() as _db:
+                _yt_id = (await _db.execute(
+                    select(GoogleAdsRawPerformance.video_id).where(
+                        GoogleAdsRawPerformance.ad_id == asset.ad_id,
+                        GoogleAdsRawPerformance.platform_connection_id == asset.platform_connection_id,
+                        GoogleAdsRawPerformance.video_id.isnot(None),
+                    ).limit(1)
+                )).scalar_one_or_none()
+            if not _yt_id:
+                logger.warning("backfill: no YouTube video ID for GOOGLE_ADS asset %s (ad_id=%s)", asset.id, asset.ad_id)
+                return False
+            cdn_thumb = None
+            try:
+                _, cdn_thumb = await google_ads_sync._download_thumbnail(_yt_id, org_id_str, asset.ad_id)
+            except Exception as _te:
+                logger.warning("backfill: Google Ads thumbnail failed for asset %s: %s", asset.id, _te)
+            _, served_url, frame_thumb = await google_ads_sync._download_video(
+                youtube_video_id=_yt_id, org_id=org_id_str, ad_id=asset.ad_id)
+            best_thumb = cdn_thumb or frame_thumb
+
+        elif asset.platform == "META":
+            from app.models.performance import MetaRawPerformance
+            from app.services.sync.meta_sync import meta_sync
+            async with _gsf()() as _db:
+                _raw = (await _db.execute(
+                    select(MetaRawPerformance).where(
+                        MetaRawPerformance.ad_id == asset.ad_id,
+                        MetaRawPerformance.platform_connection_id == asset.platform_connection_id,
+                    ).order_by(MetaRawPerformance.report_date.desc()).limit(1)
+                )).scalar_one_or_none()
+            if not _raw:
+                logger.warning("backfill: no raw row for META asset %s (ad_id=%s)", asset.id, asset.ad_id)
+                return False
+            _src_url = _raw.asset_url or _raw.media_asset_url
+            if _src_url:
+                _, served_url, _ = await meta_sync._download_asset(_src_url, org_id_str, asset.ad_id, "meta")
+            _thumb_src = _raw.thumbnail_url
+            if _thumb_src and is_raw_cdn_url(_thumb_src):
+                _, best_thumb, _ = await meta_sync._download_asset(_thumb_src, org_id_str, asset.ad_id, "thumb_meta")
+            elif _thumb_src:
+                best_thumb = _thumb_src
+
+        elif asset.platform == "TIKTOK":
+            from app.models.performance import TikTokRawPerformance
+            from app.services.sync.tiktok_sync import tiktok_sync
+            async with _gsf()() as _db:
+                _raw = (await _db.execute(
+                    select(TikTokRawPerformance).where(
+                        TikTokRawPerformance.ad_id == asset.ad_id,
+                        TikTokRawPerformance.platform_connection_id == asset.platform_connection_id,
+                    ).order_by(TikTokRawPerformance.report_date.desc()).limit(1)
+                )).scalar_one_or_none()
+            if not _raw:
+                logger.warning("backfill: no raw row for TIKTOK asset %s (ad_id=%s)", asset.id, asset.ad_id)
+                return False
+            if asset.asset_format == "VIDEO" and _raw.video_source_url:
+                _av, _, _, _ = await tiktok_sync._download_video_asset(_raw.video_source_url, org_id_str, asset.ad_id)
+                served_url = _av
+            elif asset.asset_format == "IMAGE" and _raw.creative_url:
+                _ai, _, _ = await tiktok_sync._download_image_asset(_raw.creative_url, org_id_str, asset.ad_id)
+                served_url = _ai
+            _thumb_src = _raw.thumbnail_url
+            if _thumb_src and is_raw_cdn_url(_thumb_src):
+                best_thumb = await tiktok_sync._download_tiktok_thumbnail(_thumb_src, org_id_str, asset.ad_id)
+            elif _thumb_src:
+                best_thumb = _thumb_src
+
+        else:
+            logger.debug("backfill: platform %s not supported for asset %s", asset.platform, asset.id)
+            return False
+
+    except Exception as exc:
+        logger.warning("backfill: download error for asset %s: %s", asset.id, exc, exc_info=True)
+        return False
+
+    if not served_url:
+        return False
+
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from app.models.creative import CreativeAsset as _CA
+    from app.models.scoring import CreativeScoreResult
+    from app.models.ai_inference import AIInferenceTracking
+    async with _gsf()() as session:
+        res = await session.execute(select(_CA).where(_CA.id == asset.id))
+        db_asset = res.scalar_one_or_none()
+        if not db_asset:
+            return False
+        db_asset.asset_url = served_url
+        if best_thumb and (not db_asset.thumbnail_url or is_raw_cdn_url(db_asset.thumbnail_url)):
+            db_asset.thumbnail_url = best_thumb
+        session.add(db_asset)
+        score_res = await session.execute(select(CreativeScoreResult).where(CreativeScoreResult.creative_asset_id == asset.id))
+        score_row = score_res.scalar_one_or_none()
+        if score_row and score_row.scoring_status != "UNSCORED":
+            score_row.scoring_status = "UNSCORED"
+            session.add(score_row)
+        await session.commit()
+        await session.execute(
+            pg_insert(AIInferenceTracking)
+            .values(id=_uuid.uuid4(), asset_id=asset.id, org_id=asset.organization_id,
+                    ai_inference_status="FAILED", created_at=_dt.utcnow(), updated_at=_dt.utcnow())
+            .on_conflict_do_update(index_elements=["asset_id"],
+                                   set_={"ai_inference_status": "FAILED", "updated_at": _dt.utcnow()})
+        )
+        await session.commit()
+    await run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id)
+    return True
+
+
+async def backfill_missing_downloads_for_connection(connection_id: str) -> tuple:
+    """Snapshot missing assets pre-sync and queue them for re-download.
+
+    Missing = VIDEO with no valid .mp4 asset_url, or any asset with a raw CDN thumbnail_url.
+    Excludes run_initial_sync (brand-new connections have no existing assets).
+    Returns (bg_job_id_str, asset_count). bg_job_id_str is None when nothing to do.
+    """
+    from sqlalchemy import select
+    from app.models.creative import CreativeAsset
+    from app.models.platform import PlatformConnection
+    from app.services.sync.thumbnail_utils import is_raw_cdn_url
+    from app.services.sync.dv360_sync import _CookiesExpiredError
+    import uuid as _uuid
+
+    async with get_session_factory()() as db:
+        conn = (await db.execute(
+            select(PlatformConnection).where(PlatformConnection.id == _uuid.UUID(connection_id))
+        )).scalar_one_or_none()
+        if not conn:
+            return None, 0
+        assets_result = await db.execute(
+            select(CreativeAsset).where(CreativeAsset.platform_connection_id == _uuid.UUID(connection_id))
+        )
+        all_assets = assets_result.scalars().all()
+
+    missing = [
+        a for a in all_assets
+        if (a.asset_format == "VIDEO" and (not a.asset_url or not a.asset_url.endswith(".mp4")))
+        or is_raw_cdn_url(a.thumbnail_url)
+    ]
+
+    if not missing:
+        logger.info("backfill: connection %s — no missing assets", connection_id)
+        return None, 0
+
+    bg_job_id = await create_background_job(
+        job_type="download",
+        org_id=conn.organization_id,
+        platform_connection_id=conn.id,
+        metadata={"asset_count": len(missing), "source": "pre_sync_backfill"},
+        initial_status="RUNNING",
+        progress_total=len(missing),
+    )
+    logger.info("backfill: connection %s — queuing %d assets (job %s)", connection_id, len(missing), bg_job_id)
+
+    async def _run():
+        downloaded = []
+        for i, asset in enumerate(missing):
+            try:
+                ok = await _download_asset_for_backfill(asset)
+                if ok:
+                    downloaded.append({"asset_id": str(asset.id), "ad_id": asset.ad_id})
+            except _CookiesExpiredError:
+                logger.warning("backfill: cookies expired on asset %s — aborting", asset.id)
+                await update_background_job(bg_job_id, status="FAILED", progress_current=i,
+                    error={"type": "CookiesExpiredError", "message": "YouTube cookies expired", "traceback": ""})
+                return
+            except Exception as exc:
+                logger.warning("backfill: asset %s failed: %s", asset.id, exc)
+            await update_background_job(bg_job_id, progress_current=i + 1)
+        await update_background_job(bg_job_id, status="COMPLETE", progress_current=len(missing),
+            output={"downloaded": downloaded})
+
+    asyncio.create_task(_run())
+    return str(bg_job_id), len(missing)
