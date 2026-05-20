@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Download Performance & Tech Debt
 status: completed
-stopped_at: context exhaustion at 76% (2026-05-20)
-last_updated: "2026-05-20T13:18:50.378Z"
-last_activity: 2026-05-19
+stopped_at: download-backfill-presync complete (2026-05-20)
+last_updated: "2026-05-20T15:30:00.000Z"
+last_activity: 2026-05-20
 progress:
   total_phases: 3
   completed_phases: 2
@@ -88,8 +88,8 @@ Items carried to v1.6 or backlog:
 
 ## Session Continuity
 
-Last session: 2026-05-20T13:18:50.371Z
-Stopped at: context exhaustion at 76% (2026-05-20)
+Last session: 2026-05-20T15:30:00.000Z
+Stopped at: download-backfill-presync complete (ef36f87) — all 5 tasks implemented and pushed
 Resume file: None
 
 ## Quick Tasks Completed
@@ -97,6 +97,7 @@ Resume file: None
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 20260518-fix-httpx-proxy-kwarg | Fix httpx proxy kwarg in super_admin.py:370 | 2026-05-18 | 734b2d7 | [20260518-fix-httpx-proxy-kwarg](./quick/20260518-fix-httpx-proxy-kwarg/) |
+| download-backfill-presync | Pre-sync backfill for all platforms (5 tasks) | 2026-05-20 | ef36f87 | — |
 
 ## Operator Next Steps
 
