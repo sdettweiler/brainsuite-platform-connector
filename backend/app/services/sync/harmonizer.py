@@ -160,6 +160,7 @@ class HarmonizationService:
                     asset_url=raw.asset_url,
                     creative_id=raw.creative_id,
                     placement=raw.placement,
+                    video_duration=raw.video_length_sec,
                     first_seen_at=report_date,
                     is_creator_content=bool(raw.creator_ad_permission_type) if raw.creator_ad_permission_type else None,
                     content_source="CREATOR" if raw.creator_ad_permission_type else None,
