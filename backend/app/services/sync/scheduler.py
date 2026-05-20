@@ -290,8 +290,9 @@ async def run_daily_sync(connection_id: str, existing_bg_job_id=None) -> None:
                         },
                     )
                 new_asset_ids = {aid for aid, _ in new_assets}
-                for aid, oid in new_assets:
-                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                if connection.platform not in ("GOOGLE_ADS", "DV360"):
+                    for aid, oid in new_assets:
+                        asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
                 # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
                 try:
@@ -436,8 +437,6 @@ async def run_daily_sync(connection_id: str, existing_bg_job_id=None) -> None:
                         },
                     )
                 new_asset_ids = {aid for aid, _ in new_assets}
-                for aid, oid in new_assets:
-                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
                 # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
                 try:
@@ -539,6 +538,8 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict, exis
                 progress_current=len(asset_queue),
                 output=output,
             )
+        from app.services.ai_autofill import backfill_failed_autofill_for_connection as _bfac
+        asyncio.create_task(_bfac(connection.id, connection.organization_id))
 
     except _CookiesExpiredError:
         async with get_session_factory()() as fresh_db:
@@ -1068,8 +1069,9 @@ async def run_full_resync(connection_id: str, existing_bg_job_id=None) -> None:
                         },
                     )
                 new_asset_ids = {aid for aid, _ in new_assets}
-                for aid, oid in new_assets:
-                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                if connection.platform not in ("GOOGLE_ADS", "DV360"):
+                    for aid, oid in new_assets:
+                        asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
                 # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
                 try:
@@ -1222,8 +1224,6 @@ async def run_full_resync(connection_id: str, existing_bg_job_id=None) -> None:
                         },
                     )
                 new_asset_ids = {aid for aid, _ in new_assets}
-                for aid, oid in new_assets:
-                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
                 # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
                 try:
@@ -1435,8 +1435,9 @@ async def run_initial_sync(connection_id: str, existing_bg_job_id=None) -> None:
                         },
                     )
                 new_asset_ids = {aid for aid, _ in new_assets}
-                for aid, oid in new_assets:
-                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                if connection.platform not in ("GOOGLE_ADS", "DV360"):
+                    for aid, oid in new_assets:
+                        asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
                 # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
                 try:
@@ -1574,8 +1575,6 @@ async def run_initial_sync(connection_id: str, existing_bg_job_id=None) -> None:
                         },
                     )
                 new_asset_ids = {aid for aid, _ in new_assets}
-                for aid, oid in new_assets:
-                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
                 # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
                 try:
@@ -1768,8 +1767,9 @@ async def run_historical_sync(connection_id: str, existing_bg_job_id=None) -> No
                         },
                     )
                 new_asset_ids = {aid for aid, _ in new_assets}
-                for aid, oid in new_assets:
-                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
+                if connection.platform not in ("GOOGLE_ADS", "DV360"):
+                    for aid, oid in new_assets:
+                        asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(connection.id, connection.organization_id, new_asset_ids))
                 # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
                 try:
@@ -1899,8 +1899,6 @@ async def run_historical_sync(connection_id: str, existing_bg_job_id=None) -> No
                         },
                     )
                 new_asset_ids = {aid for aid, _ in new_assets}
-                for aid, oid in new_assets:
-                    asyncio.create_task(run_autofill_for_asset(asset_id=aid, org_id=oid))
                 asyncio.create_task(backfill_failed_autofill_for_connection(conn.id, conn.organization_id, new_asset_ids))
                 # Phase 23 (D-09): trigger duration backfill if NULL-duration VIDEO assets exist
                 try:
