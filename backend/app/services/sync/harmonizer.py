@@ -24,6 +24,16 @@ from app.services.scoring_endpoint_type import get_endpoint_type, ScoringEndpoin
 
 logger = logging.getLogger(__name__)
 
+
+def _normalize_asset_format(fmt: Optional[str]) -> str:
+    f = (fmt or "IMAGE").upper()
+    if "VIDEO" in f:
+        return "VIDEO"
+    if "CAROUSEL" in f or "COLLECTION" in f:
+        return "CAROUSEL"
+    return "IMAGE"
+
+
 HARMONIZED_UPDATE_COLS = [
     "spend", "impressions", "reach", "frequency",
     "cpm", "cpp", "clicks", "cpc", "ctr",
@@ -372,6 +382,7 @@ class HarmonizationService:
                     asset_format=raw.ad_format,
                     thumbnail_url=raw.thumbnail_url,
                     asset_url=raw.asset_url or raw.creative_url,
+                    creative_id=str(raw.ad_id),
                     first_seen_at=raw.report_date,
                     is_creator_content=raw.is_spark_ad if raw.is_spark_ad is not None else None,
                     content_source="SPARK" if raw.is_spark_ad else None,
@@ -701,7 +712,9 @@ class HarmonizationService:
                         thumbnail_url=row.thumbnail_url,
                         asset_url=row.asset_url,
                         video_duration=row.video_duration_seconds,
-                        asset_format=row.asset_format or ("VIDEO" if row.youtube_ad_video_id else "DISPLAY"),
+                        asset_format=row.asset_format or ("VIDEO" if row.youtube_ad_video_id else "IMAGE"),
+                        width_px=row.width_px,
+                        height_px=row.height_px,
                         first_seen_at=row.report_date,
                         _new_asset_ids=_new_asset_ids,
                     )
@@ -741,7 +754,7 @@ class HarmonizationService:
                         "ad_set_name": row.line_item_name,
                         "ad_id": row.ad_id,
                         "ad_name": row.ad_name or row.creative_name,
-                        "asset_format": row.asset_format or ("VIDEO" if row.youtube_ad_video_id else "DISPLAY"),
+                        "asset_format": row.asset_format or ("VIDEO" if row.youtube_ad_video_id else "IMAGE"),
                         "publisher_platform": publisher_platform,
                         "platform_position": platform_position,
                         "org_currency": org_currency,
@@ -886,12 +899,14 @@ class HarmonizationService:
                 ad_set_id=kwargs.get("ad_set_id"),
                 ad_set_name=kwargs.get("ad_set_name"),
                 ad_account_id=kwargs.get("ad_account_id"),
-                asset_format=(kwargs.get("asset_format") or "IMAGE").upper(),
+                asset_format=_normalize_asset_format(kwargs.get("asset_format")),
                 thumbnail_url=kwargs.get("thumbnail_url"),
                 asset_url=kwargs.get("asset_url"),
                 creative_id=kwargs.get("creative_id"),
                 placement=kwargs.get("placement"),
                 video_duration=kwargs.get("video_duration"),
+                width_px=kwargs.get("width_px"),
+                height_px=kwargs.get("height_px"),
                 first_seen_at=first_seen,
                 last_seen_at=first_seen,
                 is_creator_content=kwargs.get("is_creator_content"),
@@ -901,7 +916,7 @@ class HarmonizationService:
             await db.flush()
 
             # Queue VIDEO and IMAGE assets for BrainSuite scoring
-            asset_fmt = (kwargs.get("asset_format") or "IMAGE").upper()
+            asset_fmt = _normalize_asset_format(kwargs.get("asset_format"))
             endpoint_type = get_endpoint_type(connection.platform, asset_fmt)
 
             if asset_fmt in ("VIDEO", "IMAGE"):
@@ -940,7 +955,19 @@ class HarmonizationService:
             if kwargs.get("creative_id") and not asset.creative_id:
                 asset.creative_id = kwargs.get("creative_id")
             if kwargs.get("asset_format") and not asset.asset_format:
-                asset.asset_format = kwargs.get("asset_format")
+                asset.asset_format = _normalize_asset_format(kwargs.get("asset_format"))
+            if kwargs.get("ad_name") and not asset.ad_name:
+                asset.ad_name = kwargs.get("ad_name")
+            if kwargs.get("campaign_objective") and not asset.campaign_objective:
+                asset.campaign_objective = kwargs.get("campaign_objective")
+            if kwargs.get("ad_set_id") and not asset.ad_set_id:
+                asset.ad_set_id = kwargs.get("ad_set_id")
+            if kwargs.get("ad_set_name") and not asset.ad_set_name:
+                asset.ad_set_name = kwargs.get("ad_set_name")
+            if kwargs.get("width_px") and not asset.width_px:
+                asset.width_px = kwargs.get("width_px")
+            if kwargs.get("height_px") and not asset.height_px:
+                asset.height_px = kwargs.get("height_px")
             if kwargs.get("is_creator_content") is not None and asset.is_creator_content is None:
                 asset.is_creator_content = kwargs.get("is_creator_content")
             if kwargs.get("content_source") and not asset.content_source:

@@ -446,6 +446,8 @@ class Dv360RawPerformance(Base):
     video_url: Mapped[str] = mapped_column(Text, nullable=True)
     video_duration_seconds: Mapped[float] = mapped_column(Float, nullable=True)
     asset_format: Mapped[str] = mapped_column(String(50), nullable=True)
+    width_px: Mapped[int] = mapped_column(Integer, nullable=True)
+    height_px: Mapped[int] = mapped_column(Integer, nullable=True)
 
     currency: Mapped[str] = mapped_column(String(3), nullable=True)
     spend: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=True)

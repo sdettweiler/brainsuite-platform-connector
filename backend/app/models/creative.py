@@ -49,6 +49,8 @@ class CreativeAsset(Base):
     thumbnail_url: Mapped[str] = mapped_column(Text, nullable=True)
     asset_url: Mapped[str] = mapped_column(Text, nullable=True)
     video_duration: Mapped[float] = mapped_column(Float, nullable=True)
+    width_px: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    height_px: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     placement: Mapped[str] = mapped_column(String(255), nullable=True)
 
     # Platform-specific extra metadata

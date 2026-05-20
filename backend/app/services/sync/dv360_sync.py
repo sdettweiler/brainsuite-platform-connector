@@ -551,12 +551,9 @@ class DV360SyncService:
                     creative_type = cr.get("creativeType", "")
                     hosting_source = cr.get("hostingSource", "")
 
-                    asset_format = ""
-                    if dims:
-                        w = dims.get("widthPixels", "")
-                        h = dims.get("heightPixels", "")
-                        if w and h:
-                            asset_format = f"{w}x{h}"
+                    width_px = dims.get("widthPixels") if dims else None
+                    height_px = dims.get("heightPixels") if dims else None
+                    asset_format = "VIDEO" if "VIDEO" in creative_type.upper() else "DISPLAY"
 
                     creatives[str(cr_id)] = {
                         "name": cr.get("displayName", ""),
@@ -564,6 +561,8 @@ class DV360SyncService:
                         "hosting_source": hosting_source,
                         "thumbnail_url": thumbnail,
                         "asset_format": asset_format,
+                        "width_px": width_px,
+                        "height_px": height_px,
                         "landing_url": landing_url,
                     }
 
@@ -1707,6 +1706,8 @@ class DV360SyncService:
                 "video_url": video_url,
                 "video_duration_seconds": video_duration,
                 "asset_format": asset_format,
+                "width_px": None,
+                "height_px": None,
                 "currency": r.get("Advertiser Currency") or connection.currency,
                 "spend": spend,
                 "impressions": impressions,
@@ -1840,6 +1841,8 @@ class DV360SyncService:
                     "video_url": stmt.excluded.video_url,
                     "video_duration_seconds": stmt.excluded.video_duration_seconds,
                     "asset_format": stmt.excluded.asset_format,
+                    "width_px": stmt.excluded.width_px,
+                    "height_px": stmt.excluded.height_px,
                     "spend": stmt.excluded.spend,
                     "impressions": stmt.excluded.impressions,
                     "clicks": stmt.excluded.clicks,
