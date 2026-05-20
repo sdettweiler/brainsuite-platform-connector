@@ -1024,8 +1024,7 @@ class TikTokSyncService:
                 if images:
                     return images[0].get("image_url")
         except httpx.HTTPStatusError as e:
-            level = logger.debug if e.response.status_code == 404 else logger.warning
-            level("TikTok /file/image/ad/ %s for advertiser %s: %s", e.response.status_code, advertiser_id, e)
+            logger.warning("TikTok /file/image/ad/ http_%s advertiser=%s image_ids=%s body=%s", e.response.status_code, advertiser_id, image_ids, e.response.text[:300])
         except httpx.RequestError as e:
             logger.warning("Failed to fetch TikTok cover image URL: %s", e)
         return None
@@ -1061,8 +1060,7 @@ class TikTokSyncService:
                         logger.info("TikTok /file/video/ad/info/ poster_url found for video_id=%s", video_ids[0])
                     return poster
         except httpx.HTTPStatusError as e:
-            level = logger.debug if e.response.status_code == 404 else logger.warning
-            level("TikTok /file/video/ad/info/ %s for advertiser %s: %s", e.response.status_code, advertiser_id, e)
+            logger.warning("TikTok /file/video/ad/info/ http_%s advertiser=%s video_ids=%s body=%s", e.response.status_code, advertiser_id, video_ids, e.response.text[:300])
         except httpx.RequestError as e:
             logger.warning("Failed to fetch TikTok video info: %s", e)
         return None
