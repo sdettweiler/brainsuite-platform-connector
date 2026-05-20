@@ -897,7 +897,7 @@ class TikTokSyncService:
 
         try:
             if video_id_val and not is_spark:
-                video_info = await self._fetch_video_download_url(access_token, advertiser_id, [str(video_id_val)])
+                video_info = await self._fetch_video_info(access_token, advertiser_id, [str(video_id_val)])
                 if video_info:
                     raw_video_url, raw_cover_url = video_info
                     if raw_video_url:
@@ -906,13 +906,6 @@ class TikTokSyncService:
                     if not thumbnail_url and raw_cover_url:
                         thumbnail_url = await self._download_tiktok_thumbnail(raw_cover_url, org_id, ad_id)
                 else:
-                    logger.info("TikTok ad %s: /file/video/ad/ returned no data for video_id %s — trying info endpoint", ad_id, video_id_val)
-                    # /file/video/ad/ 404s for organic post content not in the asset library.
-                    # Try /file/video/ad/info/ which is a metadata endpoint and may cover organic IDs.
-                    if not thumbnail_url:
-                        poster_url = await self._fetch_video_poster_url(access_token, advertiser_id, [str(video_id_val)])
-                        if poster_url:
-                            thumbnail_url = await self._download_tiktok_thumbnail(poster_url, org_id, ad_id)
                     if not thumbnail_url and tiktok_item_id:
                         oembed_thumb = await self._fetch_tiktok_oembed_thumbnail(tiktok_item_id)
                         if oembed_thumb:
@@ -931,11 +924,11 @@ class TikTokSyncService:
                         logger.info("TikTok ad %s: /file/image/ad/ returned no URL", ad_id)
 
             elif is_spark:
-                # Spark ad — no download, but try info endpoint then oEmbed for thumbnail.
+                # Spark ad — try info endpoint first, then oEmbed for thumbnail.
                 if not thumbnail_url and video_id_val:
-                    poster_url = await self._fetch_video_poster_url(access_token, advertiser_id, [str(video_id_val)])
-                    if poster_url:
-                        thumbnail_url = await self._download_tiktok_thumbnail(poster_url, org_id, ad_id)
+                    video_info = await self._fetch_video_info(access_token, advertiser_id, [str(video_id_val)])
+                    if video_info and video_info[1]:
+                        thumbnail_url = await self._download_tiktok_thumbnail(video_info[1], org_id, ad_id)
                 if not thumbnail_url and tiktok_item_id:
                     oembed_thumb = await self._fetch_tiktok_oembed_thumbnail(tiktok_item_id)
                     if oembed_thumb:
@@ -1029,15 +1022,16 @@ class TikTokSyncService:
             logger.warning("Failed to fetch TikTok cover image URL: %s", e)
         return None
 
-    async def _fetch_video_poster_url(
+    async def _fetch_video_info(
         self,
         access_token: str,
         advertiser_id: str,
         video_ids: List[str],
-    ) -> Optional[str]:
-        """Fetch poster_url (thumbnail) for a video via /file/video/ad/info/.
-        This metadata endpoint may work for organic/Spark video IDs that the download
-        endpoint (/file/video/ad/) rejects with 404."""
+    ) -> Optional[tuple]:
+        """Fetch video download URL and thumbnail via GET /file/video/ad/info/.
+        Returns (video_url, cover_url) or None. Single call covers both needs.
+        TikTok response fields: preview_url (video), video_cover_url or poster_url (thumbnail).
+        """
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
@@ -1050,60 +1044,23 @@ class TikTokSyncService:
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                if data.get("code") != 0:
-                    logger.debug("TikTok /file/video/ad/info/ error: %s", data.get("message"))
-                    return None
-                videos = data.get("data", {}).get("list", [])
-                if videos:
-                    poster = videos[0].get("poster_url")
-                    if poster:
-                        logger.info("TikTok /file/video/ad/info/ poster_url found for video_id=%s", video_ids[0])
-                    return poster
-        except httpx.HTTPStatusError as e:
-            logger.warning("TikTok /file/video/ad/info/ http_%s advertiser=%s video_ids=%s body=%s", e.response.status_code, advertiser_id, video_ids, e.response.text[:300])
-        except httpx.RequestError as e:
-            logger.warning("Failed to fetch TikTok video info: %s", e)
-        return None
-
-    async def _fetch_video_download_url(
-        self,
-        access_token: str,
-        advertiser_id: str,
-        video_ids: List[str],
-    ) -> Optional[tuple]:
-        """Fetch the video download URL and thumbnail (poster_url) via /file/video/get/.
-        Returns (video_url, cover_url) tuple or None if unavailable (non-fatal).
-        Decision D-01: Use TikTok API endpoint, not yt-dlp.
-        Uses filtering parameter format as required by the Video Library endpoint.
-        """
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(
-                    f"{TIKTOK_API_BASE}/file/video/get/",
-                    params={
-                        "advertiser_id": advertiser_id,
-                        "filtering": json.dumps({"video_ids": [str(vid) for vid in video_ids]}),
-                        "page_size": len(video_ids),
-                    },
-                    headers={"Access-Token": access_token},
-                )
-                resp.raise_for_status()
-                data = resp.json()
                 code = data.get("code")
                 if code != 0:
-                    logger.warning("TikTok /file/video/get/ api_code=%s msg=%s video_ids=%s", code, data.get("message"), video_ids)
+                    logger.warning("TikTok /file/video/ad/info/ api_code=%s msg=%s video_ids=%s", code, data.get("message"), video_ids)
                     return None
                 videos = data.get("data", {}).get("list", [])
                 if not videos:
-                    logger.warning("TikTok /file/video/get/ returned empty list for video_ids=%s advertiser=%s", video_ids, advertiser_id)
+                    logger.warning("TikTok /file/video/ad/info/ empty list for video_ids=%s advertiser=%s", video_ids, advertiser_id)
                     return None
                 v = videos[0]
-                # preview_url = video download URL; poster_url = thumbnail
-                return v.get("preview_url") or v.get("video_url"), v.get("poster_url") or v.get("video_cover_url")
+                video_url = v.get("preview_url") or v.get("video_url")
+                cover_url = v.get("video_cover_url") or v.get("poster_url")
+                logger.info("TikTok /file/video/ad/info/ ok video_id=%s video_url=%s cover_url=%s", video_ids[0], bool(video_url), bool(cover_url))
+                return video_url, cover_url
         except httpx.HTTPStatusError as e:
-            logger.warning("TikTok /file/video/get/ http_%s for advertiser=%s video_ids=%s body=%s", e.response.status_code, advertiser_id, video_ids, e.response.text[:200])
+            logger.warning("TikTok /file/video/ad/info/ http_%s advertiser=%s video_ids=%s body=%s", e.response.status_code, advertiser_id, video_ids, e.response.text[:300])
         except httpx.RequestError as e:
-            logger.warning("Failed to fetch TikTok video URL for advertiser %s: %s", advertiser_id, e)
+            logger.warning("TikTok /file/video/ad/info/ request error: %s", e)
         return None
 
     async def _download_video_asset(
