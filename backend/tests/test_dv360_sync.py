@@ -265,26 +265,17 @@ async def test_download_video_with_proxy():
 
     assert len(captured_opts) >= 1, "No YoutubeDL instantiations captured"
 
-    # At least one download call must have proxy set (first download attempt uses proxy when i > 0)
-    # Note: PO-first attempt (i=0) has NO proxy — subsequent attempts with cookies use proxy
-    # With no cookies and proxy enabled, attempts = [""] with PO-first = no proxy attempt first
-    # The second attempt (proxy+no-cookies) should have proxy set
-    download_opts = captured_opts[1:]  # skip extraction call (index 0)
-    if download_opts:
-        # PO-first: first download (index 1) has no proxy; subsequent ones do
-        # With attempts = [""] when no cookies, there's only one download attempt (PO-first = no proxy)
-        # But proxy IS injected for attempt index > 0 in the loop. With no cookies, only 1 attempt.
-        # The test just verifies socket_timeout is 10 (PERF-06) in all opts.
-        pass
+    # With no cookies and proxy enabled, attempts = ["", ""] → PO-first (no proxy) then proxy+no-cookies
+    download_opts = captured_opts[0:]  # all calls are download calls (no extraction phase)
 
     all_timeouts = [o.get("socket_timeout") for o in captured_opts]
-    assert all(t == 10 for t in all_timeouts if t is not None), (
-        f"All socket_timeout values must be 10 (PERF-06), got: {all_timeouts}"
+    assert all(t == 30 for t in all_timeouts if t is not None), (
+        f"All socket_timeout values must be 30, got: {all_timeouts}"
     )
 
-    # Verify proxy was NOT set on the extraction call (first ydl_opts in captured_opts)
+    # PO-first download attempt (index 0) must NOT have proxy (D-04)
     assert "proxy" not in captured_opts[0], (
-        f"Extraction ydl_opts must NOT have 'proxy' key (PERF-01), got opts[0]: {captured_opts[0]}"
+        f"PO-first download (opts[0]) must NOT have 'proxy' key (D-04), got: {captured_opts[0]}"
     )
 
 
@@ -295,13 +286,12 @@ async def test_download_video_with_proxy():
 @pytest.mark.asyncio
 async def test_retry_order_cookieless_first():
     """PROXY-04 / D-04: With proxy_enabled=True, retry sequence is:
-    1. extract (no proxy)
-    2. download #1 — no proxy, no cookies (PO-first)
-    3. download #2 — proxy, no cookies
-    4. download #3 — proxy, primary cookies
-    5. download #4 — proxy, backup cookies
+    1. download #1 — no proxy, no cookies (PO-first)
+    2. download #2 — proxy, primary cookies
+    3. download #3 — proxy, backup cookies
 
-    We force each download attempt to raise so the retry advances through the full sequence.
+    attempts = ["", primary, backup] (PO-first prepended when proxy enabled)
+    We force every download to raise so the retry advances through the full sequence.
     """
     from app.core.security import encrypt_token
 
@@ -309,29 +299,14 @@ async def test_retry_order_cookieless_first():
     svc = _make_sync_service()
 
     captured_opts: list = []
-    call_count = [0]
 
     def _raising_factory(opts):
-        """Capture opts; extraction succeeds, every download raises."""
+        """Capture opts; every download call raises to advance retry."""
         captured_opts.append(dict(opts))
         ctx = MagicMock()
         ctx.__enter__ = MagicMock(return_value=ctx)
         ctx.__exit__ = MagicMock(return_value=False)
-        call_count[0] += 1
-        if call_count[0] == 1:
-            # First call = extraction — return info_dict
-            ctx.extract_info = MagicMock(return_value={
-                "id": "test_video_id",
-                "formats": [{"url": "http://example.com/video.mp4", "ext": "mp4"}],
-                "webpage_url": "https://www.youtube.com/watch?v=test_video_id",
-            })
-            ctx.process_ie_result = MagicMock(side_effect=Exception("stop"))
-            ctx.download = MagicMock(side_effect=Exception("stop"))
-        else:
-            # Subsequent calls = download attempts — always raise to advance retry
-            ctx.extract_info = MagicMock(side_effect=Exception("should not be called again"))
-            ctx.process_ie_result = MagicMock(side_effect=Exception("download failed"))
-            ctx.download = MagicMock(side_effect=Exception("download failed"))
+        ctx.download = MagicMock(side_effect=Exception("download failed"))
         return ctx
 
     primary_cookie = "primary_cookie_data"
@@ -349,41 +324,33 @@ async def test_retry_order_cookieless_first():
                     except Exception:
                         pass
 
-    # We expect 4 YoutubeDL instantiations:
-    #   0: extraction (no proxy)
-    #   1: download attempt 1 — PO-first (no proxy, no cookies)
-    #   2: download attempt 2 — proxy, no cookies
-    #   3: download attempt 3 — proxy, primary cookies
-    #   4: download attempt 4 — proxy, backup cookies
-    assert len(captured_opts) >= 2, f"Expected extraction + at least one download call, got {len(captured_opts)}"
+    # With proxy + 2 cookies: attempts = ["", primary, backup] → 3 download calls
+    assert len(captured_opts) >= 1, f"Expected at least one download call, got {len(captured_opts)}"
 
-    # Extraction call must NOT have proxy
+    # index 0 = PO-first download: no proxy, no cookiefile
     assert "proxy" not in captured_opts[0], (
-        f"Extraction call (opts[0]) must not have 'proxy' key (PERF-01), got: {captured_opts[0]}"
+        f"PO-first download (opts[0]) must not have 'proxy' key (D-04), got: {captured_opts[0]}"
+    )
+    assert "cookiefile" not in captured_opts[0], (
+        f"PO-first download (opts[0]) must not have 'cookiefile' key (D-04), got: {captured_opts[0]}"
     )
 
-    # PO-first: first download call (opts[1]) must have no proxy and no cookiefile
+    # index 1 = proxy + primary cookies
     if len(captured_opts) > 1:
-        assert "proxy" not in captured_opts[1], (
-            f"PO-first download (opts[1]) must not have 'proxy' key (D-04), got: {captured_opts[1]}"
+        assert "proxy" in captured_opts[1], (
+            f"Download attempt 2 (opts[1]) must have 'proxy' key, got: {captured_opts[1]}"
         )
-        assert "cookiefile" not in captured_opts[1], (
-            f"PO-first download (opts[1]) must not have 'cookiefile' key (D-04), got: {captured_opts[1]}"
+        assert "cookiefile" in captured_opts[1], (
+            f"Download attempt 2 (opts[1]) must have 'cookiefile' key (primary cookie), got: {captured_opts[1]}"
         )
 
-    # Third call (opts[2]) must have proxy set (proxy+no-cookies attempt)
+    # index 2 = proxy + backup cookies
     if len(captured_opts) > 2:
         assert "proxy" in captured_opts[2], (
             f"Download attempt 3 (opts[2]) must have 'proxy' key, got: {captured_opts[2]}"
         )
-
-    # Fourth call (opts[3]) must have proxy AND cookiefile (proxy+primary-cookies)
-    if len(captured_opts) > 3:
-        assert "proxy" in captured_opts[3], (
-            f"Download attempt 4 (opts[3]) must have 'proxy' key, got: {captured_opts[3]}"
-        )
-        assert "cookiefile" in captured_opts[3], (
-            f"Download attempt 4 (opts[3]) must have 'cookiefile' key, got: {captured_opts[3]}"
+        assert "cookiefile" in captured_opts[2], (
+            f"Download attempt 3 (opts[2]) must have 'cookiefile' key (backup cookie), got: {captured_opts[2]}"
         )
 
 
@@ -417,19 +384,12 @@ async def test_credential_redaction():
         """Simulate yt-dlp logging the raw proxy URL through the custom logger."""
         call_count[0] += 1
         inner_logger = opts.get("logger")
-        if inner_logger and call_count[0] > 1:
-            # Only the download phase has a logger; leak credentials via warning
+        if inner_logger:
+            # All calls are download calls and have a logger; leak credentials via warning
             inner_logger.warning(f"connecting via {proxy_url}")
         ctx = MagicMock()
         ctx.__enter__ = MagicMock(return_value=ctx)
         ctx.__exit__ = MagicMock(return_value=False)
-        # extraction call returns info_dict; download call returns None (success)
-        ctx.extract_info = MagicMock(return_value={
-            "id": "test_video_id",
-            "formats": [{"url": "http://example.com/video.mp4", "ext": "mp4"}],
-            "webpage_url": "https://www.youtube.com/watch?v=test_video_id",
-        })
-        ctx.process_ie_result = MagicMock(return_value=None)
         ctx.download = MagicMock(return_value=0)
         return ctx
 
@@ -462,42 +422,6 @@ async def test_credential_redaction():
     assert "[PROXY:geo.iproyal.com]" in log_output, (
         f"Expected redacted proxy placeholder '[PROXY:geo.iproyal.com]' in log output, "
         f"but not found. Log snippet: {log_output[:300]}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# PERF-01: extraction runs without proxy
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_extraction_runs_without_proxy():
-    """PERF-01: The extraction YoutubeDL call must NOT have a 'proxy' key in ydl_opts.
-
-    Even when proxy_enabled=True, extraction runs direct to avoid proxy overhead on
-    the metadata fetch. Only the download phase injects the proxy URL.
-    """
-    proxy_url = "http://testuser:s3cr3t@geo.iproyal.com:12321"
-    svc = _make_sync_service()
-
-    captured_opts: list = []
-    ydl_factory = _make_ydl_capture(captured_opts)
-
-    with patch("app.services.sync.dv360_sync.get_proxy_config", new=AsyncMock(return_value=(True, proxy_url))):
-        with patch("app.services.sync.dv360_sync.DV360SyncService._get_cookies_from_db", new=AsyncMock(return_value=[])):
-            with patch("yt_dlp.YoutubeDL", side_effect=ydl_factory):
-                with patch("app.services.object_storage.get_object_storage") as mock_storage:
-                    mock_storage.return_value.file_exists.return_value = False
-                    try:
-                        await svc._download_video_asset("test_video_id", str(uuid.uuid4()), "test_ad_id")
-                    except Exception:
-                        pass
-
-    assert len(captured_opts) >= 1, "No YoutubeDL instantiations captured"
-
-    # First instantiation = extraction — must have NO 'proxy' key (PERF-01)
-    assert "proxy" not in captured_opts[0], (
-        f"Extraction ydl_opts (opts[0]) must NOT have 'proxy' key (PERF-01). "
-        f"Got: {captured_opts[0]}"
     )
 
 
@@ -588,8 +512,8 @@ async def test_batch_download_sleep_conditional():
 
 @pytest.mark.asyncio
 async def test_remote_components_present_in_both_phases():
-    """PERF-06 + remote_components: every YoutubeDL instantiation must have
-    socket_timeout=10 and remote_components='ejs:github'.
+    """remote_components + socket_timeout: every download YoutubeDL instantiation must have
+    socket_timeout=30 and remote_components=['ejs:github'].
     """
     svc = _make_sync_service()
     captured_opts: list = []
@@ -608,9 +532,9 @@ async def test_remote_components_present_in_both_phases():
     assert len(captured_opts) >= 1, "No YoutubeDL instantiations captured"
 
     for i, opts in enumerate(captured_opts):
-        assert opts.get("remote_components") == "ejs:github", (
-            f"ydl_opts[{i}] missing 'remote_components': 'ejs:github' — got: {opts.get('remote_components')!r}"
+        assert opts.get("remote_components") == ["ejs:github"], (
+            f"ydl_opts[{i}] missing remote_components=['ejs:github'] — got: {opts.get('remote_components')!r}"
         )
-        assert opts.get("socket_timeout") == 10, (
-            f"ydl_opts[{i}] socket_timeout must be 10 (PERF-06) — got: {opts.get('socket_timeout')!r}"
+        assert opts.get("socket_timeout") == 30, (
+            f"ydl_opts[{i}] socket_timeout must be 30 — got: {opts.get('socket_timeout')!r}"
         )

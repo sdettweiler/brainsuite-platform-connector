@@ -66,8 +66,6 @@ from app.services.sync.proxy_cache import get_proxy_config, get_concurrency_sema
 class _CookiesExpiredError(Exception):
     """Raised when yt-dlp reports YouTube cookies are no longer valid."""
 
-class _VideoUnavailableError(Exception):
-    """Raised when a YouTube video cannot be accessed (deleted, private, region-blocked)."""
 
 logger = logging.getLogger(__name__)
 
@@ -1249,47 +1247,14 @@ class DV360SyncService:
         tmpdir = tempfile.mkdtemp()
         tmp_base = os.path.join(tmpdir, "video")
 
-        async def _extract_info() -> Optional[dict]:
-            """Extract metadata only (no download) — runs without proxy (PERF-01, D-01).
+        async def _do_download(proxy: Optional[str], cookie_data: str) -> bool:
+            """Download video in a single yt-dlp session.
 
-            On failure, retries once with proxy as fallback (geo-restricted metadata).
-            Returns info_dict on success, None if both attempts fail.
+            Combines extraction and download in one call so cookies and proxy are
+            present for format selection. Returns True on success, raises
+            _CookiesExpiredError or Exception on failure.
             """
             import yt_dlp
-
-            ydl_opts: dict = {
-                "outtmpl": f"{tmp_base}.%(ext)s",
-                "quiet": True,
-                "socket_timeout": 10,
-                "remote_components": ["ejs:github"],
-                "ignore_no_formats_error": True,
-            }
-
-            def extract_sync(opts):
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    return ydl.extract_info(url, download=False)
-
-            try:
-                return await loop.run_in_executor(None, lambda: extract_sync(dict(ydl_opts)))
-            except Exception as e:
-                logger.warning("DV360 extraction (direct) failed for %s: %s", youtube_video_id, type(e).__name__)
-                if proxy_enabled and proxy_url:
-                    try:
-                        opts_with_proxy = dict(ydl_opts)
-                        opts_with_proxy["proxy"] = proxy_url
-                        return await loop.run_in_executor(None, lambda: extract_sync(opts_with_proxy))
-                    except Exception as e2:
-                        logger.warning("DV360 extraction (proxy fallback) failed for %s: %s", youtube_video_id, type(e2).__name__)
-                return None
-
-        async def _do_download(info_dict: dict, proxy: Optional[str], cookie_data: str) -> bool:
-            """Download from pre-extracted info_dict (PERF-01, D-02).
-
-            Uses process_ie_result() so info extraction is not repeated per attempt.
-            Returns True on success, raises _CookiesExpiredError or Exception on failure.
-            """
-            import yt_dlp
-            import copy
 
             _expired = [False]
 
@@ -1328,7 +1293,7 @@ class DV360SyncService:
                 # no_warnings intentionally omitted: yt-dlp's report_warning() returns early
                 # when no_warnings=True, suppressing the custom logger's warning() call even
                 # with a custom logger attached. We need warning() to detect "no longer valid".
-                "socket_timeout": 10,
+                "socket_timeout": 30,
                 "ignore_no_formats_error": True,
                 "logger": _YDLLogger(),
                 "remote_components": ["ejs:github"],
@@ -1366,10 +1331,8 @@ class DV360SyncService:
                 ydl_opts["cookiefile"] = cookie_file.name
 
             def download_sync():
-                # Deep-copy info_dict so process_ie_result mutations don't bleed across attempts
-                info_copy = copy.deepcopy(info_dict)
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.process_ie_result(info_copy, download=True)
+                    ydl.download([url])
 
             try:
                 await loop.run_in_executor(None, download_sync)
@@ -1389,12 +1352,6 @@ class DV360SyncService:
                     os.remove(cookie_file.name)
 
         _dl_tag = youtube_video_id[:8]
-
-        # Extract info once — reused across all download attempts (PERF-01, D-02)
-        info_dict = await _extract_info()
-        if not info_dict:
-            logger.warning("[DL:%s] Video not found or unavailable (extraction failed) — skipping", _dl_tag)
-            raise _VideoUnavailableError(youtube_video_id)
 
         # Build download attempt list (D-04):
         # proxy off: [primary, backup] or [""] if no cookies (existing behavior preserved)
@@ -1432,7 +1389,7 @@ class DV360SyncService:
                         attempt_proxy = proxy_url if proxy_enabled else None
 
                     try:
-                        await _do_download(info_dict, proxy=attempt_proxy, cookie_data=cookie)
+                        await _do_download(proxy=attempt_proxy, cookie_data=cookie)
 
                         _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"}
                         matches = [
@@ -2016,7 +1973,6 @@ class DV360SyncService:
         _cookies_expired = [False]
         _succeeded_count = [0]
         _failed_count = [0]
-        _not_found_count = [0]
 
         async def _dl_video(yt_vid: str, related_ads: list) -> None:
             _interrupted = False
@@ -2044,14 +2000,8 @@ class DV360SyncService:
                     else:
                         _failed_count[0] += len(related_ads)
                         for _ad_id in related_ads:
-                            video_failures[_ad_id] = "video unavailable or deleted"
+                            video_failures[_ad_id] = "download failed — no output file produced"
                         logger.warning("[DL:%s] No file produced — skipping %d ad(s)", yt_vid[:8], len(related_ads))
-            except _VideoUnavailableError:
-                async with _dl_lock:
-                    _not_found_count[0] += len(related_ads)
-                    for _ad_id in related_ads:
-                        video_failures[_ad_id] = "video unavailable or deleted"
-                logger.info("[DL:%s] Video not found — skipping %d ad(s)", yt_vid[:8], len(related_ads))
             except _CookiesExpiredError:
                 async with _dl_lock:
                     _cookies_expired[0] = True
@@ -2064,7 +2014,7 @@ class DV360SyncService:
                 logger.warning("Video download failed for %s: %s: %s", yt_vid, type(e).__name__, e, exc_info=True)
             finally:
                 if not _interrupted and bg_job_id:
-                    await _ubj(bg_job_id, progress_current=_succeeded_count[0], output={"stats": {"succeeded": _succeeded_count[0], "failed": _failed_count[0], "not_found": _not_found_count[0]}})
+                    await _ubj(bg_job_id, progress_current=_succeeded_count[0], output={"stats": {"succeeded": _succeeded_count[0], "failed": _failed_count[0]}})
 
         await asyncio.gather(*[_dl_video(yt_vid, ads) for yt_vid, ads in _yt_vid_to_ads.items()])
         if _cookies_expired[0]:

@@ -849,8 +849,8 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict, existing_
             _dv360_stats = result.get("stats", {}) if result else {}
         except _CookiesExpiredError:
             raise
-        except Exception as asset_err:
-            failed = [{"asset_id": ad_id, "error": str(asset_err)} for ad_id in inner_queue]
+        except Exception:
+            raise
 
         if len(downloaded) == 0 and len(failed) > 0:
             raise Exception(
