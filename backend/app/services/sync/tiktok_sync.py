@@ -1012,7 +1012,7 @@ class TikTokSyncService:
                 data = resp.json()
                 code = data.get("code")
                 if code != 0:
-                    logger.warning("TikTok /file/image/ad/info/ api_code=%s msg=%s image_ids=%s", code, data.get("message"), image_ids)
+                    logger.debug("TikTok /file/image/ad/info/ api_code=%s msg=%s image_ids=%s", code, data.get("message"), image_ids)
                     return None
                 images = data.get("data", {}).get("list", [])
                 if not images:
