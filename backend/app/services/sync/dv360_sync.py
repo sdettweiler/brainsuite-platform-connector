@@ -1889,64 +1889,17 @@ class DV360SyncService:
 
         db_cookies = await self._get_cookies_from_db()
         can_download_video = len(db_cookies) > 0
-
         logger.info(
             f"  Downloading assets for {len(queue)} unique ads... "
             f"(cookies: {'available' if can_download_video else 'none'})"
         )
         if not can_download_video:
-            logger.warning("  No valid cookies found in DB or env — skipping authenticated video downloads, thumbnails only")
+            logger.warning("  No valid cookies found — attempting cookieless video downloads")
 
         from sqlalchemy import update as sa_update
 
-        thumb_results = {}
-        for ad_id, info in queue.items():
-            yt_vid = info.get("youtube_video_id", "")
-            thumb = info.get("thumbnail_url", "")
-
-            if yt_vid:
-                try:
-                    _, thumb_served = await self._download_youtube_thumbnail(
-                        yt_vid, org_id, ad_id
-                    )
-                    if thumb_served:
-                        thumb_results[ad_id] = thumb_served
-                except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
-                    logger.warning("Thumbnail download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
-            elif thumb and thumb.startswith("http"):
-                try:
-                    _, img_served = await self._download_image_asset(
-                        thumb, org_id, ad_id
-                    )
-                    if img_served:
-                        thumb_results[ad_id] = img_served
-                except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
-                    logger.warning("Image download failed for ad %s: %s: %s", ad_id, type(e).__name__, e, exc_info=True)
-
-        if thumb_results:
-            image_only_ids = {ad_id for ad_id, info in queue.items() if not info.get("youtube_video_id", "")}
-            for ad_id, served_url in thumb_results.items():
-                set_vals = {"thumbnail_url": served_url}
-                if ad_id in image_only_ids:
-                    set_vals["asset_url"] = served_url
-                stmt = (
-                    sa_update(Dv360RawPerformance)
-                    .where(
-                        Dv360RawPerformance.platform_connection_id == connection.id,
-                        Dv360RawPerformance.ad_id == ad_id,
-                    )
-                    .values(**set_vals)
-                )
-                await db.execute(stmt)
-            await db.commit()
-            logger.info(f"  Thumbnails committed: {len(thumb_results)} ads updated")
-
-        if not can_download_video:
-            logger.warning("  No valid cookies — attempting cookieless video downloads (may fail for restricted videos)")
-
-        # Pre-flight: abort immediately if cookies were already flagged expired by a concurrent job
+        # Pre-flight: abort if cookies already flagged expired
         try:
-            from app.models.system_config import SystemConfig as _SC_pre
             _pre_cfg = (await db.execute(text("SELECT youtube_cookies_runtime_expired FROM system_config LIMIT 1"))).first()
             if _pre_cfg and _pre_cfg[0]:
                 raise _CookiesExpiredError("YouTube cookies already flagged as expired — skipping video downloads")
@@ -1955,68 +1908,123 @@ class DV360SyncService:
         except Exception:
             pass
 
-        cdn_thumb_ad_ids = set(thumb_results.keys())
-        downloaded_videos = set()
-        video_results = {}
-        video_failures: dict = {}
-        import uuid as _uuid
-        from app.services.sync.job_tracker import get_job_status as _get_status, update_background_job as _ubj
-
-        # Group ads by yt_vid — each unique video downloaded once, results mapped to all ad_ids
+        # Group by YouTube video ID; separate image-only ads
         _yt_vid_to_ads: dict = {}
+        _image_only: dict = {}
         for _ad_id, _info in queue.items():
             _yt = _info.get("youtube_video_id", "")
             if _yt:
                 _yt_vid_to_ads.setdefault(_yt, []).append(_ad_id)
+            else:
+                _thumb = _info.get("thumbnail_url", "")
+                if _thumb and _thumb.startswith("http"):
+                    _image_only[_ad_id] = _thumb
+
+        import uuid as _uuid
+        from app.services.sync.job_tracker import get_job_status as _get_status, update_background_job as _ubj
 
         _dl_lock = asyncio.Lock()
         _cookies_expired = [False]
         _succeeded_count = [0]
         _failed_count = [0]
 
-        async def _dl_video(yt_vid: str, related_ads: list) -> None:
-            _interrupted = False
+        thumb_results: dict = {}   # ad_id -> served thumbnail URL
+        video_results: dict = {}   # ad_id -> {video_url, asset_url, video_duration_seconds}
+        video_failures: dict = {}  # ad_id -> error string
+
+        async def _dl_unit(yt_vid: str, ad_ids: list) -> None:
+            """Download thumbnail + video for one unique YouTube video ID, map results to all ads."""
             if bg_job_id:
                 _jid = bg_job_id if isinstance(bg_job_id, _uuid.UUID) else _uuid.UUID(str(bg_job_id))
                 if await _get_status(_jid) == "INTERRUPTED":
                     logger.info("DV360 download: job %s interrupted — skipping %s", _jid, yt_vid)
-                    _interrupted = True
                     return
+
+            # Thumbnail: pass yt_vid as storage key — one file per unique video, shared across ads
+            thumb_served = None
             try:
-                vid_duration, vid_served, frame_thumb = await self._download_video_asset(yt_vid, org_id, yt_vid, bg_job_id=bg_job_id)
+                _, thumb_served = await self._download_youtube_thumbnail(yt_vid, org_id, yt_vid)
+            except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+                logger.warning("Thumbnail failed for video %s: %s: %s", yt_vid, type(e).__name__, e)
+
+            # Video: semaphore-gated, also keyed by yt_vid
+            try:
+                vid_duration, vid_served, frame_thumb = await self._download_video_asset(
+                    yt_vid, org_id, yt_vid, bg_job_id=bg_job_id
+                )
+                effective_thumb = thumb_served or frame_thumb
                 async with _dl_lock:
                     if vid_served:
-                        _succeeded_count[0] += len(related_ads)
-                        downloaded_videos.add(yt_vid)
-                        for _ad_id in related_ads:
+                        _succeeded_count[0] += len(ad_ids)
+                        for _ad_id in ad_ids:
                             video_results[_ad_id] = {
                                 "video_url": vid_served,
                                 "asset_url": vid_served,
                                 "video_duration_seconds": vid_duration,
-                                "frame_thumb": frame_thumb,
                             }
-                            if frame_thumb and _ad_id not in thumb_results:
-                                thumb_results[_ad_id] = frame_thumb
+                            if effective_thumb:
+                                thumb_results[_ad_id] = effective_thumb
                     else:
-                        _failed_count[0] += len(related_ads)
-                        for _ad_id in related_ads:
+                        _failed_count[0] += len(ad_ids)
+                        for _ad_id in ad_ids:
                             video_failures[_ad_id] = "download failed — no output file produced"
-                        logger.warning("[DL:%s] No file produced — skipping %d ad(s)", yt_vid[:8], len(related_ads))
+                        logger.warning("[DL:%s] No file produced — skipping %d ad(s)", yt_vid[:8], len(ad_ids))
+                        if thumb_served:
+                            for _ad_id in ad_ids:
+                                thumb_results[_ad_id] = thumb_served
             except _CookiesExpiredError:
                 async with _dl_lock:
                     _cookies_expired[0] = True
-                    _failed_count[0] += len(related_ads)
+                    _failed_count[0] += len(ad_ids)
+                    if thumb_served:
+                        for _ad_id in ad_ids:
+                            thumb_results[_ad_id] = thumb_served
             except Exception as e:
                 async with _dl_lock:
-                    _failed_count[0] += len(related_ads)
-                    for _ad_id in related_ads:
+                    _failed_count[0] += len(ad_ids)
+                    for _ad_id in ad_ids:
                         video_failures[_ad_id] = f"{type(e).__name__}: {e}"
+                    if thumb_served:
+                        for _ad_id in ad_ids:
+                            thumb_results[_ad_id] = thumb_served
                 logger.warning("Video download failed for %s: %s: %s", yt_vid, type(e).__name__, e, exc_info=True)
             finally:
-                if not _interrupted and bg_job_id:
+                if bg_job_id:
                     await _ubj(bg_job_id, progress_current=_succeeded_count[0], output={"stats": {"succeeded": _succeeded_count[0], "failed": _failed_count[0]}})
 
-        await asyncio.gather(*[_dl_video(yt_vid, ads) for yt_vid, ads in _yt_vid_to_ads.items()])
+        async def _dl_image(ad_id: str, thumb_url: str) -> None:
+            """Download image-only ad thumbnail (no YouTube video)."""
+            try:
+                _, img_served = await self._download_image_asset(thumb_url, org_id, ad_id)
+                if img_served:
+                    async with _dl_lock:
+                        thumb_results[ad_id] = img_served
+            except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
+                logger.warning("Image download failed for ad %s: %s: %s", ad_id, type(e).__name__, e)
+
+        # Launch all download units (thumbnail+video per unique yt_vid) and image-only downloads concurrently
+        _tasks = [_dl_unit(yt_vid, ads) for yt_vid, ads in _yt_vid_to_ads.items()]
+        _tasks += [_dl_image(ad_id, thumb_url) for ad_id, thumb_url in _image_only.items()]
+        await asyncio.gather(*_tasks)
+
+        # Commit thumbnails before checking cookie expiry so they're preserved on partial failure
+        _image_only_ad_ids = set(_image_only.keys())
+        if thumb_results:
+            for ad_id, served_url in thumb_results.items():
+                set_vals: dict = {"thumbnail_url": served_url}
+                if ad_id in _image_only_ad_ids:
+                    set_vals["asset_url"] = served_url
+                await db.execute(
+                    sa_update(Dv360RawPerformance)
+                    .where(
+                        Dv360RawPerformance.platform_connection_id == connection.id,
+                        Dv360RawPerformance.ad_id == ad_id,
+                    )
+                    .values(**set_vals)
+                )
+            await db.commit()
+            logger.info(f"  Thumbnails committed: {len(thumb_results)} ads updated")
+
         if _cookies_expired[0]:
             raise _CookiesExpiredError("YouTube cookies expired during batch download")
 
@@ -2029,10 +2037,8 @@ class DV360SyncService:
                     set_vals["asset_url"] = r["asset_url"]
                 if r["video_duration_seconds"] is not None:
                     set_vals["video_duration_seconds"] = r["video_duration_seconds"]
-                if r.get("frame_thumb") and ad_id not in cdn_thumb_ad_ids:
-                    set_vals["thumbnail_url"] = r["frame_thumb"]
                 if set_vals:
-                    stmt = (
+                    await db.execute(
                         sa_update(Dv360RawPerformance)
                         .where(
                             Dv360RawPerformance.platform_connection_id == connection.id,
@@ -2040,19 +2046,14 @@ class DV360SyncService:
                         )
                         .values(**set_vals)
                     )
-                    await db.execute(stmt)
             await db.commit()
             logger.info(f"  Videos committed: {len(video_results)} ads updated")
 
-        logger.info(f"  Asset downloads complete: {len(downloaded_videos)} videos, {len(thumb_results)} thumbnails")
+        logger.info(f"  Asset downloads complete: {len(video_results)} videos, {len(thumb_results)} thumbnails")
 
-        # Propagate downloaded URLs to CreativeAsset and reset autofill tracking.
-        # - Video ads (has youtube_video_id): only a successful video download sets asset_url.
-        #   A failed video download leaves asset_url NULL — the thumbnail is never a fallback.
-        # - Image-only ads (no youtube_video_id): the downloaded image IS the asset, so it goes to asset_url too.
-        image_only_ad_ids = {ad_id for ad_id, info in queue.items() if not info.get("youtube_video_id", "")}
-        all_downloaded: dict[str, str] = {
-            **{ad_id: url for ad_id, url in thumb_results.items() if ad_id in image_only_ad_ids},
+        # Propagate to CreativeAsset and reset autofill tracking
+        all_downloaded: dict = {
+            **{ad_id: url for ad_id, url in thumb_results.items() if ad_id in _image_only_ad_ids},
             **{ad_id: r["asset_url"] for ad_id, r in video_results.items() if r.get("asset_url")},
         }
         if all_downloaded:
@@ -2112,8 +2113,6 @@ class DV360SyncService:
             await db.commit()
             logger.info(f"  CreativeAsset URLs propagated and autofill reset for {len(updated_ids)} assets")
 
-        # Surface real errors to the scheduler — don't silently succeed when all video downloads failed.
-        # Thumbnails and CreativeAsset URLs above are already committed, so partial results are preserved.
         if video_failures and not video_results:
             raise Exception(
                 f"{len(video_failures)} DV360 video download(s) failed: "
@@ -2126,7 +2125,11 @@ class DV360SyncService:
             + [{"asset_id": ad_id, "url": url} for ad_id, url in thumb_results.items() if ad_id not in video_results]
         )
         failed_list = [{"asset_id": ad_id, "error": err} for ad_id, err in video_failures.items()]
-        return {"downloaded": downloaded_list, "failed": failed_list, "stats": {"succeeded": _succeeded_count[0], "failed": _failed_count[0], "not_found": _not_found_count[0]}}
+        return {
+            "downloaded": downloaded_list,
+            "failed": failed_list,
+            "stats": {"succeeded": _succeeded_count[0], "failed": _failed_count[0]},
+        }
 
     async def _upsert_conversion_records(
         self,
