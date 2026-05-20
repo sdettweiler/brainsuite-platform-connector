@@ -1091,17 +1091,19 @@ class TikTokSyncService:
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                if data.get("code") != 0:
-                    logger.warning("TikTok /file/video/get/ error: %s", data.get("message"))
+                code = data.get("code")
+                if code != 0:
+                    logger.warning("TikTok /file/video/get/ api_code=%s msg=%s video_ids=%s", code, data.get("message"), video_ids)
                     return None
                 videos = data.get("data", {}).get("list", [])
-                if videos:
-                    v = videos[0]
-                    # preview_url = video download URL; poster_url = thumbnail
-                    return v.get("preview_url") or v.get("video_url"), v.get("poster_url") or v.get("video_cover_url")
+                if not videos:
+                    logger.warning("TikTok /file/video/get/ returned empty list for video_ids=%s advertiser=%s", video_ids, advertiser_id)
+                    return None
+                v = videos[0]
+                # preview_url = video download URL; poster_url = thumbnail
+                return v.get("preview_url") or v.get("video_url"), v.get("poster_url") or v.get("video_cover_url")
         except httpx.HTTPStatusError as e:
-            level = logger.debug if e.response.status_code == 404 else logger.warning
-            level("TikTok /file/video/get/ %s for advertiser %s: %s", e.response.status_code, advertiser_id, e)
+            logger.warning("TikTok /file/video/get/ http_%s for advertiser=%s video_ids=%s body=%s", e.response.status_code, advertiser_id, video_ids, e.response.text[:200])
         except httpx.RequestError as e:
             logger.warning("Failed to fetch TikTok video URL for advertiser %s: %s", advertiser_id, e)
         return None
