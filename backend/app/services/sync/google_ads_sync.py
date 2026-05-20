@@ -453,7 +453,7 @@ class GoogleAdsSyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
-        _dl_tag = youtube_video_id[:8]
+        _dl_tag = youtube_video_id
         winning_slot: int | None = None
         try:
             # Build attempt list (D-04, PERF-03):
@@ -774,7 +774,7 @@ class GoogleAdsSyncService:
                         _failed_count[0] += len(ad_ids)
                         for ad_id in ad_ids:
                             video_failures[ad_id] = "download failed — no output file produced"
-                        logger.warning("[DL:%s] yt-dlp finished but no output file — skipping %d ad(s)", yt_vid[:8], len(ad_ids))
+                        logger.warning("[DL:%s] yt-dlp finished but no output file — skipping %d ad(s)", yt_vid, len(ad_ids))
             except _CookiesExpiredError:
                 async with _dl_lock:
                     _cookies_expired[0] = True

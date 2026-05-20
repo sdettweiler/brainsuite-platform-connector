@@ -1351,7 +1351,7 @@ class DV360SyncService:
                 if cookie_file and os.path.exists(cookie_file.name):
                     os.remove(cookie_file.name)
 
-        _dl_tag = youtube_video_id[:8]
+        _dl_tag = youtube_video_id
 
         # Build download attempt list (D-04):
         # proxy off: [primary, backup] or [""] if no cookies (existing behavior preserved)
@@ -1968,7 +1968,7 @@ class DV360SyncService:
                         _failed_count[0] += len(ad_ids)
                         for _ad_id in ad_ids:
                             video_failures[_ad_id] = "download failed — no output file produced"
-                        logger.warning("[DL:%s] No file produced — skipping %d ad(s)", yt_vid[:8], len(ad_ids))
+                        logger.warning("[DL:%s] No file produced — skipping %d ad(s)", yt_vid, len(ad_ids))
                         if thumb_served:
                             for _ad_id in ad_ids:
                                 thumb_results[_ad_id] = thumb_served
