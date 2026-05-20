@@ -1090,16 +1090,21 @@ class TikTokSyncService:
         if obj_storage.file_exists(relative_path):
             return obj_storage.served_url(relative_path), None
 
+        logger.info("TikTok video download starting for ad %s: url_prefix=%s", ad_id, url[:80] if url else None)
         try:
-            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
+            logger.info("TikTok video download response for ad %s: status=%s bytes=%d", ad_id, resp.status_code, len(resp.content))
             served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="video/mp4")
             duration = await asyncio.to_thread(probe_duration_from_bytes, resp.content, ".mp4")
             logger.info("Downloaded TikTok video for ad %s: %s (%d bytes, duration=%s)", ad_id, filename, len(resp.content), duration)
             return served_url, duration
-        except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
-            logger.warning("Failed to download TikTok video for ad %s: %s", ad_id, e, exc_info=True)
+        except httpx.HTTPStatusError as e:
+            logger.warning("TikTok video download http_%s for ad %s url=%s body=%s", e.response.status_code, ad_id, url[:80], e.response.text[:200])
+            return None, None
+        except (httpx.RequestError, OSError) as e:
+            logger.warning("TikTok video download failed for ad %s: %s %s", ad_id, type(e).__name__, e)
             return None, None
 
     async def _download_image_asset(
