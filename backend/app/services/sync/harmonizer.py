@@ -715,8 +715,8 @@ class HarmonizationService:
                         asset_url=row.asset_url,
                         video_duration=row.video_duration_seconds,
                         asset_format=row.asset_format or ("VIDEO" if row.youtube_ad_video_id else "IMAGE"),
-                        width_px=row.width_px,
-                        height_px=row.height_px,
+                        width=row.width,
+                        height=row.height,
                         first_seen_at=row.report_date,
                         _new_asset_ids=_new_asset_ids,
                     )
@@ -907,8 +907,8 @@ class HarmonizationService:
                 creative_id=kwargs.get("creative_id"),
                 placement=kwargs.get("placement"),
                 video_duration=kwargs.get("video_duration"),
-                width_px=kwargs.get("width_px"),
-                height_px=kwargs.get("height_px"),
+                width=kwargs.get("width"),
+                height=kwargs.get("height"),
                 first_seen_at=first_seen,
                 last_seen_at=first_seen,
                 is_creator_content=kwargs.get("is_creator_content"),
@@ -968,10 +968,10 @@ class HarmonizationService:
                 asset.ad_set_id = kwargs.get("ad_set_id")
             if kwargs.get("ad_set_name") and not asset.ad_set_name:
                 asset.ad_set_name = kwargs.get("ad_set_name")
-            if kwargs.get("width_px") and not asset.width_px:
-                asset.width_px = kwargs.get("width_px")
-            if kwargs.get("height_px") and not asset.height_px:
-                asset.height_px = kwargs.get("height_px")
+            if kwargs.get("width") and not asset.width:
+                asset.width = kwargs.get("width")
+            if kwargs.get("height") and not asset.height:
+                asset.height = kwargs.get("height")
             if kwargs.get("is_creator_content") is not None and asset.is_creator_content is None:
                 asset.is_creator_content = kwargs.get("is_creator_content")
             if kwargs.get("content_source") and not asset.content_source:

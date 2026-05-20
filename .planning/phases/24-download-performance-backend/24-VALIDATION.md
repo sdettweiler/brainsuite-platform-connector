@@ -38,7 +38,7 @@ created: 2026-05-18
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| proxy-cache | — | 0 | PERF-04 | — | asyncio.Lock guards all cache reads/writes; no race conditions | unit | `pytest backend/tests/test_sync/test_proxy_cache.py -v` | ❌ W0 | ⬜ pending |
+| proxy-cache | — | 0 | PERF-04 | — | asyncio.Lock guards all cache reads/writes; no race conditions | unit | `pytest backend/tests/test_proxy_cache.py -v` | ❌ W0 | ⬜ pending |
 | conditional-sleep | — | 0 | PERF-05 | — | N/A | unit | `pytest backend/tests/test_dv360_sync.py::test_batch_download_sleep_conditional -v` | ❌ W0 | ⬜ pending |
 | socket-timeout | — | 0 | PERF-06 | — | N/A | unit | `pytest backend/tests/test_dv360_sync.py -k "socket_timeout" -v` | ❌ W0 | ⬜ pending |
 | extract-info-split | — | 1 | PERF-01 | — | Proxy URL not passed to extraction call | unit | `pytest backend/tests/test_dv360_sync.py -k "extract" -v` | ✅ | ⬜ pending |
@@ -50,7 +50,7 @@ created: 2026-05-18
 
 ## Wave 0 Requirements
 
-- [ ] `backend/tests/test_sync/test_proxy_cache.py` — stubs for PERF-04: TTL expiry test, concurrent access test, cache hit test
+- [ ] `backend/tests/test_proxy_cache.py` — stubs for PERF-04: TTL expiry test, concurrent access test, cache hit test
 - [ ] `backend/tests/test_dv360_sync.py::test_batch_download_sleep_conditional` — new test for PERF-05 conditional sleep (proxy_enabled=True → no sleep, proxy_enabled=False → 4s sleep)
 - [ ] Update `backend/tests/test_dv360_sync.py::test_download_video_with_proxy` — add assertion that `socket_timeout: 10` is set in ydl_opts (PERF-06)
 - [ ] Add test in `backend/tests/test_google_ads_sync.py` asserting `remote_components="ejs:github"` present in ydl_opts (PERF-03 parity)

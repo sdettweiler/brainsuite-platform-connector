@@ -288,7 +288,11 @@ async def get_job(
                 if a:
                     name = a.ad_name
                     fmt = a.asset_format
-            enriched.append({**item, "asset_name": name, "asset_format": fmt})
+            # Use stored url if it's a real HTTP URL, otherwise fall back to asset_url from DB.
+            # Old job records (and Meta/TikTok jobs) may not store a url at all.
+            item_url = item.get("url") or ""
+            resolved_url = item_url if item_url.startswith("http") else (a.asset_url if a else None)
+            enriched.append({**item, "asset_name": name, "asset_format": fmt, "url": resolved_url})
         output = {**output, "downloaded": enriched}
 
     return JobDetail(
