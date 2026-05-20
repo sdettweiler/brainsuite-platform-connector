@@ -151,3 +151,48 @@ async def update_background_job(
         await _asyncio.wait_for(redis.publish("sse:job_updates", str(job_id)), timeout=2.0)
     except Exception as exc:  # noqa: BLE001
         logger.warning("SSE publish failed for job %s: %s", job_id, exc)
+
+
+async def revive_background_job(job_id: uuid.UUID) -> bool:
+    """Atomically revive an INTERRUPTED job back to RUNNING.
+
+    Clears error, ended_at, stale output and progress so the worker starts
+    from a clean slate. Records the revival timestamp in metadata.
+
+    Returns True if the job was claimed (was INTERRUPTED), False if another
+    process already claimed it or the job was not found.
+    """
+    from sqlalchemy import update as _update, text as _text
+    now = datetime.utcnow()
+
+    async with get_session_factory()() as db:
+        result = await db.execute(
+            _update(BackgroundJob)
+            .where(BackgroundJob.id == job_id, BackgroundJob.status == "INTERRUPTED")
+            .values(
+                status="RUNNING",
+                error=None,
+                ended_at=None,
+                progress_current=0,
+                output={},
+                started_at=now,
+                metadata_=_text(
+                    "metadata || jsonb_build_object('resumed_at', to_jsonb(now()::text))"
+                ),
+            )
+            .returning(BackgroundJob.id)
+        )
+        claimed = result.fetchone() is not None
+        await db.commit()
+
+    if not claimed:
+        return False
+
+    try:
+        import asyncio as _asyncio
+        redis = get_redis()
+        await _asyncio.wait_for(redis.publish("sse:job_updates", str(job_id)), timeout=2.0)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SSE publish failed for job %s: %s", job_id, exc)
+
+    return True

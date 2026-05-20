@@ -1,59 +1,37 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-04T12:00:00Z",
-  "phase": "none",
-  "phase_name": "bug fixes — metadata save, campaign_name sync, language chips",
+  "timestamp": "2026-05-20T13:24:33Z",
+  "phase": "build-resume-retry",
+  "phase_name": "Interrupt/Resume Logic Fix",
+  "phase_dir": ".planning/phases/build-resume-retry",
+  "plan": "interrupt-resume-fix",
+  "task": 2,
+  "total_tasks": 7,
   "status": "paused",
   "completed_tasks": [
-    {"id": 1, "name": "Cookie expiry early-abort + backup cookie fallback", "status": "done"},
-    {"id": 2, "name": "Scoring pre-check: skip assets with missing mandatory fields", "status": "done"},
-    {"id": 3, "name": "Language format normalization (id_ID↔id-ID)", "status": "done"},
-    {"id": 4, "name": "Port 4200 restored in docker-compose.yml", "status": "done"},
-    {"id": 5, "name": "Fix language not showing in Edit Metadata dialog: updated 124 metadata_field_values rows from 2-letter codes (id) to locale format (id_ID). Also updated both seed migrations.", "status": "done"},
-    {"id": 6, "name": "Reset 1522 FAILED scoring assets (brainsuite_app_id AttributeError, fixed in commit dda5d0d) to UNSCORED", "status": "done"},
-    {"id": 7, "name": "Remove metadata chips from asset detail page header (was unintended addition)", "status": "done"},
-    {"id": 8, "name": "DV360 campaign_name never written to CreativeAsset: added campaign_id+campaign_name to _ensure_asset call in harmonizer.py DV360 block; added campaign_name+campaign_id to 'update existing' branch in _ensure_asset. Backfilled 1550 DV360 assets from dv360_raw_performance.", "status": "done"},
-    {"id": 9, "name": "Cleared 1549 stale 'Spring Campaign 2026' asset_metadata_values; bulk-inserted real campaign names from creative_assets.campaign_name", "status": "done"}
+    {"id": 1, "name": "Add revive_background_job() to job_tracker.py", "status": "done", "commit": "uncommitted — staged with handoff"}
   ],
   "remaining_tasks": [
-    {
-      "id": 10,
-      "name": "Fix Edit Metadata dialog save — PATCH request never reaches backend",
-      "status": "in_progress",
-      "note": "Zero PATCH logs on backend. Three bugs identified: (A) PATCH request never sent — likely a JS exception in save() or wrong URL; check browser DevTools Network tab for the PATCH request. (B) No afterClosed() handler on dialog.open() in dashboard.component.ts line 1523 — stale cache/UI after save even if save works. (C) Clearing a field sends v='' which is filtered out by save(), backend never deletes the row — need backend DELETE or send null and handle deletion."
-    },
-    {
-      "id": 11,
-      "name": "Download 1520 missing DV360/Google Ads videos after cookies refreshed",
-      "status": "blocked",
-      "note": "Human action: update YouTube cookies at /configuration/admin, then trigger 'Download missing videos' on each DV360/Google Ads connection."
-    }
+    {"id": 2, "name": "Rewrite auto_resume_interrupted_jobs() — Wave4b cleanup + atomic revive + dispatch revert", "status": "not_started"},
+    {"id": 3, "name": "Fix startup_scheduler() RUNNING→INTERRUPTED (not FAILED)", "status": "not_started"},
+    {"id": 4, "name": "Fix retry_job endpoint — orphan cleanup + scoring dispatch existing_job_id", "status": "not_started"},
+    {"id": 5, "name": "Add existing_job_id to score_asset_now + _process_asset in scoring_job.py", "status": "not_started"},
+    {"id": 6, "name": "Fix error classification in trigger_download_retry + trigger_dv360_sync_retry", "status": "not_started"},
+    {"id": 7, "name": "Add stale RUNNING watchdog to maintenance.py", "status": "not_started"}
   ],
-  "blockers": [
-    {
-      "description": "YouTube cookies expired — 1520 videos still have no asset_url",
-      "type": "human_action",
-      "workaround": "Update cookies at /configuration/admin → YouTube Cookies, then trigger 'Download missing videos'"
-    }
-  ],
+  "blockers": [],
+  "human_actions_pending": [],
   "decisions": [
-    {"decision": "metadata_field_values for language fields use xx_XX locale codes (id_ID not id)", "rationale": "Autofill stores locale codes; mat-select requires exact value match. scoring_job.py converts xx_XX→xx-XX via .replace() before sending to BrainSuite API."},
-    {"decision": "metadata_entries removed from asset detail API response", "rationale": "Feature was unintentionally added; user only wants metadata chips in Edit Metadata dialog, not detail header"},
-    {"decision": "Account-level connection defaults deferred", "rationale": "Was a pre-existing feature; needs connection_metadata_defaults table + account config UI + lookup fallback. See memory file."}
+    {"decision": "Revive-in-place for auto-resume — no new job created", "rationale": "Eliminates orphaned RUNNING jobs and superseded_by chains. Worker receives original job_id."},
+    {"decision": "Manual retry endpoint keeps create-new", "rationale": "UX: user wants old failed job visible + new running job. Orphan cleanup added to except block."},
+    {"decision": "Wave 4b: cleanup pass removes dead superseded_by before main resume loop", "rationale": "If manual retry successor FAILed, original INTERRUPTED job must be resumable again."},
+    {"decision": "startup_scheduler RUNNING→INTERRUPTED not FAILED", "rationale": "FAILED is non-retryable. Belt-and-suspenders for when lifespan cleanup fails at cold start."},
+    {"decision": "score_asset_now + _process_asset need existing_job_id param", "rationale": "_process_asset always creates new BackgroundJob. Revive-in-place would produce two RUNNING jobs without this fix."},
+    {"decision": "Stale RUNNING watchdog: download+sync_daily only, 3h, marks INTERRUPTED", "rationale": "sync_full/historical can run hours. INTERRUPTED lets auto_resume retry; FAILED is terminal."}
   ],
   "uncommitted_files": [
-    "backend/app/api/v1/endpoints/assets.py",
-    "backend/app/api/v1/endpoints/dashboard.py",
-    "backend/app/services/sync/dv360_sync.py",
-    "backend/app/services/sync/google_ads_sync.py",
-    "backend/app/services/sync/scoring_job.py",
-    "backend/app/services/sync/harmonizer.py",
-    "backend/app/services/brainsuite_score.py",
-    "backend/app/services/brainsuite_static_score.py",
-    "backend/alembic/versions/f2g3h4i5j6k7_seed_brainsuite_metadata_fields.py",
-    "backend/alembic/versions/v3w4x5y6z7a8_backfill_default_metadata_fields.py",
-    "docker-compose.yml",
-    "frontend/src/app/features/dashboard/dialogs/asset-detail-dialog.component.ts"
+    "backend/app/services/sync/job_tracker.py"
   ],
-  "next_action": "Fix Edit Metadata save: open browser DevTools → Network tab → open Edit Metadata dialog on any asset → change a field → click Save → check if PATCH /api/v1/assets/{id}/metadata appears. If not, check Console for JS errors. Then fix: (A) root cause of missing request, (B) add afterClosed() refresh, (C) handle field clearing via DELETE or null."
+  "next_action": "Task #2: rewrite auto_resume_interrupted_jobs() in scheduler.py lines 1983-2049. Steps: (1) add Wave4b SQL to clear dead superseded_by at top, (2) replace create_background_job with revive_background_job atomic claim, (3) add revert-to-INTERRUPTED in except block.",
+  "context_notes": "Ad-hoc bug fix session — not a GSD phase. Full bug analysis in conversation history. revive_background_job() in job_tracker.py is the foundation all other tasks rely on. Uses raw SQL: metadata || jsonb_build_object('resumed_at', to_jsonb(now()::text)). Scoring jobs: polling jobs — revive-in-place safe, just re-polls existing BrainSuite job."
 }
