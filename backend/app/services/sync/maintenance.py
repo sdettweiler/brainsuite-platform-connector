@@ -15,11 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 async def reset_stale_background_jobs() -> None:
-    """Mark PENDING autofill/scoring jobs older than 10 minutes as FAILED.
+    """Mark stale PENDING and RUNNING jobs for cleanup.
 
-    Autofills have a 300s internal timeout so anything stuck at PENDING >10 min
-    is an orphan (Redis stall or process crash mid-flight). Runs every 10 minutes
-    via IntervalTrigger registered in startup_scheduler().
+    PENDING autofill/scoring jobs older than 10 minutes are marked FAILED — they
+    never reached RUNNING (Redis stall or process crash mid-flight).
+
+    RUNNING download/sync_daily jobs older than 3 hours are marked INTERRUPTED so
+    auto_resume_interrupted_jobs() can retry them. sync_full/historical/initial are
+    excluded — they can legitimately run for many hours.
+
+    Runs every 10 minutes via IntervalTrigger registered in startup_scheduler().
     """
     cutoff = datetime.utcnow() - timedelta(minutes=10)
     async with get_session_factory()() as db:
@@ -44,6 +49,31 @@ async def reset_stale_background_jobs() -> None:
                 logger.warning("reset_stale_background_jobs: marked %d stale PENDING job(s) as FAILED: %s", len(stale_ids), stale_ids)
         except Exception as e:
             logger.error("reset_stale_background_jobs failed: %s: %s", type(e).__name__, e)
+            await db.rollback()
+
+    running_cutoff = datetime.utcnow() - timedelta(hours=3)
+    async with get_session_factory()() as db:
+        try:
+            result_running = await db.execute(
+                update(BackgroundJob)
+                .where(
+                    BackgroundJob.status == "RUNNING",
+                    BackgroundJob.job_type.in_(["download", "sync_daily"]),
+                    BackgroundJob.started_at < running_cutoff,
+                )
+                .values(
+                    status="INTERRUPTED",
+                    error={"type": "StaleRunning", "message": "Job stuck RUNNING >3h with no completion — interrupted for auto-resume", "traceback": ""},
+                    ended_at=datetime.utcnow(),
+                )
+                .returning(BackgroundJob.id)
+            )
+            stale_running_ids = [row[0] for row in result_running.all()]
+            await db.commit()
+            if stale_running_ids:
+                logger.warning("reset_stale_background_jobs: marked %d stale RUNNING job(s) as INTERRUPTED: %s", len(stale_running_ids), stale_running_ids)
+        except Exception as e:
+            logger.error("reset_stale_background_jobs (RUNNING cleanup) failed: %s: %s", type(e).__name__, e)
             await db.rollback()
 
 

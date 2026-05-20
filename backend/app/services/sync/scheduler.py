@@ -1985,12 +1985,31 @@ async def auto_resume_interrupted_jobs() -> None:
 
     Runs at startup and every 60 s so jobs interrupted on a scaled-down
     instance are picked up by any surviving instance within one interval.
+    Uses revive-in-place: the original job_id is reused — no new job is created.
     """
     try:
-        from sqlalchemy import select as _select, func as _func, not_ as _not_
+        from sqlalchemy import select as _select, func as _func, not_ as _not_, text as _text
         from app.db.base import get_session_factory as _gsf
         from app.models.jobs import BackgroundJob as _BJ
-        from app.services.sync.job_tracker import create_background_job as _cbj, update_background_job as _ubj
+        from app.services.sync.job_tracker import update_background_job as _ubj, revive_background_job as _revive
+
+        # Wave 4b: clear dead superseded_by from INTERRUPTED jobs whose manual-retry
+        # successor has itself failed with no further chain — restores rescuability.
+        async with _gsf()() as db:
+            await db.execute(_text("""
+                UPDATE background_jobs j1
+                SET metadata = metadata - 'superseded_by'
+                WHERE j1.status = 'INTERRUPTED'
+                  AND jsonb_exists(j1.metadata, 'superseded_by')
+                  AND coalesce(j1.error->>'type', '') != 'KilledByAdmin'
+                  AND EXISTS (
+                    SELECT 1 FROM background_jobs j2
+                    WHERE j2.id::text = j1.metadata->>'superseded_by'
+                      AND j2.status IN ('FAILED', 'INTERRUPTED')
+                      AND NOT jsonb_exists(j2.metadata, 'superseded_by')
+                  )
+            """))
+            await db.commit()
 
         async with _gsf()() as db:
             result = await db.execute(
@@ -2026,25 +2045,19 @@ async def auto_resume_interrupted_jobs() -> None:
             seen_slots.add(conn_slot)
 
             try:
-                error_reason = (job.error or {}).get("message", "interrupted")
-                new_id = await _cbj(
-                    job_type=job.job_type,
-                    org_id=job.org_id,
-                    platform_connection_id=job.platform_connection_id,
-                    params=job.params,
-                    metadata={
-                        **(job.metadata_ or {}),
-                        "resumed_from_job_id": str(job.id),
-                        "resume_reason": error_reason,
-                    },
-                    initial_status="RUNNING" if job.job_type == "download" else "PENDING",
-                )
-                await _ubj(job.id, metadata={"superseded_by": str(new_id)})
+                claimed = await _revive(job.id)
+                if not claimed:
+                    logger.info("Auto-resume: job %s already claimed by another process — skipping", job.id)
+                    continue
                 from app.api.v1.endpoints.jobs import _dispatch_job_retry
-                await _dispatch_job_retry(job.job_type, job.params, str(new_id), None, None, old_output=job.output)
-                logger.info("Auto-resume: dispatched %s -> new job %s (old: %s)", job.job_type, new_id, job.id)
+                await _dispatch_job_retry(job.job_type, job.params, str(job.id), None, None, old_output=job.output)
+                logger.info("Auto-resume: revived %s (%s)", job.id, job.job_type)
             except Exception as exc:
-                logger.warning("Auto-resume: failed to dispatch job %s (%s): %s", job.id, job.job_type, exc)
+                logger.error("Auto-resume: dispatch failed for job %s (%s): %s — reverting to INTERRUPTED", job.id, job.job_type, exc)
+                try:
+                    await _ubj(job.id, status="INTERRUPTED", error={"type": "DispatchFailed", "message": str(exc), "traceback": ""})
+                except Exception as revert_exc:
+                    logger.error("Auto-resume: failed to revert job %s to INTERRUPTED: %s — stale watchdog will rescue", job.id, revert_exc)
     except Exception as exc:
         logger.warning("Auto-resume periodic check failed (non-fatal): %s", exc)
 
@@ -2065,8 +2078,8 @@ async def startup_scheduler(db_session=None) -> None:
             _sa_update(BackgroundJob)
             .where(BackgroundJob.status == "RUNNING")
             .values(
-                status="FAILED",
-                error={"type": "ProcessRestart", "message": "Server restarted while job was running", "traceback": ""},
+                status="INTERRUPTED",
+                error={"type": "ProcessRestart", "message": "Server restarted while job was running — will be auto-resumed", "traceback": ""},
                 ended_at=_dt.utcnow(),
             )
             .returning(BackgroundJob.id)
@@ -2085,7 +2098,7 @@ async def startup_scheduler(db_session=None) -> None:
         pending_ids = [row[0] for row in pending_result.all()]
         await db.commit()
         if running_ids:
-            logger.warning("Startup: reset %d orphaned RUNNING job(s) to FAILED", len(running_ids))
+            logger.warning("Startup: reset %d orphaned RUNNING job(s) to INTERRUPTED", len(running_ids))
         if pending_ids:
             logger.warning("Startup: reset %d orphaned PENDING job(s) to FAILED", len(pending_ids))
 
@@ -2332,4 +2345,4 @@ async def trigger_dv360_sync_retry(params: dict, new_job_id: str, resume_query_i
     except Exception as _e:
         import traceback as _tb
         logger.error("trigger_dv360_sync_retry failed: %s: %s", type(_e).__name__, _e)
-        await _ubj(job_uuid, status="FAILED", error={"type": type(_e).__name__, "message": str(_e), "traceback": _tb.format_exc()[:10000]})
+        await _ubj(job_uuid, status="INTERRUPTED", error={"type": type(_e).__name__, "message": str(_e), "traceback": _tb.format_exc()[:10000]})

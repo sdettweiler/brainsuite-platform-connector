@@ -391,7 +391,7 @@ async def _dispatch_job_retry(
         score_id_str = (params or {}).get("score_id")
         if score_id_str:
             from app.services.sync.scoring_job import score_asset_now
-            asyncio.create_task(score_asset_now(uuid.UUID(score_id_str)))
+            asyncio.create_task(score_asset_now(uuid.UUID(score_id_str), existing_job_id=uuid.UUID(new_job_id)))
         else:
             logger.warning("scoring retry: missing score_id in params for job %s", new_job_id)
         return
@@ -427,19 +427,22 @@ async def retry_job(
             detail="Job has no stored params — cannot retry",
         )
 
-    new_job_id = await create_background_job(
-        org_id=job.org_id,
-        job_type=job.job_type,
-        platform_connection_id=job.platform_connection_id,
-        params=job.params,
-        metadata={**(job.metadata_ or {}), "resumed_from_job_id": str(job.id)},
-        initial_status="RUNNING" if job.job_type == "download" else "PENDING",
-    )
-
-    # Mark the original job as superseded so it no longer appears as actionable.
-    await update_background_job(job.id, metadata={"superseded_by": str(new_job_id)})
-
-    await _dispatch_job_retry(job.job_type, job.params, str(new_job_id), background_tasks, db, old_output=job.output)
+    new_job_id = None
+    try:
+        new_job_id = await create_background_job(
+            org_id=job.org_id,
+            job_type=job.job_type,
+            platform_connection_id=job.platform_connection_id,
+            params=job.params,
+            metadata={**(job.metadata_ or {}), "resumed_from_job_id": str(job.id)},
+            initial_status="RUNNING" if job.job_type == "download" else "PENDING",
+        )
+        await update_background_job(job.id, metadata={"superseded_by": str(new_job_id)})
+        await _dispatch_job_retry(job.job_type, job.params, str(new_job_id), background_tasks, db, old_output=job.output)
+    except Exception as exc:
+        if new_job_id is not None:
+            await update_background_job(new_job_id, status="FAILED", error={"type": "DispatchFailed", "message": str(exc), "traceback": ""})
+        raise HTTPException(status_code=500, detail={"error": "Failed to dispatch retry", "job_id": str(new_job_id) if new_job_id else None})
 
     return {"job_id": str(new_job_id), "status": "queued"}
 

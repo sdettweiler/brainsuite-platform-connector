@@ -225,11 +225,14 @@ async def run_scoring_batch() -> None:
             ))
 
 
-async def score_asset_now(score_id: uuid.UUID) -> None:
+async def score_asset_now(score_id: uuid.UUID, existing_job_id: uuid.UUID | None = None) -> None:
     """Score a single asset immediately — called by the rescore endpoint.
 
     Loads the score row + asset from DB, marks PENDING, then delegates to
     _process_asset(). Designed to run as a FastAPI BackgroundTask.
+
+    Pass existing_job_id when resuming an interrupted scoring job so _process_asset
+    reuses the existing BackgroundJob instead of creating a duplicate.
 
     Note: Does NOT check the global scoring_enabled toggle (explicit rescore always fires).
     DOES check per-org quota — won't score if the org has already reached its limit.
@@ -300,10 +303,10 @@ async def score_asset_now(score_id: uuid.UUID) -> None:
             row2.error_reason = None
             await db.commit()
 
-    await _process_asset(score_id, asset, endpoint_type)
+    await _process_asset(score_id, asset, endpoint_type, existing_job_id=existing_job_id)
 
 
-async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> None:
+async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str, existing_job_id: uuid.UUID | None = None) -> None:
     """Core per-asset scoring logic — shared by batch and immediate paths."""
     asset_id = asset.id
 
@@ -399,19 +402,23 @@ async def _process_asset(score_id, asset: CreativeAsset, endpoint_type: str) -> 
                 )
                 return
 
-        # Phase 17: Create BackgroundJob per asset (D-07, INSTR-04, INSTR-05).
-        # Placed after both guard paths so skipped assets do NOT create a BackgroundJob
-        # (skipped assets are not scoring runs; they are not failures or successes).
-        bg_job_id = await create_background_job(
-            job_type="scoring",
-            org_id=asset.organization_id,
-            platform_connection_id=getattr(asset, "platform_connection_id", None),
-            metadata={
-                "asset_id": str(asset_id),
-                "creative_score_result_id": str(score_id),
-            },
-            params={"asset_id": str(asset_id), "score_id": str(score_id)},
-        )
+        # Phase 17: Create or reuse BackgroundJob per asset (D-07, INSTR-04, INSTR-05).
+        # Placed after both guard paths so skipped assets do NOT create a BackgroundJob.
+        # existing_job_id is provided when resuming an interrupted job — reuse it instead
+        # of creating a duplicate.
+        if existing_job_id is not None:
+            bg_job_id = existing_job_id
+        else:
+            bg_job_id = await create_background_job(
+                job_type="scoring",
+                org_id=asset.organization_id,
+                platform_connection_id=getattr(asset, "platform_connection_id", None),
+                metadata={
+                    "asset_id": str(asset_id),
+                    "creative_score_result_id": str(score_id),
+                },
+                params={"asset_id": str(asset_id), "score_id": str(score_id)},
+            )
         await update_background_job(
             bg_job_id,
             status="RUNNING",
