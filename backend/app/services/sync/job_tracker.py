@@ -182,8 +182,9 @@ async def revive_background_job(job_id: uuid.UUID) -> bool:
             )
             .returning(BackgroundJob.id)
         )
-        claimed = result.fetchone() is not None
+        row = result.fetchone()
         await db.commit()
+        claimed = row is not None
 
     if not claimed:
         return False

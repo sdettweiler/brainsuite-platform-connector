@@ -2277,12 +2277,14 @@ async def trigger_dv360_sync_retry(params: dict, new_job_id: str, resume_query_i
     date_to_str = params.get("date_to")
     sync_type = params.get("sync_type", "daily")
 
+    conn_uuid = _uuid.UUID(str(platform_connection_id)) if platform_connection_id else None
+    job_uuid = _uuid.UUID(str(new_job_id))
+
     if not platform_connection_id or not date_from_str or not date_to_str:
         logger.warning("trigger_dv360_sync_retry: missing params — %s", params)
+        await _ubj(job_uuid, status="FAILED", error={"type": "MissingParams", "message": f"Missing required params for DV360 sync retry: {list(params.keys())}", "traceback": ""})
         return
 
-    conn_uuid = _uuid.UUID(str(platform_connection_id))
-    job_uuid = _uuid.UUID(str(new_job_id))
     date_from = date.fromisoformat(date_from_str)
     date_to = date.fromisoformat(date_to_str)
 
@@ -2291,6 +2293,7 @@ async def trigger_dv360_sync_retry(params: dict, new_job_id: str, resume_query_i
 
     if not connection:
         logger.warning("trigger_dv360_sync_retry: connection %s not found", platform_connection_id)
+        await _ubj(job_uuid, status="FAILED", error={"type": "ConnectionNotFound", "message": f"Platform connection {platform_connection_id} not found", "traceback": ""})
         return
 
     await _ubj(job_uuid, status="RUNNING", progress_total=1, progress_current=0)
@@ -2352,7 +2355,8 @@ async def trigger_dv360_sync_retry(params: dict, new_job_id: str, resume_query_i
         _msg_lower = str(_e).lower()
         _is_permanent = (
             isinstance(_e, (ValueError, KeyError))
-            or any(s in _msg_lower for s in ("invalid_grant", "unauthorized", "forbidden", "401", "403", "invalid credentials"))
+            or any(s in _msg_lower for s in ("invalid_grant", "unauthorized", "forbidden", "access_denied", "invalid credentials", "invalid_client"))
+            or any(f" {code}" in _msg_lower or f"status {code}" in _msg_lower or f"http {code}" in _msg_lower for code in ("401", "403"))
         )
         _terminal = "FAILED" if _is_permanent else "INTERRUPTED"
         await _ubj(job_uuid, status=_terminal, error={"type": type(_e).__name__, "message": str(_e), "traceback": _tb.format_exc()[:10000]})
