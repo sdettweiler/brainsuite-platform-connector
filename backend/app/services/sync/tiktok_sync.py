@@ -1073,32 +1073,35 @@ class TikTokSyncService:
         advertiser_id: str,
         video_ids: List[str],
     ) -> Optional[tuple]:
-        """Fetch the video download URL and cover image URL via /file/video/ad/.
+        """Fetch the video download URL and thumbnail (poster_url) via /file/video/get/.
         Returns (video_url, cover_url) tuple or None if unavailable (non-fatal).
         Decision D-01: Use TikTok API endpoint, not yt-dlp.
+        Uses filtering parameter format as required by the Video Library endpoint.
         """
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
-                    f"{TIKTOK_API_BASE}/file/video/ad/",
+                    f"{TIKTOK_API_BASE}/file/video/get/",
                     params={
                         "advertiser_id": advertiser_id,
-                        "video_ids": json.dumps([str(vid) for vid in video_ids]),
+                        "filtering": json.dumps({"video_ids": [str(vid) for vid in video_ids]}),
+                        "page_size": len(video_ids),
                     },
                     headers={"Access-Token": access_token},
                 )
                 resp.raise_for_status()
                 data = resp.json()
                 if data.get("code") != 0:
-                    logger.warning("TikTok /file/video/ad/ error: %s", data.get("message"))
+                    logger.warning("TikTok /file/video/get/ error: %s", data.get("message"))
                     return None
                 videos = data.get("data", {}).get("list", [])
                 if videos:
                     v = videos[0]
-                    return v.get("video_url"), v.get("video_cover_url")
+                    # preview_url = video download URL; poster_url = thumbnail
+                    return v.get("preview_url") or v.get("video_url"), v.get("poster_url") or v.get("video_cover_url")
         except httpx.HTTPStatusError as e:
             level = logger.debug if e.response.status_code == 404 else logger.warning
-            level("TikTok /file/video/ad/ %s for advertiser %s: %s", e.response.status_code, advertiser_id, e)
+            level("TikTok /file/video/get/ %s for advertiser %s: %s", e.response.status_code, advertiser_id, e)
         except httpx.RequestError as e:
             logger.warning("Failed to fetch TikTok video URL for advertiser %s: %s", advertiser_id, e)
         return None
