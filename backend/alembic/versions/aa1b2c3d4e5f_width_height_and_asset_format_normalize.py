@@ -1,6 +1,6 @@
 """Add width_px/height_px to creative_assets and dv360_raw_performance; normalize asset_format
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: aa1b2c3d4e5f
 Revises: z8a9b1c2d3e5
 Create Date: 2026-05-20
 
@@ -11,7 +11,7 @@ frontend can use strict === 'VIDEO' checks again (SINGLE_VIDEO â†’ VIDEO, WxH â†
 from alembic import op
 import sqlalchemy as sa
 
-revision = "a1b2c3d4e5f6"
+revision = "aa1b2c3d4e5f"
 down_revision = "z8a9b1c2d3e5"
 branch_labels = None
 depends_on = None
