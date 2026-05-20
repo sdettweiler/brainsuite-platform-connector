@@ -1,37 +1,33 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-20T13:24:33Z",
-  "phase": "build-resume-retry",
-  "phase_name": "Interrupt/Resume Logic Fix",
-  "phase_dir": ".planning/phases/build-resume-retry",
-  "plan": "interrupt-resume-fix",
-  "task": 2,
-  "total_tasks": 7,
+  "timestamp": "2026-05-20T14:57:12Z",
+  "phase": "download-backfill-presync",
+  "phase_name": "Pre-Sync Download Backfill",
+  "phase_dir": ".planning/phases/download-backfill-presync",
+  "plan": null,
+  "task": 1,
+  "total_tasks": 5,
   "status": "paused",
-  "completed_tasks": [
-    {"id": 1, "name": "Add revive_background_job() to job_tracker.py", "status": "done", "commit": "uncommitted — staged with handoff"}
-  ],
+  "completed_tasks": [],
   "remaining_tasks": [
-    {"id": 2, "name": "Rewrite auto_resume_interrupted_jobs() — Wave4b cleanup + atomic revive + dispatch revert", "status": "not_started"},
-    {"id": 3, "name": "Fix startup_scheduler() RUNNING→INTERRUPTED (not FAILED)", "status": "not_started"},
-    {"id": 4, "name": "Fix retry_job endpoint — orphan cleanup + scoring dispatch existing_job_id", "status": "not_started"},
-    {"id": 5, "name": "Add existing_job_id to score_asset_now + _process_asset in scoring_job.py", "status": "not_started"},
-    {"id": 6, "name": "Fix error classification in trigger_download_retry + trigger_dv360_sync_retry", "status": "not_started"},
-    {"id": 7, "name": "Add stale RUNNING watchdog to maintenance.py", "status": "not_started"}
+    {"id": 1, "name": "Extract _download_one from assets.py into shared _download_asset_for_backfill + add Meta/TikTok branches", "status": "not_started"},
+    {"id": 2, "name": "Fix 'missing' condition in redownload_missing_assets to include CDN thumbnails + remove platform restriction", "status": "not_started"},
+    {"id": 3, "name": "Create backfill_missing_downloads_for_connection() in scheduler.py with BackgroundJob creation + dispatch", "status": "not_started"},
+    {"id": 4, "name": "Wire pre-sync backfill hook into run_daily_sync, run_full_resync, run_historical_sync, trigger_dv360_sync_retry", "status": "not_started"},
+    {"id": 5, "name": "Simplify redownload_missing_assets endpoint to delegate to shared function", "status": "not_started"}
   ],
   "blockers": [],
   "human_actions_pending": [],
   "decisions": [
-    {"decision": "Revive-in-place for auto-resume — no new job created", "rationale": "Eliminates orphaned RUNNING jobs and superseded_by chains. Worker receives original job_id."},
-    {"decision": "Manual retry endpoint keeps create-new", "rationale": "UX: user wants old failed job visible + new running job. Orphan cleanup added to except block."},
-    {"decision": "Wave 4b: cleanup pass removes dead superseded_by before main resume loop", "rationale": "If manual retry successor FAILed, original INTERRUPTED job must be resumable again."},
-    {"decision": "startup_scheduler RUNNING→INTERRUPTED not FAILED", "rationale": "FAILED is non-retryable. Belt-and-suspenders for when lifespan cleanup fails at cold start."},
-    {"decision": "score_asset_now + _process_asset need existing_job_id param", "rationale": "_process_asset always creates new BackgroundJob. Revive-in-place would produce two RUNNING jobs without this fix."},
-    {"decision": "Stale RUNNING watchdog: download+sync_daily only, 3h, marks INTERRUPTED", "rationale": "sync_full/historical can run hours. INTERRUPTED lets auto_resume retry; FAILED is terminal."}
+    {"decision": "Pre-sync not post-sync", "rationale": "Post-sync causes false positives: assets just created with empty asset_url (download in flight) would be double-queued. Pre-sync snapshot is clean."},
+    {"decision": "Reuse _download_one per-asset logic, not bulk download functions", "rationale": "_download_one resets scoring status and triggers autofill; bulk functions (_run_dv360_asset_downloads) only set asset_url."},
+    {"decision": "CDN thumbnails (img.youtube.com, ytimg.com) count as missing", "rationale": "Decision made to store all thumbnails in object storage. Legacy CDN URLs must be replaced via is_raw_cdn_url() check."},
+    {"decision": "New BackgroundJob per backfill run, type=download", "rationale": "Tracked in existing job monitoring UI, supports retry via existing infrastructure."},
+    {"decision": "Exclude run_initial_sync", "rationale": "Brand new connection, no existing assets to backfill."},
+    {"decision": "Per-asset Python filter for thumbnails, not SQL", "rationale": "is_raw_cdn_url is a Python function; load all VIDEO assets and filter in Python. Acceptable at connection scale."},
+    {"decision": "Duplicate download is acceptable for assets in both backfill and sync queues", "rationale": "Write-back is idempotent (WHERE asset_url IS NULL OR = ''). Rare in practice, wasted bandwidth not a concern."}
   ],
-  "uncommitted_files": [
-    "backend/app/services/sync/job_tracker.py"
-  ],
-  "next_action": "Task #2: rewrite auto_resume_interrupted_jobs() in scheduler.py lines 1983-2049. Steps: (1) add Wave4b SQL to clear dead superseded_by at top, (2) replace create_background_job with revive_background_job atomic claim, (3) add revert-to-INTERRUPTED in except block.",
-  "context_notes": "Ad-hoc bug fix session — not a GSD phase. Full bug analysis in conversation history. revive_background_job() in job_tracker.py is the foundation all other tasks rely on. Uses raw SQL: metadata || jsonb_build_object('resumed_at', to_jsonb(now()::text)). Scoring jobs: polling jobs — revive-in-place safe, just re-polls existing BrainSuite job."
+  "uncommitted_files": [],
+  "next_action": "Read assets.py lines 649-800 (_download_one full implementation), read thumbnail_utils.py for is_raw_cdn_url, then extract _download_one into module-level _download_asset_for_backfill (Task 1).",
+  "context_notes": "Triggered by investigating DV360 sync job 7542588f — sync completed records_fetched=0 (wrong date range) and 1135 creative_assets on connection 81fdebb7 (ID_Unilever_Galileo) have asset_url=''. Existing redownload_missing_assets endpoint at assets.py:649 already has 80% of needed logic for DV360/Google Ads. This feature extends and wires it into every sync flow."
 }
