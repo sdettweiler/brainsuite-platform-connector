@@ -762,6 +762,25 @@ class TikTokSyncService:
                             )
                         )
 
+                        # Fix asset_format on CreativeAsset — harmonizer runs before enrichment
+                        # so it defaults to IMAGE; correct it here once ad_format is known.
+                        raw_fmt = (ad.get("ad_format") or "").upper()
+                        if raw_fmt:
+                            if "VIDEO" in raw_fmt:
+                                normalized_fmt = "VIDEO"
+                            elif "CAROUSEL" in raw_fmt or "COLLECTION" in raw_fmt:
+                                normalized_fmt = "CAROUSEL"
+                            else:
+                                normalized_fmt = "IMAGE"
+                            from app.models.creative import CreativeAsset as _CA
+                            await db.execute(
+                                update(_CA).where(
+                                    _CA.organization_id == conn.organization_id,
+                                    _CA.platform == "TIKTOK",
+                                    _CA.ad_id == ad_id,
+                                ).values(asset_format=normalized_fmt)
+                            )
+
                         download_hints[ad_id] = {
                             "video_id": video_id_val,
                             "image_ids": image_ids_raw,
@@ -813,6 +832,25 @@ class TikTokSyncService:
                 is_spark = hints.get("is_spark", False)
                 display_name = hints.get("display_name")
                 tiktok_item_id = hints.get("tiktok_item_id")
+
+                # Fallback: if hints are empty (prefetch batch failed for this ad),
+                # read the raw table which prefetch may have already written to.
+                if video_id_val is None and not image_ids_raw:
+                    from sqlalchemy import select as _sel
+                    row = (await db.execute(
+                        _sel(TikTokRawPerformance)
+                        .where(TikTokRawPerformance.ad_id == ad_id, TikTokRawPerformance.platform_connection_id == conn.id)
+                        .order_by(TikTokRawPerformance.report_date.desc())
+                        .limit(1)
+                    )).scalar_one_or_none()
+                    if row:
+                        video_id_val = row.video_id
+                        if row.image_ids:
+                            image_ids_raw = row.image_ids.split(",") if isinstance(row.image_ids, str) else row.image_ids
+                        if row.is_spark_ad is not None:
+                            is_spark = row.is_spark_ad
+                        if row.display_name:
+                            display_name = row.display_name
 
                 logger.info(
                     "TikTok asset download ad %s: is_spark=%s video_id=%s image_ids=%s item_id=%s",
@@ -1284,21 +1322,31 @@ class TikTokSyncService:
 
                 if data.get("code") != 0:
                     msg = data.get("message", "")
-                    # Adaptive field stripping: TikTok reports the first bad field as
-                    # "... error is <fieldname>" — strip it and retry once.
+                    stripped = False
+                    # Primary: TikTok reports the bad field as "... error is <fieldname>"
                     match = re.search(r"error is (\w+)", msg)
                     if match:
                         bad_field = match.group(1)
                         if bad_field in fields:
                             fields = [f for f in fields if f != bad_field]
                             self._ad_info_cache[advertiser_id] = fields
-                            logger.warning(
-                                "TikTok /ad/get/: stripped unsupported field '%s' for advertiser %s, retrying",
-                                bad_field, advertiser_id,
-                            )
+                            logger.warning("TikTok /ad/get/: stripped field '%s' advertiser=%s, retrying", bad_field, advertiser_id)
                             all_ads = []
                             page = 1
-                            continue
+                            stripped = True
+                    # Fallback: unrecognized error format — strip known optional fields before giving up
+                    if not stripped:
+                        for optional in ("tiktok_item_id",):
+                            if optional in fields:
+                                fields = [f for f in fields if f != optional]
+                                self._ad_info_cache[advertiser_id] = fields
+                                logger.warning("TikTok /ad/get/ unrecognized error (msg=%s), stripping optional field '%s', retrying", msg[:120], optional)
+                                all_ads = []
+                                page = 1
+                                stripped = True
+                                break
+                    if stripped:
+                        continue
                     logger.error("TikTok /ad/get/ error: %s", msg)
                     break
 
