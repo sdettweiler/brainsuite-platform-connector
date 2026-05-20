@@ -886,15 +886,21 @@ class TikTokSyncService:
                 else:
                     logger.warning("TikTok ad %s: no assets stored — thumb=%s asset=%s (spark=%s video_id=%s image_ids=%s)", ad_id, bool(thumbnail_url), bool(asset_url), is_spark, bool(video_id_val), bool(image_ids_raw))
 
+                from app.models.creative import CreativeAsset
+                ca_vals: dict = {}
+                if thumbnail_url:
+                    ca_vals["thumbnail_url"] = thumbnail_url
+                if asset_url:
+                    ca_vals["asset_url"] = asset_url
                 if asset_video_duration is not None:
-                    from app.models.creative import CreativeAsset
+                    ca_vals["video_duration"] = asset_video_duration
+                if ca_vals:
                     await db.execute(
                         update(CreativeAsset).where(
                             CreativeAsset.organization_id == conn.organization_id,
                             CreativeAsset.platform == "TIKTOK",
                             CreativeAsset.ad_id == ad_id,
-                            CreativeAsset.video_duration.is_(None),
-                        ).values(video_duration=asset_video_duration)
+                        ).values(**ca_vals)
                     )
 
                 await db.commit()
