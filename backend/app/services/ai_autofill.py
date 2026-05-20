@@ -454,11 +454,14 @@ _VISION_PROMPT = (
 )
 
 _AUDIO_PROMPT = (
-    "Transcribe this audio and identify the primary spoken language.\n"
+    "Listen to this audio from a video ad creative.\n"
+    "If there is NO spoken voice-over or dialogue (e.g. music only, sound effects only, "
+    "or silence), return text as an empty string and language as an empty string.\n"
+    "Only transcribe actual human speech — do NOT transcribe song lyrics or background music.\n"
     "Return:\n"
-    "- text: Full verbatim transcript of the spoken words.\n"
+    "- text: Full verbatim transcript of spoken words only (empty string if no speech).\n"
     "- language: The primary spoken language as a full English name "
-    "(e.g. 'Indonesian', 'German', 'English')."
+    "(e.g. 'Indonesian', 'German', 'English'). Empty string if no speech detected."
 )
 
 
@@ -619,6 +622,13 @@ async def _run_audio_openai(audio_bytes: bytes) -> dict:
             )
         resp.raise_for_status()
         data = resp.json()
+        # Suppress results where Whisper is likely hallucinating on music/silence.
+        # verbose_json segments carry no_speech_prob; average > 0.8 means no real speech.
+        segments = data.get("segments", [])
+        if segments:
+            avg_no_speech = sum(s.get("no_speech_prob", 0) for s in segments) / len(segments)
+            if avg_no_speech > 0.8:
+                return {"text": "", "language": ""}
         return {
             "text": data.get("text", ""),
             "language": _to_locale(data.get("language")) or "",

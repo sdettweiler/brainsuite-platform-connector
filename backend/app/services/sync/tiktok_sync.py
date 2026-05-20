@@ -762,23 +762,37 @@ class TikTokSyncService:
                             )
                         )
 
-                        # Fix asset_format on CreativeAsset — harmonizer runs before enrichment
-                        # so it defaults to IMAGE; correct it here once ad_format is known.
+                        # Update CreativeAsset directly — harmonizer already ran before
+                        # enrichment so these fields are NULL on first sync.
+                        from app.models.creative import CreativeAsset as _CA
+                        ca_update: dict = {}
                         raw_fmt = (ad.get("ad_format") or "").upper()
                         if raw_fmt:
                             if "VIDEO" in raw_fmt:
-                                normalized_fmt = "VIDEO"
+                                ca_update["asset_format"] = "VIDEO"
                             elif "CAROUSEL" in raw_fmt or "COLLECTION" in raw_fmt:
-                                normalized_fmt = "CAROUSEL"
+                                ca_update["asset_format"] = "CAROUSEL"
                             else:
-                                normalized_fmt = "IMAGE"
-                            from app.models.creative import CreativeAsset as _CA
+                                ca_update["asset_format"] = "IMAGE"
+                        if ad.get("ad_name"):
+                            ca_update["ad_name"] = ad["ad_name"]
+                        if ad.get("campaign_id"):
+                            ca_update["campaign_id"] = str(ad["campaign_id"])
+                        if ad.get("campaign_name"):
+                            ca_update["campaign_name"] = ad["campaign_name"]
+                        if campaign_data.get("objective_type"):
+                            ca_update["campaign_objective"] = campaign_data["objective_type"]
+                        if ad.get("adgroup_id"):
+                            ca_update["ad_set_id"] = str(ad["adgroup_id"])
+                        if ad.get("adgroup_name"):
+                            ca_update["ad_set_name"] = ad["adgroup_name"]
+                        if ca_update:
                             await db.execute(
                                 update(_CA).where(
                                     _CA.organization_id == conn.organization_id,
                                     _CA.platform == "TIKTOK",
                                     _CA.ad_id == ad_id,
-                                ).values(asset_format=normalized_fmt)
+                                ).values(**ca_update)
                             )
 
                         download_hints[ad_id] = {
@@ -857,7 +871,7 @@ class TikTokSyncService:
                     ad_id, is_spark, bool(video_id_val), bool(image_ids_raw), bool(tiktok_item_id),
                 )
 
-                thumbnail_url, asset_url, video_source_url, asset_video_duration = await self._download_ad_assets(
+                thumbnail_url, asset_url, video_source_url, asset_video_duration, asset_width, asset_height = await self._download_ad_assets(
                     access_token, advertiser_id, org_id, ad_id, video_id_val, image_ids_raw, is_spark, display_name, tiktok_item_id
                 )
 
@@ -894,6 +908,10 @@ class TikTokSyncService:
                     ca_vals["asset_url"] = asset_url
                 if asset_video_duration is not None:
                     ca_vals["video_duration"] = asset_video_duration
+                if asset_width is not None:
+                    ca_vals["width"] = asset_width
+                if asset_height is not None:
+                    ca_vals["height"] = asset_height
                 if ca_vals:
                     await db.execute(
                         update(CreativeAsset).where(
@@ -918,9 +936,9 @@ class TikTokSyncService:
         is_spark: bool,
         display_name: Optional[str] = None,
         tiktok_item_id: Optional[str] = None,
-    ) -> tuple[Optional[str], Optional[str], Optional[str], Optional[float]]:
+    ) -> tuple[Optional[str], Optional[str], Optional[str], Optional[float], Optional[int], Optional[int]]:
         """Download thumbnail + full asset for one ad.
-        Returns (thumbnail_url, asset_url, video_source_url, video_duration_sec).
+        Returns (thumbnail_url, asset_url, video_source_url, video_duration_sec, width_px, height_px).
         Spark ads: thumbnail only via image_ids; asset_url/video_source_url always None.
         Video ads: cover from /file/video/ad/ as thumbnail fallback; full video to asset_url.
         Image ads: full image to asset_url; same URL serves as thumbnail.
@@ -929,6 +947,8 @@ class TikTokSyncService:
         asset_url: Optional[str] = None
         video_source_url: Optional[str] = None
         asset_video_duration: Optional[float] = None
+        asset_width: Optional[int] = None
+        asset_height: Optional[int] = None
 
         _thumb_image_ids = (
             image_ids_raw if isinstance(image_ids_raw, list)
@@ -945,7 +965,7 @@ class TikTokSyncService:
                 if video_info:
                     raw_video_url, raw_cover_url = video_info
                     if raw_video_url:
-                        asset_url, asset_video_duration = await self._download_video_asset(raw_video_url, org_id, ad_id)
+                        asset_url, asset_video_duration, asset_width, asset_height = await self._download_video_asset(raw_video_url, org_id, ad_id)
                         video_source_url = raw_video_url
                     if not thumbnail_url and raw_cover_url:
                         thumbnail_url = await self._download_tiktok_thumbnail(raw_cover_url, org_id, ad_id)
@@ -963,7 +983,7 @@ class TikTokSyncService:
                 if image_ids_list:
                     image_url = await self._fetch_cover_image_url(access_token, advertiser_id, image_ids_list[:1])
                     if image_url:
-                        asset_url = await self._download_image_asset(image_url, org_id, ad_id)
+                        asset_url, asset_width, asset_height = await self._download_image_asset(image_url, org_id, ad_id)
                     else:
                         logger.info("TikTok ad %s: /file/image/ad/ returned no URL", ad_id)
 
@@ -986,7 +1006,7 @@ class TikTokSyncService:
             asset_url = None
             video_source_url = None
 
-        return thumbnail_url, asset_url, video_source_url, asset_video_duration
+        return thumbnail_url, asset_url, video_source_url, asset_video_duration, asset_width, asset_height
 
     async def _resolve_tiktok_handle(self, tiktok_item_id: str) -> Optional[str]:
         """Resolve @handle for a public TikTok post by following redirects from /video/{id}."""
@@ -1118,21 +1138,19 @@ class TikTokSyncService:
         url: str,
         org_id: str,
         ad_id: str,
-    ) -> tuple[Optional[str], Optional[float]]:
-        """Download a TikTok video from URL, upload to S3/MinIO. Returns (served_url, duration_seconds).
-        Storage path: creatives/{org_id}/video_tiktok_{ad_id}.mp4
-        Decision D-04: Inline download; failures are non-fatal (log + return None, None).
-        Decision D-06: Result stored in asset_url (scoring/autofill input, not thumbnail).
+    ) -> tuple[Optional[str], Optional[float], Optional[int], Optional[int]]:
+        """Download a TikTok video from URL, upload to S3/MinIO.
+        Returns (served_url, duration_seconds, width_px, height_px).
         """
         from app.services.object_storage import get_object_storage
-        from app.services.sync.video_utils import probe_duration_from_bytes
+        from app.services.sync.video_utils import probe_video_info_from_bytes
         obj_storage = get_object_storage()
 
         filename = f"video_tiktok_{ad_id}.mp4"
         relative_path = f"creatives/{org_id}/{filename}"
 
         if obj_storage.file_exists(relative_path):
-            return obj_storage.served_url(relative_path), None
+            return obj_storage.served_url(relative_path), None, None, None
 
         logger.info("TikTok video download starting for ad %s: url_prefix=%s", ad_id, url[:80] if url else None)
         try:
@@ -1141,26 +1159,24 @@ class TikTokSyncService:
                 resp.raise_for_status()
             logger.info("TikTok video download response for ad %s: status=%s bytes=%d", ad_id, resp.status_code, len(resp.content))
             served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="video/mp4")
-            duration = await asyncio.to_thread(probe_duration_from_bytes, resp.content, ".mp4")
-            logger.info("Downloaded TikTok video for ad %s: %s (%d bytes, duration=%s)", ad_id, filename, len(resp.content), duration)
-            return served_url, duration
+            duration, width, height = await asyncio.to_thread(probe_video_info_from_bytes, resp.content, ".mp4")
+            logger.info("Downloaded TikTok video for ad %s: %s (%d bytes, duration=%s w=%s h=%s)", ad_id, filename, len(resp.content), duration, width, height)
+            return served_url, duration, width, height
         except httpx.HTTPStatusError as e:
             logger.warning("TikTok video download http_%s for ad %s url=%s body=%s", e.response.status_code, ad_id, url[:80], e.response.text[:200])
-            return None, None
+            return None, None, None, None
         except (httpx.RequestError, OSError) as e:
             logger.warning("TikTok video download failed for ad %s: %s %s", ad_id, type(e).__name__, e)
-            return None, None
+            return None, None, None, None
 
     async def _download_image_asset(
         self,
         image_url: str,
         org_id: str,
         ad_id: str,
-    ) -> Optional[str]:
-        """Download a TikTok full-resolution image and upload to S3/MinIO. Returns served URL or None.
-        Storage path: creatives/{org_id}/image_tiktok_{ad_id}.jpg
-        Decision D-03: Full-resolution image for scoring/autofill input; separate from thumbnail_url.
-        Decision D-04: Failures are non-fatal (log + return None).
+    ) -> tuple[Optional[str], Optional[int], Optional[int]]:
+        """Download a TikTok full-resolution image and upload to S3/MinIO.
+        Returns (served_url, width_px, height_px).
         """
         from app.services.object_storage import get_object_storage
         obj_storage = get_object_storage()
@@ -1169,7 +1185,7 @@ class TikTokSyncService:
         relative_path = f"creatives/{org_id}/{filename}"
 
         if obj_storage.file_exists(relative_path):
-            return obj_storage.served_url(relative_path)
+            return obj_storage.served_url(relative_path), None, None
 
         try:
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
@@ -1177,13 +1193,21 @@ class TikTokSyncService:
                 resp.raise_for_status()
             if len(resp.content) < 100:
                 logger.warning("TikTok image for ad %s too small (%d bytes), skipping", ad_id, len(resp.content))
-                return None
+                return None, None, None
+            width = height = None
+            try:
+                import io as _io
+                from PIL import Image as _Image
+                _img = _Image.open(_io.BytesIO(resp.content))
+                width, height = _img.size
+            except Exception:
+                pass
             served_url = obj_storage.upload_bytes(resp.content, relative_path, content_type="image/jpeg")
-            logger.info("Downloaded TikTok image for ad %s: %s (%d bytes)", ad_id, filename, len(resp.content))
-            return served_url
+            logger.info("Downloaded TikTok image for ad %s: %s (%d bytes w=%s h=%s)", ad_id, filename, len(resp.content), width, height)
+            return served_url, width, height
         except (httpx.RequestError, httpx.HTTPStatusError, OSError) as e:
             logger.warning("Failed to download TikTok image for ad %s: %s", ad_id, e, exc_info=True)
-            return None
+            return None, None, None
 
     async def _download_tiktok_thumbnail(
         self,
