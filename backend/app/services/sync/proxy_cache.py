@@ -106,8 +106,8 @@ def reset_cache() -> None:
 # ---------------------------------------------------------------------------
 
 _concurrency_cache: dict = {
-    "semaphore": asyncio.Semaphore(3),  # default capacity (D-11)
-    "max_concurrent": 3,  # tracks integer capacity for change detection (D-03)
+    "semaphore": asyncio.Semaphore(10),  # default capacity (D-11)
+    "max_concurrent": 10,  # tracks integer capacity for change detection (D-03)
     "expires_at": 0.0,  # forces first call to load from DB
 }
 
@@ -132,7 +132,7 @@ async def get_concurrency_semaphore() -> asyncio.Semaphore:
             return _concurrency_cache["semaphore"]
 
         # Cache miss — load fresh from DB
-        max_concurrent = 3  # default (D-11)
+        max_concurrent = 10  # default (D-11)
 
         try:
             async with get_session_factory()() as db:

@@ -693,75 +693,124 @@ class GoogleAdsSyncService:
         db: AsyncSession,
         connection: PlatformConnection,
         asset_queue: Dict[str, Dict[str, str]],
+        bg_job_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Download thumbnails + videos for queued ads and UPDATE rows. Called after sync commit."""
+        """Download thumbnails + videos for queued ads. Parallelizes by unique YouTube video ID."""
         from sqlalchemy import update as sa_update, text as _text
-        # Pre-flight: skip all video downloads if cookies already flagged expired by a concurrent job
-        cookies_expired = False
+
+        # Pre-flight: skip video downloads if cookies already flagged expired
+        cookies_expired_preflight = False
         try:
             _pre = (await db.execute(_text("SELECT youtube_cookies_runtime_expired FROM system_config LIMIT 1"))).first()
             if _pre and _pre[0]:
-                cookies_expired = True
+                cookies_expired_preflight = True
                 logger.warning("Google Ads: YouTube cookies already flagged as expired — skipping video downloads")
         except Exception:
             pass
-        video_failures: Dict[str, str] = {}
-        video_successes: int = 0
-        served_url: Optional[str] = None
+
+        if not asset_queue:
+            return {"downloaded": [], "failed": [], "stats": {"succeeded": 0, "failed": 0}}
+
+        # Group ads by YouTube video ID — one download unit per unique video
+        _yt_vid_to_ads: dict = {}
         for ad_id, info in asset_queue.items():
-            youtube_video_id = info.get("youtube_video_id")
+            yt_vid = info.get("youtube_video_id")
             org_id = info.get("org_id")
-            if not youtube_video_id or not org_id:
-                continue
+            if yt_vid and org_id:
+                _yt_vid_to_ads.setdefault(yt_vid, []).append((ad_id, org_id))
 
-            # Thumbnail is a plain HTTP fetch from img.youtube.com — no cookies needed.
-            # Always attempt independently so it lands even when video download fails.
-            thumbnail_url: Optional[str] = None
+        import uuid as _uuid
+        from app.services.sync.job_tracker import get_job_status as _get_status, update_background_job as _ubj
+
+        _dl_lock = asyncio.Lock()
+        _cookies_expired = [cookies_expired_preflight]
+        _succeeded_count = [0]
+        _failed_count = [0]
+
+        thumb_results: dict = {}   # ad_id -> thumbnail URL
+        video_results: dict = {}   # ad_id -> {video_url, yt_duration}
+        video_failures: dict = {}  # ad_id -> error string
+
+        async def _dl_unit(yt_vid: str, ads: list) -> None:
+            """Download thumbnail + video for one unique YouTube video ID."""
+            ad_ids = [a[0] for a in ads]
+            org_id = ads[0][1]
+
+            if bg_job_id:
+                _jid = bg_job_id if isinstance(bg_job_id, _uuid.UUID) else _uuid.UUID(str(bg_job_id))
+                if await _get_status(_jid) == "INTERRUPTED":
+                    return
+
+            # Thumbnail: pass yt_vid as storage key for deduplication
+            thumb_served = None
             try:
-                _, thumbnail_url = await self._download_thumbnail(youtube_video_id, org_id, ad_id)
+                _, thumb_served = await self._download_thumbnail(yt_vid, org_id, yt_vid)
             except Exception as e:
-                logger.warning("Thumbnail download failed for ad %s: %s", ad_id, e)
+                logger.warning("Thumbnail failed for video %s: %s", yt_vid, e)
 
-            # Video download requires yt-dlp + cookies. On _CookiesExpiredError we abort
-            # remaining video downloads but still persist the thumbnail we already have.
-            video_url: Optional[str] = None
-            frame_thumb: Optional[str] = None
-            yt_duration: Optional[float] = None
-            if not cookies_expired:
-                try:
-                    yt_duration, video_url, frame_thumb = await self._download_video(youtube_video_id, org_id, ad_id)
+            if thumb_served:
+                async with _dl_lock:
+                    for ad_id in ad_ids:
+                        thumb_results[ad_id] = thumb_served
+
+            # Video: semaphore-gated, keyed by yt_vid
+            if _cookies_expired[0]:
+                async with _dl_lock:
+                    _failed_count[0] += len(ad_ids)
+                    for ad_id in ad_ids:
+                        video_failures[ad_id] = "YouTube cookies expired"
+                return
+
+            try:
+                yt_duration, video_url, frame_thumb = await self._download_video(yt_vid, org_id, yt_vid)
+                async with _dl_lock:
                     if video_url:
-                        video_successes += 1
-                        served_url = video_url
+                        _succeeded_count[0] += len(ad_ids)
+                        for ad_id in ad_ids:
+                            video_results[ad_id] = {"video_url": video_url, "yt_duration": yt_duration}
+                            if frame_thumb and ad_id not in thumb_results:
+                                thumb_results[ad_id] = frame_thumb
                     else:
-                        video_failures[ad_id] = "download failed — no output file produced"
-                        logger.warning("[DL:%s] yt-dlp finished but no output file — skipping ad %s", youtube_video_id[:8] if youtube_video_id else "?", ad_id)
-                except _CookiesExpiredError:
-                    cookies_expired = True
-                    logger.warning("YouTube cookies expired — skipping video downloads for remaining ads in queue")
-                except Exception as e:
-                    video_failures[ad_id] = f"{type(e).__name__}: {e}"
-                    logger.warning("Video download failed for ad %s: %s", ad_id, e)
+                        _failed_count[0] += len(ad_ids)
+                        for ad_id in ad_ids:
+                            video_failures[ad_id] = "download failed — no output file produced"
+                        logger.warning("[DL:%s] yt-dlp finished but no output file — skipping %d ad(s)", yt_vid[:8], len(ad_ids))
+            except _CookiesExpiredError:
+                async with _dl_lock:
+                    _cookies_expired[0] = True
+                    _failed_count[0] += len(ad_ids)
+                    for ad_id in ad_ids:
+                        video_failures[ad_id] = "YouTube cookies expired"
+            except Exception as e:
+                async with _dl_lock:
+                    _failed_count[0] += len(ad_ids)
+                    for ad_id in ad_ids:
+                        video_failures[ad_id] = f"{type(e).__name__}: {e}"
+                logger.warning("Video download failed for %s: %s", yt_vid, e)
+            finally:
+                if bg_job_id:
+                    await _ubj(bg_job_id, progress_current=_succeeded_count[0], output={"stats": {"succeeded": _succeeded_count[0], "failed": _failed_count[0]}})
 
-            if not thumbnail_url and frame_thumb:
-                thumbnail_url = frame_thumb
+        await asyncio.gather(*[_dl_unit(yt_vid, ads) for yt_vid, ads in _yt_vid_to_ads.items()])
 
-            update_vals: Dict[str, Any] = {}
-            if video_url:
-                update_vals["video_url"] = video_url
-            if thumbnail_url:
-                update_vals["thumbnail_url"] = thumbnail_url
-            if update_vals:
-                await db.execute(
-                    sa_update(GoogleAdsRawPerformance)
-                    .where(
-                        GoogleAdsRawPerformance.ad_id == ad_id,
-                        GoogleAdsRawPerformance.platform_connection_id == connection.id,
-                    )
-                    .values(**update_vals)
+        if _cookies_expired[0] and _succeeded_count[0] == 0:
+            raise _CookiesExpiredError("YouTube cookies expired during asset download")
+
+        # DB updates — videos
+        for ad_id, r in video_results.items():
+            update_vals: Dict[str, Any] = {"video_url": r["video_url"]}
+            thumb = thumb_results.get(ad_id)
+            if thumb:
+                update_vals["thumbnail_url"] = thumb
+            await db.execute(
+                sa_update(GoogleAdsRawPerformance)
+                .where(
+                    GoogleAdsRawPerformance.ad_id == ad_id,
+                    GoogleAdsRawPerformance.platform_connection_id == connection.id,
                 )
-            # Populate video_duration on CreativeAsset inline — no separate backfill needed.
-            if yt_duration is not None:
+                .values(**update_vals)
+            )
+            if r.get("yt_duration") is not None:
                 from app.models.creative import CreativeAsset
                 await db.execute(
                     sa_update(CreativeAsset).where(
@@ -769,18 +818,41 @@ class GoogleAdsSyncService:
                         CreativeAsset.platform == "GOOGLE_ADS",
                         CreativeAsset.ad_id == ad_id,
                         CreativeAsset.video_duration.is_(None),
-                    ).values(video_duration=yt_duration)
+                    ).values(video_duration=r["yt_duration"])
                 )
+
+        # DB updates — thumbnails for failed-video ads (thumbnail may have succeeded)
+        for ad_id in video_failures:
+            thumb = thumb_results.get(ad_id)
+            if thumb:
+                await db.execute(
+                    sa_update(GoogleAdsRawPerformance)
+                    .where(
+                        GoogleAdsRawPerformance.ad_id == ad_id,
+                        GoogleAdsRawPerformance.platform_connection_id == connection.id,
+                    )
+                    .values(thumbnail_url=thumb)
+                )
+
         await db.commit()
-        if cookies_expired:
+
+        if _cookies_expired[0]:
             raise _CookiesExpiredError("YouTube cookies expired during asset download")
-        if video_failures and video_successes == 0:
+
+        if video_failures and _succeeded_count[0] == 0:
             raise Exception(
                 f"{len(video_failures)} Google Ads video download(s) failed: "
                 + "; ".join(f"{k}: {v}" for k, v in list(video_failures.items())[:3])
                 + ("..." if len(video_failures) > 3 else "")
             )
-        return {"video_url": served_url, "video_failures": video_failures}
+
+        downloaded_list = [{"asset_id": ad_id, "url": r["video_url"]} for ad_id, r in video_results.items()]
+        failed_list = [{"asset_id": ad_id, "error": err} for ad_id, err in video_failures.items()]
+        return {
+            "downloaded": downloaded_list,
+            "failed": failed_list,
+            "stats": {"succeeded": _succeeded_count[0], "failed": _failed_count[0]},
+        }
 
 
 google_ads_sync = GoogleAdsSyncService()

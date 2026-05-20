@@ -517,65 +517,21 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict, exis
                 progress_total=len(asset_queue),
             )
 
-        # Resume support: find assets already downloaded so we can skip them
-        from sqlalchemy import select as _sel
-        from app.models.performance import GoogleAdsRawPerformance
-        asset_id_strs = [str(aid) for aid in asset_queue.keys()]
-        async with get_session_factory()() as _skip_db:
-            _already_done = await _skip_db.execute(
-                _sel(GoogleAdsRawPerformance.ad_id).where(
-                    GoogleAdsRawPerformance.ad_id.in_(asset_id_strs),
-                    GoogleAdsRawPerformance.video_url.isnot(None),
-                    GoogleAdsRawPerformance.video_url != "",
-                )
-            )
-            already_downloaded = {row[0] for row in _already_done.fetchall()}
-
-        # Parallel download: all assets launched concurrently, semaphore inside limits to N
+        # Pass full queue to service — deduplication and parallelism handled internally
         downloaded = []
         failed = []
-        cookie_expired_count = [0]
-        _dl_lock = asyncio.Lock()
-
-        async def _process_one(asset_id, asset_info):
-            if await get_job_status(bg_job_id) == "INTERRUPTED":
-                return
-            if str(asset_id) in already_downloaded:
-                async with _dl_lock:
-                    downloaded.append({"asset_id": str(asset_id), "url": "(already downloaded)"})
-                return
-            single_queue = {asset_id: asset_info}
-            try:
-                async with get_session_factory()() as db:
-                    result = await google_ads_sync.download_assets_post_commit(db, connection, single_queue)
-                video_url = (result or {}).get("video_url") or ""
-                async with _dl_lock:
-                    if video_url or not (result or {}).get("video_failures"):
-                        downloaded.append({"asset_id": str(asset_id), "url": video_url})
-                    else:
-                        fail_msg = next(iter((result or {}).get("video_failures", {}).values()), "silent failure")
-                        failed.append({"asset_id": str(asset_id), "error": fail_msg})
-            except _CookiesExpiredError:
-                async with _dl_lock:
-                    cookie_expired_count[0] += 1
-                    failed.append({"asset_id": str(asset_id), "error": "YouTube cookies expired"})
-            except Exception as asset_err:
-                async with _dl_lock:
-                    failed.append({"asset_id": str(asset_id), "error": str(asset_err)})
-            await update_background_job(bg_job_id, status="RUNNING", progress_current=len(downloaded))
-
-        await asyncio.gather(*[_process_one(asset_id, asset_info) for asset_id, asset_info in asset_queue.items()])
-
-        # Only declare global cookie expiry when every single failure was a cookie error
-        # and nothing succeeded. Mixed failures (some cookie, some non-cookie) mean the
-        # issue is per-video access restrictions, not expired credentials.
-        if cookie_expired_count[0] > 0 and len(downloaded) == 0 and len(failed) == cookie_expired_count[0]:
-            raise _CookiesExpiredError("All Google Ads video downloads failed with cookie errors")
+        _gads_stats = {}
+        async with get_session_factory()() as db:
+            result = await google_ads_sync.download_assets_post_commit(
+                db, connection, asset_queue, bg_job_id=str(bg_job_id)
+            )
+        downloaded = result.get("downloaded", []) if result else []
+        failed = result.get("failed", []) if result else []
+        _gads_stats = result.get("stats", {}) if result else {}
 
         # Phase 17: Mark COMPLETE/PARTIAL with D-11 output manifest
         final_status = "COMPLETE" if not failed else ("PARTIAL" if downloaded else "FAILED")
-        _not_found_gads = [f for f in failed if "unavailable" in f.get("error", "").lower() or "deleted" in f.get("error", "").lower() or "not found" in f.get("error", "").lower()]
-        output = {"downloaded": downloaded, "failed": failed, "stats": {"succeeded": len(downloaded), "failed": len(failed) - len(_not_found_gads), "not_found": len(_not_found_gads)}}
+        output = {"downloaded": downloaded, "failed": failed, "stats": _gads_stats}
         if await get_job_status(bg_job_id) != "INTERRUPTED":
             await update_background_job(
                 bg_job_id,
