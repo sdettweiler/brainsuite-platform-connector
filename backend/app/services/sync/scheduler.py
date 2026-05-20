@@ -576,12 +576,13 @@ async def _run_google_ads_asset_downloads(connection_id, asset_queue: dict, exis
         final_status = "COMPLETE" if not failed else ("PARTIAL" if downloaded else "FAILED")
         _not_found_gads = [f for f in failed if "unavailable" in f.get("error", "").lower() or "deleted" in f.get("error", "").lower() or "not found" in f.get("error", "").lower()]
         output = {"downloaded": downloaded, "failed": failed, "stats": {"succeeded": len(downloaded), "failed": len(failed) - len(_not_found_gads), "not_found": len(_not_found_gads)}}
-        await update_background_job(
-            bg_job_id,
-            status=final_status,
-            progress_current=len(asset_queue),
-            output=output,
-        )
+        if await get_job_status(bg_job_id) != "INTERRUPTED":
+            await update_background_job(
+                bg_job_id,
+                status=final_status,
+                progress_current=len(asset_queue),
+                output=output,
+            )
 
     except _CookiesExpiredError:
         async with get_session_factory()() as fresh_db:
@@ -687,12 +688,13 @@ async def _run_meta_creatives_deferred(connection_id, ad_ids: list, org_id=None,
         final_status = "COMPLETE" if not failed else ("PARTIAL" if downloaded else "FAILED")
         _not_found_meta = [f for f in failed if "unavailable" in f.get("error", "").lower() or "deleted" in f.get("error", "").lower() or "not found" in f.get("error", "").lower()]
         output = {"downloaded": downloaded, "failed": failed, "stats": {"succeeded": len(downloaded), "failed": len(failed) - len(_not_found_meta), "not_found": len(_not_found_meta)}}
-        await update_background_job(
-            bg_job_id,
-            status=final_status,
-            progress_current=len(ad_ids),
-            output=output,
-        )
+        if await get_job_status(bg_job_id) != "INTERRUPTED":
+            await update_background_job(
+                bg_job_id,
+                status=final_status,
+                progress_current=len(ad_ids),
+                output=output,
+            )
 
     except Exception as e:
         logger.warning(f"Meta creatives deferred fetch failed (non-fatal): {e}")
@@ -768,12 +770,13 @@ async def _run_tiktok_creatives_deferred(connection_id, ad_ids: list, org_id=Non
         final_status = "COMPLETE" if not failed else ("PARTIAL" if downloaded else "FAILED")
         _not_found_tiktok = [f for f in failed if "unavailable" in f.get("error", "").lower() or "deleted" in f.get("error", "").lower() or "not found" in f.get("error", "").lower()]
         output = {"downloaded": downloaded, "failed": failed, "stats": {"succeeded": len(downloaded), "failed": len(failed) - len(_not_found_tiktok), "not_found": len(_not_found_tiktok)}}
-        await update_background_job(
-            bg_job_id,
-            status=final_status,
-            progress_current=len(ad_ids),
-            output=output,
-        )
+        if await get_job_status(bg_job_id) != "INTERRUPTED":
+            await update_background_job(
+                bg_job_id,
+                status=final_status,
+                progress_current=len(ad_ids),
+                output=output,
+            )
 
     except Exception as e:
         logger.warning(f"TikTok creatives deferred fetch failed (non-fatal): {e}")
@@ -864,12 +867,13 @@ async def _run_dv360_asset_downloads(connection_id, asset_queue: dict, existing_
         # Phase 17: Mark COMPLETE (all downloaded), PARTIAL (some failed), or leave for exception path
         output = {"downloaded": downloaded, "failed": failed, "stats": _dv360_stats}
         dl_status = "PARTIAL" if failed else "COMPLETE"
-        await update_background_job(
-            bg_job_id,
-            status=dl_status,
-            progress_current=len(downloaded),
-            output=output,
-        )
+        if await get_job_status(bg_job_id) != "INTERRUPTED":
+            await update_background_job(
+                bg_job_id,
+                status=dl_status,
+                progress_current=len(downloaded),
+                output=output,
+            )
 
     except _CookiesExpiredError:
         async with get_session_factory()() as fresh_db:
