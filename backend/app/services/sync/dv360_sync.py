@@ -1245,6 +1245,7 @@ class DV360SyncService:
 
         tmpdir = tempfile.mkdtemp()
         tmp_base = os.path.join(tmpdir, "video")
+        _last_logger_ref: list = []  # holds the current attempt's _YDLLogger for flush_on_failure
 
         async def _do_download(proxy: Optional[str], cookie_data: str) -> bool:
             """Download video in a single yt-dlp session.
@@ -1268,20 +1269,25 @@ class DV360SyncService:
                 return re.sub(r'https?://[^@/]+@([^/:]+)[^"\s]*', r'[PROXY:\1]', msg)
 
             class _YDLLogger:
-                def debug(self, msg):
-                    if msg.startswith("[debug] "):
-                        logger.debug("yt-dlp: %s", _redact(msg))
-                    else:
-                        logger.info("yt-dlp: %s", _redact(msg))
-                def info(self, msg): logger.info("yt-dlp: %s", _redact(msg))
+                def __init__(self):
+                    self._warnings: list = []
+                    self._errors: list = []
+                    _last_logger_ref[:] = [self]
+                def debug(self, msg): pass
+                def info(self, msg): pass
                 def warning(self, msg):
                     if "no longer valid" in msg:
                         _expired[0] = True
-                    logger.warning("yt-dlp: %s", _redact(msg))
+                    self._warnings.append(_redact(msg))
                 def error(self, msg):
                     if "no longer valid" in msg:
                         _expired[0] = True
-                    logger.error("yt-dlp: %s", _redact(msg))
+                    self._errors.append(_redact(msg))
+                def flush_on_failure(self):
+                    for w in self._warnings:
+                        logger.warning("yt-dlp: %s", w)
+                    for e in self._errors:
+                        logger.error("yt-dlp: %s", e)
 
             ydl_opts: dict = {
                 "outtmpl": f"{tmp_base}.%(ext)s",
@@ -1364,8 +1370,6 @@ class DV360SyncService:
                     )
                     if not _is_fmt:
                         raise _CookiesExpiredError("YouTube cookies are no longer valid") from e
-                redacted_error = _redact(str(e))
-                logger.error("yt-dlp exception: %s", redacted_error)
                 raise
             finally:
                 if cookie_file and os.path.exists(cookie_file.name):
@@ -1384,23 +1388,22 @@ class DV360SyncService:
         semaphore = await get_concurrency_semaphore()
         actual_path: Optional[str] = None
         winning_label: Optional[str] = None
-        logger.info("[DL:%s] DV360 — waiting for slot (%d attempt(s))", _dl_tag, len(attempts))
+        logger.warning("[DL:%s] DV360 — queued (%d attempt(s))", _dl_tag, len(attempts))
         try:
             async with semaphore:
                 if bg_job_id:
                     from app.services.sync.job_tracker import get_job_status as _gjstat
                     if await _gjstat(bg_job_id) == "INTERRUPTED":
-                        logger.info("[DL:%s] Job interrupted — slot released without downloading", _dl_tag)
+                        logger.warning("[DL:%s] job interrupted — skipping", _dl_tag)
                         return None, None, None
-                logger.info("[DL:%s] Slot acquired", _dl_tag)
                 for i, cookie in enumerate(attempts):
                     if not cookie:
-                        label = "no cookies"
+                        label = "PO"
                     elif cookies and cookie == cookies[0]:
                         label = "primary"
                     else:
                         label = "backup"
-                    logger.info("[DL:%s] Attempt %d/%d (%s)", _dl_tag, i + 1, len(attempts), label)
+                    logger.warning("[DL:%s] attempt %d/%d: %s", _dl_tag, i + 1, len(attempts), label)
 
                     # PO-first: first attempt when proxy enabled uses no proxy and no cookies
                     if i == 0 and proxy_enabled and proxy_url:
@@ -1421,11 +1424,15 @@ class DV360SyncService:
                             winning_label = label
                             break  # semaphore released after this block; upload runs outside
                         else:
+                            if _last_logger_ref:
+                                _last_logger_ref[0].flush_on_failure()
                             logger.warning("[DL:%s] yt-dlp finished but output file missing", _dl_tag)
                     except _CookiesExpiredError:
                         if i < len(attempts) - 1:
-                            logger.info("[DL:%s] %s cookies expired — trying backup slot", _dl_tag, label)
+                            logger.warning("[DL:%s] attempt %d/%d: %s — cookies expired, trying next", _dl_tag, i + 1, len(attempts), label)
                             continue
+                        if _last_logger_ref:
+                            _last_logger_ref[0].flush_on_failure()
                         logger.warning("[DL:%s] All cookie slots expired — aborting", _dl_tag)
                         if cookies:
                             try:
@@ -1461,8 +1468,10 @@ class DV360SyncService:
                         is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
                         if is_format_error:
                             if i < len(attempts) - 1:
-                                logger.info("[DL:%s] No formats on attempt %d — retrying with next slot", _dl_tag, i + 1)
+                                logger.warning("[DL:%s] attempt %d/%d: %s — no formats, trying next", _dl_tag, i + 1, len(attempts), label)
                                 continue
+                            if _last_logger_ref:
+                                _last_logger_ref[0].flush_on_failure()
                             logger.warning("[DL:%s] No video formats available — skipping", _dl_tag)
                             break
                         # yt-dlp __exit__ raises when saving back a corrupt cookie file even after
@@ -1470,22 +1479,23 @@ class DV360SyncService:
                         _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"}
                         _recovery = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0 and os.path.splitext(m)[1].lower() in _VIDEO_EXTS]
                         if _recovery:
-                            logger.info("[DL:%s] Download succeeded despite exception (%s) — recovering file", _dl_tag, type(e).__name__)
+                            logger.warning("[DL:%s] attempt %d/%d: %s — exception but file on disk, recovering (%s)", _dl_tag, i + 1, len(attempts), label, type(e).__name__)
                             actual_path = _recovery[0]
                             winning_label = label
                             break
                         if i < len(attempts) - 1:
-                            logger.info("[DL:%s] Attempt %d failed (%s) — trying next", _dl_tag, i + 1, type(e).__name__)
+                            logger.warning("[DL:%s] attempt %d/%d: %s — failed (%s), trying next", _dl_tag, i + 1, len(attempts), label, type(e).__name__)
                             continue
+                        if _last_logger_ref:
+                            _last_logger_ref[0].flush_on_failure()
                         logger.warning("[DL:%s] FAILED: %s: %s", _dl_tag, type(e).__name__, e, exc_info=True)
 
             # Semaphore released — upload, DB update, frame extraction run concurrently with other downloads
             if actual_path:
                 size_mb = os.path.getsize(actual_path) / (1024 * 1024)
-                logger.info("[DL:%s] Slot released — uploading (%.1f MB)", _dl_tag, size_mb)
                 duration = get_video_duration(actual_path)
                 served_url = await loop.run_in_executor(None, obj_storage.upload_file, actual_path, relative_path, "video/mp4")
-                logger.info("[DL:%s] COMPLETE: %s (%.1f MB, %s cookies)", _dl_tag, filename, size_mb, winning_label)
+                logger.warning("[DL:%s] COMPLETE: %s (%.1f MB, %s)", _dl_tag, filename, size_mb, winning_label)
                 try:
                     from sqlalchemy import update as _sa_update
                     from app.models.system_config import SystemConfig as _SC

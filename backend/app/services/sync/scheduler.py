@@ -2571,22 +2571,41 @@ async def backfill_missing_downloads_for_connection(connection_id: str) -> tuple
     logger.info("backfill: connection %s — queuing %d assets (job %s)", connection_id, len(missing), bg_job_id)
 
     async def _run():
-        downloaded = []
-        for i, asset in enumerate(missing):
-            try:
-                ok = await _download_asset_for_backfill(asset)
-                if ok:
-                    downloaded.append({"asset_id": str(asset.id), "ad_id": asset.ad_id})
-            except _CookiesExpiredError:
-                logger.warning("backfill: cookies expired on asset %s — aborting", asset.id)
-                await update_background_job(bg_job_id, status="FAILED", progress_current=i,
-                    error={"type": "CookiesExpiredError", "message": "YouTube cookies expired", "traceback": ""})
+        from app.services.sync.proxy_cache import get_concurrency_semaphore as _get_sem
+        sem = await _get_sem()
+        downloaded: list = []
+        lock = asyncio.Lock()
+        progress = [0]
+        aborted = [False]
+
+        async def _do_one(asset):
+            if aborted[0]:
                 return
-            except Exception as exc:
-                logger.warning("backfill: asset %s failed: %s", asset.id, exc)
-            await update_background_job(bg_job_id, progress_current=i + 1)
-        await update_background_job(bg_job_id, status="COMPLETE", progress_current=len(missing),
-            output={"downloaded": downloaded})
+            async with sem:
+                if aborted[0]:
+                    return
+                try:
+                    ok = await _download_asset_for_backfill(asset)
+                except _CookiesExpiredError:
+                    aborted[0] = True
+                    logger.warning("backfill: cookies expired on asset %s — aborting", asset.id)
+                    async with lock:
+                        await update_background_job(bg_job_id, status="FAILED", progress_current=progress[0],
+                            error={"type": "CookiesExpiredError", "message": "YouTube cookies expired", "traceback": ""})
+                    return
+                except Exception as exc:
+                    logger.warning("backfill: asset %s failed: %s", asset.id, exc)
+                    ok = False
+                async with lock:
+                    if ok:
+                        downloaded.append({"asset_id": str(asset.id), "ad_id": asset.ad_id})
+                    progress[0] += 1
+                    await update_background_job(bg_job_id, progress_current=progress[0])
+
+        await asyncio.gather(*[_do_one(a) for a in missing])
+        if not aborted[0]:
+            await update_background_job(bg_job_id, status="COMPLETE", progress_current=len(missing),
+                output={"downloaded": downloaded})
 
     asyncio.create_task(_run())
     return str(bg_job_id), len(missing)

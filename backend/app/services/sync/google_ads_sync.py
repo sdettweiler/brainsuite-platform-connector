@@ -358,6 +358,7 @@ class GoogleAdsSyncService:
 
         tmpdir = tempfile.mkdtemp()
         tmp_base = os.path.join(tmpdir, "video")
+        _last_logger_ref: list = []  # holds the current attempt's _YDLLogger for flush_on_failure
 
         async def _do_download(proxy: Optional[str], cookie_data: str) -> bool:
             """Download video in a single yt-dlp session.
@@ -380,20 +381,25 @@ class GoogleAdsSyncService:
                 return _re.sub(r'https?://[^@/]+@([^/:]+)[^"\s]*', r'[PROXY:\1]', msg)
 
             class _YDLLogger:
-                def debug(self, msg):
-                    if msg.startswith("[debug] "):
-                        logger.debug("yt-dlp: %s", _redact(msg))
-                    else:
-                        logger.info("yt-dlp: %s", _redact(msg))
-                def info(self, msg): logger.info("yt-dlp: %s", _redact(msg))
+                def __init__(self):
+                    self._warnings: list = []
+                    self._errors: list = []
+                    _last_logger_ref[:] = [self]
+                def debug(self, msg): pass
+                def info(self, msg): pass
                 def warning(self, msg):
                     if "no longer valid" in msg:
                         _expired[0] = True
-                    logger.warning("yt-dlp: %s", _redact(msg))
+                    self._warnings.append(_redact(msg))
                 def error(self, msg):
                     if "no longer valid" in msg:
                         _expired[0] = True
-                    logger.error("yt-dlp: %s", _redact(msg))
+                    self._errors.append(_redact(msg))
+                def flush_on_failure(self):
+                    for w in self._warnings:
+                        logger.warning("yt-dlp: %s", w)
+                    for e in self._errors:
+                        logger.error("yt-dlp: %s", e)
 
             ydl_opts: dict = {
                 "outtmpl": f"{tmp_base}.%(ext)s",
@@ -467,8 +473,6 @@ class GoogleAdsSyncService:
                     )
                     if not _is_fmt:
                         raise _CookiesExpiredError("YouTube cookies are no longer valid") from e
-                redacted_error = _redact(str(e))
-                logger.error("yt-dlp exception: %s", redacted_error)
                 raise
             finally:
                 if cookie_file and os.path.exists(cookie_file.name):
@@ -487,17 +491,16 @@ class GoogleAdsSyncService:
             # Phase 25 (PERF-02): one semaphore slot per asset, shared across DV360 + Google Ads via proxy_cache
             from app.services.sync.proxy_cache import get_concurrency_semaphore
             semaphore = await get_concurrency_semaphore()
-            logger.info("[DL:%s] Google Ads — waiting for slot (%d attempt(s))", _dl_tag, len(attempts))
+            logger.warning("[DL:%s] Google Ads — queued (%d attempt(s))", _dl_tag, len(attempts))
             async with semaphore:
-                logger.info("[DL:%s] Slot acquired", _dl_tag)
                 for i, cookie in enumerate(attempts):
                     if not cookie:
-                        label = "no cookies"
+                        label = "PO"
                     elif cookies and cookie == cookies[0]:
                         label = "primary"
                     else:
                         label = "backup"
-                    logger.info("[DL:%s] Attempt %d/%d (%s)", _dl_tag, i + 1, len(attempts), label)
+                    logger.warning("[DL:%s] attempt %d/%d: %s", _dl_tag, i + 1, len(attempts), label)
 
                     # D-04: first attempt when proxy enabled = no-proxy/no-cookies (PO auto via bgutil)
                     # subsequent attempts route through proxy
@@ -515,8 +518,10 @@ class GoogleAdsSyncService:
                         break
                     except _CookiesExpiredError:
                         if i < len(attempts) - 1:
-                            logger.warning("[DL:%s] Attempt %d expired — trying next", _dl_tag, i + 1)
+                            logger.warning("[DL:%s] attempt %d/%d: %s — cookies expired, trying next", _dl_tag, i + 1, len(attempts), label)
                             continue
+                        if _last_logger_ref:
+                            _last_logger_ref[0].flush_on_failure()
                         raise
                     except Exception as _attempt_err:
                         # yt-dlp __exit__ raises when saving back a corrupt cookie file even after
@@ -524,27 +529,27 @@ class GoogleAdsSyncService:
                         _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"}
                         _recovery = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0 and os.path.splitext(m)[1].lower() in _VIDEO_EXTS]
                         if _recovery:
-                            logger.info("[DL:%s] Download succeeded despite exception (%s) — recovering file", _dl_tag, type(_attempt_err).__name__)
+                            logger.warning("[DL:%s] attempt %d/%d: %s — exception but file on disk, recovering (%s)", _dl_tag, i + 1, len(attempts), label, type(_attempt_err).__name__)
                             if cookie and cookies and cookie in cookies:
                                 winning_slot = cookies.index(cookie)
                             else:
                                 winning_slot = None
                             break
                         if i < len(attempts) - 1:
-                            logger.warning("[DL:%s] Attempt %d failed (%s) — trying next", _dl_tag, i + 1, type(_attempt_err).__name__)
+                            logger.warning("[DL:%s] attempt %d/%d: %s — failed (%s), trying next", _dl_tag, i + 1, len(attempts), label, type(_attempt_err).__name__)
                             continue
+                        if _last_logger_ref:
+                            _last_logger_ref[0].flush_on_failure()
                         raise
 
-            logger.info("[DL:%s] Slot released", _dl_tag)
             matches = [m for m in glob.glob(f"{tmp_base}.*") if os.path.getsize(m) > 0]
             actual_path = matches[0] if matches else None
             if actual_path:
                 size_mb = os.path.getsize(actual_path) / (1024 * 1024)
-                logger.info("[DL:%s] Uploading (%.1f MB)", _dl_tag, size_mb)
                 served_url = await loop.run_in_executor(None, obj_storage.upload_file, actual_path, relative_path, "video/mp4")
                 from app.services.sync.video_utils import get_video_duration as _get_dur
                 yt_video_duration = await loop.run_in_executor(None, _get_dur, actual_path)
-                logger.info("[DL:%s] COMPLETE: %s (%.1f MB, duration=%s)", _dl_tag, filename, size_mb, yt_video_duration)
+                logger.warning("[DL:%s] COMPLETE: %s (%.1f MB, duration=%s)", _dl_tag, filename, size_mb, yt_video_duration)
                 try:
                     from sqlalchemy import update as _sa_update
                     from app.models.system_config import SystemConfig as _SC
@@ -566,6 +571,8 @@ class GoogleAdsSyncService:
                     frame_thumb = await extract_first_frame_and_upload(actual_path, org_id, ad_id, "yt", obj_storage)
                 return yt_video_duration, served_url, frame_thumb
             else:
+                if _last_logger_ref:
+                    _last_logger_ref[0].flush_on_failure()
                 logger.warning("[DL:%s] yt-dlp finished but output file missing", _dl_tag)
                 return None, None, None
         except _CookiesExpiredError:
