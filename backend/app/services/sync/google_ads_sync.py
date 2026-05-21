@@ -480,6 +480,7 @@ class GoogleAdsSyncService:
 
         _dl_tag = youtube_video_id
         winning_slot: int | None = None
+        _dl_slot = None
         try:
             # Build attempt list (D-04, PERF-03):
             # proxy off: [primary, backup] or [""] if no cookies (existing behavior preserved)
@@ -489,9 +490,16 @@ class GoogleAdsSyncService:
                 attempts = ["", *attempts]
 
             # Phase 25 (PERF-02): one semaphore slot per asset, shared across DV360 + Google Ads via proxy_cache
-            from app.services.sync.proxy_cache import get_concurrency_semaphore
+            from app.services.sync.proxy_cache import get_concurrency_semaphore, acquire_download_slot as _ads, wait_for_download as _wfd, release_download_slot as _rds
             semaphore = await get_concurrency_semaphore()
             logger.warning("[DL:%s] Google Ads — queued (%d attempt(s))", _dl_tag, len(attempts))
+            _dl_slot = await _ads(relative_path)
+            if _dl_slot is None:
+                # Concurrent download of the same file — wait for it then re-check storage
+                await _wfd(relative_path)
+                if await loop.run_in_executor(None, obj_storage.file_exists, relative_path):
+                    return None, obj_storage.served_url(relative_path), None
+                return None, None, None
             async with semaphore:
                 for i, cookie in enumerate(attempts):
                     if not cookie:
@@ -608,6 +616,8 @@ class GoogleAdsSyncService:
             logger.warning("Failed to download Google Ads video for ad %s (video %s): %s: %s", ad_id, youtube_video_id, type(e).__name__, e, exc_info=True)
             return None, None, None
         finally:
+            if _dl_slot is not None:
+                await _rds(relative_path, _dl_slot)
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     async def _upsert_records(

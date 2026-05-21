@@ -1389,6 +1389,14 @@ class DV360SyncService:
         actual_path: Optional[str] = None
         winning_label: Optional[str] = None
         logger.warning("[DL:%s] DV360 — queued (%d attempt(s))", _dl_tag, len(attempts))
+        from app.services.sync.proxy_cache import acquire_download_slot as _ads, wait_for_download as _wfd, release_download_slot as _rds
+        _dl_slot = await _ads(relative_path)
+        if _dl_slot is None:
+            # Concurrent download of the same file — wait for it then re-check storage
+            await _wfd(relative_path)
+            if await loop.run_in_executor(None, obj_storage.file_exists, relative_path):
+                return None, obj_storage.served_url(relative_path), None
+            return None, None, None
         try:
             async with semaphore:
                 if bg_job_id:
@@ -1518,6 +1526,7 @@ class DV360SyncService:
                 return duration, served_url, frame_thumb
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+            await _rds(relative_path, _dl_slot)
 
         logger.warning("[DL:%s] No file produced — all attempts failed", _dl_tag)
         return None, None, None

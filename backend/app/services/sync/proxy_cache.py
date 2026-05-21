@@ -166,3 +166,44 @@ def reset_concurrency_cache() -> None:
     Sets expires_at to 0.0 so the TTL check fails on the next call.
     """
     _concurrency_cache["expires_at"] = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Per-path video download deduplication
+# ---------------------------------------------------------------------------
+# Prevents parallel tasks from downloading the same file concurrently.
+# Keyed by storage relative_path. First caller gets an Event to set when done;
+# subsequent callers wait on that Event, then check object storage themselves.
+
+_active_downloads: dict = {}  # relative_path -> asyncio.Event
+_active_downloads_lock = asyncio.Lock()
+
+
+async def acquire_download_slot(relative_path: str) -> "asyncio.Event | None":
+    """Claim the download slot for this path.
+
+    Returns an Event the caller MUST set (in a finally block) when the download
+    completes or fails. Returns None if another coroutine already owns the slot —
+    caller should await wait_for_download(relative_path) then re-check storage.
+    """
+    async with _active_downloads_lock:
+        if relative_path in _active_downloads:
+            return None
+        event = asyncio.Event()
+        _active_downloads[relative_path] = event
+        return event
+
+
+async def wait_for_download(relative_path: str) -> None:
+    """Wait for an in-progress download of relative_path to finish (or fail)."""
+    async with _active_downloads_lock:
+        event = _active_downloads.get(relative_path)
+    if event:
+        await event.wait()
+
+
+async def release_download_slot(relative_path: str, event: "asyncio.Event") -> None:
+    """Signal waiters and remove the slot. Always call from a finally block."""
+    async with _active_downloads_lock:
+        _active_downloads.pop(relative_path, None)
+    event.set()
