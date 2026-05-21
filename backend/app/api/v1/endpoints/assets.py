@@ -681,9 +681,11 @@ async def redownload_asset(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Re-download an asset video from its source platform and store it in MinIO.
-    Only applicable to VIDEO assets that are missing a valid .mp4 asset_url.
-    Supports DV360 and GOOGLE_ADS (both use yt-dlp for YouTube video IDs).
+    """Queue a re-download of a missing video asset.
+
+    Uses the same PO/proxy/cookie retry logic as the batch backfill path
+    (_download_asset_for_backfill). Returns immediately; track progress via the
+    SSE job stream (/api/v1/jobs/stream).
     """
     result = await db.execute(select(CreativeAsset).where(CreativeAsset.id == asset_id))
     asset = result.scalar_one_or_none()
@@ -707,133 +709,37 @@ async def redownload_asset(
         progress_total=1,
     )
 
-    from app.services.sync.thumbnail_utils import is_raw_cdn_url
-    org_id_str = str(asset.organization_id)
-    served_url = None
-    frame_thumb = None
+    from app.services.sync.scheduler import _download_asset_for_backfill
 
-    # Google Ads: ad_id is the numeric Google Ads ad ID, not the YouTube video ID.
-    # Look up the real YouTube video ID from google_ads_raw_performance.
-    _ga_yt_id = None
-    if asset.platform == "GOOGLE_ADS":
-        from app.models.performance import GoogleAdsRawPerformance
-        _ga_yt_id = (await db.execute(
-            select(GoogleAdsRawPerformance.video_id).where(
-                GoogleAdsRawPerformance.ad_id == asset.ad_id,
-                GoogleAdsRawPerformance.platform_connection_id == asset.platform_connection_id,
-                GoogleAdsRawPerformance.video_id.isnot(None),
-            ).limit(1)
-        )).scalar_one_or_none()
-        if not _ga_yt_id:
-            raise HTTPException(status_code=422, detail="YouTube video ID not found for this Google Ads asset")
+    _asset_id = asset.id
+    _asset_name = asset.ad_name
+    _asset_format = asset.asset_format
 
-    # DV360: asset.ad_id may be a line_item_id (new-style) or a YouTube video ID (old-style).
-    # Look up the actual YouTube video ID from raw performance to ensure yt-dlp gets a valid URL.
-    _dv360_yt_id: Optional[str] = None
-    if asset.platform == "DV360":
-        from app.models.performance import Dv360RawPerformance
-        _dv360_yt_id = (await db.execute(
-            select(Dv360RawPerformance.youtube_ad_video_id).where(
-                Dv360RawPerformance.ad_id == asset.ad_id,
-                Dv360RawPerformance.platform_connection_id == asset.platform_connection_id,
-                Dv360RawPerformance.youtube_ad_video_id.isnot(None),
-            ).limit(1)
-        )).scalar_one_or_none()
-        if not _dv360_yt_id:
-            _dv360_yt_id = asset.ad_id  # fallback: old-style assets store YouTube ID as ad_id
+    async def _run() -> None:
+        from app.db.base import get_session_factory as _gsf_run
+        async with _gsf_run()() as _run_db:
+            _res = await _run_db.execute(select(CreativeAsset).where(CreativeAsset.id == _asset_id))
+            _asset = _res.scalar_one_or_none()
+        if not _asset:
+            await update_background_job(bg_job_id, status="FAILED",
+                error={"type": "NotFound", "message": "Asset not found", "traceback": ""})
+            return
+        try:
+            ok = await _download_asset_for_backfill(_asset)
+            if ok:
+                await update_background_job(bg_job_id, status="COMPLETE", progress_current=1,
+                    output={"downloaded": [{"asset_id": str(_asset_id), "asset_name": _asset_name,
+                                            "asset_format": _asset_format}]})
+            else:
+                await update_background_job(bg_job_id, status="FAILED",
+                    error={"type": "DownloadError", "message": "Failed to download video from YouTube", "traceback": ""})
+        except Exception as exc:
+            logger.warning("redownload_asset: background task error for %s: %s", _asset_id, exc, exc_info=True)
+            await update_background_job(bg_job_id, status="FAILED",
+                error={"type": type(exc).__name__, "message": str(exc), "traceback": ""})
 
-    # Download CDN thumbnail BEFORE the video so that when _download_video_asset
-    # checks file_exists(thumb_path) it finds the real thumbnail and skips
-    # first-frame extraction. If CDN download is called after the video, the
-    # frame file already occupies the same MinIO path and gets returned as the
-    # "CDN thumbnail", making the first frame silently win over the official thumb.
-    cdn_thumb = None
-    try:
-        if asset.platform == "DV360":
-            from app.services.sync.dv360_sync import DV360SyncService as _DV3pre
-            _, cdn_thumb = await _DV3pre()._download_youtube_thumbnail(_dv360_yt_id, org_id_str, _dv360_yt_id)
-        elif asset.platform == "GOOGLE_ADS":
-            from app.services.sync.google_ads_sync import google_ads_sync as _ga_pre
-            _, cdn_thumb = await _ga_pre._download_thumbnail(_ga_yt_id, org_id_str, asset.ad_id)
-    except Exception as _te:
-        logger.warning("redownload_asset: pre-video thumbnail fetch failed for %s: %s", asset_id, _te)
-
-    try:
-        if asset.platform == "DV360":
-            from app.services.sync.dv360_sync import DV360SyncService, _CookiesExpiredError
-            svc = DV360SyncService()
-            _, served_url, frame_thumb = await svc._download_video_asset(
-                youtube_video_id=_dv360_yt_id,
-                org_id=org_id_str,
-                ad_id=_dv360_yt_id,
-            )
-        elif asset.platform == "GOOGLE_ADS":
-            from app.services.sync.dv360_sync import _CookiesExpiredError
-            from app.services.sync.google_ads_sync import google_ads_sync
-            _, served_url, frame_thumb = await google_ads_sync._download_video(
-                youtube_video_id=_ga_yt_id,
-                org_id=org_id_str,
-                ad_id=asset.ad_id,
-            )
-    except _CookiesExpiredError:
-        from app.models.system_config import SystemConfig
-        cfg_result = await db.execute(select(SystemConfig).limit(1))
-        cfg = cfg_result.scalar_one_or_none()
-        if cfg:
-            cfg.youtube_cookies_runtime_expired = True
-            cfg.youtube_cookies_backup_runtime_expired = True
-            db.add(cfg)
-            await db.commit()
-        await update_background_job(bg_job_id, status="FAILED",
-            error={"type": "CookiesExpiredError", "message": "YouTube cookies have expired", "traceback": ""})
-        raise HTTPException(
-            status_code=503,
-            detail="YouTube cookies have expired — update cookies in Admin settings",
-        )
-
-    if not served_url:
-        await update_background_job(bg_job_id, status="FAILED",
-            error={"type": "DownloadError", "message": "Failed to download video from YouTube", "traceback": ""})
-        raise HTTPException(status_code=502, detail="Failed to download video from YouTube — check yt-dlp cookies")
-
-    best_thumb = cdn_thumb or frame_thumb
-
-    asset.asset_url = served_url
-    if best_thumb and (not asset.thumbnail_url or is_raw_cdn_url(asset.thumbnail_url)):
-        asset.thumbnail_url = best_thumb
-    db.add(asset)
-
-    # Reset scoring so the next batch rescores with the new video
-    score_result = await db.execute(
-        select(CreativeScoreResult).where(CreativeScoreResult.creative_asset_id == asset_id)
-    )
-    score_row = score_result.scalar_one_or_none()
-    if score_row and score_row.scoring_status != "UNSCORED":
-        score_row.scoring_status = "UNSCORED"
-        db.add(score_row)
-
-    await db.commit()
-
-    # Reset autofill tracking so autofill re-runs with the new video/thumbnail.
-    # Without this, the COMPLETE guard in _autofill() silently skips the asset.
-    from datetime import datetime as _dt_af
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-    await db.execute(
-        pg_insert(AIInferenceTracking)
-        .values(id=uuid.uuid4(), asset_id=asset.id, org_id=asset.organization_id,
-                ai_inference_status="FAILED", created_at=_dt_af.utcnow(), updated_at=_dt_af.utcnow())
-        .on_conflict_do_update(index_elements=["asset_id"],
-                               set_={"ai_inference_status": "FAILED", "updated_at": _dt_af.utcnow()})
-    )
-    await db.commit()
-
-    await update_background_job(bg_job_id, status="COMPLETE", progress_current=1,
-        output={"downloaded": [{"asset_id": str(asset.id), "asset_name": asset.ad_name,
-                                "asset_format": asset.asset_format, "url": served_url}]})
-
-    asyncio.create_task(run_autofill_for_asset(asset_id=asset.id, org_id=asset.organization_id))
-
-    return {"asset_id": str(asset_id), "asset_url": served_url, "thumbnail_url": asset.thumbnail_url}
+    asyncio.create_task(_run())
+    return {"asset_id": str(asset_id), "job_id": str(bg_job_id), "queued": True}
 
 
 @router.post("/trigger-autofill/{connection_id}")

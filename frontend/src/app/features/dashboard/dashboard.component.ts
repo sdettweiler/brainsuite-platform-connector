@@ -14,7 +14,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatChipsModule } from '@angular/material/chips';
-import { Subject, debounceTime, takeUntil, forkJoin, interval, switchMap, take, takeWhile } from 'rxjs';
+import { Subject, debounceTime, takeUntil, forkJoin, interval, switchMap, take, takeWhile, filter, map } from 'rxjs';
 import { NgxSliderModule, Options } from '@angular-slider/ngx-slider';
 import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
 import * as echarts from 'echarts/core';
@@ -25,6 +25,7 @@ import type { EChartsOption } from 'echarts';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { JobMonitorService } from '../../core/services/job-monitor.service';
 import { DateRangePickerComponent, DateRangeChange } from '../../shared/components/date-range-picker.component';
 import { format, subDays } from 'date-fns';
 
@@ -1576,6 +1577,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     private route: ActivatedRoute,
     private router: Router,
     private snackBar: MatSnackBar,
+    private jobMonitor: JobMonitorService,
   ) {}
 
   get orgCurrency(): string {
@@ -2493,17 +2495,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
   redownloadAsset(asset: DashboardAsset | null): void {
     if (!asset) return;
     this.contextMenu.visible = false;
-    this.snackBar.open('Downloading video… this may take a minute', '', { duration: 5000 });
+    this.snackBar.open('Download queued — video will be ready in ~1 minute', '', { duration: 5000 });
     this.api.redownloadAsset(asset.id).subscribe({
       next: (res) => {
-        asset.asset_url = res.asset_url;
-        if (res.thumbnail_url) asset.thumbnail_url = res.thumbnail_url;
-        const cached = this.assetDetailCache.get(asset.id) as any;
-        if (cached) {
-          cached.asset_url = res.asset_url;
-          if (res.thumbnail_url) cached.thumbnail_url = res.thumbnail_url;
-        }
-        this.snackBar.open('Video downloaded — autofill and scoring queued', 'OK', { duration: 4000 });
+        this.jobMonitor.jobs$.pipe(
+          map(jobs => jobs.find(j => j.job_id === res.job_id)),
+          filter((job): job is NonNullable<typeof job> => !!job && (job.status === 'COMPLETE' || job.status === 'FAILED')),
+          take(1),
+          takeUntil(this.destroy$),
+        ).subscribe(job => {
+          if (job.status === 'COMPLETE') {
+            this.api.get<DashboardAsset>(`/dashboard/assets/${asset.id}`, {}).subscribe(updated => {
+              asset.asset_url = updated.asset_url;
+              if (updated.thumbnail_url) asset.thumbnail_url = updated.thumbnail_url;
+              const cached = this.assetDetailCache.get(asset.id) as any;
+              if (cached) {
+                cached.asset_url = updated.asset_url;
+                if (updated.thumbnail_url) cached.thumbnail_url = updated.thumbnail_url;
+              }
+              this.snackBar.open('Video downloaded — autofill and scoring queued', 'OK', { duration: 4000 });
+            });
+          } else {
+            this.snackBar.open('Download failed — check yt-dlp cookies in Admin settings', 'OK', { duration: 5000 });
+          }
+        });
       },
       error: (err) => {
         const msg = err?.error?.detail || 'Download failed. Check yt-dlp cookies.';
