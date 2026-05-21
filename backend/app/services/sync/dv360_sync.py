@@ -1296,10 +1296,11 @@ class DV360SyncService:
                 "ignore_no_formats_error": True,
                 "logger": _YDLLogger(),
             }
-            # remote_components intentionally omitted: bgutil-ytdlp-pot-provider pip
-            # package already registers BgUtilHTTP + BgUtilScriptNode at yt-dlp load
-            # time. Adding remote_components causes a double-registration AssertionError
-            # on every call and is completely redundant.
+            # remote_components loads the EJS n-challenge solver (needed for format URL
+            # decryption). The pip package handles PO tokens but not n-challenges.
+            # The resulting double-registration AssertionError is non-fatal — yt-dlp
+            # catches it internally and continues with the pip-registered providers.
+            ydl_opts["remote_components"] = ["ejs:github"]
             if proxy:
                 ydl_opts["proxy"] = proxy
 
@@ -1336,16 +1337,33 @@ class DV360SyncService:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
 
+            _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".m4v"}
+
+            def _video_on_disk() -> bool:
+                return any(
+                    os.path.getsize(m) > 0 and os.path.splitext(m)[1].lower() in _VIDEO_EXTS
+                    for m in glob.glob(f"{tmp_base}.*")
+                )
+
             try:
                 await loop.run_in_executor(None, download_sync)
-                if _expired[0]:
+                if _expired[0] and not _video_on_disk():
+                    # "no longer valid" warning fired but no file landed — genuine expiry.
+                    # If a file is on disk the download succeeded despite the warning.
                     raise _CookiesExpiredError("YouTube cookies are no longer valid")
                 return True
             except _CookiesExpiredError:
                 raise
             except Exception as e:
                 if _expired[0]:
-                    raise _CookiesExpiredError("YouTube cookies are no longer valid") from e
+                    err_str = str(e).lower()
+                    _is_fmt = (
+                        "no video formats" in err_str
+                        or "requested format is not available" in err_str
+                        or "only images" in err_str
+                    )
+                    if not _is_fmt:
+                        raise _CookiesExpiredError("YouTube cookies are no longer valid") from e
                 redacted_error = _redact(str(e))
                 logger.error("yt-dlp exception: %s", redacted_error)
                 raise
