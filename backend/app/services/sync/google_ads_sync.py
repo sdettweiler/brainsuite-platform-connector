@@ -404,11 +404,10 @@ class GoogleAdsSyncService:
                 "socket_timeout": 30,
                 "logger": _YDLLogger(),
             }
-            # EJS/bgutil is only needed for the cookieless PO-first attempt.
-            # Cookie-based proxy attempts authenticate via cookies and must not
-            # depend on bgutil — if bgutil is down, they should still reach the proxy.
-            if not cookie_data:
-                ydl_opts["remote_components"] = ["ejs:github"]
+            # remote_components intentionally omitted: bgutil-ytdlp-pot-provider pip
+            # package already registers BgUtilHTTP + BgUtilScriptNode at yt-dlp load
+            # time. Adding remote_components causes a double-registration AssertionError
+            # on every call and is completely redundant.
             if proxy:
                 ydl_opts["proxy"] = proxy
             cookie_file = None
