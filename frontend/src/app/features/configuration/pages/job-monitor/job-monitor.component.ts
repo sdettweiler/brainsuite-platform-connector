@@ -278,6 +278,7 @@ export class JobMonitorComponent implements OnInit, OnDestroy {
       case 'FAILED':      return 'badge-error';
       case 'PARTIAL':     return 'badge-warning';
       case 'INTERRUPTED': return 'badge-neutral';
+      case 'RETRIED':     return 'badge-neutral';
       default:            return 'badge-neutral';
     }
   }

@@ -44,6 +44,7 @@
               <mat-chip-option (click)="onStatusFilter('PARTIAL')" [selected]="selectedStatus === 'PARTIAL'">Partial</mat-chip-option>
               <mat-chip-option (click)="onStatusFilter('INTERRUPTED')" [selected]="selectedStatus === 'INTERRUPTED'">Interrupted</mat-chip-option>
               <mat-chip-option (click)="onStatusFilter('FAILED')" [selected]="selectedStatus === 'FAILED'">Failed</mat-chip-option>
+              <mat-chip-option (click)="onStatusFilter('RETRIED')" [selected]="selectedStatus === 'RETRIED'">Retried</mat-chip-option>
             </mat-chip-listbox>
           </div>
           <div class="action-btns">
@@ -55,6 +56,9 @@
             <button mat-stroked-button class="btn-clear-failed"
                     [disabled]="!hasJobsOfStatus(allJobs, 'FAILED')"
                     (click)="clearJobs('FAILED', allJobs)">Clear failed</button>
+            <button mat-stroked-button class="btn-clear-interrupted"
+                    [disabled]="!hasJobsOfStatus(allJobs, 'RETRIED')"
+                    (click)="clearJobs('RETRIED', allJobs)">Clear retried</button>
             <button mat-stroked-button class="btn-kill-all"
                     [disabled]="killingCategory"
                     (click)="killCategory()">

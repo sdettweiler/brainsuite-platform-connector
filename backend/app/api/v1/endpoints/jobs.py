@@ -437,7 +437,7 @@ async def retry_job(
             metadata={**(job.metadata_ or {}), "resumed_from_job_id": str(job.id)},
             initial_status="RUNNING" if job.job_type == "download" else "PENDING",
         )
-        await update_background_job(job.id, metadata={"superseded_by": str(new_job_id)})
+        await update_background_job(job.id, status="RETRIED", metadata={"superseded_by": str(new_job_id)})
         await _dispatch_job_retry(job.job_type, job.params, str(new_job_id), background_tasks, db, old_output=job.output)
     except Exception as exc:
         if new_job_id is not None:
