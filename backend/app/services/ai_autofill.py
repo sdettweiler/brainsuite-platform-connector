@@ -31,9 +31,10 @@ from app.services.sync.job_tracker import create_background_job, update_backgrou
 
 logger = logging.getLogger(__name__)
 
-# Limits concurrent autofill executions to prevent DB connection pool exhaustion.
-# Each run opens ~2-3 sequential DB sessions; pool size is 10+20=30.
-_autofill_semaphore = asyncio.Semaphore(5)
+# Limits concurrent autofill executions. Each run opens ~2-3 sequential DB sessions
+# AND runs blocking CPU work (frame extraction, PIL) in a thread pool. Cap at 2 to
+# prevent thread pool + event loop saturation that caused 300s TimeoutErrors.
+_autofill_semaphore = asyncio.Semaphore(2)
 
 # ---------------------------------------------------------------------------
 # Constants: auto_fill_type routing sets
@@ -165,7 +166,7 @@ async def _run_autofill_for_asset_inner(asset_id: uuid.UUID, org_id: uuid.UUID, 
         )
 
     try:
-        autofill_output = await asyncio.wait_for(_autofill(asset_id, org_id), timeout=300)
+        autofill_output = await asyncio.wait_for(_autofill(asset_id, org_id), timeout=600)
         await update_background_job(
             bg_job_id,
             status="COMPLETE",
@@ -285,7 +286,8 @@ async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> Optional[dict]:
 
     if (needs_vision or needs_audio) and s3_key:
         _t0 = _time.monotonic()
-        asset_bytes, _ = storage.download_blob(s3_key)
+        loop = asyncio.get_event_loop()
+        asset_bytes, _ = await loop.run_in_executor(None, storage.download_blob, s3_key)
         logger.warning("autofill [%s] download: %.1fs (%d bytes)", asset_id, _time.monotonic() - _t0, len(asset_bytes) if asset_bytes else 0)
 
     # ------------------------------------------------------------------
@@ -295,21 +297,36 @@ async def _autofill(asset_id: uuid.UUID, org_id: uuid.UUID) -> Optional[dict]:
     audio_result: dict = {}
 
     if settings.GEMINI_API_KEY:
-        # Prepare inputs synchronously first (CPU-bound, shared asset_bytes)
         mood_board: Optional[bytes] = None
         audio_bytes: Optional[bytes] = None
-        if needs_vision and asset_bytes:
-            _t0 = _time.monotonic()
-            key_frames = _extract_key_frames(asset_bytes, asset_format)
-            if key_frames:
-                mood_board = _compose_mood_board(key_frames)
-            logger.warning("autofill [%s] frame_extraction: %.1fs (%d frames)", asset_id, _time.monotonic() - _t0, len(key_frames) if key_frames else 0)
-        if needs_audio and asset_bytes:
-            _t0 = _time.monotonic()
-            extracted = await _extract_audio_bytes(asset_bytes)
-            if extracted and len(extracted) >= 1000:
-                audio_bytes = extracted
-            logger.warning("autofill [%s] audio_extraction: %.1fs (%d bytes)", asset_id, _time.monotonic() - _t0, len(audio_bytes) if audio_bytes else 0)
+
+        if asset_bytes:
+            loop = asyncio.get_event_loop()
+
+            # Run vision prep (CPU-bound ffmpeg + PIL, in thread) and audio extraction
+            # (async subprocess) concurrently — both read from asset_bytes independently.
+            async def _prepare_vision_inputs() -> tuple:
+                if not needs_vision:
+                    return None, 0
+                _t = _time.monotonic()
+                kf = await loop.run_in_executor(None, _extract_key_frames, asset_bytes, asset_format)
+                mb = await loop.run_in_executor(None, _compose_mood_board, kf) if kf else None
+                logger.warning("autofill [%s] frame_extraction: %.1fs (%d frames)", asset_id, _time.monotonic() - _t, len(kf) if kf else 0)
+                return mb, len(kf) if kf else 0
+
+            async def _prepare_audio_input() -> Optional[bytes]:
+                if not needs_audio:
+                    return None
+                _t = _time.monotonic()
+                extracted = await _extract_audio_bytes(asset_bytes)
+                ab = extracted if (extracted and len(extracted) >= 1000) else None
+                logger.warning("autofill [%s] audio_extraction: %.1fs (%d bytes)", asset_id, _time.monotonic() - _t, len(ab) if ab else 0)
+                return ab
+
+            (mood_board, _), audio_bytes = await asyncio.gather(
+                _prepare_vision_inputs(),
+                _prepare_audio_input(),
+            )
 
         # Run Gemini calls concurrently — vision and audio are independent
         async def _vision_task() -> dict:
