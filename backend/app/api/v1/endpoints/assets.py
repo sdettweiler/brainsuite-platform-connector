@@ -716,7 +716,11 @@ async def redownload_asset(
     _asset_format = asset.asset_format
 
     async def _run() -> None:
+        import asyncio as _asyncio
         from app.db.base import get_session_factory as _gsf_run
+        from sqlalchemy import update as _sa_update
+        from app.services.object_storage import get_object_storage as _get_storage
+
         async with _gsf_run()() as _run_db:
             _res = await _run_db.execute(select(CreativeAsset).where(CreativeAsset.id == _asset_id))
             _asset = _res.scalar_one_or_none()
@@ -724,6 +728,24 @@ async def redownload_asset(
             await update_background_job(bg_job_id, status="FAILED",
                 error={"type": "NotFound", "message": "Asset not found", "traceback": ""})
             return
+
+        # Always refresh the thumbnail on single redownload: delete any stale MinIO
+        # file and null thumbnail_url so _download_asset_for_backfill re-downloads it.
+        _thumb = _asset.thumbnail_url
+        if _thumb and _thumb.startswith("/objects/"):
+            _obj = _get_storage()
+            _loop = _asyncio.get_running_loop()
+            await _loop.run_in_executor(None, _obj.delete_blob, _thumb[len("/objects/"):])
+        async with _gsf_run()() as _run_db:
+            await _run_db.execute(
+                _sa_update(CreativeAsset).where(CreativeAsset.id == _asset_id).values(thumbnail_url=None)
+            )
+            await _run_db.commit()
+        # Re-fetch so _download_asset_for_backfill sees thumbnail_url=None
+        async with _gsf_run()() as _run_db:
+            _res = await _run_db.execute(select(CreativeAsset).where(CreativeAsset.id == _asset_id))
+            _asset = _res.scalar_one_or_none()
+
         try:
             ok = await _download_asset_for_backfill(_asset)
             if ok:
