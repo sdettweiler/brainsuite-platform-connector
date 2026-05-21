@@ -2023,6 +2023,7 @@ async def auto_resume_interrupted_jobs() -> None:
                 .where(
                     _BJ.status == "INTERRUPTED",
                     _BJ.params.isnot(None),
+                    _func.jsonb_typeof(_BJ.params).notin_(["null"]),  # exclude JSONB null (backfill jobs)
                     _not_(_func.jsonb_exists(_BJ.metadata_, "superseded_by")),
                     # Never resume jobs that were deliberately killed by an admin.
                     _func.coalesce(_BJ.error["type"].astext, "") != "KilledByAdmin",
@@ -2207,6 +2208,13 @@ async def trigger_download_retry(params: dict, job_id: str) -> None:
     from app.models.platform import PlatformConnection
     import uuid as _uuid
 
+    if not params:
+        logger.warning("trigger_download_retry: job %s has no params — skipping (backfill jobs are not retryable)", job_id)
+        if job_id:
+            job_uuid = _uuid.UUID(str(job_id))
+            await update_background_job(job_uuid, status="FAILED", error={"type": "MissingParams", "message": "Backfill download jobs cannot be auto-retried (no stored params)", "traceback": ""})
+        return
+
     platform = params.get("platform")
     platform_connection_id = params.get("platform_connection_id")
     asset_ids = params.get("asset_ids", [])
@@ -2342,7 +2350,7 @@ async def trigger_dv360_sync_retry(params: dict, new_job_id: str, resume_query_i
                     from app.models.performance import SyncJob as SJ2
                     from sqlalchemy import select as sel2
                     sj2 = (await db.execute(sel2(SJ2).where(SJ2.id == _uuid.UUID(retry_job_id)))).scalar_one_or_none()
-                    await harmonizer.harmonize(db, conn2, sj2)
+                    await harmonizer.harmonize_connection(db, conn2, date_from, date_to)
                     await db.commit()
                 except Exception as _h_err:
                     logger.warning("trigger_dv360_sync_retry: harmonizer failed (non-fatal): %s", _h_err)

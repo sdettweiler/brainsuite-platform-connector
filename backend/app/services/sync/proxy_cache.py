@@ -106,8 +106,8 @@ def reset_cache() -> None:
 # ---------------------------------------------------------------------------
 
 _concurrency_cache: dict = {
-    "semaphore": asyncio.Semaphore(10),  # default capacity (D-11)
-    "max_concurrent": 10,  # tracks integer capacity for change detection (D-03)
+    "semaphore": asyncio.Semaphore(5),  # default capacity; reduced from 10 to halve peak memory
+    "max_concurrent": 5,  # tracks integer capacity for change detection (D-03)
     "expires_at": 0.0,  # forces first call to load from DB
 }
 
