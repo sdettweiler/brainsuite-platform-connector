@@ -403,8 +403,12 @@ class GoogleAdsSyncService:
                 # a custom logger, blocking "no longer valid" detection via warning().
                 "socket_timeout": 30,
                 "logger": _YDLLogger(),
-                "remote_components": ["ejs:github"],
             }
+            # EJS/bgutil is only needed for the cookieless PO-first attempt.
+            # Cookie-based proxy attempts authenticate via cookies and must not
+            # depend on bgutil — if bgutil is down, they should still reach the proxy.
+            if not cookie_data:
+                ydl_opts["remote_components"] = ["ejs:github"]
             if proxy:
                 ydl_opts["proxy"] = proxy
             cookie_file = None

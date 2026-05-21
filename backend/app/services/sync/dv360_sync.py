@@ -1295,8 +1295,12 @@ class DV360SyncService:
                 "socket_timeout": 30,
                 "ignore_no_formats_error": True,
                 "logger": _YDLLogger(),
-                "remote_components": ["ejs:github"],
             }
+            # EJS/bgutil is only needed for the cookieless PO-first attempt.
+            # Cookie-based proxy attempts authenticate via cookies and must not
+            # depend on bgutil — if bgutil is down, they should still reach the proxy.
+            if not cookie_data:
+                ydl_opts["remote_components"] = ["ejs:github"]
             if proxy:
                 ydl_opts["proxy"] = proxy
 
@@ -1439,6 +1443,9 @@ class DV360SyncService:
                         err_str = str(e)
                         is_format_error = "Requested format is not available" in err_str or "no video formats" in err_str.lower()
                         if is_format_error:
+                            if i < len(attempts) - 1:
+                                logger.info("[DL:%s] No formats on attempt %d — retrying with next slot", _dl_tag, i + 1)
+                                continue
                             logger.warning("[DL:%s] No video formats available — skipping", _dl_tag)
                             break
                         # yt-dlp __exit__ raises when saving back a corrupt cookie file even after
