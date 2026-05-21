@@ -1222,6 +1222,14 @@ class DV360SyncService:
         if await loop.run_in_executor(None, obj_storage.file_exists, relative_path):
             return None, obj_storage.served_url(relative_path), None
 
+        from app.services.sync.proxy_cache import acquire_download_slot as _ads, wait_for_download as _wfd, release_download_slot as _rds
+        _dl_slot = await _ads(relative_path)
+        if _dl_slot is None:
+            await _wfd(relative_path)
+            if await loop.run_in_executor(None, obj_storage.file_exists, relative_path):
+                return None, obj_storage.served_url(relative_path), None
+            return None, None, None
+
         # Read cookies from DB first, fall back to env vars if DB is empty (D-11)
         cookies = await self._get_cookies_from_db()
 
@@ -1389,14 +1397,6 @@ class DV360SyncService:
         actual_path: Optional[str] = None
         winning_label: Optional[str] = None
         logger.warning("[DL:%s] DV360 — queued (%d attempt(s))", _dl_tag, len(attempts))
-        from app.services.sync.proxy_cache import acquire_download_slot as _ads, wait_for_download as _wfd, release_download_slot as _rds
-        _dl_slot = await _ads(relative_path)
-        if _dl_slot is None:
-            # Concurrent download of the same file — wait for it then re-check storage
-            await _wfd(relative_path)
-            if await loop.run_in_executor(None, obj_storage.file_exists, relative_path):
-                return None, obj_storage.served_url(relative_path), None
-            return None, None, None
         try:
             async with semaphore:
                 if bg_job_id:
