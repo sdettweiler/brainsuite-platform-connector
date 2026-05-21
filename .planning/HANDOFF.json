@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-05-21T13:47:34Z",
+  "phase": null,
+  "phase_name": "download-pipeline-fixes",
+  "phase_dir": null,
+  "plan": null,
+  "task": null,
+  "total_tasks": 5,
+  "status": "paused",
+  "completed_tasks": [],
+  "remaining_tasks": [
+    {"id": 1, "name": "Fix NoneType crash on auto-resume (trigger_download_retry params=None)", "status": "not_started"},
+    {"id": 2, "name": "Fix harmonizer.harmonize → harmonize_connection in trigger_dv360_sync_retry", "status": "not_started"},
+    {"id": 3, "name": "Raise Cloud Run memory to 2048Mi + reduce semaphore default 10→5", "status": "not_started"},
+    {"id": 4, "name": "Logging redesign: buffer _YDLLogger, promote [DL:xxx] COMPLETE/FAILED to warning", "status": "not_started"},
+    {"id": 5, "name": "Parallelize backfill loop with asyncio.gather", "status": "not_started"}
+  ],
+  "blockers": [],
+  "human_actions_pending": [
+    {"action": "Run: gcloud run services update brainsuite-backend --memory=2048Mi --region=us-central1 --project=<project-id>", "context": "OOM at 1086MB/1024MB — blocks downloads", "blocking": true}
+  ],
+  "decisions": [
+    {"decision": "Suppress all yt-dlp intermediate attempt logs; only emit on final failure + outcome lines", "rationale": "10+ noisy lines per video in prod; all INFO logs filtered anyway", "phase": "download-pipeline-fixes"},
+    {"decision": "Reduce concurrency semaphore default from 10 to 5", "rationale": "Memory pressure from concurrent yt-dlp threads causes OOM", "phase": "download-pipeline-fixes"},
+    {"decision": "Backfill jobs are not auto-retryable (no stored params)", "rationale": "Backfill dynamically finds missing assets — retry rebuilds the list from scratch instead", "phase": "download-pipeline-fixes"}
+  ],
+  "uncommitted_files": [
+    ".planning/quick/DOWNLOAD-FIXES-HANDOFF.md"
+  ],
+  "next_action": "Read .planning/quick/DOWNLOAD-FIXES-HANDOFF.md then implement BUG-1 (trigger_download_retry params guard) first",
+  "context_notes": "Downloads confirmed working (DataImpulse 1-5MB transfers). Commit 95bb173 is live in prod. Remaining work is infra/logging fixes, not download correctness fixes."
+}
