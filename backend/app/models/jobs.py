@@ -24,6 +24,7 @@ class BackgroundJob(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    last_heartbeat_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("ix_background_jobs_org_status", "org_id", "status"),

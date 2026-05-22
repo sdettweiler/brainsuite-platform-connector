@@ -138,7 +138,7 @@ async def update_background_job(
             job.metadata_ = {**(job.metadata_ or {}), **metadata}
             flag_modified(job, "metadata_")
 
-        if status in ("COMPLETE", "FAILED", "INTERRUPTED", "PARTIAL"):
+        if status in ("COMPLETE", "FAILED", "INTERRUPTED", "PARTIAL", "RETRIED"):
             job.ended_at = datetime.utcnow()
 
         db.add(job)
@@ -197,3 +197,22 @@ async def revive_background_job(job_id: uuid.UUID) -> bool:
         logger.warning("SSE publish failed for job %s: %s", job_id, exc)
 
     return True
+
+
+async def heartbeat_background_job(job_id: uuid.UUID) -> None:
+    """Update last_heartbeat_at to prove the job is still alive.
+
+    Called every 30s from long-running jobs. Swallows all exceptions so a
+    transient DB hiccup never crashes the job that's heartbeating.
+    """
+    from sqlalchemy import update as _update
+    try:
+        async with get_session_factory()() as db:
+            await db.execute(
+                _update(BackgroundJob)
+                .where(BackgroundJob.id == job_id)
+                .values(last_heartbeat_at=datetime.utcnow())
+            )
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("heartbeat failed for job %s: %s", job_id, exc)
