@@ -854,6 +854,13 @@ class DV360SyncService:
             elapsed += poll_interval
             attempt += 1
 
+            if bg_job_id is not None:
+                try:
+                    from app.services.sync.job_tracker import heartbeat_background_job as _hb
+                    await _hb(bg_job_id)
+                except Exception:
+                    pass
+
             if elapsed > 300 and poll_interval < 60:
                 poll_interval = 60
             elif elapsed > 1800 and poll_interval < 120:
