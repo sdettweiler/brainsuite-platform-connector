@@ -111,6 +111,34 @@ async def _supersede_running_jobs(connection_id: str) -> int:
         return count
 
 
+async def _heartbeat_loop(job_id, interval: int = 30) -> None:
+    """Background heartbeat — runs alongside long jobs, swallows own errors."""
+    from app.services.sync.job_tracker import heartbeat_background_job
+    while True:
+        await asyncio.sleep(interval)
+        await heartbeat_background_job(job_id)
+
+
+def _safe_create_task(job_id, coro) -> "asyncio.Task":
+    """Wrap a job-owning coroutine so any unhandled crash updates the job to FAILED."""
+    import traceback as _tb
+
+    async def _guarded():
+        try:
+            await coro
+        except Exception as exc:
+            logger.exception("Background task for job %s crashed: %s", job_id, exc)
+            try:
+                await update_background_job(
+                    job_id, status="FAILED",
+                    error={"type": type(exc).__name__, "message": str(exc), "traceback": _tb.format_exc()[:5000]},
+                )
+            except Exception:
+                pass
+
+    return asyncio.create_task(_guarded())
+
+
 async def run_daily_sync(connection_id: str, existing_bg_job_id=None) -> None:
     """Execute daily sync for a single platform connection."""
     from sqlalchemy import select
@@ -181,6 +209,8 @@ async def run_daily_sync(connection_id: str, existing_bg_job_id=None) -> None:
             progress_total=1,
             progress_current=0,
         )
+        from app.services.sync.job_tracker import heartbeat_background_job as _hb_job
+        await _hb_job(bg_job_id)
         asyncio.create_task(backfill_missing_downloads_for_connection(connection_id))
 
         try:
@@ -333,6 +363,8 @@ async def run_daily_sync(connection_id: str, existing_bg_job_id=None) -> None:
                     )
 
     if is_dv360 and dv360_info:
+        if bg_job_id is not None:
+            await _hb_job(bg_job_id)
         try:
             logger.info(f"DV360 daily sync: polling reports with no DB session held")
             dv360_report_data = await dv360_sync.fetch_report_data(
@@ -383,6 +415,8 @@ async def run_daily_sync(connection_id: str, existing_bg_job_id=None) -> None:
                 logger.error(f"DV360 daily sync: connection or job disappeared")
                 return
 
+            if bg_job_id is not None:
+                await _hb_job(bg_job_id)
             try:
                 sync_result = await dv360_sync.store_report_data(db, conn, dv360_report_data, dv360_info["job_id"])
                 sj.records_fetched = sync_result.get("fetched", 0)
@@ -2069,6 +2103,70 @@ async def auto_resume_interrupted_jobs() -> None:
         logger.warning("Auto-resume periodic check failed (non-fatal): %s", exc)
 
 
+async def detect_and_recover_stale_jobs() -> None:
+    """Heartbeat-based stale RUNNING detector. Runs every 2 minutes.
+
+    Marks RUNNING jobs with stale heartbeats as INTERRUPTED so auto_resume
+    picks them up. Also resets PENDING connections with no active sync to ACTIVE.
+    Complements reset_stale_background_jobs (3h fallback) — this is the fast path.
+    """
+    from sqlalchemy import select as _sel, update as _upd, exists as _exists, and_ as _and, or_ as _or
+    from app.models.platform import PlatformConnection
+    from app.models.jobs import BackgroundJob
+    from datetime import datetime as _dt, timedelta as _td
+
+    _cutoff_hb = _dt.utcnow() - _td(minutes=3)
+    _cutoff_started = _dt.utcnow() - _td(minutes=5)
+
+    try:
+        async with get_session_factory()() as db:
+            result = await db.execute(
+                _upd(BackgroundJob)
+                .where(
+                    BackgroundJob.status == "RUNNING",
+                    _or(
+                        _and(BackgroundJob.last_heartbeat_at == None, BackgroundJob.started_at < _cutoff_started),
+                        _and(BackgroundJob.last_heartbeat_at != None, BackgroundJob.last_heartbeat_at < _cutoff_hb),
+                    )
+                )
+                .values(
+                    status="INTERRUPTED",
+                    error={"type": "StaleHeartbeat", "message": "Job heartbeat went stale — interrupted for auto-resume", "traceback": ""},
+                    ended_at=_dt.utcnow(),
+                )
+                .returning(BackgroundJob.id)
+            )
+            stale_ids = [row[0] for row in result.all()]
+            await db.commit()
+        if stale_ids:
+            logger.warning("stale-detector: interrupted %d stale RUNNING job(s): %s", len(stale_ids), stale_ids)
+    except Exception as exc:
+        logger.warning("stale-detector: RUNNING sweep failed: %s", exc)
+
+    try:
+        async with get_session_factory()() as db:
+            result = await db.execute(
+                _upd(PlatformConnection)
+                .where(
+                    PlatformConnection.sync_status == "PENDING",
+                    ~_exists(
+                        _sel(BackgroundJob.id).where(
+                            BackgroundJob.platform_connection_id == PlatformConnection.id,
+                            BackgroundJob.status == "RUNNING",
+                        )
+                    )
+                )
+                .values(sync_status="ACTIVE")
+                .returning(PlatformConnection.id)
+            )
+            reset_ids = [row[0] for row in result.all()]
+            await db.commit()
+        if reset_ids:
+            logger.warning("stale-detector: reset %d PENDING connection(s) to ACTIVE: %s", len(reset_ids), reset_ids)
+    except Exception as exc:
+        logger.warning("stale-detector: connection sweep failed: %s", exc)
+
+
 async def startup_scheduler(db_session=None) -> None:
     """Load all active connections and schedule their daily syncs.
     Also triggers initial sync for any connections that missed it."""
@@ -2080,10 +2178,19 @@ async def startup_scheduler(db_session=None) -> None:
     # Reset jobs that were left RUNNING or stuck PENDING when the process was killed mid-flight.
     # PENDING jobs older than 5 minutes never reached RUNNING (e.g. pool exhaustion killed the update).
     stale_pending_cutoff = _dt.utcnow() - _td(minutes=5)
+    from sqlalchemy import or_ as _or_, and_ as _and_
+    _stale_cutoff_hb = _dt.utcnow() - _td(minutes=3)
+    _stale_cutoff_started = _dt.utcnow() - _td(minutes=5)
     async with get_session_factory()() as db:
         running_result = await db.execute(
             _sa_update(BackgroundJob)
-            .where(BackgroundJob.status == "RUNNING")
+            .where(
+                BackgroundJob.status == "RUNNING",
+                _or_(
+                    _and_(BackgroundJob.last_heartbeat_at == None, BackgroundJob.started_at < _stale_cutoff_started),
+                    _and_(BackgroundJob.last_heartbeat_at != None, BackgroundJob.last_heartbeat_at < _stale_cutoff_hb),
+                )
+            )
             .values(
                 status="INTERRUPTED",
                 error={"type": "ProcessRestart", "message": "Server restarted while job was running — will be auto-resumed", "traceback": ""},
@@ -2105,24 +2212,23 @@ async def startup_scheduler(db_session=None) -> None:
         pending_ids = [row[0] for row in pending_result.all()]
         await db.commit()
         if running_ids:
-            logger.warning("Startup: reset %d orphaned RUNNING job(s) to INTERRUPTED", len(running_ids))
+            logger.warning("Startup: reset %d stale RUNNING job(s) to INTERRUPTED", len(running_ids))
         if pending_ids:
             logger.warning("Startup: reset %d orphaned PENDING job(s) to FAILED", len(pending_ids))
 
-    # At startup no sync is actively running, so any connection stuck in PENDING
-    # sync_status had its sync interrupted (SIGTERM) without reaching the ERROR handler.
-    # Reset them to ERROR so the UI shows "sync failed" instead of "syncing" forever.
+    # Connections stuck in PENDING had their sync interrupted. Reset to ACTIVE so they
+    # re-sync normally; detect_and_recover_stale_jobs will catch any truly stale jobs.
     async with get_session_factory()() as db:
         stuck_result = await db.execute(
             _sa_update(PlatformConnection)
             .where(PlatformConnection.sync_status == "PENDING")
-            .values(sync_status="ERROR")
+            .values(sync_status="ACTIVE")
             .returning(PlatformConnection.id)
         )
         stuck_ids = [row[0] for row in stuck_result.all()]
         await db.commit()
     if stuck_ids:
-        logger.warning("Startup: reset %d connection(s) stuck in PENDING sync_status to ERROR", len(stuck_ids))
+        logger.warning("Startup: reset %d connection(s) stuck in PENDING sync_status to ACTIVE", len(stuck_ids))
 
     pending_initial = []
 
@@ -2158,6 +2264,14 @@ async def startup_scheduler(db_session=None) -> None:
         max_instances=1,
     )
     logger.info("Registered auto_resume_interrupted_jobs (every 60s)")
+    scheduler.add_job(
+        detect_and_recover_stale_jobs,
+        trigger=IntervalTrigger(seconds=120),
+        id="detect_and_recover_stale_jobs",
+        replace_existing=True,
+        max_instances=1,
+    )
+    logger.info("Registered detect_and_recover_stale_jobs (every 2 minutes)")
 
     if _settings.SCHEDULER_ENABLED:
         scheduler.add_job(
@@ -2597,10 +2711,14 @@ async def backfill_missing_downloads_for_connection(connection_id: str) -> tuple
                 progress[0] += 1
                 await update_background_job(bg_job_id, progress_current=progress[0])
 
-        await asyncio.gather(*[_do_one(a) for a in missing])
+        _hb = asyncio.create_task(_heartbeat_loop(bg_job_id, 30))
+        try:
+            await asyncio.gather(*[_do_one(a) for a in missing])
+        finally:
+            _hb.cancel()
         if not aborted[0]:
             await update_background_job(bg_job_id, status="COMPLETE", progress_current=len(missing),
                 output={"downloaded": downloaded})
 
-    asyncio.create_task(_run())
+    _safe_create_task(bg_job_id, _run())
     return str(bg_job_id), len(missing)

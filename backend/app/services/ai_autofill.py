@@ -116,6 +116,17 @@ class AudioResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Heartbeat helper (minimal copy — avoids circular import from scheduler)
+# ---------------------------------------------------------------------------
+
+async def _heartbeat_loop(job_id, interval: int = 30) -> None:
+    from app.services.sync.job_tracker import heartbeat_background_job
+    while True:
+        await asyncio.sleep(interval)
+        await heartbeat_background_job(job_id)
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -165,6 +176,7 @@ async def _run_autofill_for_asset_inner(asset_id: uuid.UUID, org_id: uuid.UUID, 
             progress_total=1,
         )
 
+    _hb = asyncio.create_task(_heartbeat_loop(bg_job_id, 30))
     try:
         autofill_output = await asyncio.wait_for(_autofill(asset_id, org_id), timeout=600)
         await update_background_job(
@@ -189,6 +201,8 @@ async def _run_autofill_for_asset_inner(asset_id: uuid.UUID, org_id: uuid.UUID, 
             },
         )
         await _set_status(asset_id, "FAILED")
+    finally:
+        _hb.cancel()
 
 
 # ---------------------------------------------------------------------------
