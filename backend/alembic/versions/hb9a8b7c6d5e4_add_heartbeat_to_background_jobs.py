@@ -1,6 +1,6 @@
 """Add last_heartbeat_at to background_jobs for liveness detection
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: hb9a8b7c6d5e4
 Revises: z8a9b1c2d3e5
 Create Date: 2026-05-22
 
@@ -11,7 +11,7 @@ interrupting everything on restart.
 from alembic import op
 import sqlalchemy as sa
 
-revision = "a1b2c3d4e5f6"
+revision = "hb9a8b7c6d5e4"
 down_revision = "z8a9b1c2d3e5"
 branch_labels = None
 depends_on = None
