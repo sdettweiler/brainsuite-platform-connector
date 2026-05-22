@@ -123,7 +123,10 @@ async def _heartbeat_loop(job_id, interval: int = 30) -> None:
     from app.services.sync.job_tracker import heartbeat_background_job
     while True:
         await asyncio.sleep(interval)
-        await heartbeat_background_job(job_id)
+        try:
+            await heartbeat_background_job(job_id)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------

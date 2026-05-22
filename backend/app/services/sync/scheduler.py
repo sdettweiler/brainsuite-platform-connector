@@ -116,7 +116,10 @@ async def _heartbeat_loop(job_id, interval: int = 30) -> None:
     from app.services.sync.job_tracker import heartbeat_background_job
     while True:
         await asyncio.sleep(interval)
-        await heartbeat_background_job(job_id)
+        try:
+            await heartbeat_background_job(job_id)
+        except Exception:
+            pass
 
 
 def _safe_create_task(job_id, coro) -> "asyncio.Task":
@@ -149,6 +152,7 @@ async def run_daily_sync(connection_id: str, existing_bg_job_id=None) -> None:
     from app.services.sync.google_ads_sync import google_ads_sync
     from app.services.sync.dv360_sync import dv360_sync
     from app.services.sync.harmonizer import harmonizer
+    from app.services.sync.job_tracker import heartbeat_background_job as _hb_job
     import uuid
 
     date_from = date.today() - timedelta(days=2)
@@ -209,7 +213,6 @@ async def run_daily_sync(connection_id: str, existing_bg_job_id=None) -> None:
             progress_total=1,
             progress_current=0,
         )
-        from app.services.sync.job_tracker import heartbeat_background_job as _hb_job
         await _hb_job(bg_job_id)
         asyncio.create_task(backfill_missing_downloads_for_connection(connection_id))
 
