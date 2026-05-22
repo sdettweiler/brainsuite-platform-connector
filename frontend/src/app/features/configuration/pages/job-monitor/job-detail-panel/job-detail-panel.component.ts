@@ -99,6 +99,7 @@ const KNOWN_EXTERNAL_ID_KEYS = ['brainsuite_job_id', 'sync_job_id'];
     .asset-id-mono { font-family: monospace; color: var(--text-secondary); }
     .asset-link { color: var(--accent); text-decoration: none; font-size: 13px; }
     .asset-link:hover { text-decoration: underline; }
+    .asset-error-text { font-size: 13px; color: var(--error); font-style: italic; }
     .score-table { width: 100%; border-collapse: collapse; }
     .score-table th, .score-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
     .score-table th { font-weight: 400; color: var(--text-secondary); font-size: 12px; }
@@ -289,6 +290,31 @@ export class JobDetailPanelComponent implements OnInit, OnChanges, OnDestroy {
 
   getFailedDownloads(): any[] {
     return (this.jobDetail?.output as any)?.failed ?? [];
+  }
+
+  humanizeDownloadError(error: string): string {
+    const e = (error ?? '').toLowerCase();
+    if (e.includes('cookies') || e.includes('authentication expired')) return 'YouTube authentication expired';
+    if (e.includes('private')) return 'Video is private';
+    if (e.includes('age') && (e.includes('restrict') || e.includes('confirm'))) return 'Age-restricted video';
+    if ((e.includes('unavailable') || e.includes('deleted') || e.includes('removed')) && (e.includes('country') || e.includes('region'))) return 'Video unavailable in this region';
+    if (e.includes('unavailable') || e.includes('deleted') || e.includes('removed')) return 'Video unavailable or deleted';
+    if (e.includes('no video formats') || e.includes('requested format is not available') || e.includes('only images')) return 'No downloadable video format found';
+    if (e.includes('invalid') && (e.includes('video id') || e.includes('youtube id') || e.includes('yt_video'))) return 'YouTube video ID invalid';
+    if (e.includes('all attempts failed') || e.includes('no file produced')) return 'All download attempts failed (blocked)';
+    if (e.includes('403') || e.includes('forbidden')) return 'All download attempts failed (blocked)';
+    if (e.includes('429') || e.includes('too many requests')) return 'Rate limited — try again later';
+    return 'Download failed';
+  }
+
+  getAllDownloadItems(): Array<{ asset_id: string; asset_name?: string; asset_format?: string; url?: string; failed: boolean; humanError?: string }> {
+    const succeeded = this.getDownloadedAssets().map(item => ({ ...item, failed: false }));
+    const failed = this.getFailedDownloads().map(item => ({
+      asset_id: item.asset_id,
+      failed: true,
+      humanError: this.humanizeDownloadError(item.error ?? ''),
+    }));
+    return [...succeeded, ...failed];
   }
 
   getDownloadStats(): { succeeded: number; failed: number; notFound: number } | null {

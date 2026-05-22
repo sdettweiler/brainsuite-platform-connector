@@ -86,26 +86,19 @@
           <span class="stat-pill stat-muted" *ngIf="stats.notFound > 0"><i class="bi bi-slash-circle"></i> {{ stats.notFound }} not found</span>
         </div>
       </ng-container>
-      <div class="section-label">Downloaded Assets</div>
+      <div class="section-label">Assets</div>
       <p *ngIf="hasCorruptedDownloads()" style="font-size:12px;color:var(--text-muted);margin:0 0 8px">Some items could not be identified (corrupted job data).</p>
       <ul class="asset-list">
-        <li *ngFor="let asset of getDownloadedAssets()">
+        <li *ngFor="let asset of getAllDownloadItems()">
           <span class="asset-type-badge" *ngIf="asset.asset_format">{{ asset.asset_format }}</span>
           <span class="asset-name-text" *ngIf="asset.asset_name">{{ asset.asset_name }}</span>
           <span class="asset-id-mono" *ngIf="!asset.asset_name">{{ asset.asset_id }}</span>
           <a [href]="asset.url" target="_blank" rel="noopener noreferrer"
              class="asset-link" aria-label="Open asset in storage (opens in new tab)"
-             *ngIf="asset.url">Open in storage</a>
+             *ngIf="!asset.failed && asset.url">Open in storage</a>
+          <span class="asset-error-text" *ngIf="asset.failed">{{ asset.humanError }}</span>
         </li>
       </ul>
-      <details *ngIf="getFailedDownloads().length > 0">
-        <summary>Failed Downloads ({{ getFailedDownloads().length }})</summary>
-        <ul class="asset-list">
-          <li *ngFor="let f of getFailedDownloads()" style="color: var(--error)">
-            {{ f.asset_id }}: {{ f.error }}
-          </li>
-        </ul>
-      </details>
     </ng-container>
 
     <!-- Autofill drill-in -->
